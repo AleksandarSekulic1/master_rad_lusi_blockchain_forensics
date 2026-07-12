@@ -6,17 +6,30 @@ import networkx as nx
 import pandas as pd
 
 from app.analytics.blacklist_check.service import BlacklistCheckPlugin
+from app.analytics.anomaly_detection.service import AnomalyDetectionPlugin
+from app.analytics.chain_hopping.service import ChainHoppingPlugin
 from app.analytics.clustering.service import WalletClusteringPlugin
+from app.analytics.peel_chains.service import PeelChainsPlugin
 from app.analytics.risk_scoring.service import RiskScoringPlugin
 
 
 PLUGIN_REGISTRY = {
     'blacklist_check': BlacklistCheckPlugin,
+    'peel_chains': PeelChainsPlugin,
+    'chain_hopping': ChainHoppingPlugin,
+    'anomaly_detection': AnomalyDetectionPlugin,
     'wallet_clustering': WalletClusteringPlugin,
     'risk_scoring': RiskScoringPlugin,
 }
 
-DEFAULT_PIPELINE = ('blacklist_check', 'wallet_clustering', 'risk_scoring')
+DEFAULT_PIPELINE = (
+    'blacklist_check',
+    'wallet_clustering',
+    'risk_scoring',
+    'peel_chains',
+    'chain_hopping',
+    'anomaly_detection',
+)
 
 
 def run_plugin_pipeline(
