@@ -1,0 +1,18 @@
+﻿<main class="app-shell">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Lusi v1.0</p>
+      <h1>Blockchain forensic workspace</h1>
+      <p class="subtitle">Upload evidence, inspect transaction graphs, and export reports from one console.</p>
+    </div>
+    <nav class="topbar-nav">
+      <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Dashboard</a>
+      <a routerLink="/graph" routerLinkActive="active">Graph</a>
+      <a routerLink="/reports" routerLinkActive="active">Reports</a>
+    </nav>
+  </header>
+
+  <section class="workspace">
+    <router-outlet></router-outlet>
+  </section>
+</main>

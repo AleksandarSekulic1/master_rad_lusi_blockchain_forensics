@@ -1,0 +1,17 @@
+﻿# Node
+node_modules/
+dist/
+.angular/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+
+# Logs and exports
+logs/
+reports/
+data/exports/

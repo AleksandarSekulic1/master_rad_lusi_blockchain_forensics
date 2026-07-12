@@ -1,0 +1,8 @@
+﻿fastapi
+uvicorn[standard]
+pandas
+networkx
+python-multipart
+pydantic-settings
+python-dotenv
+scikit-learn

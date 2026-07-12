@@ -1,0 +1,147 @@
+<section class="dashboard-grid">
+  <article class="panel upload-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Evidence intake</p>
+        <h2>Safe CSV upload</h2>
+      </div>
+      <button class="ghost-button" type="button" (click)="refreshLatestEvidence()" [disabled]="isRefreshing">
+        Refresh latest
+      </button>
+    </div>
+
+    <div
+      class="dropzone"
+      [class.dragging]="isDragging"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event)"
+    >
+      <input type="file" accept=".csv" (change)="onFileSelected($event)" />
+      <div>
+        <p>Drag and drop a blockchain CSV here</p>
+        <span>{{ selectedFileLabel }}</span>
+      </div>
+    </div>
+
+    <div class="inline-form">
+      <label>
+        Analyst
+        <input [(ngModel)]="operatorName" type="text" placeholder="analyst" />
+      </label>
+      <button type="button" class="primary-button" (click)="uploadEvidence()" [disabled]="isUploading">
+        {{ isUploading ? 'Uploading...' : 'Upload and analyze' }}
+      </button>
+    </div>
+
+    <p class="status" [class.busy]="isUploading || isRefreshing">{{ statusMessage }}</p>
+    <div class="upload-meta" *ngIf="uploadResult">
+      <span>SHA-256: {{ uploadResult.sha256 }}</span>
+      <span>Rows: {{ uploadResult.rows_total }}</span>
+    </div>
+  </article>
+
+  <article class="panel search-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Investigation search</p>
+        <h2>Search engine</h2>
+      </div>
+    </div>
+
+    <div class="search-bar">
+      <input
+        [(ngModel)]="searchQuery"
+        type="search"
+        placeholder="Search an address, label, or cluster"
+        (keyup.enter)="executeSearch()"
+      />
+      <button type="button" class="primary-button" (click)="executeSearch()">Search</button>
+      <button type="button" class="ghost-button" (click)="clearSearch()">Clear</button>
+    </div>
+
+    <div class="search-results" *ngIf="searchResults.length > 0; else noResults">
+      <button type="button" class="result-card" *ngFor="let result of searchResults" (click)="selectSearchResult(result)">
+        <strong>{{ result.node.address ?? result.node.id }}</strong>
+        <span>Risk {{ result.node.risk_score ?? 0 }} | Cluster {{ result.node.cluster_id ?? 'n/a' }}</span>
+        <small>
+          {{ result.node.blacklist_flag ? 'Blacklisted' : 'Normal' }}
+          {{ result.node.anomaly_flag ? ' • Anomaly' : '' }}
+          {{ result.node.peel_chain_flag ? ' • Peel chain' : '' }}
+        </small>
+      </button>
+    </div>
+
+    <ng-template #noResults>
+      <p class="empty-state">Enter a query to inspect the loaded graph.</p>
+    </ng-template>
+  </article>
+
+  <article class="metrics-row">
+    <div class="metric-card">
+      <span>Total transactions</span>
+      <strong>{{ transactionCount | number }}</strong>
+    </div>
+    <div class="metric-card">
+      <span>Summed volume</span>
+      <strong>{{ totalVolume | number : '1.2-6' }}</strong>
+    </div>
+    <div class="metric-card">
+      <span>High-risk entities</span>
+      <strong>{{ flaggedEntitiesCount | number }}</strong>
+    </div>
+    <div class="metric-card">
+      <span>Clusters</span>
+      <strong>{{ clusterCount | number }}</strong>
+    </div>
+    <div class="metric-card">
+      <span>Blacklisted</span>
+      <strong>{{ blacklistedCount | number }}</strong>
+    </div>
+  </article>
+
+  <article class="panel details-panel" *ngIf="state.selectedNodeSnapshot as node">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Focused entity</p>
+        <h2>{{ node.address ?? node.id }}</h2>
+      </div>
+      <span class="pill">Risk {{ node.risk_score ?? 0 }}</span>
+    </div>
+
+    <dl class="details-grid">
+      <div>
+        <dt>Cluster</dt>
+        <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
+      </div>
+      <div>
+        <dt>Blacklisted</dt>
+        <dd>{{ node.blacklist_flag ? 'Yes' : 'No' }}</dd>
+      </div>
+      <div>
+        <dt>Anomaly</dt>
+        <dd>{{ node.anomaly_flag ? 'Yes' : 'No' }}</dd>
+      </div>
+      <div>
+        <dt>Peel chain</dt>
+        <dd>{{ node.peel_chain_flag ? node.peel_chain_role ?? 'Yes' : 'No' }}</dd>
+      </div>
+      <div>
+        <dt>Chain hop</dt>
+        <dd>{{ node.chain_hop_flag ? node.chain_hop_type ?? 'Yes' : 'No' }}</dd>
+      </div>
+      <div>
+        <dt>Sources</dt>
+        <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
+      </div>
+    </dl>
+  </article>
+
+  <section class="panel graph-panel">
+    <app-graph-visualization></app-graph-visualization>
+  </section>
+
+  <section class="panel export-panel">
+    <app-report-export></app-report-export>
+  </section>
+</section>
