@@ -1,0 +1,19 @@
+﻿.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: Arial, sans-serif;
+  padding: 2rem;
+}
+
+.hero {
+  max-width: 48rem;
+  width: 100%;
+  text-align: center;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.75rem;
+}
