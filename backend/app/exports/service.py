@@ -5,10 +5,43 @@ from pathlib import Path
 
 import networkx as nx
 import pandas as pd
+from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
 from app.analytics.graph_building.service import build_transaction_graph
 from app.analytics.ingestion.csv_ingestion import clean_transaction_csv
 from app.analytics.plugins.manager import run_plugin_pipeline
+
+
+_NAVY = (13, 24, 40)
+_ACCENT = (43, 130, 191)
+_LIGHT_ROW = (240, 245, 250)
+_TEXT_GRAY = (100, 112, 128)
+_TEXT_DARK = (24, 28, 36)
+_WHITE = (255, 255, 255)
+
+_UNICODE_FONT_CANDIDATES: tuple[tuple[Path, Path], ...] = (
+    (Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'), Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')),
+    (Path('/usr/share/fonts/dejavu/DejaVuSans.ttf'), Path('/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf')),
+    (Path('C:/Windows/Fonts/arial.ttf'), Path('C:/Windows/Fonts/arialbd.ttf')),
+    (Path('C:/Windows/Fonts/segoeui.ttf'), Path('C:/Windows/Fonts/segoeuib.ttf')),
+)
+
+
+def _register_report_font(pdf: FPDF) -> str:
+    """Registers a Unicode-capable TTF font so diacritics (č, ć, š, ž, đ) render correctly.
+
+    Falls back to the built-in Helvetica core font (ASCII-only) if no TTF is found on disk.
+    """
+    for regular_path, bold_path in _UNICODE_FONT_CANDIDATES:
+        if not regular_path.exists():
+            continue
+
+        pdf.add_font('LusiSans', '', str(regular_path))
+        pdf.add_font('LusiSans', 'B', str(bold_path if bold_path.exists() else regular_path))
+        return 'LusiSans'
+
+    return 'helvetica'
 
 
 def _safe_text(value: object) -> str:
@@ -82,44 +115,211 @@ def build_case_csv_report(context: dict[str, object]) -> str:
     return '\n'.join(','.join(_escape_csv_cell(value) for value in row) for row in rows)
 
 
+class _CaseReportPDF(FPDF):
+    def __init__(self, *, case_name: str, font_family: str) -> None:
+        super().__init__(format='A4')
+        self._case_name = case_name
+        self._font_family = font_family
+        self.set_auto_page_break(auto=True, margin=20)
+        self.set_top_margin(30)
+
+    def header(self) -> None:  # noqa: D102 - fpdf2 lifecycle hook
+        self.set_fill_color(*_NAVY)
+        self.rect(0, 0, self.w, 24, style='F')
+        self.set_text_color(*_WHITE)
+        self.set_font(self._font_family, 'B', 15)
+        self.set_xy(12, 5)
+        self.cell(0, 8, 'Lusi v1.0 - Investigation Report', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_font(self._font_family, '', 10)
+        self.set_xy(12, 14)
+        self.cell(0, 6, f'Case: {self._case_name}', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_text_color(*_TEXT_DARK)
+        self.set_xy(self.l_margin, 30)
+
+    def footer(self) -> None:  # noqa: D102 - fpdf2 lifecycle hook
+        self.set_y(-14)
+        self.set_font(self._font_family, '', 8)
+        self.set_text_color(*_TEXT_GRAY)
+        self.cell(0, 8, f'Lusi v1.0 forensic export | Page {self.page_no()}', align='C')
+
+
+def _section_title(pdf: FPDF, font_family: str, title: str) -> None:
+    pdf.ln(3)
+    pdf.set_font(font_family, 'B', 12)
+    pdf.set_text_color(*_NAVY)
+    pdf.cell(0, 8, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    y = pdf.get_y()
+    pdf.set_draw_color(*_ACCENT)
+    pdf.set_line_width(0.6)
+    pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+    pdf.ln(3)
+    pdf.set_text_color(*_TEXT_DARK)
+
+
+def _kv_row(pdf: FPDF, font_family: str, label: str, value: str) -> None:
+    pdf.set_font(font_family, 'B', 9.5)
+    pdf.set_text_color(*_TEXT_GRAY)
+    pdf.cell(38, 6, label, new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_font(font_family, '', 10)
+    pdf.set_text_color(*_TEXT_DARK)
+    pdf.multi_cell(0, 6, value or 'n/a', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+def _draw_summary_cards(pdf: FPDF, font_family: str, cards: list[tuple[str, object, tuple[int, int, int]]]) -> None:
+    usable_width = pdf.w - pdf.l_margin - pdf.r_margin
+    gap = 3.0
+    col_width = (usable_width - gap * (len(cards) - 1)) / len(cards)
+    y0 = pdf.get_y()
+    x = pdf.l_margin
+
+    for label, value, color in cards:
+        pdf.set_xy(x, y0)
+        pdf.set_fill_color(*color)
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font(font_family, 'B', 14)
+        pdf.multi_cell(col_width, 9, _safe_text(value), align='C', fill=True, new_x=XPos.LEFT, new_y=YPos.TOP)
+        pdf.set_xy(x, y0 + 9)
+        pdf.set_font(font_family, '', 7.5)
+        pdf.multi_cell(col_width, 6, label, align='C', fill=True, new_x=XPos.LEFT, new_y=YPos.TOP)
+        x += col_width + gap
+
+    pdf.set_xy(pdf.l_margin, y0 + 9 + 6 + 4)
+
+
+def _draw_table(
+    pdf: FPDF,
+    font_family: str,
+    *,
+    headers: list[str],
+    column_widths: list[float],
+    rows: list[list[str]],
+    empty_message: str,
+) -> None:
+    if not rows:
+        pdf.set_font(font_family, '', 9.5)
+        pdf.set_text_color(*_TEXT_GRAY)
+        pdf.cell(0, 6, empty_message, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(*_TEXT_DARK)
+        return
+
+    line_height = 5.0
+    pdf.set_font(font_family, 'B', 8.5)
+    pdf.set_fill_color(*_NAVY)
+    pdf.set_text_color(*_WHITE)
+    for header, width in zip(headers, column_widths):
+        pdf.cell(width, 7, header, border=0, fill=True, align='L', new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.ln(7)
+
+    pdf.set_font(font_family, '', 8)
+    for row_index, row in enumerate(rows):
+        cell_line_counts = [
+            max(1, len(pdf.multi_cell(width, line_height, cell_text, dry_run=True, output='LINES')))
+            for cell_text, width in zip(row, column_widths)
+        ]
+        row_height = max(cell_line_counts) * line_height
+
+        if pdf.get_y() + row_height > pdf.page_break_trigger:
+            pdf.add_page()
+
+        y0 = pdf.get_y()
+        x0 = pdf.get_x()
+        pdf.set_fill_color(*(_LIGHT_ROW if row_index % 2 == 0 else _WHITE))
+        pdf.set_text_color(*_TEXT_DARK)
+
+        x = x0
+        for cell_text, width in zip(row, column_widths):
+            pdf.set_xy(x, y0)
+            pdf.multi_cell(width, line_height, cell_text, border=0, fill=True, align='L')
+            x += width
+
+        pdf.set_xy(x0, y0 + row_height)
+
+
 def build_case_pdf_report(context: dict[str, object]) -> bytes:
     case = context['case']
     analytics = context['analytics']
     summary = analytics.get('summary', {}) if isinstance(analytics, dict) else {}
+    audit_entries = context['audit_entries'] if isinstance(context['audit_entries'], list) else []
+    evidence_entries = [entry for entry in case.get('evidence', []) if isinstance(entry, dict)]
 
-    lines = [
-        'Lusi v1.0 investigation report',
-        f'Case: {_safe_text(case.get("name"))}',
-        f'Case ID: {_safe_text(case.get("id"))}',
-        f'Analyst: {_safe_text(case.get("analyst"))}',
-        f'Created at: {_safe_text(case.get("created_at"))}',
-        f'Updated at: {_safe_text(case.get("updated_at"))}',
-        f'Evidence items: {len(case.get("evidence", []))}',
-        f'Data rows: {context.get("rows")}',
-        f'Nodes: {context.get("nodes")}',
-        f'Edges: {context.get("edges")}',
-        f'Blacklisted nodes: {_safe_text(summary.get("blacklisted_nodes", 0))}',
-        f'High-risk nodes: {_safe_text(summary.get("high_risk_nodes", 0))}',
-        f'Clusters: {_safe_text(summary.get("clusters", 0))}',
-        '',
-        'Evidence locker:',
-    ]
+    pdf = _CaseReportPDF(case_name=_safe_text(case.get('name')), font_family='helvetica')
+    font_family = _register_report_font(pdf)
+    pdf._font_family = font_family  # header()/footer() read this on every page
+    pdf.add_page()
 
-    for entry in case.get('evidence', [])[:12]:
-        if not isinstance(entry, dict):
-            continue
-        lines.append(
-            f"- {entry.get('file_name')} | sha256={entry.get('sha256')} | size={entry.get('size_bytes')} | analyst={entry.get('analyst')} | imported={entry.get('imported_at')}"
-        )
+    _kv_row(pdf, font_family, 'CASE ID', _safe_text(case.get('id')))
+    _kv_row(pdf, font_family, 'ANALYST', _safe_text(case.get('analyst')))
+    _kv_row(pdf, font_family, 'STATUS', _safe_text(case.get('status', 'open')))
+    _kv_row(pdf, font_family, 'DESCRIPTION', _safe_text(case.get('description')) or 'n/a')
+    _kv_row(pdf, font_family, 'CREATED AT', _safe_text(case.get('created_at')))
+    _kv_row(pdf, font_family, 'UPDATED AT', _safe_text(case.get('updated_at')))
+    _kv_row(pdf, font_family, 'GENERATED AT', _safe_text(context.get('generated_at')))
 
-    lines.append('')
-    lines.append('Audit log:')
-    for entry in context['audit_entries'][:12]:
-        lines.append(
-            f"- {entry.get('timestamp')} | {entry.get('action')} | {entry.get('file_name')} | {entry.get('user')}"
-        )
+    _section_title(pdf, font_family, 'Analysis summary')
+    _draw_summary_cards(
+        pdf,
+        font_family,
+        [
+            ('Data rows', context.get('rows', 0), _ACCENT),
+            ('Nodes', context.get('nodes', 0), _ACCENT),
+            ('Edges', context.get('edges', 0), _ACCENT),
+            ('Blacklisted', summary.get('blacklisted_nodes', 0), (198, 40, 40) if summary.get('blacklisted_nodes', 0) else _TEXT_GRAY),
+            ('High-risk', summary.get('high_risk_nodes', 0), (230, 126, 34) if summary.get('high_risk_nodes', 0) else _TEXT_GRAY),
+            ('Clusters', summary.get('clusters', 0), _ACCENT),
+        ],
+    )
 
-    return _build_simple_pdf(lines)
+    _section_title(pdf, font_family, 'Evidence locker')
+    _draw_table(
+        pdf,
+        font_family,
+        headers=['File name', 'SHA-256', 'Size', 'Analyst', 'Imported at'],
+        column_widths=[44, 62, 18, 26, 36],
+        rows=[
+            [
+                _safe_text(entry.get('file_name')),
+                _safe_text(entry.get('sha256')),
+                _format_bytes(entry.get('size_bytes')),
+                _safe_text(entry.get('analyst')),
+                _safe_text(entry.get('imported_at')),
+            ]
+            for entry in evidence_entries
+        ],
+        empty_message='No evidence has been recorded for this case yet.',
+    )
+
+    _section_title(pdf, font_family, 'Audit log')
+    _draw_table(
+        pdf,
+        font_family,
+        headers=['Timestamp', 'Action', 'File', 'User'],
+        column_widths=[42, 26, 66, 52],
+        rows=[
+            [
+                _safe_text(entry.get('timestamp')),
+                _safe_text(entry.get('action')),
+                _safe_text(entry.get('file_name')),
+                _safe_text(entry.get('user')),
+            ]
+            for entry in audit_entries
+        ],
+        empty_message='No audit log entries recorded for this case yet.',
+    )
+
+    return bytes(pdf.output())
+
+
+def _format_bytes(value: object) -> str:
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return 'n/a'
+
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if size < 1024 or unit == 'GB':
+            return f'{size:.0f} {unit}' if unit == 'B' else f'{size:.2f} {unit}'
+        size /= 1024
+    return f'{size:.2f} GB'
 
 
 _NODE_REPORT_ATTRIBUTES: tuple[tuple[str, str, str], ...] = (
@@ -311,37 +511,3 @@ def _escape_xml(value: str) -> str:
         .replace('"', '&quot;')
         .replace("'", '&apos;')
     )
-
-
-def _build_simple_pdf(lines: list[str]) -> bytes:
-    def escape_pdf(text: str) -> str:
-        return text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
-
-    pdf_lines = ['BT', '/F1 11 Tf', '36 780 Td', '14 TL']
-    for index, line in enumerate(lines):
-        escaped = escape_pdf(line)
-        pdf_lines.append(f'({escaped}) Tj' if index == 0 else f'T* ({escaped}) Tj')
-    pdf_lines.append('ET')
-    stream = '\n'.join(pdf_lines)
-
-    objects = [
-        '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
-        '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
-        '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj',
-        '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
-        f'5 0 obj << /Length {len(stream.encode("utf-8"))} >> stream\n{stream}\nendstream endobj',
-    ]
-
-    pdf = '%PDF-1.4\n'
-    offsets = [0]
-    for obj in objects:
-        offsets.append(len(pdf))
-        pdf += obj + '\n'
-
-    startxref = len(pdf)
-    pdf += f'xref\n0 {len(objects) + 1}\n'
-    pdf += '0000000000 65535 f \n'
-    for offset in offsets[1:]:
-        pdf += f'{offset:010d} 00000 n \n'
-    pdf += f'trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{startxref}\n%%EOF'
-    return pdf.encode('utf-8')
