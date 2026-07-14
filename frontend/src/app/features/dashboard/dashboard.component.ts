@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
@@ -12,7 +13,7 @@ import { ReportExportComponent } from '../report-export/report-export.component'
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, GraphVisualizationComponent, ReportExportComponent],
+  imports: [CommonModule, FormsModule, RouterLink, GraphVisualizationComponent, ReportExportComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
@@ -131,10 +132,14 @@ export class DashboardComponent implements OnInit {
     this.isUploading = true;
     this.statusMessage = 'Uploading and hashing evidence...';
 
-    this.api.uploadCsv(this.selectedFile, this.operatorName).subscribe({
+    const caseId = this.state.selectedCaseSnapshot?.id ?? null;
+    this.api.uploadCsv(this.selectedFile, this.operatorName, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
         this.state.setUploadResult(uploadResult);
+        if (uploadResult.case) {
+          this.state.setSelectedCase(uploadResult.case);
+        }
         this.statusMessage = `Evidence stored as ${uploadResult.file_name}. Loading graph and analytics...`;
         this.loadDerivedViews(uploadResult.file_name);
       },

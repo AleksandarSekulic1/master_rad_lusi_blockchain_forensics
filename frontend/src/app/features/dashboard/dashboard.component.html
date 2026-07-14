@@ -34,6 +34,16 @@
       </button>
     </div>
 
+    <p class="active-case" *ngIf="state.selectedCaseSnapshot as activeCase; else noActiveCase">
+      Active case: <strong>{{ activeCase.name }}</strong>
+    </p>
+    <ng-template #noActiveCase>
+      <p class="active-case muted">
+        No case selected — evidence will be filed under a new default case.
+        <a routerLink="/cases">Manage cases</a>
+      </p>
+    </ng-template>
+
     <p class="status" [class.busy]="isUploading || isRefreshing">{{ statusMessage }}</p>
     <div class="upload-meta" *ngIf="uploadResult">
       <span>SHA-256: {{ uploadResult.sha256 }}</span>

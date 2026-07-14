@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "a858f96b8c07",
+      "name": "test 1",
+      "description": null,
+      "analyst": "Aleksandar",
+      "status": "open",
+      "created_at": "2026-07-14T22:26:31.048557+00:00",
+      "updated_at": "2026-07-14T22:26:31.048557+00:00",
+      "evidence_count": 0,
+      "total_size_bytes": 0,
+      "last_imported_at": null
+    },
+    {
+      "id": "1ba51cb4472e",
+      "name": "Default investigation case",
+      "description": null,
+      "analyst": "Aleksandar",
+      "status": "open",
+      "created_at": "2026-07-14T22:26:13.306952+00:00",
+      "updated_at": "2026-07-14T22:26:13.414085+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 755,
+      "last_imported_at": "2026-07-14T22:26:13.414085+00:00"
+    }
+  ]
+}

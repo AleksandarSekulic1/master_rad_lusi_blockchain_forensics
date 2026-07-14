@@ -6,6 +6,13 @@ from pydantic import BaseModel, Field
 from app.services.case_management import create_case, get_case, list_cases
 
 
+def _get_case_or_404(case_id: str) -> dict[str, object]:
+    try:
+        return get_case(case_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 router = APIRouter(prefix='/cases', tags=['cases'])
 
 
@@ -27,7 +34,10 @@ def post_case(request: CreateCaseRequest) -> dict[str, object]:
 
 @router.get('/{case_id}')
 def get_case_detail(case_id: str) -> dict[str, object]:
-    try:
-        return get_case(case_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _get_case_or_404(case_id)
+
+
+@router.get('/{case_id}/evidence')
+def get_case_evidence(case_id: str) -> dict[str, object]:
+    case = _get_case_or_404(case_id)
+    return {'case_id': case_id, 'evidence': case.get('evidence', [])}

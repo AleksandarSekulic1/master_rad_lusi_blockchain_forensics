@@ -20,6 +20,8 @@ export interface UploadCsvResponse {
   audit_log: AuditLogEntry;
   rows_total: number;
   preview: TransactionPreviewRow[];
+  case?: CaseSummary;
+  evidence?: EvidenceEntry;
 }
 
 export interface GraphNodeData {
@@ -119,4 +121,36 @@ export interface AnalyticsResponse extends NodeLinkGraphResponse {
 export interface GraphSearchResult {
   node: GraphNodeData;
   score: number;
+}
+
+export interface EvidenceEntry {
+  file_name: string;
+  stored_name: string;
+  imported_at: string;
+  size_bytes: number;
+  sha256: string;
+  analyst: string;
+}
+
+export interface CaseSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  analyst: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  evidence_count: number;
+  total_size_bytes: number;
+  last_imported_at: string | null;
+}
+
+export interface Case extends CaseSummary {
+  evidence: EvidenceEntry[];
+}
+
+export interface CreateCaseRequest {
+  name: string;
+  analyst?: string;
+  description?: string | null;
 }

@@ -122,47 +122,148 @@ def build_case_pdf_report(context: dict[str, object]) -> bytes:
     return _build_simple_pdf(lines)
 
 
+_NODE_REPORT_ATTRIBUTES: tuple[tuple[str, str, str], ...] = (
+    # (report_key, graphml/gexf attr.type, gexf attr.type)
+    ('risk_score', 'int', 'integer'),
+    ('risk_band', 'string', 'string'),
+    ('cluster', 'string', 'string'),
+    ('blacklisted', 'boolean', 'boolean'),
+    ('flags', 'string', 'string'),
+)
+
+
+def _risk_color(risk_score: int, blacklisted: bool) -> tuple[int, int, int]:
+    if blacklisted:
+        return (211, 47, 47)
+    if risk_score >= 80:
+        return (244, 81, 30)
+    if risk_score >= 60:
+        return (251, 140, 0)
+    if risk_score >= 35:
+        return (253, 216, 53)
+    if risk_score > 0:
+        return (156, 204, 101)
+    return (144, 164, 174)
+
+
+def _node_report_attributes(node_id: object, data: dict[str, object]) -> dict[str, object]:
+    risk_score = int(data.get('risk_score', 0) or 0)
+    blacklisted = bool(data.get('blacklist_flag'))
+    flags = [
+        name
+        for name, present in (
+            ('blacklisted', blacklisted),
+            ('peel_chain', bool(data.get('peel_chain_flag'))),
+            ('chain_hop', bool(data.get('chain_hop_flag'))),
+            ('anomaly', bool(data.get('anomaly_flag'))),
+        )
+        if present
+    ]
+
+    return {
+        'label': _safe_text(data.get('label', node_id)),
+        'risk_score': risk_score,
+        'risk_band': _safe_text(data.get('risk_band') or 'none'),
+        'cluster': _safe_text(data.get('cluster_id') or 'unclustered'),
+        'blacklisted': blacklisted,
+        'flags': '|'.join(flags) if flags else 'none',
+        'color': _risk_color(risk_score, blacklisted),
+    }
+
+
+def _typed_value(value: object) -> str:
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return _safe_text(value)
+
+
 def build_graphml_export(graph: nx.MultiDiGraph) -> str:
-    return '\n'.join([
+    lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
-        '<graph edgedefault="directed">',
-        *[f'<node id="{_escape_xml(str(node_id))}" label="{_escape_xml(_safe_text(data.get("label", node_id)))}" />' for node_id, data in graph.nodes(data=True)],
-        *[
-            '<edge source="{source}" target="{target}" amount="{amount}" />'.format(
-                source=_escape_xml(str(source)),
-                target=_escape_xml(str(target)),
-                amount=_escape_xml(_safe_text(data.get('total_amount', data.get('amount', 0)))),
-            )
-            for source, target, data in graph.edges(data=True)
-        ],
-        '</graph>',
-        '</graphml>',
-    ])
+        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns" '
+        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xmlns:y="http://www.yworks.com/xml/graphml" '
+        'xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns '
+        'http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">',
+    ]
+
+    for index, (name, attr_type, _) in enumerate(_NODE_REPORT_ATTRIBUTES):
+        lines.append(f'<key id="n{index}" for="node" attr.name="{name}" attr.type="{attr_type}" />')
+    lines.append('<key id="ngfx" for="node" yfiles.type="nodegraphics" />')
+    lines.append('<key id="e0" for="edge" attr.name="total_amount" attr.type="double" />')
+    lines.append('<key id="e1" for="edge" attr.name="transaction_count" attr.type="int" />')
+
+    lines.append('<graph edgedefault="directed">')
+
+    for node_id, data in graph.nodes(data=True):
+        report = _node_report_attributes(node_id, data)
+        color_hex = '#{:02X}{:02X}{:02X}'.format(*report['color'])
+        data_entries = ''.join(
+            f'<data key="n{index}">{_escape_xml(_typed_value(report[name]))}</data>'
+            for index, (name, _, _) in enumerate(_NODE_REPORT_ATTRIBUTES)
+        )
+        graphics = (
+            f'<data key="ngfx"><y:ShapeNode>'
+            f'<y:Fill color="{color_hex}" transparent="false" />'
+            f'<y:NodeLabel>{_escape_xml(report["label"])}</y:NodeLabel>'
+            f'</y:ShapeNode></data>'
+        )
+        lines.append(f'<node id="{_escape_xml(str(node_id))}">{data_entries}{graphics}</node>')
+
+    for index, (source, target, data) in enumerate(graph.edges(data=True)):
+        total_amount = _safe_text(data.get('total_amount', data.get('amount', 0)))
+        transaction_count = _safe_text(data.get('transaction_count', 1))
+        lines.append(
+            f'<edge id="e{index}" source="{_escape_xml(str(source))}" target="{_escape_xml(str(target))}">'
+            f'<data key="e0">{_escape_xml(total_amount)}</data>'
+            f'<data key="e1">{_escape_xml(transaction_count)}</data>'
+            f'</edge>'
+        )
+
+    lines.append('</graph>')
+    lines.append('</graphml>')
+    return '\n'.join(lines)
 
 
 def build_gexf_export(graph: nx.MultiDiGraph) -> str:
-    return '\n'.join([
+    lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<gexf xmlns="http://www.gexf.net/1.3" version="1.3">',
+        '<gexf xmlns="http://www.gexf.net/1.3" xmlns:viz="http://www.gexf.net/1.3/viz" version="1.3">',
         '<graph mode="static" defaultedgetype="directed">',
-        '<nodes>',
-        *[f'<node id="{_escape_xml(str(node_id))}" label="{_escape_xml(_safe_text(data.get("label", node_id)))}" />' for node_id, data in graph.nodes(data=True)],
-        '</nodes>',
-        '<edges>',
-        *[
-            '<edge id="e{index}" source="{source}" target="{target}" weight="{weight}" />'.format(
-                index=index,
-                source=_escape_xml(str(source)),
-                target=_escape_xml(str(target)),
-                weight=_escape_xml(_safe_text(data.get('total_amount', data.get('amount', 0)))),
-            )
-            for index, (source, target, data) in enumerate(graph.edges(data=True))
-        ],
-        '</edges>',
-        '</graph>',
-        '</gexf>',
-    ])
+        '<attributes class="node">',
+    ]
+
+    for index, (name, _, attr_type) in enumerate(_NODE_REPORT_ATTRIBUTES):
+        lines.append(f'<attribute id="{index}" title="{name}" type="{attr_type}" />')
+    lines.append('</attributes>')
+
+    lines.append('<nodes>')
+    for node_id, data in graph.nodes(data=True):
+        report = _node_report_attributes(node_id, data)
+        red, green, blue = report['color']
+        attvalues = ''.join(
+            f'<attvalue for="{index}" value="{_escape_xml(_typed_value(report[name]))}" />'
+            for index, (name, _, _) in enumerate(_NODE_REPORT_ATTRIBUTES)
+        )
+        lines.append(
+            f'<node id="{_escape_xml(str(node_id))}" label="{_escape_xml(report["label"])}">'
+            f'<viz:color r="{red}" g="{green}" b="{blue}" />'
+            f'<attvalues>{attvalues}</attvalues>'
+            f'</node>'
+        )
+    lines.append('</nodes>')
+
+    lines.append('<edges>')
+    for index, (source, target, data) in enumerate(graph.edges(data=True)):
+        weight = _safe_text(data.get('total_amount', data.get('amount', 0)))
+        lines.append(
+            f'<edge id="e{index}" source="{_escape_xml(str(source))}" target="{_escape_xml(str(target))}" weight="{_escape_xml(weight)}" />'
+        )
+    lines.append('</edges>')
+
+    lines.append('</graph>')
+    lines.append('</gexf>')
+    return '\n'.join(lines)
 
 
 def build_case_artifacts(
