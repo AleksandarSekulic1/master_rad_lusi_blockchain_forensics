@@ -1,6 +1,18 @@
 {
   "cases": [
     {
+      "id": "59a8846a11f6",
+      "name": "Moj slucak",
+      "description": "rucak",
+      "analyst": "aco",
+      "status": "open",
+      "created_at": "2026-07-15T17:50:49.832110+00:00",
+      "updated_at": "2026-07-15T17:51:40.170543+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 180543,
+      "last_imported_at": "2026-07-15T17:51:40.170543+00:00"
+    },
+    {
       "id": "b8f23617148c",
       "name": "test2",
       "description": "idemo",

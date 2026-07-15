@@ -1,0 +1,22 @@
+{
+  "id": "59a8846a11f6",
+  "name": "Moj slucak",
+  "description": "rucak",
+  "analyst": "aco",
+  "status": "open",
+  "created_at": "2026-07-15T17:50:49.832110+00:00",
+  "updated_at": "2026-07-15T17:51:40.170543+00:00",
+  "evidence": [
+    {
+      "file_name": "onchain_mainnet_0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045.csv",
+      "stored_name": "20260715_175140_051261_onchain_mainnet_0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045.csv",
+      "imported_at": "2026-07-15T17:51:40.170543+00:00",
+      "size_bytes": 180543,
+      "sha256": "33cfcfc0ce0835e22b7d0231090c6ba7a41fedcfaf7e3b276c21a72808c32703",
+      "analyst": "aco"
+    }
+  ],
+  "evidence_count": 1,
+  "total_size_bytes": 180543,
+  "last_imported_at": "2026-07-15T17:51:40.170543+00:00"
+}
