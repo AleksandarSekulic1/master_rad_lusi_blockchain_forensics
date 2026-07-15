@@ -1,0 +1,10 @@
+sender_address,recipient_address,amount,timestamp,metadata
+0xHackerWallet,0xPeelChainStart,100.0,2026-07-12T10:00:00Z,Hakovana sredstva
+0xPeelChainStart,0xMuleAdresa1,1.5,2026-07-12T10:05:00Z,Peel korak 1
+0xPeelChainStart,0xPeelOstatak1,98.4,2026-07-12T10:06:00Z,Peel kusur 1
+0xPeelOstatak1,0xMuleAdresa2,1.5,2026-07-12T10:10:00Z,Peel korak 2
+0xPeelOstatak1,0xPeelOstatak2,96.8,2026-07-12T10:11:00Z,Peel kusur 2
+0xPeelOstatak2,0xArbitrumBridge,95.0,2026-07-12T10:20:00Z,Chain hopping most
+0xNormalUser1,0xNormalUser2,5.0,2026-07-12T11:00:00Z,Regularno placanje
+0xNormalUser2,0xBinanceMenjacnica,4.8,2026-07-12T11:30:00Z,Regularna isplata
+0xbad0000000000000000000000000000000000001,0xNormalUser1,50.0,2026-07-12T12:00:00Z,Sankcionisana OFAC adresa

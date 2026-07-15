@@ -129,6 +129,21 @@ h2 {
   color: #8ea6c7;
 }
 
+.active-case {
+  margin: 0.85rem 0 0;
+  font-size: 0.85rem;
+  color: #d5e0f6;
+}
+
+.active-case.muted {
+  color: #8ea6c7;
+}
+
+.active-case a {
+  margin-left: 0.4rem;
+  color: #7bd6ff;
+}
+
 .inline-form,
 .search-bar {
   display: flex;

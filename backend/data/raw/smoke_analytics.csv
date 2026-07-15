@@ -1,4 +1,0 @@
-sender_address,recipient_address,amount,timestamp,metadata
-0xAlpha1,0xBridge,40,2024-01-01T00:00:00Z,tx_group_1
-0xAlpha2,0xBridge,60,2024-01-01T00:00:00Z,tx_group_1
-0xBridge,0xbad0000000000000000000000000000000000001,100,2024-01-01T00:02:00Z,tx_transfer_1

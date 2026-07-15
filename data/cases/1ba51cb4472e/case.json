@@ -1,0 +1,22 @@
+{
+  "id": "1ba51cb4472e",
+  "name": "Default investigation case",
+  "description": null,
+  "analyst": "Aleksandar",
+  "status": "open",
+  "created_at": "2026-07-14T22:26:13.306952+00:00",
+  "updated_at": "2026-07-14T22:26:13.414085+00:00",
+  "evidence": [
+    {
+      "file_name": "forenzički_test_uzorak.csv",
+      "stored_name": "20260714_222613_268058_forenzički_test_uzorak.csv",
+      "imported_at": "2026-07-14T22:26:13.414085+00:00",
+      "size_bytes": 755,
+      "sha256": "074b64912438cf0a2937e1c1e23b6003c92e8aa78712c2bfaf3fa7f11cd42a2d",
+      "analyst": "Aleksandar"
+    }
+  ],
+  "evidence_count": 1,
+  "total_size_bytes": 755,
+  "last_imported_at": "2026-07-14T22:26:13.414085+00:00"
+}

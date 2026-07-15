@@ -6,15 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+from app.paths import CASES_DIR, RAW_DIR
 
 
 def _cases_root() -> Path:
-    root = _repo_root() / 'data' / 'cases'
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    CASES_DIR.mkdir(parents=True, exist_ok=True)
+    return CASES_DIR
 
 
 def _index_path() -> Path:
@@ -187,7 +184,7 @@ def get_case_evidence_path(case: dict[str, object], file_name: str | None = None
 
     selected_name = file_name or str(evidence[-1]['stored_name'])
     evidence_paths = [
-        _repo_root() / 'data' / 'raw' / selected_name,
+        RAW_DIR / selected_name,
         _case_dir(str(case['id'])) / 'evidence' / selected_name,
     ]
 

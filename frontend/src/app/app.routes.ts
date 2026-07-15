@@ -12,6 +12,11 @@ export const appRoutes: Routes = [
 			import('./features/dashboard/dashboard.component').then((module) => module.DashboardComponent),
 	},
 	{
+		path: 'cases',
+		loadComponent: () =>
+			import('./features/cases/cases.component').then((module) => module.CasesComponent),
+	},
+	{
 		path: 'graph',
 		loadComponent: () =>
 			import('./features/graph-visualization/graph-visualization.component').then((module) => module.GraphVisualizationComponent),

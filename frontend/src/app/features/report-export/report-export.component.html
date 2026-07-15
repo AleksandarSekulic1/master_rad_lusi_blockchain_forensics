@@ -5,18 +5,20 @@
       <h2>Report export</h2>
       <p>One-click export for CSV, PDF, GraphML, and GEXF deliverables.</p>
     </div>
-    <span class="pill" *ngIf="graph; else noGraph">{{ graph?.nodes.length ?? 0 }} nodes loaded</span>
-    <ng-template #noGraph>
-      <span class="pill muted">No graph loaded</span>
+    <span class="pill" *ngIf="activeCaseId; else noCase">Case {{ activeCaseId }}</span>
+    <ng-template #noCase>
+      <span class="pill muted">No case selected</span>
     </ng-template>
   </div>
 
   <div class="export-actions">
-    <button type="button" class="primary-button" (click)="exportCsvReport()" [disabled]="!graph">Export CSV</button>
-    <button type="button" class="primary-button" (click)="exportPdfReport()" [disabled]="!graph">Export PDF</button>
-    <button type="button" class="ghost-button" (click)="exportGraphMl()" [disabled]="!graph">Export GraphML</button>
-    <button type="button" class="ghost-button" (click)="exportGexf()" [disabled]="!graph">Export GEXF</button>
+    <button type="button" class="primary-button" (click)="exportCsvReport()" [disabled]="!activeCaseId || isExporting">Export CSV</button>
+    <button type="button" class="primary-button" (click)="exportPdfReport()" [disabled]="!activeCaseId || isExporting">Export PDF</button>
+    <button type="button" class="ghost-button" (click)="exportGraphMl()" [disabled]="!activeCaseId || isExporting">Export GraphML</button>
+    <button type="button" class="ghost-button" (click)="exportGexf()" [disabled]="!activeCaseId || isExporting">Export GEXF</button>
   </div>
+
+  <p class="export-error" *ngIf="exportError">{{ exportError }}</p>
 
   <div class="export-summary" *ngIf="graph">
     <article>
@@ -25,11 +27,11 @@
     </article>
     <article>
       <span>Nodes</span>
-      <strong>{{ graph?.nodes.length ?? 0 }}</strong>
+      <strong>{{ graph.nodes.length }}</strong>
     </article>
     <article>
       <span>Edges</span>
-      <strong>{{ graph?.links.length ?? 0 }}</strong>
+      <strong>{{ graph.links.length }}</strong>
     </article>
     <article>
       <span>High-risk</span>

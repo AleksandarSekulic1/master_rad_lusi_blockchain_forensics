@@ -6,6 +6,9 @@ import { environment } from '../../../environments/environment';
 import {
   AnalyticsRequest,
   AnalyticsResponse,
+  Case,
+  CaseSummary,
+  CreateCaseRequest,
   NodeLinkGraphResponse,
   PathFindingRequest,
   PathFindingResponse,
@@ -20,12 +23,43 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  uploadCsv(file: File, user = 'system'): Observable<UploadCsvResponse> {
+  uploadCsv(file: File, user = 'system', caseId?: string | null): Observable<UploadCsvResponse> {
     const formData = new FormData();
     formData.append('file', file, file.name);
     formData.append('user', user);
+    if (caseId) {
+      formData.append('case_id', caseId);
+    }
 
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/upload/csv`, formData);
+  }
+
+  listCases(): Observable<{ cases: CaseSummary[] }> {
+    return this.http.get<{ cases: CaseSummary[] }>(`${this.apiUrl}/api/v1/cases`);
+  }
+
+  createCase(request: CreateCaseRequest): Observable<Case> {
+    return this.http.post<Case>(`${this.apiUrl}/api/v1/cases`, request);
+  }
+
+  getCase(caseId: string): Observable<Case> {
+    return this.http.get<Case>(`${this.apiUrl}/api/v1/cases/${caseId}`);
+  }
+
+  exportCaseReportCsv(caseId: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/report.csv`, { responseType: 'blob' });
+  }
+
+  exportCaseReportPdf(caseId: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/report.pdf`, { responseType: 'blob' });
+  }
+
+  exportCaseGraphml(caseId: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.graphml`, { responseType: 'blob' });
+  }
+
+  exportCaseGexf(caseId: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.gexf`, { responseType: 'blob' });
   }
 
   getGraph(fileName?: string): Observable<NodeLinkGraphResponse> {

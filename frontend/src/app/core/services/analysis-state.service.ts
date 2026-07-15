@@ -3,6 +3,7 @@ import { BehaviorSubject } from 'rxjs';
 
 import {
   AnalyticsResponse,
+  CaseSummary,
   GraphNodeData,
   NodeLinkGraphResponse,
   UploadCsvResponse,
@@ -16,11 +17,13 @@ export class AnalysisStateService {
   private readonly graphSubject = new BehaviorSubject<NodeLinkGraphResponse | null>(null);
   private readonly analyticsSubject = new BehaviorSubject<AnalyticsResponse | null>(null);
   private readonly selectedNodeSubject = new BehaviorSubject<GraphNodeData | null>(null);
+  private readonly selectedCaseSubject = new BehaviorSubject<CaseSummary | null>(null);
 
   readonly upload$ = this.uploadSubject.asObservable();
   readonly graph$ = this.graphSubject.asObservable();
   readonly analytics$ = this.analyticsSubject.asObservable();
   readonly selectedNode$ = this.selectedNodeSubject.asObservable();
+  readonly selectedCase$ = this.selectedCaseSubject.asObservable();
 
   setUploadResult(result: UploadCsvResponse | null): void {
     this.uploadSubject.next(result);
@@ -38,6 +41,10 @@ export class AnalysisStateService {
     this.selectedNodeSubject.next(node);
   }
 
+  setSelectedCase(caseSummary: CaseSummary | null): void {
+    this.selectedCaseSubject.next(caseSummary);
+  }
+
   get uploadSnapshot(): UploadCsvResponse | null {
     return this.uploadSubject.value;
   }
@@ -52,5 +59,9 @@ export class AnalysisStateService {
 
   get selectedNodeSnapshot(): GraphNodeData | null {
     return this.selectedNodeSubject.value;
+  }
+
+  get selectedCaseSnapshot(): CaseSummary | null {
+    return this.selectedCaseSubject.value;
   }
 }

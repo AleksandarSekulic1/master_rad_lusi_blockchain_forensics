@@ -1,0 +1,26 @@
+sender_address,recipient_address,amount,timestamp,metadata
+0xExploitWallet,0xPeelLayer1,500.0,2026-07-12T12:00:00Z,Exploit Drainer
+0xPeelLayer1,0xMuleCashout1,10.0,2026-07-12T12:05:00Z,Peel Out 1
+0xPeelLayer1,0xPeelLayer2,489.5,2026-07-12T12:06:00Z,Peel Remainder 1
+0xPeelLayer2,0xMuleCashout2,15.0,2026-07-12T12:10:00Z,Peel Out 2
+0xPeelLayer2,0xPeelLayer3,474.0,2026-07-12T12:12:00Z,Peel Remainder 2
+0xPeelLayer3,0xMuleCashout3,20.0,2026-07-12T12:15:00Z,Peel Out 3
+0xPeelLayer3,0xPeelLayer4,453.5,2026-07-12T12:17:00Z,Peel Remainder 3
+0xPeelLayer4,0xMuleCashout4,25.0,2026-07-12T12:20:00Z,Peel Out 4
+0xPeelLayer4,0xPeelLayer5,428.0,2026-07-12T12:22:00Z,Peel Remainder 4
+0xPeelLayer5,0xHopHopBridge,200.0,2026-07-12T12:30:00Z,Cross-Chain Bridge
+0xPeelLayer5,0xPeelLayer6,227.8,2026-07-12T12:32:00Z,Peel Remainder 5
+0xMuleCashout1,0xConsolidatorWallet,9.8,2026-07-12T13:00:00Z,Mule CleanUp A
+0xMuleCashout2,0xConsolidatorWallet,14.7,2026-07-12T13:02:00Z,Mule CleanUp B
+0xMuleCashout3,0xConsolidatorWallet,19.5,2026-07-12T13:04:00Z,Mule CleanUp C
+0xConsolidatorWallet,0xbad0000000000000000000000000000000000001,43.5,2026-07-12T13:15:00Z,Sanctioned Entity Deposit
+0xPeelLayer6,0xbad0000000000000000000000000000000000002,225.0,2026-07-12T13:20:00Z,Second OFAC Wallet Entry
+0xPhishingScamAddress,0xVictimA,0.001,2026-07-12T14:00:00Z,Dusting Attack
+0xPhishingScamAddress,0xVictimB,0.001,2026-07-12T14:00:05Z,Dusting Attack
+0xPhishingScamAddress,0xVictimC,0.001,2026-07-12T14:00:10Z,Dusting Attack
+0xPhishingScamAddress,0xVictimD,0.001,2026-07-12T14:00:15Z,Dusting Attack
+0xPhishingScamAddress,0xVictimE,0.001,2026-07-12T14:00:20Z,Dusting Attack
+0xCleanUser1,0xCleanUser2,12.5,2026-07-12T15:00:00Z,P2P Payment
+0xCleanUser2,0xBinanceExchange,12.0,2026-07-12T15:15:00Z,Exchange Deposit
+0xCleanUser3,0xCoinbaseExchange,85.0,2026-07-12T15:20:00Z,Fiat Cashout
+0xCoinbaseExchange,0xCleanUser4,80.0,2026-07-12T15:45:00Z,Withdrawal

@@ -1,0 +1,113 @@
+<section class="cases-grid">
+  <article class="panel create-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Case management</p>
+        <h2>Open a new investigation</h2>
+      </div>
+    </div>
+
+    <div class="case-form">
+      <label>
+        Case name
+        <input [(ngModel)]="newCaseName" type="text" placeholder="e.g. Exchange hack Q3" />
+      </label>
+      <label>
+        Analyst
+        <input [(ngModel)]="newCaseAnalyst" type="text" placeholder="analyst" />
+      </label>
+      <label class="description-field">
+        Description
+        <input [(ngModel)]="newCaseDescription" type="text" placeholder="Optional notes about this case" />
+      </label>
+      <button type="button" class="primary-button" (click)="createCase()" [disabled]="isCreating">
+        {{ isCreating ? 'Creating...' : 'Create case' }}
+      </button>
+    </div>
+
+    <p class="status">{{ statusMessage }}</p>
+  </article>
+
+  <article class="panel list-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Case list</p>
+        <h2>Investigations</h2>
+      </div>
+      <button class="ghost-button" type="button" (click)="loadCases()" [disabled]="isLoading">Refresh</button>
+    </div>
+
+    <div class="table-wrapper" *ngIf="cases.length > 0; else emptyCases">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Analyst</th>
+            <th>Status</th>
+            <th>Evidence</th>
+            <th>Size</th>
+            <th>Last import</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let caseEntry of cases"
+            [class.selected]="isSelected(caseEntry)"
+            (click)="selectCase(caseEntry)"
+          >
+            <td>
+              <strong>{{ caseEntry.name }}</strong>
+              <span class="case-id">{{ caseEntry.id }}</span>
+            </td>
+            <td>{{ caseEntry.analyst }}</td>
+            <td>{{ caseEntry.status }}</td>
+            <td>{{ caseEntry.evidence_count }}</td>
+            <td>{{ formatBytes(caseEntry.total_size_bytes) }}</td>
+            <td>{{ caseEntry.last_imported_at ?? 'n/a' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ng-template #emptyCases>
+      <p class="empty-state">No cases yet. Create one on the left to begin an investigation.</p>
+    </ng-template>
+  </article>
+
+  <article class="panel evidence-panel" *ngIf="selectedCase as caseDetail">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Evidence locker</p>
+        <h2>{{ caseDetail.name }}</h2>
+      </div>
+      <span class="pill">{{ caseDetail.evidence.length }} file(s)</span>
+    </div>
+
+    <div class="table-wrapper" *ngIf="caseDetail.evidence.length > 0; else emptyEvidence">
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>SHA-256</th>
+            <th>Size</th>
+            <th>Analyst</th>
+            <th>Imported at</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let evidence of caseDetail.evidence">
+            <td>{{ evidence.file_name }}</td>
+            <td class="hash-cell" [title]="evidence.sha256">{{ evidence.sha256 }}</td>
+            <td>{{ formatBytes(evidence.size_bytes) }}</td>
+            <td>{{ evidence.analyst }}</td>
+            <td>{{ evidence.imported_at }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ng-template #emptyEvidence>
+      <p class="empty-state">No evidence uploaded for this case yet. Upload a CSV from the Dashboard while this case is selected.</p>
+    </ng-template>
+  </article>
+</section>
