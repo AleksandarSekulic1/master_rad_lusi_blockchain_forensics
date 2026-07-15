@@ -131,15 +131,36 @@ def update_case(case: dict[str, object]) -> dict[str, object]:
     return normalized
 
 
-def resolve_case(case_id: str | None, *, analyst: str = 'system') -> dict[str, object]:
-    if case_id:
-        return get_case(case_id)
+class CaseClosedError(Exception):
+    """Raised when evidence is submitted against a case that isn't open."""
 
-    existing_cases = list_cases()
-    if existing_cases:
-        return get_case(str(existing_cases[0]['id']))
 
-    return create_case(name='Default investigation case', analyst=analyst)
+def require_open_case(case_id: str) -> dict[str, object]:
+    case = get_case(case_id)
+    if case.get('status') != 'open':
+        raise CaseClosedError(f'Slučaj "{case.get("name")}" je zatvoren i ne prima nove dokaze.')
+    return case
+
+
+def set_case_status(case_id: str, status: str) -> dict[str, object]:
+    if status not in ('open', 'closed'):
+        raise ValueError('Status mora biti "open" ili "closed".')
+
+    case = get_case(case_id)
+    case['status'] = status
+    case['updated_at'] = _timestamp()
+    return update_case(case)
+
+
+def delete_case(case_id: str) -> None:
+    case_dir = _case_dir(case_id)
+    if not case_dir.exists():
+        raise FileNotFoundError(f'Case not found: {case_id}')
+
+    shutil.rmtree(case_dir, ignore_errors=True)
+
+    cases = [entry for entry in list_cases() if entry.get('id') != case_id]
+    _save_index(cases)
 
 
 def append_evidence(

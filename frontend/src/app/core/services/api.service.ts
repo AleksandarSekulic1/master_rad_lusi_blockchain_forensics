@@ -8,6 +8,7 @@ import {
   AnalyticsResponse,
   AuthUser,
   Case,
+  CaseStatus,
   CaseSummary,
   CreateCaseRequest,
   CreateUserRequest,
@@ -28,12 +29,10 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  uploadCsv(file: File, caseId?: string | null): Observable<UploadCsvResponse> {
+  uploadCsv(file: File, caseId: string): Observable<UploadCsvResponse> {
     const formData = new FormData();
     formData.append('file', file, file.name);
-    if (caseId) {
-      formData.append('case_id', caseId);
-    }
+    formData.append('case_id', caseId);
 
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/upload/csv`, formData);
   }
@@ -52,6 +51,14 @@ export class ApiService {
 
   getCase(caseId: string): Observable<Case> {
     return this.http.get<Case>(`${this.apiUrl}/api/v1/cases/${caseId}`);
+  }
+
+  setCaseStatus(caseId: string, status: CaseStatus): Observable<Case> {
+    return this.http.patch<Case>(`${this.apiUrl}/api/v1/cases/${caseId}/status`, { status });
+  }
+
+  deleteCase(caseId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/cases/${caseId}`);
   }
 
   exportCaseReportCsv(caseId: string): Observable<Blob> {

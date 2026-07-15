@@ -3,9 +3,9 @@
   "name": "test 1",
   "description": null,
   "analyst": "Aleksandar",
-  "status": "open",
+  "status": "closed",
   "created_at": "2026-07-14T22:26:31.048557+00:00",
-  "updated_at": "2026-07-14T22:53:20.185144+00:00",
+  "updated_at": "2026-07-15T19:07:35.087266+00:00",
   "evidence": [
     {
       "file_name": "forenzički_test_uzorak.csv",

@@ -99,6 +99,45 @@ export class CasesComponent implements OnInit {
     return this.state.selectedCaseSnapshot?.id === caseSummary.id;
   }
 
+  toggleCaseStatus(caseSummary: CaseSummary): void {
+    const nextStatus = caseSummary.status === 'open' ? 'closed' : 'open';
+    this.api.setCaseStatus(caseSummary.id, nextStatus).subscribe({
+      next: () => {
+        this.statusMessage = `Slučaj "${caseSummary.name}" je sada ${nextStatus === 'open' ? 'otvoren' : 'zatvoren'}.`;
+        if (nextStatus === 'closed' && this.state.selectedCaseSnapshot?.id === caseSummary.id) {
+          this.state.setSelectedCase(null);
+        }
+        this.loadCases();
+      },
+      error: () => {
+        this.statusMessage = `Neuspešna promena statusa za slučaj "${caseSummary.name}".`;
+      },
+    });
+  }
+
+  removeCase(caseSummary: CaseSummary): void {
+    const confirmed = window.confirm(
+      `Da li si siguran da želiš da obrišeš slučaj "${caseSummary.name}"? Ova akcija se ne može opozvati.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    this.api.deleteCase(caseSummary.id).subscribe({
+      next: () => {
+        this.statusMessage = `Slučaj "${caseSummary.name}" je obrisan.`;
+        if (this.state.selectedCaseSnapshot?.id === caseSummary.id) {
+          this.state.setSelectedCase(null);
+          this.selectedCase = null;
+        }
+        this.loadCases();
+      },
+      error: () => {
+        this.statusMessage = `Neuspešno brisanje slučaja "${caseSummary.name}".`;
+      },
+    });
+  }
+
   formatBytes(bytes: number): string {
     if (!bytes) {
       return '0 B';

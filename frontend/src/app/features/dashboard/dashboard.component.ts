@@ -6,7 +6,7 @@ import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { AnalyticsResponse, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -34,6 +34,8 @@ export class DashboardComponent implements OnInit {
   protected onchainHashMode: OnchainMode = 'address_history';
   protected isFetchingOnchain = false;
 
+  protected openCases: CaseSummary[] = [];
+
   constructor(
     private readonly api: ApiService,
     public readonly state: AnalysisStateService,
@@ -41,6 +43,25 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.bootstrapLatestCase();
+    this.loadOpenCases();
+  }
+
+  loadOpenCases(): void {
+    this.api.listCases().subscribe({
+      next: (response) => {
+        this.openCases = response.cases.filter((entry) => entry.status === 'open');
+
+        const selectedId = this.state.selectedCaseSnapshot?.id;
+        if (selectedId && !this.openCases.some((entry) => entry.id === selectedId)) {
+          this.state.setSelectedCase(null);
+        }
+      },
+    });
+  }
+
+  onCaseSelected(caseId: string): void {
+    const found = this.openCases.find((entry) => entry.id === caseId) ?? null;
+    this.state.setSelectedCase(found);
   }
 
   get transactionCount(): number {
@@ -133,10 +154,15 @@ export class DashboardComponent implements OnInit {
       return;
     }
 
+    const caseId = this.state.selectedCaseSnapshot?.id;
+    if (!caseId) {
+      this.statusMessage = 'Izaberite slučaj pre učitavanja dokaza.';
+      return;
+    }
+
     this.isUploading = true;
     this.statusMessage = 'Učitavanje i heš-ovanje dokaza...';
 
-    const caseId = this.state.selectedCaseSnapshot?.id ?? null;
     this.api.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
@@ -146,6 +172,7 @@ export class DashboardComponent implements OnInit {
         }
         this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje grafa i analitike...`;
         this.loadDerivedViews(uploadResult.file_name);
+        this.loadOpenCases();
       },
       error: (error: unknown) => {
         this.isUploading = false;
@@ -168,10 +195,15 @@ export class DashboardComponent implements OnInit {
       return;
     }
 
+    const caseId = this.state.selectedCaseSnapshot?.id;
+    if (!caseId) {
+      this.statusMessage = 'Izaberite slučaj pre povlačenja transakcija.';
+      return;
+    }
+
     this.isFetchingOnchain = true;
     this.statusMessage = `Povlačenje sa ${this.onchainNetwork === 'mainnet' ? 'Ethereum mainnet-a' : 'Sepolia testnet-a'}...`;
 
-    const caseId = this.state.selectedCaseSnapshot?.id ?? null;
     const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
     this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
       next: (result) => {
@@ -183,6 +215,7 @@ export class DashboardComponent implements OnInit {
         this.isFetchingOnchain = false;
         this.statusMessage = `Povučeno ${result.rows_total} transakcija (${result.resolved_query ?? query}). Učitavanje grafa i analitike...`;
         this.loadDerivedViews(result.file_name);
+        this.loadOpenCases();
       },
       error: (error: unknown) => {
         this.isFetchingOnchain = false;

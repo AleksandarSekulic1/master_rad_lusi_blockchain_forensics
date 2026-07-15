@@ -80,6 +80,12 @@ h2 {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.ghost-button:disabled,
+.primary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .dropzone {
   position: relative;
   display: grid;
@@ -127,6 +133,31 @@ h2 {
 .details-grid dt,
 .result-card small {
   color: #8ea6c7;
+}
+
+.case-picker {
+  margin-bottom: 1rem;
+}
+
+.case-picker label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+}
+
+.case-picker select {
+  width: 100%;
+  padding: 0.8rem 0.95rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.case-picker select option {
+  color: #0b1526;
+  background: #ffffff;
 }
 
 .active-case {

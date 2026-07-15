@@ -43,6 +43,7 @@
             <th>Dokazi</th>
             <th>Veličina</th>
             <th>Poslednji unos</th>
+            <th>Akcije</th>
           </tr>
         </thead>
         <tbody>
@@ -56,10 +57,20 @@
               <span class="case-id">{{ caseEntry.id }}</span>
             </td>
             <td>{{ caseEntry.analyst }}</td>
-            <td>{{ caseEntry.status === 'open' ? 'Otvoren' : caseEntry.status }}</td>
+            <td>
+              <span class="status-pill" [class.closed]="caseEntry.status === 'closed'">
+                {{ caseEntry.status === 'open' ? 'Otvoren' : 'Zatvoren' }}
+              </span>
+            </td>
             <td>{{ caseEntry.evidence_count }}</td>
             <td>{{ formatBytes(caseEntry.total_size_bytes) }}</td>
             <td>{{ caseEntry.last_imported_at ?? 'n/a' }}</td>
+            <td class="actions" (click)="$event.stopPropagation()">
+              <button type="button" class="ghost-button" (click)="toggleCaseStatus(caseEntry)">
+                {{ caseEntry.status === 'open' ? 'Zatvori' : 'Otvori' }}
+              </button>
+              <button type="button" class="danger-button" (click)="removeCase(caseEntry)">Obriši</button>
+            </td>
           </tr>
         </tbody>
       </table>

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
-from app.services.case_management import create_case, get_case, list_cases
+from app.services.case_management import create_case, delete_case, get_case, list_cases, set_case_status
 
 
 def _get_case_or_404(case_id: str) -> dict[str, object]:
@@ -20,6 +20,10 @@ router = APIRouter(prefix='/cases', tags=['cases'])
 class CreateCaseRequest(BaseModel):
     name: str = Field(min_length=1)
     description: str | None = None
+
+
+class SetCaseStatusRequest(BaseModel):
+    status: str = Field(pattern='^(open|closed)$')
 
 
 @router.get('')
@@ -41,3 +45,17 @@ def get_case_detail(case_id: str) -> dict[str, object]:
 def get_case_evidence(case_id: str) -> dict[str, object]:
     case = _get_case_or_404(case_id)
     return {'case_id': case_id, 'evidence': case.get('evidence', [])}
+
+
+@router.patch('/{case_id}/status')
+def patch_case_status(case_id: str, request: SetCaseStatusRequest) -> dict[str, object]:
+    _get_case_or_404(case_id)
+    return set_case_status(case_id, request.status)
+
+
+@router.delete('/{case_id}', status_code=204)
+def delete_case_route(case_id: str) -> None:
+    try:
+        delete_case(case_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

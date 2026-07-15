@@ -31,7 +31,7 @@ export type OnchainMode = 'address_history' | 'tx_single' | 'tx_expand_sender';
 export interface FetchOnchainRequest {
   query: string;
   network: OnchainNetwork;
-  case_id?: string | null;
+  case_id: string;
   mode: OnchainMode;
 }
 
@@ -143,12 +143,14 @@ export interface EvidenceEntry {
   analyst: string;
 }
 
+export type CaseStatus = 'open' | 'closed';
+
 export interface CaseSummary {
   id: string;
   name: string;
   description: string | null;
   analyst: string;
-  status: string;
+  status: CaseStatus;
   created_at: string;
   updated_at: string;
   evidence_count: number;

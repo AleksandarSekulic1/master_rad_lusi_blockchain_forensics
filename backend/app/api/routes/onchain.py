@@ -11,7 +11,7 @@ from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
 from app.evidence.hashing import calculate_sha256
 from app.paths import RAW_DIR
-from app.services.case_management import append_evidence, resolve_case, store_case_evidence
+from app.services.case_management import CaseClosedError, append_evidence, require_open_case, store_case_evidence
 from app.services.onchain_ingestion import (
     NETWORK_CHAIN_IDS,
     fetch_address_transactions,
@@ -29,7 +29,7 @@ _TX_HASH_PATTERN = re.compile(r'^0x[0-9a-fA-F]{64}$')
 class FetchTransactionsRequest(BaseModel):
     query: str = Field(min_length=1)
     network: str = Field(default='mainnet')
-    case_id: str | None = None
+    case_id: str = Field(min_length=1)
     mode: str = Field(default='address_history')
 
 
@@ -64,6 +64,13 @@ def fetch_transactions(
         raise HTTPException(status_code=400, detail=f'Mreža mora biti jedna od: {", ".join(NETWORK_CHAIN_IDS)}.')
 
     try:
+        case = require_open_case(request.case_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CaseClosedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
         dataframe, label, action_suffix = _resolve_dataframe(query, request.network, request.mode)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -81,7 +88,6 @@ def fetch_transactions(
     size_bytes = stored_path.stat().st_size
     user = str(current_user['username'])
 
-    case = resolve_case(request.case_id, analyst=user)
     store_case_evidence(str(case['id']), stored_path, stored_name)
     evidence_entry = append_evidence(
         str(case['id']),
