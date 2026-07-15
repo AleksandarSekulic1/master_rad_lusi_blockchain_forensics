@@ -3,9 +3,9 @@
   "name": "Default investigation case",
   "description": null,
   "analyst": "Aleksandar",
-  "status": "open",
+  "status": "closed",
   "created_at": "2026-07-14T22:26:13.306952+00:00",
-  "updated_at": "2026-07-15T19:09:35.824530+00:00",
+  "updated_at": "2026-07-15T19:32:00.567787+00:00",
   "evidence": [
     {
       "file_name": "forenzički_test_uzorak.csv",

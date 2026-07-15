@@ -198,19 +198,26 @@ def store_case_evidence(case_id: str, source_path: Path, stored_name: str) -> Pa
     return destination
 
 
-def get_case_evidence_path(case: dict[str, object], file_name: str | None = None) -> Path:
+def _resolve_evidence_path(case_id: str, stored_name: str) -> Path:
+    candidates = [
+        RAW_DIR / stored_name,
+        _case_dir(case_id) / 'evidence' / stored_name,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+
+    raise FileNotFoundError(f'Evidence file not found: {stored_name}')
+
+
+def get_case_evidence_paths(case: dict[str, object]) -> list[tuple[dict[str, object], Path]]:
+    """Returns every evidence entry in the case paired with its resolved file path.
+
+    Used by report/graph export so the analysis reflects ALL evidence in the case,
+    not just the most recently imported file.
+    """
     evidence = [entry for entry in case.get('evidence', []) if isinstance(entry, dict)]
     if not evidence:
         raise FileNotFoundError(f'No evidence recorded for case {case["id"]}')
 
-    selected_name = file_name or str(evidence[-1]['stored_name'])
-    evidence_paths = [
-        RAW_DIR / selected_name,
-        _case_dir(str(case['id'])) / 'evidence' / selected_name,
-    ]
-
-    for path in evidence_paths:
-        if path.exists():
-            return path
-
-    raise FileNotFoundError(f'Evidence file not found: {selected_name}')
+    return [(entry, _resolve_evidence_path(str(case['id']), str(entry['stored_name']))) for entry in evidence]

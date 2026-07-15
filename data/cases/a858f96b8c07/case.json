@@ -3,9 +3,9 @@
   "name": "test 1",
   "description": null,
   "analyst": "Aleksandar",
-  "status": "closed",
+  "status": "open",
   "created_at": "2026-07-14T22:26:31.048557+00:00",
-  "updated_at": "2026-07-15T19:07:35.087266+00:00",
+  "updated_at": "2026-07-15T19:33:56.649843+00:00",
   "evidence": [
     {
       "file_name": "forenzički_test_uzorak.csv",
@@ -14,9 +14,25 @@
       "size_bytes": 755,
       "sha256": "074b64912438cf0a2937e1c1e23b6003c92e8aa78712c2bfaf3fa7f11cd42a2d",
       "analyst": "analyst"
+    },
+    {
+      "file_name": "onchain_mainnet_address_0x28b1Dc1a5E3699A428BC51d234DFab7C9CB2a183.csv",
+      "stored_name": "20260715_193227_800357_onchain_mainnet_address_0x28b1Dc1a5E3699A428BC51d234DFab7C9CB2a183.csv",
+      "imported_at": "2026-07-15T19:32:27.914165+00:00",
+      "size_bytes": 167291,
+      "sha256": "e66985af98516f51db1e9691a6abafa9b31ae3c35164fca802e18de226fc0e01",
+      "analyst": "aco"
+    },
+    {
+      "file_name": "forenzički_test_uzorak.csv",
+      "stored_name": "20260715_193356_573707_forenzički_test_uzorak.csv",
+      "imported_at": "2026-07-15T19:33:56.649843+00:00",
+      "size_bytes": 755,
+      "sha256": "074b64912438cf0a2937e1c1e23b6003c92e8aa78712c2bfaf3fa7f11cd42a2d",
+      "analyst": "aco"
     }
   ],
-  "evidence_count": 1,
-  "total_size_bytes": 755,
-  "last_imported_at": "2026-07-14T22:53:20.185144+00:00"
+  "evidence_count": 3,
+  "total_size_bytes": 168801,
+  "last_imported_at": "2026-07-15T19:33:56.649843+00:00"
 }
