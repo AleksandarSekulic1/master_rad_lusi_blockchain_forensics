@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.analytics.ingestion import clean_transaction_csv
+from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
 from app.evidence.hashing import calculate_sha256
 from app.paths import RAW_DIR
@@ -20,9 +21,10 @@ router = APIRouter(prefix='/upload', tags=['upload'])
 @router.post('/csv')
 async def upload_csv(
     file: UploadFile = File(...),
-    user: str = Form(default='system'),
     case_id: str | None = Form(default=None),
+    current_user: dict[str, object] = Depends(get_current_user),
 ) -> dict[str, object]:
+    user = str(current_user['username'])
     if not file.filename:
         raise HTTPException(status_code=400, detail='CSV fajl mora imati naziv.')
 

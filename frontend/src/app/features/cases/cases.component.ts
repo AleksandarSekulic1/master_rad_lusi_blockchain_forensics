@@ -17,7 +17,6 @@ export class CasesComponent implements OnInit {
   protected cases: CaseSummary[] = [];
   protected selectedCase: Case | null = null;
   protected newCaseName = '';
-  protected newCaseAnalyst = 'analyst';
   protected newCaseDescription = '';
   protected isLoading = false;
   protected isCreating = false;
@@ -66,7 +65,6 @@ export class CasesComponent implements OnInit {
     this.api
       .createCase({
         name,
-        analyst: this.newCaseAnalyst.trim() || 'analyst',
         description: this.newCaseDescription.trim() || null,
       })
       .subscribe({

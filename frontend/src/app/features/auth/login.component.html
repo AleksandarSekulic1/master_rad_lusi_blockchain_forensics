@@ -1,0 +1,28 @@
+<section class="auth-shell">
+  <article class="auth-card">
+    <p class="eyebrow">Lusi v1.0</p>
+    <h1>Prijava</h1>
+    <p class="subtitle">Pristup je ograničen na registrovane analitičare i administratore.</p>
+
+    <form class="auth-form" (ngSubmit)="submit()">
+      <label>
+        Korisničko ime
+        <input [(ngModel)]="username" name="username" type="text" autocomplete="username" placeholder="npr. analyst1" />
+      </label>
+      <label>
+        Lozinka
+        <input [(ngModel)]="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+      </label>
+
+      <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+      <button type="submit" class="primary-button" [disabled]="isSubmitting">
+        {{ isSubmitting ? 'Prijavljivanje...' : 'Prijavi se' }}
+      </button>
+    </form>
+
+    <p class="hint">
+      Zaboravili ste lozinku? Kontaktirajte administratora — on može da generiše link za resetovanje.
+    </p>
+  </article>
+</section>

@@ -151,6 +151,39 @@ export interface Case extends CaseSummary {
 
 export interface CreateCaseRequest {
   name: string;
-  analyst?: string;
   description?: string | null;
+}
+
+export type UserRole = 'admin' | 'analyst';
+export type UserStatus = 'active' | 'blocked';
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: UserRole;
+  status?: UserStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  role: UserRole;
+}
+
+export interface ResetLinkResponse {
+  reset_link: string;
+  token: string;
 }

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.api.deps import get_current_user
 from app.services.case_management import create_case, get_case, list_cases
 
 
@@ -18,7 +19,6 @@ router = APIRouter(prefix='/cases', tags=['cases'])
 
 class CreateCaseRequest(BaseModel):
     name: str = Field(min_length=1)
-    analyst: str = Field(default='system')
     description: str | None = None
 
 
@@ -28,8 +28,8 @@ def get_cases() -> dict[str, object]:
 
 
 @router.post('')
-def post_case(request: CreateCaseRequest) -> dict[str, object]:
-    return create_case(name=request.name, analyst=request.analyst, description=request.description)
+def post_case(request: CreateCaseRequest, current_user: dict[str, object] = Depends(get_current_user)) -> dict[str, object]:
+    return create_case(name=request.name, analyst=str(current_user['username']), description=request.description)
 
 
 @router.get('/{case_id}')

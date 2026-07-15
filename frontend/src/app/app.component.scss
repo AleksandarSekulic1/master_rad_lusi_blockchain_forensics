@@ -68,6 +68,30 @@ h1 {
   background: rgba(96, 165, 250, 0.18);
 }
 
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
+  color: #7bd6ff;
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.logout-button {
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+  color: #cdd9ef;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  color: #ffffff;
+  background: rgba(248, 113, 113, 0.18);
+}
+
 @media (max-width: 768px) {
   .topbar {
     align-items: stretch;

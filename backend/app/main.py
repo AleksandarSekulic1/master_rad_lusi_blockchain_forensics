@@ -1,9 +1,19 @@
-﻿from fastapi import FastAPI
+﻿from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
+from app.security import DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USERNAME
+from app.services.user_management import bootstrap_admin
 
 
-app = FastAPI(title="Lusi v1.0 API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    bootstrap_admin(username=DEFAULT_ADMIN_USERNAME, password=DEFAULT_ADMIN_PASSWORD)
+    yield
+
+
+app = FastAPI(title="Lusi v1.0 API", version="1.0.0", lifespan=lifespan)
 
 # Podešavanje CORS-a kako bi Angular frontend (port 4200) mogao da komunicira sa backendom
 app.add_middleware(

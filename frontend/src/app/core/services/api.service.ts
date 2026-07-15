@@ -6,13 +6,17 @@ import { environment } from '../../../environments/environment';
 import {
   AnalyticsRequest,
   AnalyticsResponse,
+  AuthUser,
   Case,
   CaseSummary,
   CreateCaseRequest,
+  CreateUserRequest,
   NodeLinkGraphResponse,
   PathFindingRequest,
   PathFindingResponse,
+  ResetLinkResponse,
   UploadCsvResponse,
+  UserStatus,
 } from '../../models/blockchain-forensics.models';
 
 @Injectable({
@@ -23,10 +27,9 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  uploadCsv(file: File, user = 'system', caseId?: string | null): Observable<UploadCsvResponse> {
+  uploadCsv(file: File, caseId?: string | null): Observable<UploadCsvResponse> {
     const formData = new FormData();
     formData.append('file', file, file.name);
-    formData.append('user', user);
     if (caseId) {
       formData.append('case_id', caseId);
     }
@@ -77,5 +80,21 @@ export class ApiService {
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {
     return this.http.post<PathFindingResponse>(`${this.apiUrl}/api/v1/graph/path-finding`, request);
+  }
+
+  listUsers(): Observable<{ users: AuthUser[] }> {
+    return this.http.get<{ users: AuthUser[] }>(`${this.apiUrl}/api/v1/users`);
+  }
+
+  createUser(request: CreateUserRequest): Observable<AuthUser> {
+    return this.http.post<AuthUser>(`${this.apiUrl}/api/v1/users`, request);
+  }
+
+  setUserStatus(userId: string, status: UserStatus): Observable<AuthUser> {
+    return this.http.patch<AuthUser>(`${this.apiUrl}/api/v1/users/${userId}/status`, { status });
+  }
+
+  generateResetLink(userId: string): Observable<ResetLinkResponse> {
+    return this.http.post<ResetLinkResponse>(`${this.apiUrl}/api/v1/users/${userId}/reset-link`, {});
   }
 }

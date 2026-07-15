@@ -20,7 +20,6 @@ import { ReportExportComponent } from '../report-export/report-export.component'
 export class DashboardComponent implements OnInit {
   protected selectedFile: File | null = null;
   protected selectedFileLabel = 'No file selected';
-  protected operatorName = 'analyst';
   protected searchQuery = '';
   protected isDragging = false;
   protected isUploading = false;
@@ -133,7 +132,7 @@ export class DashboardComponent implements OnInit {
     this.statusMessage = 'Uploading and hashing evidence...';
 
     const caseId = this.state.selectedCaseSnapshot?.id ?? null;
-    this.api.uploadCsv(this.selectedFile, this.operatorName, caseId).subscribe({
+    this.api.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
         this.state.setUploadResult(uploadResult);

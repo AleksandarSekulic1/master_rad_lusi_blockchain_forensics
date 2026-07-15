@@ -25,10 +25,6 @@
     </div>
 
     <div class="inline-form">
-      <label>
-        Analyst
-        <input [(ngModel)]="operatorName" type="text" placeholder="analyst" />
-      </label>
       <button type="button" class="primary-button" (click)="uploadEvidence()" [disabled]="isUploading">
         {{ isUploading ? 'Uploading...' : 'Upload and analyze' }}
       </button>
