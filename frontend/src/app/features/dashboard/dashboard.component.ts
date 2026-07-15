@@ -6,7 +6,7 @@ import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { AnalyticsResponse, GraphNodeData, NodeLinkGraphResponse, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -29,8 +29,9 @@ export class DashboardComponent implements OnInit {
   protected graphResult: NodeLinkGraphResponse | null = null;
   protected searchResults: Array<{ node: GraphNodeData; score: number }> = [];
 
-  protected onchainAddress = '';
+  protected onchainQuery = '';
   protected onchainNetwork: OnchainNetwork = 'mainnet';
+  protected onchainHashMode: OnchainMode = 'address_history';
   protected isFetchingOnchain = false;
 
   constructor(
@@ -153,18 +154,26 @@ export class DashboardComponent implements OnInit {
     });
   }
 
+  get isOnchainQueryTxHash(): boolean {
+    return /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
+  }
+
   fetchOnchainTransactions(): void {
-    const address = this.onchainAddress.trim();
-    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-      this.statusMessage = 'Unesite validnu adresu (0x + 40 heksadecimalnih karaktera).';
+    const query = this.onchainQuery.trim();
+    const isAddress = /^0x[0-9a-fA-F]{40}$/.test(query);
+    const isTxHash = /^0x[0-9a-fA-F]{64}$/.test(query);
+
+    if (!isAddress && !isTxHash) {
+      this.statusMessage = 'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera).';
       return;
     }
 
     this.isFetchingOnchain = true;
-    this.statusMessage = `Povlačenje transakcija sa ${this.onchainNetwork === 'mainnet' ? 'Ethereum mainnet-a' : 'Sepolia testnet-a'}...`;
+    this.statusMessage = `Povlačenje sa ${this.onchainNetwork === 'mainnet' ? 'Ethereum mainnet-a' : 'Sepolia testnet-a'}...`;
 
     const caseId = this.state.selectedCaseSnapshot?.id ?? null;
-    this.api.fetchOnchainTransactions({ address, network: this.onchainNetwork, case_id: caseId }).subscribe({
+    const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
+    this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
       next: (result) => {
         this.uploadResult = result;
         this.state.setUploadResult(result);
@@ -172,7 +181,7 @@ export class DashboardComponent implements OnInit {
           this.state.setSelectedCase(result.case);
         }
         this.isFetchingOnchain = false;
-        this.statusMessage = `Povučeno ${result.rows_total} transakcija za ${address}. Učitavanje grafa i analitike...`;
+        this.statusMessage = `Povučeno ${result.rows_total} transakcija (${result.resolved_query ?? query}). Učitavanje grafa i analitike...`;
         this.loadDerivedViews(result.file_name);
       },
       error: (error: unknown) => {

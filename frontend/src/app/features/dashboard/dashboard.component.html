@@ -34,9 +34,9 @@
 
     <div class="onchain-form">
       <input
-        [(ngModel)]="onchainAddress"
+        [(ngModel)]="onchainQuery"
         type="text"
-        placeholder="0x... adresa novčanika"
+        placeholder="0x... adresa novčanika ili heš transakcije"
         spellcheck="false"
       />
       <select [(ngModel)]="onchainNetwork">
@@ -46,6 +46,18 @@
       <button type="button" class="ghost-button" (click)="fetchOnchainTransactions()" [disabled]="isFetchingOnchain">
         {{ isFetchingOnchain ? 'Povlačenje...' : 'Povuci transakcije' }}
       </button>
+    </div>
+
+    <div class="onchain-hash-mode" *ngIf="isOnchainQueryTxHash">
+      <span>Prepoznat heš transakcije — šta da povučem?</span>
+      <label>
+        <input type="radio" name="onchainHashMode" value="address_history" [(ngModel)]="onchainHashMode" />
+        Celu istoriju pošiljaoca (preporučeno)
+      </label>
+      <label>
+        <input type="radio" name="onchainHashMode" value="tx_single" [(ngModel)]="onchainHashMode" />
+        Samo ovu transakciju
+      </label>
     </div>
 
     <p class="active-case" *ngIf="state.selectedCaseSnapshot as activeCase; else noActiveCase">

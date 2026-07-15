@@ -22,14 +22,17 @@ export interface UploadCsvResponse {
   preview: TransactionPreviewRow[];
   case?: CaseSummary;
   evidence?: EvidenceEntry;
+  resolved_query?: string;
 }
 
 export type OnchainNetwork = 'mainnet' | 'sepolia';
+export type OnchainMode = 'address_history' | 'tx_single' | 'tx_expand_sender';
 
 export interface FetchOnchainRequest {
-  address: string;
+  query: string;
   network: OnchainNetwork;
   case_id?: string | null;
+  mode: OnchainMode;
 }
 
 export interface GraphNodeData {

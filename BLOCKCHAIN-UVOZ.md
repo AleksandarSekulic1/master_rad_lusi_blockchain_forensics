@@ -1,10 +1,15 @@
 # Uvoz transakcija direktno sa blockchain-a
 
-Pored ručnog učitavanja CSV fajlova, Lusi v1.0 sada ume da povuče **kompletnu istoriju transakcija** za bilo koju Ethereum adresu direktno sa blockchain-a, preko besplatnog Etherscan API-ja. Ovaj dokument objašnjava kako da to podesiš i isprobaš.
+Pored ručnog učitavanja CSV fajlova, Lusi v1.0 sada ume da povuče transakcije direktno sa blockchain-a preko besplatnog Etherscan API-ja, na dva načina:
+
+- **Adresa novčanika** → povlači se **kompletna istorija transakcija** te adrese.
+- **Heš pojedinačne transakcije** (npr. kopiran sa Etherscan-a, iz izveštaja o incidentu) → sistem prepoznaje format i nudi izbor: povući samo tu jednu transakciju, ili pronaći pošiljaoca i povući **celu njegovu istoriju** (preporučeno za istragu).
+
+Ovaj dokument objašnjava kako da to podesiš i isprobaš.
 
 ## Kako ovo radi (u kratkim crtama)
 
-- Ne postoji "login na Ethereum" — blockchain je javan, nema naloga/lozinke. Ti samo uneseš adresu novčanika, a naš server preko Etherscan API-ja povuče sve njene potvrđene transakcije.
+- Ne postoji "login na Ethereum" — blockchain je javan, nema naloga/lozinke. Ti samo uneseš adresu ili heš transakcije, a naš server preko Etherscan API-ja povuče odgovarajuće podatke.
 - **Čitanje istorije transakcija je uvek besplatno**, bez obzira na mrežu — gas (naknada) se plaća samo kada se *šalje* transakcija, ne kada se ona *čita*. Znači ne trošimo ni pravi ni test-novac, samo čitamo javne podatke.
 - Povučene transakcije se transformišu u isti format kao ručno učitan CSV, prolaze kroz potpuno isti pipeline (graph building, risk scoring, clustering, peel chains, chain hopping, anomaly detection...) i čuvaju se u Depou dokaza sa SHA-256 heš otiskom i audit log zapisom — kao da je fajl ručno učitan, radi lanca dokaza.
 
@@ -50,7 +55,20 @@ Najlakši način da testiraš je da uzmeš neku poznatu adresu sa dosta prometa 
 
 Za realan forenzički scenario, možeš potražiti javno poznate adrese povezane sa stvarnim hakovima/prevarama (npr. preko izveštaja o poznatim incidentima) i analizirati njihovu stvarnu istoriju transakcija istim putem.
 
-## 4. Testiranje — Sepolia (testnet, ako želiš potpuno kontrolisan scenario)
+## 4. Pretraga po hešu transakcije
+
+Ako imaš samo heš pojedinačne transakcije (npr. iz nekog izveštaja o incidentu, ili kopiran sa Etherscan-a — dugačak niz od 66 karaktera koji počinje sa `0x`), možeš ga direktno nalepiti u isto polje umesto adrese:
+
+1. Nalepi heš (primer, stvarna transakcija iz 2015. godine):
+   ```
+   0x9b629147b75dc0b275d478fa34d97c5d4a26926457540b15a5ce871df36c23fd
+   ```
+2. Sistem automatski prepoznaje da je u pitanju heš (a ne adresa) i ispod polja se pojavljuju dve opcije:
+   - **"Celu istoriju pošiljaoca" (preporučeno)** — pronalazi ko je poslao tu transakciju i povlači kompletnu istoriju te adrese, čime dobijaš pravi materijal za istragu (ko je još taj pošiljalac kontaktirao, koliki mu je promet, itd.), a ne samo izolovan jedan red.
+   - **"Samo ovu transakciju"** — povlači isključivo taj jedan red (2 čvora, 1 veza u grafu) — korisno ako te zanima samo brza provera te jedne transakcije.
+3. Klikni **"Povuci transakcije"**.
+
+## 5. Testiranje — Sepolia (testnet, ako želiš potpuno kontrolisan scenario)
 
 Ako želiš da sam kreiraš kontrolisan set transakcija (npr. da simuliraš tok "ukradenog novca" kroz nekoliko adresa radi demonstracije), koristi Sepolia testnet:
 
@@ -61,8 +79,11 @@ Ako želiš da sam kreiraš kontrolisan set transakcija (npr. da simuliraš tok 
 
 Ove transakcije su podjednako "prave" (potvrđene na blockchain-u, sa pravim hešom) kao i mainnet transakcije — razlika je samo što je novac na testnet-u bezvredan.
 
-## 5. Šta se dešava u pozadini (za tehnički deo rada)
+## 6. Šta se dešava u pozadini (za tehnički deo rada)
 
-- Backend: `backend/app/services/onchain_ingestion.py` — poziva Etherscan V2 API (`/v2/api?chainid=...`), pretvara odgovor (JSON lista transakcija) u isti tabelarni format koji koristi CSV ingestion (`sender_address`, `recipient_address`, `amount`, `timestamp`, `metadata`), i preskače neuspele (revertovane) transakcije.
-- Ruta: `POST /api/v1/onchain/fetch` (`backend/app/api/routes/onchain.py`) — validira adresu i mrežu, poziva klijent, snima rezultat kao CSV u `data/raw/`, računa SHA-256, povezuje ga sa slučajem (isti mehanizam kao `/upload/csv`) i upisuje audit log zapis sa akcijom `onchain_fetch_<mreža>`.
+- Backend: `backend/app/services/onchain_ingestion.py`:
+  - `fetch_address_transactions()` — poziva Etherscan V2 API modul `account`/`txlist` (`/v2/api?chainid=...`), pretvara odgovor u isti tabelarni format koji koristi CSV ingestion (`sender_address`, `recipient_address`, `amount`, `timestamp`, `metadata`), preskače neuspele (revertovane) transakcije.
+  - `fetch_transaction_by_hash()` — poziva Etherscan-ov `proxy`/`eth_getTransactionByHash` modul (direktan JSON-RPC passthrough); odgovor uključuje `blockTimestamp` direktno, pa je dovoljan jedan API poziv.
+  - `fetch_single_transaction_frame()` / `fetch_expanded_sender_history()` — obrađuju heš u jedan od dva režima opisana gore.
+- Ruta: `POST /api/v1/onchain/fetch` (`backend/app/api/routes/onchain.py`) — automatski prepoznaje da li je uneta adresa (42 karaktera) ili heš transakcije (66 karaktera) na osnovu regex-a, primenjuje izabrani `mode`, snima rezultat kao CSV u `data/raw/`, računa SHA-256, povezuje ga sa slučajem (isti mehanizam kao `/upload/csv`) i upisuje audit log zapis sa akcijom `onchain_fetch_<mreža>_<režim>`.
 - Frontend: `ApiService.fetchOnchainTransactions()` poziva tu rutu; rezultat se obrađuje potpuno isto kao odgovor na CSV upload (isti `loadDerivedViews()` poziv), tako da graf i analitika rade bez ikakvih izmena.
