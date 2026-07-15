@@ -17,11 +17,10 @@ export class CasesComponent implements OnInit {
   protected cases: CaseSummary[] = [];
   protected selectedCase: Case | null = null;
   protected newCaseName = '';
-  protected newCaseAnalyst = 'analyst';
   protected newCaseDescription = '';
   protected isLoading = false;
   protected isCreating = false;
-  protected statusMessage = 'Loading cases...';
+  protected statusMessage = 'Učitavanje slučajeva...';
 
   constructor(
     private readonly api: ApiService,
@@ -38,7 +37,7 @@ export class CasesComponent implements OnInit {
       next: (response) => {
         this.cases = response.cases;
         this.isLoading = false;
-        this.statusMessage = this.cases.length > 0 ? `${this.cases.length} case(s) on file.` : 'No cases yet. Create one to get started.';
+        this.statusMessage = this.cases.length > 0 ? `${this.cases.length} slučaj(eva) u evidenciji.` : 'Još uvek nema slučajeva. Kreirajte jedan da biste počeli.';
 
         const selectedId = this.state.selectedCaseSnapshot?.id;
         if (selectedId) {
@@ -50,7 +49,7 @@ export class CasesComponent implements OnInit {
       },
       error: () => {
         this.isLoading = false;
-        this.statusMessage = 'Failed to load cases.';
+        this.statusMessage = 'Neuspešno učitavanje slučajeva.';
       },
     });
   }
@@ -58,7 +57,7 @@ export class CasesComponent implements OnInit {
   createCase(): void {
     const name = this.newCaseName.trim();
     if (!name) {
-      this.statusMessage = 'Case name is required.';
+      this.statusMessage = 'Naziv slučaja je obavezan.';
       return;
     }
 
@@ -66,7 +65,6 @@ export class CasesComponent implements OnInit {
     this.api
       .createCase({
         name,
-        analyst: this.newCaseAnalyst.trim() || 'analyst',
         description: this.newCaseDescription.trim() || null,
       })
       .subscribe({
@@ -74,13 +72,13 @@ export class CasesComponent implements OnInit {
           this.isCreating = false;
           this.newCaseName = '';
           this.newCaseDescription = '';
-          this.statusMessage = `Case "${createdCase.name}" created.`;
+          this.statusMessage = `Slučaj "${createdCase.name}" je kreiran.`;
           this.loadCases();
           this.selectCase(createdCase);
         },
         error: () => {
           this.isCreating = false;
-          this.statusMessage = 'Failed to create case.';
+          this.statusMessage = 'Neuspešno kreiranje slučaja.';
         },
       });
   }
@@ -92,7 +90,7 @@ export class CasesComponent implements OnInit {
         this.selectedCase = caseDetail;
       },
       error: () => {
-        this.statusMessage = `Failed to load evidence locker for case ${caseSummary.id}.`;
+        this.statusMessage = `Neuspešno učitavanje depoa dokaza za slučaj ${caseSummary.id}.`;
       },
     });
   }

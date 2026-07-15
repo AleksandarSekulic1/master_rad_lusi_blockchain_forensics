@@ -1,15 +1,18 @@
-﻿<main class="app-shell">
+<main class="app-shell">
   <header class="topbar">
     <div>
       <p class="eyebrow">Lusi v1.0</p>
-      <h1>Blockchain forensic workspace</h1>
-      <p class="subtitle">Upload evidence, inspect transaction graphs, and export reports from one console.</p>
+      <h1>Radni prostor za blockchain forenziku</h1>
+      <p class="subtitle">Učitajte dokaze, pregledajte grafove transakcija i izvezite izveštaje sa jedne konzole.</p>
     </div>
-    <nav class="topbar-nav">
-      <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Dashboard</a>
-      <a routerLink="/cases" routerLinkActive="active">Cases</a>
-      <a routerLink="/graph" routerLinkActive="active">Graph</a>
-      <a routerLink="/reports" routerLinkActive="active">Reports</a>
+    <nav class="topbar-nav" *ngIf="auth.currentUser$ | async as user">
+      <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Kontrolna tabla</a>
+      <a routerLink="/cases" routerLinkActive="active">Slučajevi</a>
+      <a routerLink="/graph" routerLinkActive="active">Graf</a>
+      <a routerLink="/reports" routerLinkActive="active">Izveštaji</a>
+      <a routerLink="/admin/users" routerLinkActive="active" *ngIf="user.role === 'admin'">Administracija</a>
+      <span class="user-chip">{{ user.username }}</span>
+      <button type="button" class="logout-button" (click)="logout()">Odjava</button>
     </nav>
   </header>
 

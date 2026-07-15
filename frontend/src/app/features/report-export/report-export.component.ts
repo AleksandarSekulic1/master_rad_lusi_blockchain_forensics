@@ -57,7 +57,7 @@ export class ReportExportComponent {
   private runExport(request: (caseId: string) => Observable<Blob>, suffix: string): void {
     const caseId = this.activeCaseId;
     if (!caseId) {
-      this.exportError = 'Select a case on the Cases page before exporting.';
+      this.exportError = 'Izaberite slučaj na stranici Slučajevi pre izvoza.';
       return;
     }
 
@@ -71,7 +71,7 @@ export class ReportExportComponent {
       },
       error: () => {
         this.isExporting = false;
-        this.exportError = `Export failed for case ${caseId}.`;
+        this.exportError = `Izvoz nije uspeo za slučaj ${caseId}.`;
       },
     });
   }

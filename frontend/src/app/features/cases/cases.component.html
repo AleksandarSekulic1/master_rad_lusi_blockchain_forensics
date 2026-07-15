@@ -2,26 +2,22 @@
   <article class="panel create-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Case management</p>
-        <h2>Open a new investigation</h2>
+        <p class="panel-kicker">Upravljanje slučajevima</p>
+        <h2>Otvori novu istragu</h2>
       </div>
     </div>
 
     <div class="case-form">
       <label>
-        Case name
-        <input [(ngModel)]="newCaseName" type="text" placeholder="e.g. Exchange hack Q3" />
-      </label>
-      <label>
-        Analyst
-        <input [(ngModel)]="newCaseAnalyst" type="text" placeholder="analyst" />
+        Naziv slučaja
+        <input [(ngModel)]="newCaseName" type="text" placeholder="npr. Hakovanje berze Q3" />
       </label>
       <label class="description-field">
-        Description
-        <input [(ngModel)]="newCaseDescription" type="text" placeholder="Optional notes about this case" />
+        Opis
+        <input [(ngModel)]="newCaseDescription" type="text" placeholder="Opciona napomena o slučaju" />
       </label>
       <button type="button" class="primary-button" (click)="createCase()" [disabled]="isCreating">
-        {{ isCreating ? 'Creating...' : 'Create case' }}
+        {{ isCreating ? 'Kreiranje...' : 'Kreiraj slučaj' }}
       </button>
     </div>
 
@@ -31,22 +27,22 @@
   <article class="panel list-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Case list</p>
-        <h2>Investigations</h2>
+        <p class="panel-kicker">Lista slučajeva</p>
+        <h2>Istrage</h2>
       </div>
-      <button class="ghost-button" type="button" (click)="loadCases()" [disabled]="isLoading">Refresh</button>
+      <button class="ghost-button" type="button" (click)="loadCases()" [disabled]="isLoading">Osveži</button>
     </div>
 
     <div class="table-wrapper" *ngIf="cases.length > 0; else emptyCases">
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Analyst</th>
+            <th>Naziv</th>
+            <th>Analitičar</th>
             <th>Status</th>
-            <th>Evidence</th>
-            <th>Size</th>
-            <th>Last import</th>
+            <th>Dokazi</th>
+            <th>Veličina</th>
+            <th>Poslednji unos</th>
           </tr>
         </thead>
         <tbody>
@@ -60,7 +56,7 @@
               <span class="case-id">{{ caseEntry.id }}</span>
             </td>
             <td>{{ caseEntry.analyst }}</td>
-            <td>{{ caseEntry.status }}</td>
+            <td>{{ caseEntry.status === 'open' ? 'Otvoren' : caseEntry.status }}</td>
             <td>{{ caseEntry.evidence_count }}</td>
             <td>{{ formatBytes(caseEntry.total_size_bytes) }}</td>
             <td>{{ caseEntry.last_imported_at ?? 'n/a' }}</td>
@@ -70,28 +66,28 @@
     </div>
 
     <ng-template #emptyCases>
-      <p class="empty-state">No cases yet. Create one on the left to begin an investigation.</p>
+      <p class="empty-state">Još uvek nema slučajeva. Kreirajte jedan levo da biste započeli istragu.</p>
     </ng-template>
   </article>
 
   <article class="panel evidence-panel" *ngIf="selectedCase as caseDetail">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Evidence locker</p>
+        <p class="panel-kicker">Depo dokaza</p>
         <h2>{{ caseDetail.name }}</h2>
       </div>
-      <span class="pill">{{ caseDetail.evidence.length }} file(s)</span>
+      <span class="pill">{{ caseDetail.evidence.length }} fajl(ova)</span>
     </div>
 
     <div class="table-wrapper" *ngIf="caseDetail.evidence.length > 0; else emptyEvidence">
       <table>
         <thead>
           <tr>
-            <th>File</th>
+            <th>Fajl</th>
             <th>SHA-256</th>
-            <th>Size</th>
-            <th>Analyst</th>
-            <th>Imported at</th>
+            <th>Veličina</th>
+            <th>Analitičar</th>
+            <th>Vreme unosa</th>
           </tr>
         </thead>
         <tbody>
@@ -107,7 +103,7 @@
     </div>
 
     <ng-template #emptyEvidence>
-      <p class="empty-state">No evidence uploaded for this case yet. Upload a CSV from the Dashboard while this case is selected.</p>
+      <p class="empty-state">Za ovaj slučaj još nije učitan nijedan dokaz. Učitajte CSV sa kontrolne table dok je ovaj slučaj izabran.</p>
     </ng-template>
   </article>
 </section>

@@ -7,3 +7,5 @@ pydantic-settings
 python-dotenv
 scikit-learn
 fpdf2
+bcrypt
+pyjwt

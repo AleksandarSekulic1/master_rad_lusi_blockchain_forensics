@@ -12,6 +12,11 @@ services:
     environment:
       APP_ENV: development
       CORS_ORIGINS: http://localhost:4200
+      FRONTEND_URL: http://localhost:4200
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-secret-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-720}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
 
   frontend:
     build:

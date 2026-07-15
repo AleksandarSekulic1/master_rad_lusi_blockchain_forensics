@@ -19,13 +19,12 @@ import { ReportExportComponent } from '../report-export/report-export.component'
 })
 export class DashboardComponent implements OnInit {
   protected selectedFile: File | null = null;
-  protected selectedFileLabel = 'No file selected';
-  protected operatorName = 'analyst';
+  protected selectedFileLabel = 'Nijedan fajl nije izabran';
   protected searchQuery = '';
   protected isDragging = false;
   protected isUploading = false;
   protected isRefreshing = false;
-  protected statusMessage = 'Ready to load evidence.';
+  protected statusMessage = 'Spremno za učitavanje dokaza.';
   protected uploadResult: UploadCsvResponse | null = null;
   protected graphResult: NodeLinkGraphResponse | null = null;
   protected searchResults: Array<{ node: GraphNodeData; score: number }> = [];
@@ -125,27 +124,27 @@ export class DashboardComponent implements OnInit {
 
   uploadEvidence(): void {
     if (!this.selectedFile) {
-      this.statusMessage = 'Choose a CSV file first.';
+      this.statusMessage = 'Prvo izaberite CSV fajl.';
       return;
     }
 
     this.isUploading = true;
-    this.statusMessage = 'Uploading and hashing evidence...';
+    this.statusMessage = 'Učitavanje i heš-ovanje dokaza...';
 
     const caseId = this.state.selectedCaseSnapshot?.id ?? null;
-    this.api.uploadCsv(this.selectedFile, this.operatorName, caseId).subscribe({
+    this.api.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
         this.state.setUploadResult(uploadResult);
         if (uploadResult.case) {
           this.state.setSelectedCase(uploadResult.case);
         }
-        this.statusMessage = `Evidence stored as ${uploadResult.file_name}. Loading graph and analytics...`;
+        this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje grafa i analitike...`;
         this.loadDerivedViews(uploadResult.file_name);
       },
       error: (error: unknown) => {
         this.isUploading = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Upload failed.');
+        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje nije uspelo.');
       },
     });
   }
@@ -169,12 +168,12 @@ export class DashboardComponent implements OnInit {
       .slice(0, 12);
 
     this.searchResults = matches;
-    this.statusMessage = matches.length > 0 ? `Found ${matches.length} matching addresses.` : 'No matching addresses found.';
+    this.statusMessage = matches.length > 0 ? `Pronađeno ${matches.length} odgovarajućih adresa.` : 'Nema pronađenih adresa.';
   }
 
   selectSearchResult(result: { node: GraphNodeData; score: number }): void {
     this.state.setSelectedNode(result.node);
-    this.statusMessage = `Selected ${result.node.address ?? result.node.id}.`;
+    this.statusMessage = `Izabrano: ${result.node.address ?? result.node.id}.`;
   }
 
   clearSearch(): void {
@@ -184,13 +183,13 @@ export class DashboardComponent implements OnInit {
 
   private setSelectedFile(file: File | null): void {
     this.selectedFile = file;
-    this.selectedFileLabel = file ? file.name : 'No file selected';
-    this.statusMessage = file ? `Prepared ${file.name} for upload.` : 'No file selected.';
+    this.selectedFileLabel = file ? file.name : 'Nijedan fajl nije izabran';
+    this.statusMessage = file ? `Fajl ${file.name} je spreman za učitavanje.` : 'Nijedan fajl nije izabran.';
   }
 
   private bootstrapLatestCase(): void {
     this.isRefreshing = true;
-    this.statusMessage = 'Loading the latest available evidence set...';
+    this.statusMessage = 'Učitavanje najnovijeg dostupnog skupa dokaza...';
 
     forkJoin({
       graph: this.api.getGraph(),
@@ -199,11 +198,11 @@ export class DashboardComponent implements OnInit {
       next: ({ graph, analytics }) => {
         this.applyGraphAndAnalytics(graph, analytics);
         this.isRefreshing = false;
-        this.statusMessage = `Loaded ${graph.source_file ?? 'latest evidence'}.`;
+        this.statusMessage = `Učitano: ${graph.source_file ?? 'poslednji dokaz'}.`;
       },
       error: () => {
         this.isRefreshing = false;
-        this.statusMessage = 'No uploaded evidence found yet. Upload a CSV to begin.';
+        this.statusMessage = 'Još uvek nema učitanih dokaza. Učitajte CSV da biste počeli.';
       },
     });
   }
@@ -216,11 +215,11 @@ export class DashboardComponent implements OnInit {
       next: ({ graph, analytics }) => {
         this.applyGraphAndAnalytics(graph, analytics);
         this.isUploading = false;
-        this.statusMessage = `Loaded graph and analytics for ${fileName}.`;
+        this.statusMessage = `Učitan graf i analitika za ${fileName}.`;
       },
       error: (error: unknown) => {
         this.isUploading = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Upload finished, but graph analysis failed.');
+        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje je završeno, ali analiza grafa nije uspela.');
       },
     });
   }

@@ -1,0 +1,84 @@
+<section class="admin-grid">
+  <article class="panel create-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Upravljanje nalozima</p>
+        <h2>Novi korisnik</h2>
+      </div>
+    </div>
+
+    <div class="user-form">
+      <label>
+        Korisničko ime
+        <input [(ngModel)]="newUsername" type="text" placeholder="npr. analyst2" />
+      </label>
+      <label>
+        Lozinka
+        <input [(ngModel)]="newPassword" type="password" placeholder="bar 6 karaktera" />
+      </label>
+      <label>
+        Uloga
+        <select [(ngModel)]="newRole">
+          <option value="analyst">Analitičar</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </label>
+      <button type="button" class="primary-button" (click)="createUser()" [disabled]="isCreating">
+        {{ isCreating ? 'Kreiranje...' : 'Kreiraj nalog' }}
+      </button>
+    </div>
+
+    <p class="status">{{ statusMessage }}</p>
+  </article>
+
+  <article class="panel list-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Nalozi</p>
+        <h2>Svi korisnici</h2>
+      </div>
+      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">Osveži</button>
+    </div>
+
+    <div class="table-wrapper" *ngIf="users.length > 0; else emptyUsers">
+      <table>
+        <thead>
+          <tr>
+            <th>Korisničko ime</th>
+            <th>Uloga</th>
+            <th>Status</th>
+            <th>Kreiran</th>
+            <th>Akcije</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let user of users">
+            <td>{{ user.username }}</td>
+            <td>{{ user.role === 'admin' ? 'Administrator' : 'Analitičar' }}</td>
+            <td>
+              <span class="pill" [class.blocked]="user.status === 'blocked'">
+                {{ user.status === 'blocked' ? 'Blokiran' : 'Aktivan' }}
+              </span>
+            </td>
+            <td>{{ user.created_at }}</td>
+            <td class="actions">
+              <button type="button" class="ghost-button" (click)="toggleStatus(user)">
+                {{ user.status === 'blocked' ? 'Odblokiraj' : 'Blokiraj' }}
+              </button>
+              <button type="button" class="ghost-button" (click)="generateResetLink(user)">Reset lozinke</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="reset-link-box" *ngFor="let entry of resetLinkByUsername | keyvalue">
+        <span>Link za {{ entry.key }}:</span>
+        <code>{{ entry.value }}</code>
+      </div>
+    </div>
+
+    <ng-template #emptyUsers>
+      <p class="empty-state">Nema kreiranih korisnika.</p>
+    </ng-template>
+  </article>
+</section>

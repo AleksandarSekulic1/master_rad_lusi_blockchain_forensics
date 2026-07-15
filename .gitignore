@@ -13,3 +13,6 @@ __pycache__/
 
 # Logs
 logs/
+
+# Local user accounts (contains password hashes)
+/data/users.json

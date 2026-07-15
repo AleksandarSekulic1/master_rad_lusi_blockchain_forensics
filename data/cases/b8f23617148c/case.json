@@ -1,0 +1,13 @@
+{
+  "id": "b8f23617148c",
+  "name": "test2",
+  "description": "idemo",
+  "analyst": "aco",
+  "status": "open",
+  "created_at": "2026-07-15T14:21:50.599922+00:00",
+  "updated_at": "2026-07-15T14:21:50.599922+00:00",
+  "evidence": [],
+  "evidence_count": 0,
+  "total_size_bytes": 0,
+  "last_imported_at": null
+}
