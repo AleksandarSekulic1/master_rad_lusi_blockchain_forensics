@@ -24,6 +24,14 @@ export interface UploadCsvResponse {
   evidence?: EvidenceEntry;
 }
 
+export type OnchainNetwork = 'mainnet' | 'sepolia';
+
+export interface FetchOnchainRequest {
+  address: string;
+  network: OnchainNetwork;
+  case_id?: string | null;
+}
+
 export interface GraphNodeData {
   id: string;
   address?: string;

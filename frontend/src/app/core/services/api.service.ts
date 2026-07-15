@@ -11,6 +11,7 @@ import {
   CaseSummary,
   CreateCaseRequest,
   CreateUserRequest,
+  FetchOnchainRequest,
   NodeLinkGraphResponse,
   PathFindingRequest,
   PathFindingResponse,
@@ -35,6 +36,10 @@ export class ApiService {
     }
 
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/upload/csv`, formData);
+  }
+
+  fetchOnchainTransactions(request: FetchOnchainRequest): Observable<UploadCsvResponse> {
+    return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/onchain/fetch`, request);
   }
 
   listCases(): Observable<{ cases: CaseSummary[] }> {

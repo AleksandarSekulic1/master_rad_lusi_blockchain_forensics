@@ -30,6 +30,24 @@
       </button>
     </div>
 
+    <div class="divider"><span>ili povuci sa blockchain-a</span></div>
+
+    <div class="onchain-form">
+      <input
+        [(ngModel)]="onchainAddress"
+        type="text"
+        placeholder="0x... adresa novčanika"
+        spellcheck="false"
+      />
+      <select [(ngModel)]="onchainNetwork">
+        <option value="mainnet">Ethereum mainnet</option>
+        <option value="sepolia">Sepolia (testnet)</option>
+      </select>
+      <button type="button" class="ghost-button" (click)="fetchOnchainTransactions()" [disabled]="isFetchingOnchain">
+        {{ isFetchingOnchain ? 'Povlačenje...' : 'Povuci transakcije' }}
+      </button>
+    </div>
+
     <p class="active-case" *ngIf="state.selectedCaseSnapshot as activeCase; else noActiveCase">
       Aktivan slučaj: <strong>{{ activeCase.name }}</strong>
     </p>
@@ -40,7 +58,7 @@
       </p>
     </ng-template>
 
-    <p class="status" [class.busy]="isUploading || isRefreshing">{{ statusMessage }}</p>
+    <p class="status" [class.busy]="isUploading || isRefreshing || isFetchingOnchain">{{ statusMessage }}</p>
     <div class="upload-meta" *ngIf="uploadResult">
       <span>SHA-256: {{ uploadResult.sha256 }}</span>
       <span>Redova: {{ uploadResult.rows_total }}</span>

@@ -6,7 +6,7 @@ import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { AnalyticsResponse, GraphNodeData, NodeLinkGraphResponse, UploadCsvResponse } from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, GraphNodeData, NodeLinkGraphResponse, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -28,6 +28,10 @@ export class DashboardComponent implements OnInit {
   protected uploadResult: UploadCsvResponse | null = null;
   protected graphResult: NodeLinkGraphResponse | null = null;
   protected searchResults: Array<{ node: GraphNodeData; score: number }> = [];
+
+  protected onchainAddress = '';
+  protected onchainNetwork: OnchainNetwork = 'mainnet';
+  protected isFetchingOnchain = false;
 
   constructor(
     private readonly api: ApiService,
@@ -145,6 +149,35 @@ export class DashboardComponent implements OnInit {
       error: (error: unknown) => {
         this.isUploading = false;
         this.statusMessage = this.extractErrorMessage(error, 'Učitavanje nije uspelo.');
+      },
+    });
+  }
+
+  fetchOnchainTransactions(): void {
+    const address = this.onchainAddress.trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      this.statusMessage = 'Unesite validnu adresu (0x + 40 heksadecimalnih karaktera).';
+      return;
+    }
+
+    this.isFetchingOnchain = true;
+    this.statusMessage = `Povlačenje transakcija sa ${this.onchainNetwork === 'mainnet' ? 'Ethereum mainnet-a' : 'Sepolia testnet-a'}...`;
+
+    const caseId = this.state.selectedCaseSnapshot?.id ?? null;
+    this.api.fetchOnchainTransactions({ address, network: this.onchainNetwork, case_id: caseId }).subscribe({
+      next: (result) => {
+        this.uploadResult = result;
+        this.state.setUploadResult(result);
+        if (result.case) {
+          this.state.setSelectedCase(result.case);
+        }
+        this.isFetchingOnchain = false;
+        this.statusMessage = `Povučeno ${result.rows_total} transakcija za ${address}. Učitavanje grafa i analitike...`;
+        this.loadDerivedViews(result.file_name);
+      },
+      error: (error: unknown) => {
+        this.isFetchingOnchain = false;
+        this.statusMessage = this.extractErrorMessage(error, 'Povlačenje transakcija sa blockchain-a nije uspelo.');
       },
     });
   }
