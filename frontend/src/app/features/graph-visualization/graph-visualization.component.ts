@@ -55,10 +55,10 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
 
   get graphSummary(): string {
     if (!this.graph) {
-      return 'Waiting for a graph payload from the backend.';
+      return 'Čekanje na podatke grafa sa servera.';
     }
 
-    return `${this.graph.nodes.length} nodes, ${this.graph.links.length} edges, generated ${this.graph.generated_at ?? 'n/a'}`;
+    return `${this.graph.nodes.length} čvorova, ${this.graph.links.length} veza, generisano ${this.graph.generated_at ?? 'n/a'}`;
   }
 
   get nodeCount(): number {
@@ -76,16 +76,16 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
 
     const flags: string[] = [];
     if (this.selectedNode.blacklist_flag) {
-      flags.push('Blacklist');
+      flags.push('Crna lista');
     }
     if (this.selectedNode.peel_chain_flag) {
-      flags.push('Peel chain');
+      flags.push('Peel lanac');
     }
     if (this.selectedNode.chain_hop_flag) {
-      flags.push('Chain hop');
+      flags.push('Skok lanca');
     }
     if (this.selectedNode.anomaly_flag) {
-      flags.push('Anomaly');
+      flags.push('Anomalija');
     }
     return flags;
   }

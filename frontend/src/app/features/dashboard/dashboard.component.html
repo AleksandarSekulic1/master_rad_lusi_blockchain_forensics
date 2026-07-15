@@ -2,11 +2,11 @@
   <article class="panel upload-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Evidence intake</p>
-        <h2>Safe CSV upload</h2>
+        <p class="panel-kicker">Prijem dokaza</p>
+        <h2>Bezbedno učitavanje CSV-a</h2>
       </div>
       <button class="ghost-button" type="button" (click)="refreshLatestEvidence()" [disabled]="isRefreshing">
-        Refresh latest
+        Osveži najnovije
       </button>
     </div>
 
@@ -19,39 +19,39 @@
     >
       <input type="file" accept=".csv" (change)="onFileSelected($event)" />
       <div>
-        <p>Drag and drop a blockchain CSV here</p>
+        <p>Prevucite CSV fajl sa blockchain podacima ovde</p>
         <span>{{ selectedFileLabel }}</span>
       </div>
     </div>
 
     <div class="inline-form">
       <button type="button" class="primary-button" (click)="uploadEvidence()" [disabled]="isUploading">
-        {{ isUploading ? 'Uploading...' : 'Upload and analyze' }}
+        {{ isUploading ? 'Učitavanje...' : 'Učitaj i analiziraj' }}
       </button>
     </div>
 
     <p class="active-case" *ngIf="state.selectedCaseSnapshot as activeCase; else noActiveCase">
-      Active case: <strong>{{ activeCase.name }}</strong>
+      Aktivan slučaj: <strong>{{ activeCase.name }}</strong>
     </p>
     <ng-template #noActiveCase>
       <p class="active-case muted">
-        No case selected — evidence will be filed under a new default case.
-        <a routerLink="/cases">Manage cases</a>
+        Slučaj nije izabran — dokaz će biti svrstan u novi podrazumevani slučaj.
+        <a routerLink="/cases">Upravljaj slučajevima</a>
       </p>
     </ng-template>
 
     <p class="status" [class.busy]="isUploading || isRefreshing">{{ statusMessage }}</p>
     <div class="upload-meta" *ngIf="uploadResult">
       <span>SHA-256: {{ uploadResult.sha256 }}</span>
-      <span>Rows: {{ uploadResult.rows_total }}</span>
+      <span>Redova: {{ uploadResult.rows_total }}</span>
     </div>
   </article>
 
   <article class="panel search-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Investigation search</p>
-        <h2>Search engine</h2>
+        <p class="panel-kicker">Pretraga istrage</p>
+        <h2>Pretraživač</h2>
       </div>
     </div>
 
@@ -59,49 +59,49 @@
       <input
         [(ngModel)]="searchQuery"
         type="search"
-        placeholder="Search an address, label, or cluster"
+        placeholder="Pretražite adresu, oznaku ili klaster"
         (keyup.enter)="executeSearch()"
       />
-      <button type="button" class="primary-button" (click)="executeSearch()">Search</button>
-      <button type="button" class="ghost-button" (click)="clearSearch()">Clear</button>
+      <button type="button" class="primary-button" (click)="executeSearch()">Pretraži</button>
+      <button type="button" class="ghost-button" (click)="clearSearch()">Obriši</button>
     </div>
 
     <div class="search-results" *ngIf="searchResults.length > 0; else noResults">
       <button type="button" class="result-card" *ngFor="let result of searchResults" (click)="selectSearchResult(result)">
         <strong>{{ result.node.address ?? result.node.id }}</strong>
-        <span>Risk {{ result.node.risk_score ?? 0 }} | Cluster {{ result.node.cluster_id ?? 'n/a' }}</span>
+        <span>Rizik {{ result.node.risk_score ?? 0 }} | Klaster {{ result.node.cluster_id ?? 'n/a' }}</span>
         <small>
-          {{ result.node.blacklist_flag ? 'Blacklisted' : 'Normal' }}
-          {{ result.node.anomaly_flag ? ' • Anomaly' : '' }}
-          {{ result.node.peel_chain_flag ? ' • Peel chain' : '' }}
+          {{ result.node.blacklist_flag ? 'Na crnoj listi' : 'Normalno' }}
+          {{ result.node.anomaly_flag ? ' • Anomalija' : '' }}
+          {{ result.node.peel_chain_flag ? ' • Peel lanac' : '' }}
         </small>
       </button>
     </div>
 
     <ng-template #noResults>
-      <p class="empty-state">Enter a query to inspect the loaded graph.</p>
+      <p class="empty-state">Unesite upit da biste pregledali učitani graf.</p>
     </ng-template>
   </article>
 
   <article class="metrics-row">
     <div class="metric-card">
-      <span>Total transactions</span>
+      <span>Ukupno transakcija</span>
       <strong>{{ transactionCount | number }}</strong>
     </div>
     <div class="metric-card">
-      <span>Summed volume</span>
+      <span>Ukupan promet</span>
       <strong>{{ totalVolume | number : '1.2-6' }}</strong>
     </div>
     <div class="metric-card">
-      <span>High-risk entities</span>
+      <span>Entiteti visokog rizika</span>
       <strong>{{ flaggedEntitiesCount | number }}</strong>
     </div>
     <div class="metric-card">
-      <span>Clusters</span>
+      <span>Klasteri</span>
       <strong>{{ clusterCount | number }}</strong>
     </div>
     <div class="metric-card">
-      <span>Blacklisted</span>
+      <span>Na crnoj listi</span>
       <strong>{{ blacklistedCount | number }}</strong>
     </div>
   </article>
@@ -109,35 +109,35 @@
   <article class="panel details-panel" *ngIf="state.selectedNodeSnapshot as node">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Focused entity</p>
+        <p class="panel-kicker">Fokusirani entitet</p>
         <h2>{{ node.address ?? node.id }}</h2>
       </div>
-      <span class="pill">Risk {{ node.risk_score ?? 0 }}</span>
+      <span class="pill">Rizik {{ node.risk_score ?? 0 }}</span>
     </div>
 
     <dl class="details-grid">
       <div>
-        <dt>Cluster</dt>
+        <dt>Klaster</dt>
         <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
       </div>
       <div>
-        <dt>Blacklisted</dt>
-        <dd>{{ node.blacklist_flag ? 'Yes' : 'No' }}</dd>
+        <dt>Na crnoj listi</dt>
+        <dd>{{ node.blacklist_flag ? 'Da' : 'Ne' }}</dd>
       </div>
       <div>
-        <dt>Anomaly</dt>
-        <dd>{{ node.anomaly_flag ? 'Yes' : 'No' }}</dd>
+        <dt>Anomalija</dt>
+        <dd>{{ node.anomaly_flag ? 'Da' : 'Ne' }}</dd>
       </div>
       <div>
-        <dt>Peel chain</dt>
-        <dd>{{ node.peel_chain_flag ? node.peel_chain_role ?? 'Yes' : 'No' }}</dd>
+        <dt>Peel lanac</dt>
+        <dd>{{ node.peel_chain_flag ? node.peel_chain_role ?? 'Da' : 'Ne' }}</dd>
       </div>
       <div>
-        <dt>Chain hop</dt>
-        <dd>{{ node.chain_hop_flag ? node.chain_hop_type ?? 'Yes' : 'No' }}</dd>
+        <dt>Skok lanca</dt>
+        <dd>{{ node.chain_hop_flag ? node.chain_hop_type ?? 'Da' : 'Ne' }}</dd>
       </div>
       <div>
-        <dt>Sources</dt>
+        <dt>Izvori</dt>
         <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
       </div>
     </dl>

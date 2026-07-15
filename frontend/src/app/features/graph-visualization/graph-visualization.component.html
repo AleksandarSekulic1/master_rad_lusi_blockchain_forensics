@@ -1,13 +1,13 @@
 <div class="graph-shell">
   <div class="graph-header">
     <div>
-      <p class="panel-kicker">Visual analytics</p>
-      <h2>Interactive transaction graph</h2>
+      <p class="panel-kicker">Vizuelna analitika</p>
+      <h2>Interaktivni graf transakcija</h2>
       <p>{{ graphSummary }}</p>
     </div>
     <div class="stats">
-      <span>{{ nodeCount }} nodes</span>
-      <span>{{ edgeCount }} edges</span>
+      <span>{{ nodeCount }} čvorova</span>
+      <span>{{ edgeCount }} veza</span>
     </div>
   </div>
 
@@ -15,31 +15,31 @@
     <div #graphCanvas class="graph-canvas"></div>
 
     <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
-      <p class="panel-kicker">Node details</p>
+      <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
       <dl>
         <div>
-          <dt>Risk score</dt>
+          <dt>Skor rizika</dt>
           <dd>{{ node.risk_score ?? 0 }}</dd>
         </div>
         <div>
-          <dt>Cluster</dt>
+          <dt>Klaster</dt>
           <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
         </div>
         <div>
-          <dt>Flags</dt>
-          <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : 'None' }}</dd>
+          <dt>Oznake</dt>
+          <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : 'Nema' }}</dd>
         </div>
         <div>
-          <dt>Blacklists</dt>
+          <dt>Crne liste</dt>
           <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
         </div>
         <div>
-          <dt>Peel role</dt>
+          <dt>Peel uloga</dt>
           <dd>{{ node.peel_chain_role ?? 'n/a' }}</dd>
         </div>
         <div>
-          <dt>Chain hop</dt>
+          <dt>Skok lanca</dt>
           <dd>{{ node.chain_hop_type ?? 'n/a' }}</dd>
         </div>
       </dl>
@@ -47,8 +47,8 @@
 
     <ng-template #noSelection>
       <aside class="node-inspector empty">
-        <p class="panel-kicker">Node details</p>
-        <p>Select a node to inspect its heuristics, cluster, and flags.</p>
+        <p class="panel-kicker">Detalji čvora</p>
+        <p>Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake.</p>
       </aside>
     </ng-template>
   </div>
