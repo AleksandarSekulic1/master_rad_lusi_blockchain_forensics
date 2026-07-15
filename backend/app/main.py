@@ -1,6 +1,6 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.router import api_router
+from app.api.router import api_router
 
 
 app = FastAPI(title="Lusi v1.0 API", version="1.0.0")

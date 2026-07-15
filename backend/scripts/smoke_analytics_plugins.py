@@ -10,14 +10,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.analytics.blacklist_check.service import run_blacklist_check
-from app.analytics.anomaly_detection.service import run_anomaly_detection
-from app.analytics.chain_hopping.service import run_chain_hopping
-from app.analytics.clustering.service import run_wallet_clustering
-from app.analytics.graph_building.service import build_transaction_graph
-from app.analytics.peel_chains.service import run_peel_chains
+from app.analytics.plugins.blacklist_check import run_blacklist_check
+from app.analytics.plugins.anomaly_detection import run_anomaly_detection
+from app.analytics.plugins.chain_hopping import run_chain_hopping
+from app.analytics.plugins.wallet_clustering import run_wallet_clustering
+from app.analytics.graph_building import build_transaction_graph
+from app.analytics.plugins.peel_chains import run_peel_chains
 from app.analytics.plugins.manager import run_plugin_pipeline
-from app.analytics.risk_scoring.service import run_risk_scoring
+from app.analytics.plugins.risk_scoring import run_risk_scoring
 
 
 def main() -> None:

@@ -4,12 +4,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.paths import LOGS_DIR
+
 
 def _audit_log_path() -> Path:
-    repo_root = Path(__file__).resolve().parents[4]
-    log_dir = repo_root / 'logs'
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / 'audit_log.jsonl'
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    return LOGS_DIR / 'audit_log.jsonl'
 
 
 def write_audit_log(

@@ -9,11 +9,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.analytics.graph_building.service import (
+from app.analytics.graph_building import (
     build_transaction_graph,
     transaction_graph_to_node_link_json,
 )
-from app.analytics.path_finding.service import find_transaction_paths
+from app.analytics.path_finding import find_transaction_paths
 
 
 def main() -> None:

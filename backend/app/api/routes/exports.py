@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from app.evidence.audit_log.logger import load_audit_log_entries
+from app.evidence.audit_log import load_audit_log_entries
 from app.exports.service import build_case_artifacts_from_csv
 from app.services.case_management import get_case, get_case_evidence_path
 

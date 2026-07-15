@@ -8,8 +8,8 @@ import pandas as pd
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
-from app.analytics.graph_building.service import build_transaction_graph
-from app.analytics.ingestion.csv_ingestion import clean_transaction_csv
+from app.analytics.graph_building import build_transaction_graph
+from app.analytics.ingestion import clean_transaction_csv
 from app.analytics.plugins.manager import run_plugin_pipeline
 
 

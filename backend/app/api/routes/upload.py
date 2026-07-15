@@ -7,17 +7,14 @@ from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.analytics.ingestion.csv_ingestion import clean_transaction_csv
-from app.evidence.audit_log.logger import write_audit_log
-from app.evidence.hashing.service import calculate_sha256
+from app.analytics.ingestion import clean_transaction_csv
+from app.evidence.audit_log import write_audit_log
+from app.evidence.hashing import calculate_sha256
+from app.paths import RAW_DIR
 from app.services.case_management import append_evidence, resolve_case, store_case_evidence
 
 
 router = APIRouter(prefix='/upload', tags=['upload'])
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[5]
 
 
 @router.post('/csv')
@@ -32,8 +29,7 @@ async def upload_csv(
     if not file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail='Dozvoljen je samo CSV fajl.')
 
-    repo_root = _repo_root()
-    raw_dir = repo_root / 'data' / 'raw'
+    raw_dir = RAW_DIR
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')

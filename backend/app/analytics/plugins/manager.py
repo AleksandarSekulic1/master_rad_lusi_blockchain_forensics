@@ -5,12 +5,12 @@ from typing import Any
 import networkx as nx
 import pandas as pd
 
-from app.analytics.blacklist_check.service import BlacklistCheckPlugin
-from app.analytics.anomaly_detection.service import AnomalyDetectionPlugin
-from app.analytics.chain_hopping.service import ChainHoppingPlugin
-from app.analytics.clustering.service import WalletClusteringPlugin
-from app.analytics.peel_chains.service import PeelChainsPlugin
-from app.analytics.risk_scoring.service import RiskScoringPlugin
+from app.analytics.plugins.blacklist_check import BlacklistCheckPlugin
+from app.analytics.plugins.anomaly_detection import AnomalyDetectionPlugin
+from app.analytics.plugins.chain_hopping import ChainHoppingPlugin
+from app.analytics.plugins.wallet_clustering import WalletClusteringPlugin
+from app.analytics.plugins.peel_chains import PeelChainsPlugin
+from app.analytics.plugins.risk_scoring import RiskScoringPlugin
 
 
 PLUGIN_REGISTRY = {

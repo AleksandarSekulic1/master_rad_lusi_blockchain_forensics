@@ -5,7 +5,7 @@ from typing import Any
 import networkx as nx
 import pandas as pd
 
-from app.analytics.graph_building.service import build_transaction_graph
+from app.analytics.graph_building import build_transaction_graph
 
 
 def _path_summary(graph: nx.DiGraph, path: list[str]) -> dict[str, Any]:

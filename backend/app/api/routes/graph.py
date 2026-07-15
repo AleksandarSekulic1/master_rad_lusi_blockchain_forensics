@@ -6,12 +6,13 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.analytics.graph_building.service import (
+from app.analytics.graph_building import (
     build_transaction_graph,
     transaction_graph_to_node_link_json,
 )
-from app.analytics.ingestion.csv_ingestion import clean_transaction_csv
-from app.analytics.path_finding.service import find_transaction_paths
+from app.analytics.ingestion import clean_transaction_csv
+from app.analytics.path_finding import find_transaction_paths
+from app.paths import RAW_DIR
 
 
 router = APIRouter(prefix="/graph", tags=["graph"])
@@ -26,12 +27,8 @@ class PathFindingRequest(BaseModel):
     max_paths: int = Field(default=20, ge=1, le=50)
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[5]
-
-
 def _raw_dir() -> Path:
-    return _repo_root() / "data" / "raw"
+    return RAW_DIR
 
 
 def _resolve_csv_path(file_name: str | None = None) -> Path:

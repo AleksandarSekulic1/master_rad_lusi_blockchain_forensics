@@ -11,7 +11,5 @@ __pycache__/
 # IDE
 .vscode/
 
-# Logs and exports
+# Logs
 logs/
-reports/
-data/exports/
