@@ -52,6 +52,46 @@
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
         </div>
         <div>
+          <dt>Trenutni balans</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Ukupan promet (u ovom slučaju)</dt>
+          <dd>
+            primljeno {{ node.total_received ?? 0 | number : '1.2-6' }} · poslato {{ node.total_sent ?? 0 | number : '1.2-6' }}
+          </dd>
+        </div>
+        <div>
+          <dt>Prva/poslednja aktivnost na lancu</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}
+            —
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}
+          </dd>
+        </div>
+        <div>
+          <dt>Izvor sredstava (ko je finansirao adresu)</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a') }}
+            <span *ngIf="addressEnrichment?.funding_amount_eth != null">
+              ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>ERC-20 tokeni</dt>
+          <dd *ngIf="!isEnrichingAddress">
+            <ng-container *ngIf="addressEnrichment?.tokens?.length; else noTokens">
+              {{ addressEnrichment!.tokens.join(', ') }}
+              <span *ngIf="addressEnrichment!.tokens_total_count > addressEnrichment!.tokens.length">
+                (+{{ addressEnrichment!.tokens_total_count - addressEnrichment!.tokens.length }} više)
+              </span>
+            </ng-container>
+            <ng-template #noTokens>Nema</ng-template>
+          </dd>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+        </div>
+        <div>
           <dt>Skor rizika</dt>
           <dd>{{ node.risk_score ?? 0 }}</dd>
         </div>

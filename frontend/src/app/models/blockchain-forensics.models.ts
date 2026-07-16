@@ -55,6 +55,9 @@ export interface GraphNodeData {
   chain_hop_flag?: boolean;
   chain_hop_type?: string;
   chain_hop_reasons?: string[];
+  total_received?: number;
+  total_sent?: number;
+  net_flow?: number;
   [key: string]: unknown;
 }
 
@@ -140,6 +143,13 @@ export interface AddressEnrichment {
   address: string;
   address_type: AddressType;
   ens_name: string | null;
+  balance_eth: number | null;
+  first_seen_onchain: string | null;
+  last_seen_onchain: string | null;
+  funding_source: string | null;
+  funding_amount_eth: number | null;
+  tokens: string[];
+  tokens_total_count: number;
 }
 
 export interface EvidenceEntry {
