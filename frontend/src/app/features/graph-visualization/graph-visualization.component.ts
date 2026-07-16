@@ -1,45 +1,101 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
+import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { GraphLinkData, GraphNodeData, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
+import { ApiService } from '../../core/services/api.service';
+import { CaseSummary, GraphLinkData, GraphNodeData, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
-export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDestroy {
+export class GraphVisualizationComponent implements OnInit, OnDestroy {
   @ViewChild('graphCanvas', { static: true })
   protected graphCanvas!: ElementRef<HTMLDivElement>;
 
   protected graph: NodeLinkGraphResponse | null = null;
   protected selectedNode: GraphNodeData | null = null;
   protected hasLoadedGraph = false;
+  protected activeCase: CaseSummary | null = null;
+  protected isLoadingCaseGraph = false;
+  protected caseGraphError: string | null = null;
 
   private cy: Core | null = null;
 
-  constructor(private readonly state: AnalysisStateService) {}
+  constructor(
+    private readonly state: AnalysisStateService,
+    private readonly api: ApiService,
+    private readonly destroyRef: DestroyRef,
+  ) {}
 
   ngOnInit(): void {
-    this.state.graph$.subscribe((graph) => {
+    this.state.graph$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((graph) => {
       this.graph = graph;
       this.hasLoadedGraph = Boolean(graph);
       this.renderGraph();
     });
 
-    this.state.selectedNode$.subscribe((node) => {
+    this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
       this.syncSelection();
     });
+
+    this.state.selectedCase$
+      .pipe(
+        map((caseSummary) => caseSummary?.id ?? null),
+        distinctUntilChanged(),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        this.activeCase = this.state.selectedCaseSnapshot;
+        if (this.activeCase) {
+          this.loadActiveCaseGraph();
+        }
+      });
   }
 
-  ngAfterViewInit(): void {
-    this.renderGraph();
+  loadActiveCaseGraph(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      return;
+    }
+
+    if (!this.activeCase?.evidence_count) {
+      this.graph = null;
+      this.state.setGraph(null);
+      this.caseGraphError = null;
+      return;
+    }
+
+    this.isLoadingCaseGraph = true;
+    this.caseGraphError = null;
+
+    forkJoin({
+      graph: this.api.getCaseGraph(caseId),
+      analytics: this.api.runCaseAnalytics(caseId),
+    }).subscribe({
+      next: ({ graph, analytics }) => {
+        this.state.setGraph(graph);
+        this.state.setAnalytics(analytics);
+        if (!this.state.selectedNodeSnapshot && analytics.nodes.length > 0) {
+          this.state.setSelectedNode(analytics.nodes[0]);
+        }
+        this.isLoadingCaseGraph = false;
+      },
+      error: () => {
+        this.isLoadingCaseGraph = false;
+        this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
+      },
+    });
   }
 
   ngOnDestroy(): void {
@@ -95,15 +151,14 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
       return;
     }
 
+    this.cy?.destroy();
+    this.cy = null;
+
     if (!this.graph) {
-      this.cy?.destroy();
-      this.cy = null;
       return;
     }
 
     const elements = this.buildElements(this.graph);
-
-    this.cy?.destroy();
     const graphStyles: any = [
       {
         selector: 'core',
@@ -203,7 +258,7 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
       wheelSensitivity: 0.2,
       layout: {
         name: 'cose',
-        animate: true,
+        animate: false,
         fit: true,
         padding: 60,
         randomize: false,

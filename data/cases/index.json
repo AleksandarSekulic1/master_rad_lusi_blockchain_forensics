@@ -1,6 +1,18 @@
 {
   "cases": [
     {
+      "id": "c23db4afd0f3",
+      "name": "Moj slucaj",
+      "description": "neslsms",
+      "analyst": "aco",
+      "status": "open",
+      "created_at": "2026-07-15T22:17:02.334858+00:00",
+      "updated_at": "2026-07-15T22:17:24.759213+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 2025,
+      "last_imported_at": "2026-07-15T22:17:24.759213+00:00"
+    },
+    {
       "id": "a858f96b8c07",
       "name": "test 1",
       "description": null,

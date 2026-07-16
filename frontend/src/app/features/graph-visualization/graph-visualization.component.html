@@ -1,4 +1,18 @@
 <div class="graph-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+    <button type="button" class="ghost-button" (click)="loadActiveCaseGraph()" [disabled]="!activeCase || isLoadingCaseGraph">
+      {{ isLoadingCaseGraph ? 'Učitavanje...' : 'Osveži graf slučaja' }}
+    </button>
+  </div>
+  <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
+
   <div class="graph-header">
     <div>
       <p class="panel-kicker">Vizuelna analitika</p>

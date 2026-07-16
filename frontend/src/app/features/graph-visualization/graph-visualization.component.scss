@@ -3,6 +3,51 @@
   gap: 1rem;
 }
 
+.active-case-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(125, 211, 252, 0.06);
+}
+
+.active-case-banner strong {
+  display: block;
+  color: #f4f7fe;
+}
+
+.active-case-banner .muted {
+  color: #8ea6c7;
+  font-size: 0.9rem;
+}
+
+.active-case-banner .muted a {
+  color: #7bd6ff;
+}
+
+.active-case-banner .ghost-button {
+  padding: 0.65rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+  color: #d9e6ff;
+  cursor: pointer;
+}
+
+.active-case-banner .ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.case-graph-error {
+  margin: 0;
+  color: #fca5a5;
+}
+
 .graph-header {
   display: flex;
   justify-content: space-between;

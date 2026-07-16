@@ -1,10 +1,9 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
-  AnalyticsRequest,
   AnalyticsResponse,
   AuthUser,
   Case,
@@ -77,17 +76,12 @@ export class ApiService {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.gexf`, { responseType: 'blob' });
   }
 
-  getGraph(fileName?: string): Observable<NodeLinkGraphResponse> {
-    let params = new HttpParams();
-    if (fileName) {
-      params = params.set('file_name', fileName);
-    }
-
-    return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/graph`, { params });
+  getCaseGraph(caseId: string): Observable<NodeLinkGraphResponse> {
+    return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`);
   }
 
-  runAnalytics(request: AnalyticsRequest = {}): Observable<AnalyticsResponse> {
-    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/analytics/run`, request);
+  runCaseAnalytics(caseId: string): Observable<AnalyticsResponse> {
+    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, {});
   }
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {

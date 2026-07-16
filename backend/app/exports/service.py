@@ -8,8 +8,8 @@ import pandas as pd
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
+from app.analytics.case_graph import clean_evidence_frames, combine_frames, graph_summary
 from app.analytics.graph_building import build_transaction_graph
-from app.analytics.ingestion import clean_transaction_csv
 from app.analytics.plugins.manager import run_plugin_pipeline
 
 
@@ -50,14 +50,6 @@ def _safe_text(value: object) -> str:
     return str(value)
 
 
-def _graph_summary(graph: nx.MultiDiGraph) -> dict[str, int]:
-    return {
-        'blacklisted_nodes': sum(1 for _, attrs in graph.nodes(data=True) if bool(attrs.get('blacklist_flag'))),
-        'high_risk_nodes': sum(1 for _, attrs in graph.nodes(data=True) if int(attrs.get('risk_score', 0) or 0) >= 70),
-        'clusters': int(graph.graph.get('cluster_count', 0) or 0),
-    }
-
-
 def build_case_export_context(
     *,
     case: dict[str, object],
@@ -73,7 +65,7 @@ def build_case_export_context(
         'nodes': int(graph.number_of_nodes()),
         'edges': int(graph.number_of_edges()),
         'analytics': analytics,
-        'summary': _graph_summary(graph),
+        'summary': graph_summary(graph),
         'audit_entries': audit_entries,
         'evidence_contributions': evidence_contributions or [],
         'generated_at': datetime.now(timezone.utc).isoformat(),
@@ -557,13 +549,8 @@ def build_case_artifacts_from_evidence(
     means later imports no longer hide the analysis of earlier ones, and relationships
     between addresses pulled in from different evidence files become visible too.
     """
-    per_evidence_frames = [(entry, clean_transaction_csv(path)) for entry, path in evidence_paths]
-    combined_frame = (
-        pd.concat([frame for _, frame in per_evidence_frames], ignore_index=True)
-        if per_evidence_frames
-        else pd.DataFrame(columns=['sender_address', 'recipient_address', 'amount', 'timestamp', 'metadata'])
-    )
-
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
     graph = build_transaction_graph(combined_frame)
     analytics = run_plugin_pipeline(dataframe=combined_frame, graph=graph)
 

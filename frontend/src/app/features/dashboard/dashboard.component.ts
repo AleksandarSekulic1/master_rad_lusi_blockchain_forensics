@@ -170,8 +170,8 @@ export class DashboardComponent implements OnInit {
         if (uploadResult.case) {
           this.state.setSelectedCase(uploadResult.case);
         }
-        this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje grafa i analitike...`;
-        this.loadDerivedViews(uploadResult.file_name);
+        this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje kombinovanog grafa slučaja...`;
+        this.loadCaseViews(caseId);
         this.loadOpenCases();
       },
       error: (error: unknown) => {
@@ -213,8 +213,8 @@ export class DashboardComponent implements OnInit {
           this.state.setSelectedCase(result.case);
         }
         this.isFetchingOnchain = false;
-        this.statusMessage = `Povučeno ${result.rows_total} transakcija (${result.resolved_query ?? query}). Učitavanje grafa i analitike...`;
-        this.loadDerivedViews(result.file_name);
+        this.statusMessage = `Povučeno ${result.rows_total} transakcija (${result.resolved_query ?? query}). Učitavanje kombinovanog grafa slučaja...`;
+        this.loadCaseViews(caseId);
         this.loadOpenCases();
       },
       error: (error: unknown) => {
@@ -225,7 +225,20 @@ export class DashboardComponent implements OnInit {
   }
 
   refreshLatestEvidence(): void {
-    this.bootstrapLatestCase();
+    const selectedCase = this.state.selectedCaseSnapshot;
+    if (!selectedCase) {
+      this.statusMessage = 'Izaberite slučaj da biste osvežili prikaz.';
+      return;
+    }
+
+    if (!selectedCase.evidence_count) {
+      this.statusMessage = 'Slučaj još uvek nema učitane dokaze.';
+      return;
+    }
+
+    this.isRefreshing = true;
+    this.statusMessage = 'Osvežavanje prikaza slučaja...';
+    this.loadCaseViews(selectedCase.id);
   }
 
   executeSearch(): void {
@@ -263,38 +276,37 @@ export class DashboardComponent implements OnInit {
   }
 
   private bootstrapLatestCase(): void {
-    this.isRefreshing = true;
-    this.statusMessage = 'Učitavanje najnovijeg dostupnog skupa dokaza...';
+    const selectedCase = this.state.selectedCaseSnapshot;
+    if (!selectedCase) {
+      this.statusMessage = 'Izaberite slučaj da biste videli kombinovani graf i analitiku.';
+      return;
+    }
 
-    forkJoin({
-      graph: this.api.getGraph(),
-      analytics: this.api.runAnalytics(),
-    }).subscribe({
-      next: ({ graph, analytics }) => {
-        this.applyGraphAndAnalytics(graph, analytics);
-        this.isRefreshing = false;
-        this.statusMessage = `Učitano: ${graph.source_file ?? 'poslednji dokaz'}.`;
-      },
-      error: () => {
-        this.isRefreshing = false;
-        this.statusMessage = 'Još uvek nema učitanih dokaza. Učitajte CSV da biste počeli.';
-      },
-    });
+    if (!selectedCase.evidence_count) {
+      this.statusMessage = 'Slučaj još uvek nema učitane dokaze.';
+      return;
+    }
+
+    this.isRefreshing = true;
+    this.statusMessage = 'Učitavanje kombinovanog grafa slučaja...';
+    this.loadCaseViews(selectedCase.id);
   }
 
-  private loadDerivedViews(fileName: string): void {
+  private loadCaseViews(caseId: string): void {
     forkJoin({
-      graph: this.api.getGraph(fileName),
-      analytics: this.api.runAnalytics({ file_name: fileName }),
+      graph: this.api.getCaseGraph(caseId),
+      analytics: this.api.runCaseAnalytics(caseId),
     }).subscribe({
       next: ({ graph, analytics }) => {
         this.applyGraphAndAnalytics(graph, analytics);
         this.isUploading = false;
-        this.statusMessage = `Učitan graf i analitika za ${fileName}.`;
+        this.isRefreshing = false;
+        this.statusMessage = `Učitan kombinovani graf slučaja (${graph.rows ?? graph.nodes.length} redova).`;
       },
       error: (error: unknown) => {
         this.isUploading = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje je završeno, ali analiza grafa nije uspela.');
+        this.isRefreshing = false;
+        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje grafa za slučaj nije uspelo.');
       },
     });
   }
