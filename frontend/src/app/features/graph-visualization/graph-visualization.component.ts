@@ -51,7 +51,10 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.state.graph$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((graph) => {
+    // Rendered from analytics$, not graph$: the plain /graph response has no
+    // blacklist/risk/anomaly/peel-chain data at all (that's only computed by the
+    // analytics pipeline), so coloring nodes from it would never show any warnings.
+    this.state.analytics$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((graph) => {
       this.graph = graph;
       this.hasLoadedGraph = Boolean(graph);
       this.renderGraph();
@@ -105,6 +108,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (!this.activeCase?.evidence_count) {
       this.graph = null;
       this.state.setGraph(null);
+      this.state.setAnalytics(null);
       this.caseGraphError = null;
       return;
     }
@@ -233,6 +237,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (this.selectedNode.peel_chain_flag) {
       flags.push('Peel lanac');
     }
+    if (Number(this.selectedNode.risk_score ?? 0) >= 70) {
+      flags.push('Visok rizik');
+    }
     if (this.selectedNode.chain_hop_flag) {
       flags.push('Skok lanca');
     }
@@ -282,37 +289,47 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           height: 'mapData(totalAmount, 0, 250, 36, 72)',
         },
       },
+      // Fill-color rules are ordered least → most severe: cytoscape applies later
+      // rules last, so a node matching several flags shows the most severe color
+      // while shape (hexagon/diamond) and border-style (dashed) still layer on
+      // independently - nothing is hidden when multiple flags apply at once.
       {
-        selector: 'node.high-risk',
+        selector: 'node.anomaly-node',
         style: {
-          'background-color': '#ef4444',
-          'border-color': '#fca5a5',
-        },
-      },
-      {
-        selector: 'node.blacklisted',
-        style: {
-          'background-color': '#dc2626',
-          'border-color': '#f87171',
+          'background-color': '#c98500',
+          'border-color': '#ffd479',
+          'border-style': 'dashed',
+          'border-width': 3,
         },
       },
       {
         selector: 'node.bridge-node',
         style: {
+          'background-color': '#199e70',
+          'border-color': '#6ee7c4',
           shape: 'hexagon',
+        },
+      },
+      {
+        selector: 'node.high-risk',
+        style: {
+          'background-color': '#d95926',
+          'border-color': '#ffab7a',
         },
       },
       {
         selector: 'node.peel-chain-node',
         style: {
+          'background-color': '#9085e9',
+          'border-color': '#c4bdf7',
           shape: 'diamond',
         },
       },
       {
-        selector: 'node.anomaly-node',
+        selector: 'node.blacklisted',
         style: {
-          'border-style': 'dashed',
-          'border-width': 3,
+          'background-color': '#e66767',
+          'border-color': '#f8a8a8',
         },
       },
       {
