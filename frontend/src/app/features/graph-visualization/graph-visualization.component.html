@@ -62,12 +62,12 @@
           </dd>
         </div>
         <div>
-          <dt>Prva/poslednja aktivnost na lancu</dt>
-          <dd>
-            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}
-            —
-            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}
-          </dd>
+          <dt>Prva aktivnost na lancu</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Poslednja aktivnost na lancu</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
         </div>
         <div>
           <dt>Izvor sredstava (ko je finansirao adresu)</dt>
