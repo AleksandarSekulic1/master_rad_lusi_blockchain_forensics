@@ -315,10 +315,7 @@ export class DashboardComponent implements OnInit {
     this.graphResult = analytics;
     this.state.setGraph(graph);
     this.state.setAnalytics(analytics);
-
-    if (!this.state.selectedNodeSnapshot && analytics.nodes.length > 0) {
-      this.state.setSelectedNode(analytics.nodes[0]);
-    }
+    this.state.ensureValidSelectedNode(analytics.nodes);
   }
 
   private scoreNode(node: GraphNodeData, query: string): number {

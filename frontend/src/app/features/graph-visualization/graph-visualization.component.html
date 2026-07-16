@@ -44,6 +44,14 @@
       <h3>{{ node.address ?? node.id }}</h3>
       <dl>
         <div>
+          <dt>ENS ime</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.ens_name ?? 'Nema') }}</dd>
+        </div>
+        <div>
+          <dt>Tip adrese</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
+        </div>
+        <div>
           <dt>Skor rizika</dt>
           <dd>{{ node.risk_score ?? 0 }}</dd>
         </div>

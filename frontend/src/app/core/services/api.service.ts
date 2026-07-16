@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
+  AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
   Case,
@@ -13,6 +14,7 @@ import {
   CreateUserRequest,
   FetchOnchainRequest,
   NodeLinkGraphResponse,
+  OnchainNetwork,
   PathFindingRequest,
   PathFindingResponse,
   ResetLinkResponse,
@@ -84,6 +86,11 @@ export class ApiService {
   runCaseAnalytics(caseId: string, evidence?: string | null): Observable<AnalyticsResponse> {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
     return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, {}, { params });
+  }
+
+  enrichAddress(address: string, network: OnchainNetwork = 'mainnet'): Observable<AddressEnrichment> {
+    const params = new HttpParams().set('network', network);
+    return this.http.get<AddressEnrichment>(`${this.apiUrl}/api/v1/addresses/${address}/enrich`, { params });
   }
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {

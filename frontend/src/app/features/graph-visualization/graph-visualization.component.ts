@@ -10,7 +10,14 @@ import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { CaseSummary, EvidenceEntry, GraphLinkData, GraphNodeData, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
+import {
+  AddressEnrichment,
+  CaseSummary,
+  EvidenceEntry,
+  GraphLinkData,
+  GraphNodeData,
+  NodeLinkGraphResponse,
+} from '../../models/blockchain-forensics.models';
 
 @Component({
   selector: 'app-graph-visualization',
@@ -31,6 +38,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected caseGraphError: string | null = null;
   protected evidenceOptions: EvidenceEntry[] = [];
   protected selectedEvidence: string | null = null;
+  protected addressEnrichment: AddressEnrichment | null = null;
+  protected isEnrichingAddress = false;
 
   private cy: Core | null = null;
 
@@ -50,6 +59,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
       this.syncSelection();
+      this.loadAddressEnrichment();
     });
 
     this.state.selectedCase$
@@ -108,9 +118,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       next: ({ graph, analytics }) => {
         this.state.setGraph(graph);
         this.state.setAnalytics(analytics);
-        if (!this.state.selectedNodeSnapshot && analytics.nodes.length > 0) {
-          this.state.setSelectedNode(analytics.nodes[0]);
-        }
+        this.state.ensureValidSelectedNode(analytics.nodes);
         this.isLoadingCaseGraph = false;
       },
       error: () => {
@@ -129,6 +137,36 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   onResize(): void {
     this.cy?.resize();
     this.cy?.fit(undefined, 80);
+  }
+
+  loadAddressEnrichment(): void {
+    this.addressEnrichment = null;
+    const address = this.selectedNode?.address ?? this.selectedNode?.id;
+    if (!address) {
+      return;
+    }
+
+    this.isEnrichingAddress = true;
+    this.api.enrichAddress(String(address)).subscribe({
+      next: (result) => {
+        this.addressEnrichment = result;
+        this.isEnrichingAddress = false;
+      },
+      error: () => {
+        this.isEnrichingAddress = false;
+      },
+    });
+  }
+
+  get addressTypeLabel(): string {
+    switch (this.addressEnrichment?.address_type) {
+      case 'contract':
+        return 'Pametni ugovor';
+      case 'eoa':
+        return 'Obična adresa (EOA)';
+      default:
+        return 'Nepoznato';
+    }
   }
 
   get graphSummary(): string {

@@ -134,6 +134,14 @@ export interface GraphSearchResult {
   score: number;
 }
 
+export type AddressType = 'contract' | 'eoa' | 'unknown';
+
+export interface AddressEnrichment {
+  address: string;
+  address_type: AddressType;
+  ens_name: string | null;
+}
+
 export interface EvidenceEntry {
   file_name: string;
   stored_name: string;
