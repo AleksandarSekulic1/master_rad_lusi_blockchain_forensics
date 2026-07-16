@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -76,12 +76,14 @@ export class ApiService {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.gexf`, { responseType: 'blob' });
   }
 
-  getCaseGraph(caseId: string): Observable<NodeLinkGraphResponse> {
-    return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`);
+  getCaseGraph(caseId: string, evidence?: string | null): Observable<NodeLinkGraphResponse> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`, { params });
   }
 
-  runCaseAnalytics(caseId: string): Observable<AnalyticsResponse> {
-    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, {});
+  runCaseAnalytics(caseId: string, evidence?: string | null): Observable<AnalyticsResponse> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, {}, { params });
   }
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {

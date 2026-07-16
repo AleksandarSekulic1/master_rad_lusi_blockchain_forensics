@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { distinctUntilChanged, map } from 'rxjs/operators';
@@ -9,12 +10,12 @@ import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { CaseSummary, GraphLinkData, GraphNodeData, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
+import { CaseSummary, EvidenceEntry, GraphLinkData, GraphNodeData, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
@@ -28,6 +29,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected activeCase: CaseSummary | null = null;
   protected isLoadingCaseGraph = false;
   protected caseGraphError: string | null = null;
+  protected evidenceOptions: EvidenceEntry[] = [];
+  protected selectedEvidence: string | null = null;
 
   private cy: Core | null = null;
 
@@ -57,10 +60,29 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       )
       .subscribe(() => {
         this.activeCase = this.state.selectedCaseSnapshot;
+        this.selectedEvidence = null;
+        this.evidenceOptions = [];
         if (this.activeCase) {
+          this.loadEvidenceOptions(this.activeCase.id);
           this.loadActiveCaseGraph();
         }
       });
+  }
+
+  loadEvidenceOptions(caseId: string): void {
+    this.api.getCase(caseId).subscribe({
+      next: (caseDetail) => {
+        this.evidenceOptions = caseDetail.evidence;
+      },
+      error: () => {
+        this.evidenceOptions = [];
+      },
+    });
+  }
+
+  onEvidenceSelected(storedName: string): void {
+    this.selectedEvidence = storedName || null;
+    this.loadActiveCaseGraph();
   }
 
   loadActiveCaseGraph(): void {
@@ -80,8 +102,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.caseGraphError = null;
 
     forkJoin({
-      graph: this.api.getCaseGraph(caseId),
-      analytics: this.api.runCaseAnalytics(caseId),
+      graph: this.api.getCaseGraph(caseId, this.selectedEvidence),
+      analytics: this.api.runCaseAnalytics(caseId, this.selectedEvidence),
     }).subscribe({
       next: ({ graph, analytics }) => {
         this.state.setGraph(graph);

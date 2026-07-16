@@ -80,31 +80,47 @@ def _case_evidence_paths_or_404(case: dict[str, object]) -> list[tuple[dict[str,
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _filter_evidence_paths(
+    evidence_paths: list[tuple[dict[str, object], object]],
+    stored_name: str | None,
+) -> list[tuple[dict[str, object], object]]:
+    if not stored_name:
+        return evidence_paths
+
+    filtered = [(entry, path) for entry, path in evidence_paths if entry.get('stored_name') == stored_name]
+    if not filtered:
+        raise HTTPException(status_code=404, detail=f'Evidence {stored_name} not found in case')
+    return filtered
+
+
 @router.get('/{case_id}/graph')
-def get_case_graph(case_id: str) -> dict[str, object]:
-    """Combined transaction graph across ALL evidence in the case (not just the latest file)."""
+def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, object]:
+    """Transaction graph for the case. Pass `evidence` (stored_name) to scope it to a single evidence file,
+    otherwise it is combined across ALL evidence in the case."""
     case = _get_case_or_404(case_id)
-    evidence_paths = _case_evidence_paths_or_404(case)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
 
     combined_frame, graph = build_case_graph(evidence_paths)
     payload = transaction_graph_to_node_link_json(graph)
     payload['case_id'] = case_id
+    payload['evidence'] = evidence
     payload['rows'] = int(len(combined_frame))
     payload['generated_at'] = datetime.now(timezone.utc).isoformat()
     return payload
 
 
 @router.post('/{case_id}/analytics/run')
-def run_case_analytics(case_id: str) -> dict[str, object]:
-    """Runs the full analytics pipeline over the case's combined evidence graph."""
+def run_case_analytics(case_id: str, evidence: str | None = None) -> dict[str, object]:
+    """Runs the full analytics pipeline over the case's evidence graph, optionally scoped to one evidence file."""
     case = _get_case_or_404(case_id)
-    evidence_paths = _case_evidence_paths_or_404(case)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
 
     combined_frame, graph = build_case_graph(evidence_paths)
     plugin_results = run_plugin_pipeline(dataframe=combined_frame, graph=graph)
 
     payload = transaction_graph_to_node_link_json(graph)
     payload['case_id'] = case_id
+    payload['evidence'] = evidence
     payload['rows'] = int(len(combined_frame))
     payload['generated_at'] = datetime.now(timezone.utc).isoformat()
     payload['analytics'] = plugin_results

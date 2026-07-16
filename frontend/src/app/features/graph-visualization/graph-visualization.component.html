@@ -11,6 +11,17 @@
       {{ isLoadingCaseGraph ? 'Učitavanje...' : 'Osveži graf slučaja' }}
     </button>
   </div>
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
   <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
 
   <div class="graph-header">
