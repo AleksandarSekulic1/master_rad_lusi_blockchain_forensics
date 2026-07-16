@@ -54,7 +54,11 @@ class _UnionFind:
             self.rank[root_left] += 1
 
 
-def _cluster_by_shared_transaction(dataframe: pd.DataFrame, union_find: _UnionFind) -> list[str]:
+def _cluster_by_shared_transaction(
+    dataframe: pd.DataFrame,
+    union_find: _UnionFind,
+    node_case_map: dict[str, str],
+) -> list[str]:
     grouped_addresses: list[list[str]] = []
     if dataframe.empty:
         return []
@@ -63,10 +67,13 @@ def _cluster_by_shared_transaction(dataframe: pd.DataFrame, union_find: _UnionFi
     working_frame['__cluster_key__'] = working_frame.apply(_get_group_key, axis=1)
 
     for _, group in working_frame.groupby('__cluster_key__'):
+        # Map back to the graph's real (usually mixed-case) node keys - the union-find
+        # universe is built from those, not from the lowercase-normalized addresses.
         addresses = {
-            _normalize_address(value)
+            node_case_map[normalized]
             for value in group['sender_address'].tolist()
-            if _normalize_address(value)
+            for normalized in [_normalize_address(value)]
+            if normalized and normalized in node_case_map
         }
         if len(addresses) < 2:
             continue
@@ -118,24 +125,18 @@ class WalletClusteringPlugin(BasePlugin):
         elif working_graph is None:
             working_graph = nx.DiGraph()
 
-        known_addresses = sorted({str(node) for node in working_graph.nodes})
-        if working_frame is not None and not working_frame.empty:
-            known_addresses.extend(
-                sorted(
-                    {
-                        _normalize_address(value)
-                        for column in ('sender_address', 'recipient_address')
-                        if column in working_frame.columns
-                        for value in working_frame[column].dropna().tolist()
-                        if _normalize_address(value)
-                    }
-                )
-            )
-
-        address_universe = sorted({address for address in known_addresses if address})
+        # Every sender/recipient in the dataframe is already a node in a graph built
+        # from that same dataframe (the normal call path via run_plugin_pipeline), so
+        # the union-find universe is just the graph's own (usually mixed-case) keys -
+        # a separate lowercase-normalized copy would double up each real address as
+        # two disconnected entries and silently drop out of the graph writeback below.
+        address_universe = sorted({str(node) for node in working_graph.nodes if str(node)})
         union_find = _UnionFind(address_universe)
+        node_case_map = {_normalize_address(node): node for node in working_graph.nodes}
 
-        multi_input_addresses = _cluster_by_shared_transaction(working_frame, union_find) if not working_frame.empty else []
+        multi_input_addresses = (
+            _cluster_by_shared_transaction(working_frame, union_find, node_case_map) if not working_frame.empty else []
+        )
         _cluster_by_behavior(working_graph, union_find)
 
         clusters_map: dict[str, set[str]] = defaultdict(set)

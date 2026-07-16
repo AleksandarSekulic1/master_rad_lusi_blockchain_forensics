@@ -243,6 +243,11 @@ h3 {
   border-color: #f8a8a8;
 }
 
+.legend-swatch.clustered {
+  background: transparent;
+  border: 2px dashed #22d3ee;
+}
+
 .legend-hint {
   margin: 0.9rem 0 0;
   font-size: 0.78rem;

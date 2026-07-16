@@ -194,6 +194,18 @@ def _follow_chain(
     return chain
 
 
+def _build_node_case_map(graph: nx.DiGraph) -> dict[str, str]:
+    """Maps a normalized (lowercased) address back to the graph's actual node key.
+
+    Chain-following works on addresses normalized via `_normalize_address` (lowercase),
+    but `build_transaction_graph` keeps node keys in their original case (checksummed
+    Ethereum addresses are almost always mixed-case) - without this map, `has_node()`/
+    `nodes[...]` lookups below would silently miss every real, mixed-case address and
+    never actually flag it.
+    """
+    return {_normalize_address(node): node for node in graph.nodes}
+
+
 def _chain_signature(chain: list[PeelStep]) -> tuple[str, ...]:
     return tuple(step.node for step in chain)
 
@@ -235,6 +247,7 @@ class PeelChainsPlugin(BasePlugin):
         transactions['timestamp'] = pd.to_datetime(transactions['timestamp'], utc=True, errors='coerce')
         transactions = transactions.dropna(subset=['timestamp'])
         flow_index = _build_flow_index(transactions)
+        node_case_map = _build_node_case_map(working_graph)
 
         min_seed_amount = float(context.get('min_seed_amount', 100.0))
         max_gap_minutes = int(context.get('max_gap_minutes', 180))
@@ -286,12 +299,13 @@ class PeelChainsPlugin(BasePlugin):
             confidence = min(100, int(round(40 + len(chain) * 10 + sum(1 for amount in peeled_amounts if amount > 0) * 5)))
 
             for step_index, step in enumerate(chain):
-                if working_graph.has_node(step.node):
-                    working_graph.nodes[step.node]['peel_chain_flag'] = True
-                    working_graph.nodes[step.node]['peel_chain_id'] = chain_id
-                    working_graph.nodes[step.node]['peel_chain_step'] = step_index + 1
-                    working_graph.nodes[step.node]['peel_chain_role'] = 'seed' if step_index == 0 else 'relay' if step.forwarded_to else 'terminal'
-                    working_graph.nodes[step.node]['peel_chain_score'] = confidence
+                graph_node = node_case_map.get(step.node)
+                if graph_node is not None and working_graph.has_node(graph_node):
+                    working_graph.nodes[graph_node]['peel_chain_flag'] = True
+                    working_graph.nodes[graph_node]['peel_chain_id'] = chain_id
+                    working_graph.nodes[graph_node]['peel_chain_step'] = step_index + 1
+                    working_graph.nodes[graph_node]['peel_chain_role'] = 'seed' if step_index == 0 else 'relay' if step.forwarded_to else 'terminal'
+                    working_graph.nodes[graph_node]['peel_chain_score'] = confidence
 
             chain_records.append(
                 {

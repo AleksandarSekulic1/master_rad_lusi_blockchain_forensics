@@ -332,6 +332,18 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'border-color': '#f8a8a8',
         },
       },
+      // Cluster membership uses outline-* (a ring drawn outside the border), a property
+      // independent of background-color/border-color/shape - so it layers on top of any
+      // severity color or peel-chain/bridge shape above without ever hiding it.
+      {
+        selector: 'node.clustered-node',
+        style: {
+          'outline-width': 4,
+          'outline-color': '#22d3ee',
+          'outline-style': 'dashed',
+          'outline-offset': 2,
+        },
+      },
       {
         selector: 'node:selected',
         style: {
@@ -449,6 +461,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
     if (Boolean(node.anomaly_flag)) {
       classes.push('anomaly-node');
+    }
+    if (node.cluster_id) {
+      classes.push('clustered-node');
     }
 
     return classes;
