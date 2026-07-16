@@ -8,8 +8,8 @@ import pandas as pd
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
+from app.analytics.case_graph import clean_evidence_frames, combine_frames, graph_summary
 from app.analytics.graph_building import build_transaction_graph
-from app.analytics.ingestion import clean_transaction_csv
 from app.analytics.plugins.manager import run_plugin_pipeline
 
 
@@ -57,6 +57,7 @@ def build_case_export_context(
     graph: nx.MultiDiGraph,
     analytics: dict[str, object],
     audit_entries: list[dict[str, object]],
+    evidence_contributions: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     return {
         'case': case,
@@ -64,15 +65,55 @@ def build_case_export_context(
         'nodes': int(graph.number_of_nodes()),
         'edges': int(graph.number_of_edges()),
         'analytics': analytics,
+        'summary': graph_summary(graph),
         'audit_entries': audit_entries,
+        'evidence_contributions': evidence_contributions or [],
         'generated_at': datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _frame_addresses(frame: pd.DataFrame) -> set[str]:
+    addresses: set[str] = set()
+    for column in ('sender_address', 'recipient_address'):
+        if column in frame.columns:
+            addresses.update(str(value) for value in frame[column].dropna().tolist())
+    return addresses
+
+
+def _evidence_contribution(entry: dict[str, object], frame: pd.DataFrame, graph: nx.MultiDiGraph) -> dict[str, object]:
+    """Summarizes what a single evidence file added to the case's combined analysis.
+
+    Row/volume counts come straight from that file's own cleaned data; risk and blacklist
+    counts are read back from the COMBINED graph, since an address's risk score can depend
+    on its proximity to blacklisted addresses introduced by other evidence in the same case.
+    """
+    addresses = _frame_addresses(frame)
+    high_risk = 0
+    blacklisted = 0
+    for address in addresses:
+        attrs = graph.nodes.get(address)
+        if not attrs:
+            continue
+        if int(attrs.get('risk_score', 0) or 0) >= 70:
+            high_risk += 1
+        if bool(attrs.get('blacklist_flag')):
+            blacklisted += 1
+
+    total_amount = float(frame['amount'].sum()) if 'amount' in frame.columns and not frame.empty else 0.0
+
+    return {
+        'file_name': _safe_text(entry.get('file_name')),
+        'rows': int(len(frame)),
+        'total_amount': total_amount,
+        'addresses_touched': len(addresses),
+        'high_risk_addresses': high_risk,
+        'blacklisted_addresses': blacklisted,
     }
 
 
 def build_case_csv_report(context: dict[str, object]) -> str:
     case = context['case']
-    analytics = context['analytics']
-    summary = analytics.get('summary', {}) if isinstance(analytics, dict) else {}
+    summary = context.get('summary', {}) or {}
     audit_entries = context['audit_entries'] if isinstance(context['audit_entries'], list) else []
 
     rows = [
@@ -100,6 +141,16 @@ def build_case_csv_report(context: dict[str, object]) -> str:
             ['evidence', 'size_bytes', _safe_text(entry.get('size_bytes'))],
             ['evidence', 'sha256', _safe_text(entry.get('sha256'))],
             ['evidence', 'analyst', _safe_text(entry.get('analyst'))],
+        ])
+
+    for contribution in context.get('evidence_contributions', []) or []:
+        rows.extend([
+            ['evidence_contribution', 'file_name', _safe_text(contribution.get('file_name'))],
+            ['evidence_contribution', 'rows', _safe_text(contribution.get('rows'))],
+            ['evidence_contribution', 'total_amount', _safe_text(contribution.get('total_amount'))],
+            ['evidence_contribution', 'addresses_touched', _safe_text(contribution.get('addresses_touched'))],
+            ['evidence_contribution', 'high_risk_addresses', _safe_text(contribution.get('high_risk_addresses'))],
+            ['evidence_contribution', 'blacklisted_addresses', _safe_text(contribution.get('blacklisted_addresses'))],
         ])
 
     for entry in audit_entries:
@@ -237,8 +288,7 @@ def _draw_table(
 
 def build_case_pdf_report(context: dict[str, object]) -> bytes:
     case = context['case']
-    analytics = context['analytics']
-    summary = analytics.get('summary', {}) if isinstance(analytics, dict) else {}
+    summary = context.get('summary', {}) or {}
     audit_entries = context['audit_entries'] if isinstance(context['audit_entries'], list) else []
     evidence_entries = [entry for entry in case.get('evidence', []) if isinstance(entry, dict)]
 
@@ -286,6 +336,27 @@ def build_case_pdf_report(context: dict[str, object]) -> bytes:
             for entry in evidence_entries
         ],
         empty_message='No evidence has been recorded for this case yet.',
+    )
+
+    evidence_contributions = context.get('evidence_contributions', []) or []
+    _section_title(pdf, font_family, 'Evidence contribution breakdown')
+    _draw_table(
+        pdf,
+        font_family,
+        headers=['File name', 'Rows', 'Total amount', 'Addresses', 'High-risk', 'Blacklisted'],
+        column_widths=[66, 16, 28, 24, 26, 26],
+        rows=[
+            [
+                _safe_text(contribution.get('file_name')),
+                _safe_text(contribution.get('rows')),
+                f'{float(contribution.get("total_amount", 0) or 0):.4f}',
+                _safe_text(contribution.get('addresses_touched')),
+                _safe_text(contribution.get('high_risk_addresses')),
+                _safe_text(contribution.get('blacklisted_addresses')),
+            ]
+            for contribution in evidence_contributions
+        ],
+        empty_message='No evidence contribution data available.',
     )
 
     _section_title(pdf, font_family, 'Audit log')
@@ -466,20 +537,32 @@ def build_gexf_export(graph: nx.MultiDiGraph) -> str:
     return '\n'.join(lines)
 
 
-def build_case_artifacts(
+def build_case_artifacts_from_evidence(
     *,
     case: dict[str, object],
-    cleaned_frame: pd.DataFrame,
-    graph: nx.MultiDiGraph,
+    evidence_paths: list[tuple[dict[str, object], Path]],
     audit_entries: list[dict[str, object]],
 ) -> dict[str, str | bytes]:
-    analytics = run_plugin_pipeline(dataframe=cleaned_frame, graph=graph)
+    """Builds every export artifact from ALL evidence in the case combined into one graph.
+
+    Analyzing evidence files together (rather than only the most recently imported one)
+    means later imports no longer hide the analysis of earlier ones, and relationships
+    between addresses pulled in from different evidence files become visible too.
+    """
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
+    graph = build_transaction_graph(combined_frame)
+    analytics = run_plugin_pipeline(dataframe=combined_frame, graph=graph)
+
+    evidence_contributions = [_evidence_contribution(entry, frame, graph) for entry, frame in per_evidence_frames]
+
     context = build_case_export_context(
         case=case,
-        cleaned_frame=cleaned_frame,
+        cleaned_frame=combined_frame,
         graph=graph,
         analytics=analytics,
         audit_entries=audit_entries,
+        evidence_contributions=evidence_contributions,
     )
 
     return {
@@ -488,12 +571,6 @@ def build_case_artifacts(
         'graphml': build_graphml_export(graph),
         'gexf': build_gexf_export(graph),
     }
-
-
-def build_case_artifacts_from_csv(*, case: dict[str, object], csv_path: Path, audit_entries: list[dict[str, object]]) -> dict[str, str | bytes]:
-    cleaned_frame = clean_transaction_csv(csv_path)
-    graph = build_transaction_graph(cleaned_frame)
-    return build_case_artifacts(case=case, cleaned_frame=cleaned_frame, graph=graph, audit_entries=audit_entries)
 
 
 def _escape_csv_cell(value: object) -> str:

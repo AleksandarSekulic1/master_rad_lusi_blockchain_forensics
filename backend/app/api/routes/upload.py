@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
 from app.evidence.hashing import calculate_sha256
 from app.paths import RAW_DIR
-from app.services.case_management import append_evidence, resolve_case, store_case_evidence
+from app.services.case_management import CaseClosedError, append_evidence, require_open_case, store_case_evidence
 
 
 router = APIRouter(prefix='/upload', tags=['upload'])
@@ -21,7 +21,7 @@ router = APIRouter(prefix='/upload', tags=['upload'])
 @router.post('/csv')
 async def upload_csv(
     file: UploadFile = File(...),
-    case_id: str | None = Form(default=None),
+    case_id: str = Form(...),
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> dict[str, object]:
     user = str(current_user['username'])
@@ -30,6 +30,13 @@ async def upload_csv(
 
     if not file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail='Dozvoljen je samo CSV fajl.')
+
+    try:
+        case = require_open_case(case_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CaseClosedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     raw_dir = RAW_DIR
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -45,7 +52,6 @@ async def upload_csv(
     sha256_hash = calculate_sha256(stored_path)
     size_bytes = stored_path.stat().st_size
 
-    case = resolve_case(case_id, analyst=user)
     store_case_evidence(str(case['id']), stored_path, stored_name)
     evidence_entry = append_evidence(
         str(case['id']),

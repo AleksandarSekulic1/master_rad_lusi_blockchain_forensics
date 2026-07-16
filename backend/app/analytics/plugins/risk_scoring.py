@@ -72,10 +72,16 @@ def _proximity_map(graph: nx.DiGraph, blacklisted_nodes: set[str], max_depth: in
     if not blacklisted_nodes:
         return proximity
 
+    # blacklisted_nodes is normalized (lowercase), but graph node keys keep their
+    # original case (real, checksummed Ethereum addresses are usually mixed-case) -
+    # translate back to the actual graph keys or every lookup below silently misses.
+    node_case_map = {_normalize_address(node): node for node in graph.nodes}
+    actual_sources = {node_case_map[address] for address in blacklisted_nodes if address in node_case_map}
+    if not actual_sources:
+        return proximity
+
     undirected = graph.to_undirected(as_view=True)
-    for source in blacklisted_nodes:
-        if source not in undirected:
-            continue
+    for source in actual_sources:
         distances = nx.single_source_shortest_path_length(undirected, source, cutoff=max_depth)
         for node, distance in distances.items():
             if node == source:

@@ -4,14 +4,17 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
-  AnalyticsRequest,
+  AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
   Case,
+  CaseStatus,
   CaseSummary,
   CreateCaseRequest,
   CreateUserRequest,
+  FetchOnchainRequest,
   NodeLinkGraphResponse,
+  OnchainNetwork,
   PathFindingRequest,
   PathFindingResponse,
   ResetLinkResponse,
@@ -27,14 +30,16 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  uploadCsv(file: File, caseId?: string | null): Observable<UploadCsvResponse> {
+  uploadCsv(file: File, caseId: string): Observable<UploadCsvResponse> {
     const formData = new FormData();
     formData.append('file', file, file.name);
-    if (caseId) {
-      formData.append('case_id', caseId);
-    }
+    formData.append('case_id', caseId);
 
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/upload/csv`, formData);
+  }
+
+  fetchOnchainTransactions(request: FetchOnchainRequest): Observable<UploadCsvResponse> {
+    return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/onchain/fetch`, request);
   }
 
   listCases(): Observable<{ cases: CaseSummary[] }> {
@@ -47,6 +52,14 @@ export class ApiService {
 
   getCase(caseId: string): Observable<Case> {
     return this.http.get<Case>(`${this.apiUrl}/api/v1/cases/${caseId}`);
+  }
+
+  setCaseStatus(caseId: string, status: CaseStatus): Observable<Case> {
+    return this.http.patch<Case>(`${this.apiUrl}/api/v1/cases/${caseId}/status`, { status });
+  }
+
+  deleteCase(caseId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/cases/${caseId}`);
   }
 
   exportCaseReportCsv(caseId: string): Observable<Blob> {
@@ -65,17 +78,19 @@ export class ApiService {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.gexf`, { responseType: 'blob' });
   }
 
-  getGraph(fileName?: string): Observable<NodeLinkGraphResponse> {
-    let params = new HttpParams();
-    if (fileName) {
-      params = params.set('file_name', fileName);
-    }
-
-    return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/graph`, { params });
+  getCaseGraph(caseId: string, evidence?: string | null): Observable<NodeLinkGraphResponse> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`, { params });
   }
 
-  runAnalytics(request: AnalyticsRequest = {}): Observable<AnalyticsResponse> {
-    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/analytics/run`, request);
+  runCaseAnalytics(caseId: string, evidence?: string | null): Observable<AnalyticsResponse> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, {}, { params });
+  }
+
+  enrichAddress(address: string, network: OnchainNetwork = 'mainnet'): Observable<AddressEnrichment> {
+    const params = new HttpParams().set('network', network);
+    return this.http.get<AddressEnrichment>(`${this.apiUrl}/api/v1/addresses/${address}/enrich`, { params });
   }
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {

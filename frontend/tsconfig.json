@@ -11,12 +11,8 @@
     "importHelpers": true,
     "isolatedModules": true,
     "useDefineForClassFields": false,
-    "baseUrl": ".",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "paths": {
-      "@app/*": ["src/app/*"]
-    }
+    "resolveJsonModule": true
   }
 }

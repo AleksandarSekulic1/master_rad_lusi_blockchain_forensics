@@ -89,7 +89,19 @@ def build_transaction_graph(cleaned_frame: pd.DataFrame) -> nx.DiGraph:
             last_seen=timestamp,
         )
 
+    _annotate_node_flow_totals(graph)
     return graph
+
+
+def _annotate_node_flow_totals(graph: nx.DiGraph) -> None:
+    """Adds per-node total received/sent/net-flow, summed from this case's own evidence."""
+
+    for node in graph.nodes:
+        total_received = sum(data.get('total_amount', 0.0) for _, _, data in graph.in_edges(node, data=True))
+        total_sent = sum(data.get('total_amount', 0.0) for _, _, data in graph.out_edges(node, data=True))
+        graph.nodes[node]['total_received'] = total_received
+        graph.nodes[node]['total_sent'] = total_sent
+        graph.nodes[node]['net_flow'] = total_received - total_sent
 
 
 def transaction_graph_to_node_link_json(graph: nx.DiGraph) -> dict[str, Any]:

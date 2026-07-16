@@ -6,7 +6,7 @@ import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { AnalyticsResponse, GraphNodeData, NodeLinkGraphResponse, UploadCsvResponse } from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -29,6 +29,13 @@ export class DashboardComponent implements OnInit {
   protected graphResult: NodeLinkGraphResponse | null = null;
   protected searchResults: Array<{ node: GraphNodeData; score: number }> = [];
 
+  protected onchainQuery = '';
+  protected onchainNetwork: OnchainNetwork = 'mainnet';
+  protected onchainHashMode: OnchainMode = 'address_history';
+  protected isFetchingOnchain = false;
+
+  protected openCases: CaseSummary[] = [];
+
   constructor(
     private readonly api: ApiService,
     public readonly state: AnalysisStateService,
@@ -36,6 +43,25 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.bootstrapLatestCase();
+    this.loadOpenCases();
+  }
+
+  loadOpenCases(): void {
+    this.api.listCases().subscribe({
+      next: (response) => {
+        this.openCases = response.cases.filter((entry) => entry.status === 'open');
+
+        const selectedId = this.state.selectedCaseSnapshot?.id;
+        if (selectedId && !this.openCases.some((entry) => entry.id === selectedId)) {
+          this.state.setSelectedCase(null);
+        }
+      },
+    });
+  }
+
+  onCaseSelected(caseId: string): void {
+    const found = this.openCases.find((entry) => entry.id === caseId) ?? null;
+    this.state.setSelectedCase(found);
   }
 
   get transactionCount(): number {
@@ -128,10 +154,15 @@ export class DashboardComponent implements OnInit {
       return;
     }
 
+    const caseId = this.state.selectedCaseSnapshot?.id;
+    if (!caseId) {
+      this.statusMessage = 'Izaberite slučaj pre učitavanja dokaza.';
+      return;
+    }
+
     this.isUploading = true;
     this.statusMessage = 'Učitavanje i heš-ovanje dokaza...';
 
-    const caseId = this.state.selectedCaseSnapshot?.id ?? null;
     this.api.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
@@ -139,8 +170,9 @@ export class DashboardComponent implements OnInit {
         if (uploadResult.case) {
           this.state.setSelectedCase(uploadResult.case);
         }
-        this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje grafa i analitike...`;
-        this.loadDerivedViews(uploadResult.file_name);
+        this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje kombinovanog grafa slučaja...`;
+        this.loadCaseViews(caseId);
+        this.loadOpenCases();
       },
       error: (error: unknown) => {
         this.isUploading = false;
@@ -149,8 +181,64 @@ export class DashboardComponent implements OnInit {
     });
   }
 
+  get isOnchainQueryTxHash(): boolean {
+    return /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
+  }
+
+  fetchOnchainTransactions(): void {
+    const query = this.onchainQuery.trim();
+    const isAddress = /^0x[0-9a-fA-F]{40}$/.test(query);
+    const isTxHash = /^0x[0-9a-fA-F]{64}$/.test(query);
+
+    if (!isAddress && !isTxHash) {
+      this.statusMessage = 'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera).';
+      return;
+    }
+
+    const caseId = this.state.selectedCaseSnapshot?.id;
+    if (!caseId) {
+      this.statusMessage = 'Izaberite slučaj pre povlačenja transakcija.';
+      return;
+    }
+
+    this.isFetchingOnchain = true;
+    this.statusMessage = `Povlačenje sa ${this.onchainNetwork === 'mainnet' ? 'Ethereum mainnet-a' : 'Sepolia testnet-a'}...`;
+
+    const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
+    this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
+      next: (result) => {
+        this.uploadResult = result;
+        this.state.setUploadResult(result);
+        if (result.case) {
+          this.state.setSelectedCase(result.case);
+        }
+        this.isFetchingOnchain = false;
+        this.statusMessage = `Povučeno ${result.rows_total} transakcija (${result.resolved_query ?? query}). Učitavanje kombinovanog grafa slučaja...`;
+        this.loadCaseViews(caseId);
+        this.loadOpenCases();
+      },
+      error: (error: unknown) => {
+        this.isFetchingOnchain = false;
+        this.statusMessage = this.extractErrorMessage(error, 'Povlačenje transakcija sa blockchain-a nije uspelo.');
+      },
+    });
+  }
+
   refreshLatestEvidence(): void {
-    this.bootstrapLatestCase();
+    const selectedCase = this.state.selectedCaseSnapshot;
+    if (!selectedCase) {
+      this.statusMessage = 'Izaberite slučaj da biste osvežili prikaz.';
+      return;
+    }
+
+    if (!selectedCase.evidence_count) {
+      this.statusMessage = 'Slučaj još uvek nema učitane dokaze.';
+      return;
+    }
+
+    this.isRefreshing = true;
+    this.statusMessage = 'Osvežavanje prikaza slučaja...';
+    this.loadCaseViews(selectedCase.id);
   }
 
   executeSearch(): void {
@@ -188,38 +276,37 @@ export class DashboardComponent implements OnInit {
   }
 
   private bootstrapLatestCase(): void {
-    this.isRefreshing = true;
-    this.statusMessage = 'Učitavanje najnovijeg dostupnog skupa dokaza...';
+    const selectedCase = this.state.selectedCaseSnapshot;
+    if (!selectedCase) {
+      this.statusMessage = 'Izaberite slučaj da biste videli kombinovani graf i analitiku.';
+      return;
+    }
 
-    forkJoin({
-      graph: this.api.getGraph(),
-      analytics: this.api.runAnalytics(),
-    }).subscribe({
-      next: ({ graph, analytics }) => {
-        this.applyGraphAndAnalytics(graph, analytics);
-        this.isRefreshing = false;
-        this.statusMessage = `Učitano: ${graph.source_file ?? 'poslednji dokaz'}.`;
-      },
-      error: () => {
-        this.isRefreshing = false;
-        this.statusMessage = 'Još uvek nema učitanih dokaza. Učitajte CSV da biste počeli.';
-      },
-    });
+    if (!selectedCase.evidence_count) {
+      this.statusMessage = 'Slučaj još uvek nema učitane dokaze.';
+      return;
+    }
+
+    this.isRefreshing = true;
+    this.statusMessage = 'Učitavanje kombinovanog grafa slučaja...';
+    this.loadCaseViews(selectedCase.id);
   }
 
-  private loadDerivedViews(fileName: string): void {
+  private loadCaseViews(caseId: string): void {
     forkJoin({
-      graph: this.api.getGraph(fileName),
-      analytics: this.api.runAnalytics({ file_name: fileName }),
+      graph: this.api.getCaseGraph(caseId),
+      analytics: this.api.runCaseAnalytics(caseId),
     }).subscribe({
       next: ({ graph, analytics }) => {
         this.applyGraphAndAnalytics(graph, analytics);
         this.isUploading = false;
-        this.statusMessage = `Učitan graf i analitika za ${fileName}.`;
+        this.isRefreshing = false;
+        this.statusMessage = `Učitan kombinovani graf slučaja (${graph.rows ?? graph.nodes.length} redova).`;
       },
       error: (error: unknown) => {
         this.isUploading = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje je završeno, ali analiza grafa nije uspela.');
+        this.isRefreshing = false;
+        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje grafa za slučaj nije uspelo.');
       },
     });
   }
@@ -228,10 +315,7 @@ export class DashboardComponent implements OnInit {
     this.graphResult = analytics;
     this.state.setGraph(graph);
     this.state.setAnalytics(analytics);
-
-    if (!this.state.selectedNodeSnapshot && analytics.nodes.length > 0) {
-      this.state.setSelectedNode(analytics.nodes[0]);
-    }
+    this.state.ensureValidSelectedNode(analytics.nodes);
   }
 
   private scoreNode(node: GraphNodeData, query: string): number {

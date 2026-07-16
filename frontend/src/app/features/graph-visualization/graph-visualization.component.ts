@@ -1,45 +1,136 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
+import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { GraphLinkData, GraphNodeData, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
+import { ApiService } from '../../core/services/api.service';
+import {
+  AddressEnrichment,
+  AddressType,
+  CaseSummary,
+  EvidenceEntry,
+  GraphLinkData,
+  GraphNodeData,
+  NodeLinkGraphResponse,
+} from '../../models/blockchain-forensics.models';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
-export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDestroy {
+export class GraphVisualizationComponent implements OnInit, OnDestroy {
   @ViewChild('graphCanvas', { static: true })
   protected graphCanvas!: ElementRef<HTMLDivElement>;
 
   protected graph: NodeLinkGraphResponse | null = null;
   protected selectedNode: GraphNodeData | null = null;
   protected hasLoadedGraph = false;
+  protected activeCase: CaseSummary | null = null;
+  protected isLoadingCaseGraph = false;
+  protected caseGraphError: string | null = null;
+  protected evidenceOptions: EvidenceEntry[] = [];
+  protected selectedEvidence: string | null = null;
+  protected addressEnrichment: AddressEnrichment | null = null;
+  protected isEnrichingAddress = false;
 
   private cy: Core | null = null;
 
-  constructor(private readonly state: AnalysisStateService) {}
+  constructor(
+    private readonly state: AnalysisStateService,
+    private readonly api: ApiService,
+    private readonly destroyRef: DestroyRef,
+  ) {}
 
   ngOnInit(): void {
-    this.state.graph$.subscribe((graph) => {
+    // Rendered from analytics$, not graph$: the plain /graph response has no
+    // blacklist/risk/anomaly/peel-chain data at all (that's only computed by the
+    // analytics pipeline), so coloring nodes from it would never show any warnings.
+    this.state.analytics$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((graph) => {
       this.graph = graph;
       this.hasLoadedGraph = Boolean(graph);
       this.renderGraph();
     });
 
-    this.state.selectedNode$.subscribe((node) => {
+    this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
       this.syncSelection();
+      this.loadAddressEnrichment();
+    });
+
+    this.state.selectedCase$
+      .pipe(
+        map((caseSummary) => caseSummary?.id ?? null),
+        distinctUntilChanged(),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        this.activeCase = this.state.selectedCaseSnapshot;
+        this.selectedEvidence = null;
+        this.evidenceOptions = [];
+        if (this.activeCase) {
+          this.loadEvidenceOptions(this.activeCase.id);
+          this.loadActiveCaseGraph();
+        }
+      });
+  }
+
+  loadEvidenceOptions(caseId: string): void {
+    this.api.getCase(caseId).subscribe({
+      next: (caseDetail) => {
+        this.evidenceOptions = caseDetail.evidence;
+      },
+      error: () => {
+        this.evidenceOptions = [];
+      },
     });
   }
 
-  ngAfterViewInit(): void {
-    this.renderGraph();
+  onEvidenceSelected(storedName: string): void {
+    this.selectedEvidence = storedName || null;
+    this.loadActiveCaseGraph();
+  }
+
+  loadActiveCaseGraph(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      return;
+    }
+
+    if (!this.activeCase?.evidence_count) {
+      this.graph = null;
+      this.state.setGraph(null);
+      this.state.setAnalytics(null);
+      this.caseGraphError = null;
+      return;
+    }
+
+    this.isLoadingCaseGraph = true;
+    this.caseGraphError = null;
+
+    forkJoin({
+      graph: this.api.getCaseGraph(caseId, this.selectedEvidence),
+      analytics: this.api.runCaseAnalytics(caseId, this.selectedEvidence),
+    }).subscribe({
+      next: ({ graph, analytics }) => {
+        this.state.setGraph(graph);
+        this.state.setAnalytics(analytics);
+        this.state.ensureValidSelectedNode(analytics.nodes);
+        this.isLoadingCaseGraph = false;
+      },
+      error: () => {
+        this.isLoadingCaseGraph = false;
+        this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
+      },
+    });
   }
 
   ngOnDestroy(): void {
@@ -51,6 +142,71 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
   onResize(): void {
     this.cy?.resize();
     this.cy?.fit(undefined, 80);
+  }
+
+  loadAddressEnrichment(): void {
+    this.addressEnrichment = null;
+    const address = this.selectedNode?.address ?? this.selectedNode?.id;
+    if (!address) {
+      return;
+    }
+
+    this.isEnrichingAddress = true;
+    this.api.enrichAddress(String(address)).subscribe({
+      next: (result) => {
+        this.addressEnrichment = result;
+        this.isEnrichingAddress = false;
+      },
+      error: () => {
+        this.isEnrichingAddress = false;
+      },
+    });
+  }
+
+  get addressTypeLabel(): string {
+    return this.typeLabel(this.addressEnrichment?.address_type);
+  }
+
+  get fundingSourceTypeLabel(): string {
+    return this.typeLabel(this.addressEnrichment?.funding_source_type);
+  }
+
+  /** Below this, a funding transfer looks like "just enough for gas" rather than a real
+   * transfer of value - a classic pattern for activating a fresh mule/burner wallet before
+   * routing the real illicit funds through it. */
+  private static readonly DUST_FUNDING_THRESHOLD_ETH = 0.02;
+
+  get isDustFunding(): boolean {
+    const amount = this.addressEnrichment?.funding_amount_eth;
+    return amount != null && amount > 0 && amount < GraphVisualizationComponent.DUST_FUNDING_THRESHOLD_ETH;
+  }
+
+  /** Is the funding source itself a blacklisted address in this case's own graph? A direct
+   * hit means the selected node is one hop away from an entity we already flagged. */
+  get fundingSourceBlacklistMatch(): GraphNodeData | null {
+    const fundingAddress = this.addressEnrichment?.funding_source;
+    const nodes = this.state.analyticsSnapshot?.nodes;
+    if (!fundingAddress || !nodes) {
+      return null;
+    }
+
+    const normalized = fundingAddress.toLowerCase();
+    return (
+      nodes.find(
+        (candidate) => String(candidate.address ?? candidate.id ?? '').toLowerCase() === normalized && candidate.blacklist_flag,
+      ) ?? null
+    );
+  }
+
+  private typeLabel(type: AddressType | null | undefined): string {
+    switch (type) {
+      case 'contract':
+        return 'Pametni ugovor';
+      case 'eoa':
+        return 'Obična adresa (EOA)';
+      default:
+        return 'Nepoznato';
+    }
   }
 
   get graphSummary(): string {
@@ -81,6 +237,9 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
     if (this.selectedNode.peel_chain_flag) {
       flags.push('Peel lanac');
     }
+    if (Number(this.selectedNode.risk_score ?? 0) >= 70) {
+      flags.push('Visok rizik');
+    }
     if (this.selectedNode.chain_hop_flag) {
       flags.push('Skok lanca');
     }
@@ -95,15 +254,14 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
       return;
     }
 
+    this.cy?.destroy();
+    this.cy = null;
+
     if (!this.graph) {
-      this.cy?.destroy();
-      this.cy = null;
       return;
     }
 
     const elements = this.buildElements(this.graph);
-
-    this.cy?.destroy();
     const graphStyles: any = [
       {
         selector: 'core',
@@ -131,37 +289,59 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
           height: 'mapData(totalAmount, 0, 250, 36, 72)',
         },
       },
+      // Fill-color rules are ordered least → most severe: cytoscape applies later
+      // rules last, so a node matching several flags shows the most severe color
+      // while shape (hexagon/diamond) and border-style (dashed) still layer on
+      // independently - nothing is hidden when multiple flags apply at once.
       {
-        selector: 'node.high-risk',
+        selector: 'node.anomaly-node',
         style: {
-          'background-color': '#ef4444',
-          'border-color': '#fca5a5',
-        },
-      },
-      {
-        selector: 'node.blacklisted',
-        style: {
-          'background-color': '#dc2626',
-          'border-color': '#f87171',
+          'background-color': '#c98500',
+          'border-color': '#ffd479',
+          'border-style': 'dashed',
+          'border-width': 3,
         },
       },
       {
         selector: 'node.bridge-node',
         style: {
+          'background-color': '#199e70',
+          'border-color': '#6ee7c4',
           shape: 'hexagon',
+        },
+      },
+      {
+        selector: 'node.high-risk',
+        style: {
+          'background-color': '#d95926',
+          'border-color': '#ffab7a',
         },
       },
       {
         selector: 'node.peel-chain-node',
         style: {
+          'background-color': '#9085e9',
+          'border-color': '#c4bdf7',
           shape: 'diamond',
         },
       },
       {
-        selector: 'node.anomaly-node',
+        selector: 'node.blacklisted',
         style: {
-          'border-style': 'dashed',
-          'border-width': 3,
+          'background-color': '#e66767',
+          'border-color': '#f8a8a8',
+        },
+      },
+      // Cluster membership uses outline-* (a ring drawn outside the border), a property
+      // independent of background-color/border-color/shape - so it layers on top of any
+      // severity color or peel-chain/bridge shape above without ever hiding it.
+      {
+        selector: 'node.clustered-node',
+        style: {
+          'outline-width': 4,
+          'outline-color': '#22d3ee',
+          'outline-style': 'dashed',
+          'outline-offset': 2,
         },
       },
       {
@@ -203,7 +383,7 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
       wheelSensitivity: 0.2,
       layout: {
         name: 'cose',
-        animate: true,
+        animate: false,
         fit: true,
         padding: 60,
         randomize: false,
@@ -281,6 +461,9 @@ export class GraphVisualizationComponent implements OnInit, AfterViewInit, OnDes
     }
     if (Boolean(node.anomaly_flag)) {
       classes.push('anomaly-node');
+    }
+    if (node.cluster_id) {
+      classes.push('clustered-node');
     }
 
     return classes;

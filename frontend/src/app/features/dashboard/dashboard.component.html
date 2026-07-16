@@ -10,6 +10,22 @@
       </button>
     </div>
 
+    <div class="case-picker">
+      <label>
+        Slučaj u koji se učitava dokaz
+        <select
+          [ngModel]="state.selectedCaseSnapshot?.id ?? ''"
+          (ngModelChange)="onCaseSelected($event)"
+        >
+          <option value="" disabled>-- izaberi slučaj --</option>
+          <option *ngFor="let caseEntry of openCases" [value]="caseEntry.id">{{ caseEntry.name }}</option>
+        </select>
+      </label>
+      <p class="active-case muted" *ngIf="openCases.length === 0">
+        Nema otvorenih slučajeva. <a routerLink="/cases">Kreiraj slučaj</a> pre učitavanja dokaza.
+      </p>
+    </div>
+
     <div
       class="dropzone"
       [class.dragging]="isDragging"
@@ -25,22 +41,42 @@
     </div>
 
     <div class="inline-form">
-      <button type="button" class="primary-button" (click)="uploadEvidence()" [disabled]="isUploading">
+      <button type="button" class="primary-button" (click)="uploadEvidence()" [disabled]="isUploading || !state.selectedCaseSnapshot">
         {{ isUploading ? 'Učitavanje...' : 'Učitaj i analiziraj' }}
       </button>
     </div>
 
-    <p class="active-case" *ngIf="state.selectedCaseSnapshot as activeCase; else noActiveCase">
-      Aktivan slučaj: <strong>{{ activeCase.name }}</strong>
-    </p>
-    <ng-template #noActiveCase>
-      <p class="active-case muted">
-        Slučaj nije izabran — dokaz će biti svrstan u novi podrazumevani slučaj.
-        <a routerLink="/cases">Upravljaj slučajevima</a>
-      </p>
-    </ng-template>
+    <div class="divider"><span>ili povuci sa blockchain-a</span></div>
 
-    <p class="status" [class.busy]="isUploading || isRefreshing">{{ statusMessage }}</p>
+    <div class="onchain-form">
+      <input
+        [(ngModel)]="onchainQuery"
+        type="text"
+        placeholder="0x... adresa novčanika ili heš transakcije"
+        spellcheck="false"
+      />
+      <select [(ngModel)]="onchainNetwork">
+        <option value="mainnet">Ethereum mainnet</option>
+        <option value="sepolia">Sepolia (testnet)</option>
+      </select>
+      <button type="button" class="ghost-button" (click)="fetchOnchainTransactions()" [disabled]="isFetchingOnchain || !state.selectedCaseSnapshot">
+        {{ isFetchingOnchain ? 'Povlačenje...' : 'Povuci transakcije' }}
+      </button>
+    </div>
+
+    <div class="onchain-hash-mode" *ngIf="isOnchainQueryTxHash">
+      <span>Prepoznat heš transakcije — šta da povučem?</span>
+      <label>
+        <input type="radio" name="onchainHashMode" value="address_history" [(ngModel)]="onchainHashMode" />
+        Celu istoriju pošiljaoca (preporučeno)
+      </label>
+      <label>
+        <input type="radio" name="onchainHashMode" value="tx_single" [(ngModel)]="onchainHashMode" />
+        Samo ovu transakciju
+      </label>
+    </div>
+
+    <p class="status" [class.busy]="isUploading || isRefreshing || isFetchingOnchain">{{ statusMessage }}</p>
     <div class="upload-meta" *ngIf="uploadResult">
       <span>SHA-256: {{ uploadResult.sha256 }}</span>
       <span>Redova: {{ uploadResult.rows_total }}</span>

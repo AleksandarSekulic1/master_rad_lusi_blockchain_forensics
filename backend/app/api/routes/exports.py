@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from app.evidence.audit_log import load_audit_log_entries
-from app.exports.service import build_case_artifacts_from_csv
-from app.services.case_management import get_case, get_case_evidence_path
+from app.exports.service import build_case_artifacts_from_evidence
+from app.services.case_management import get_case, get_case_evidence_paths
 
 
 router = APIRouter(prefix='/exports', tags=['exports'])
@@ -24,12 +24,12 @@ def _case_artifacts(case_id: str) -> tuple[dict[str, object], dict[str, str | by
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     try:
-        csv_path = get_case_evidence_path(case)
+        evidence_paths = get_case_evidence_paths(case)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     audit_entries = load_audit_log_entries(case_id=case_id)
-    artifacts = build_case_artifacts_from_csv(case=case, csv_path=csv_path, audit_entries=audit_entries)
+    artifacts = build_case_artifacts_from_evidence(case=case, evidence_paths=evidence_paths, audit_entries=audit_entries)
     return case, artifacts
 
 

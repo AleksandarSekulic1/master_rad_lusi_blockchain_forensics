@@ -131,15 +131,36 @@ def update_case(case: dict[str, object]) -> dict[str, object]:
     return normalized
 
 
-def resolve_case(case_id: str | None, *, analyst: str = 'system') -> dict[str, object]:
-    if case_id:
-        return get_case(case_id)
+class CaseClosedError(Exception):
+    """Raised when evidence is submitted against a case that isn't open."""
 
-    existing_cases = list_cases()
-    if existing_cases:
-        return get_case(str(existing_cases[0]['id']))
 
-    return create_case(name='Default investigation case', analyst=analyst)
+def require_open_case(case_id: str) -> dict[str, object]:
+    case = get_case(case_id)
+    if case.get('status') != 'open':
+        raise CaseClosedError(f'Slučaj "{case.get("name")}" je zatvoren i ne prima nove dokaze.')
+    return case
+
+
+def set_case_status(case_id: str, status: str) -> dict[str, object]:
+    if status not in ('open', 'closed'):
+        raise ValueError('Status mora biti "open" ili "closed".')
+
+    case = get_case(case_id)
+    case['status'] = status
+    case['updated_at'] = _timestamp()
+    return update_case(case)
+
+
+def delete_case(case_id: str) -> None:
+    case_dir = _case_dir(case_id)
+    if not case_dir.exists():
+        raise FileNotFoundError(f'Case not found: {case_id}')
+
+    shutil.rmtree(case_dir, ignore_errors=True)
+
+    cases = [entry for entry in list_cases() if entry.get('id') != case_id]
+    _save_index(cases)
 
 
 def append_evidence(
@@ -177,19 +198,26 @@ def store_case_evidence(case_id: str, source_path: Path, stored_name: str) -> Pa
     return destination
 
 
-def get_case_evidence_path(case: dict[str, object], file_name: str | None = None) -> Path:
+def _resolve_evidence_path(case_id: str, stored_name: str) -> Path:
+    candidates = [
+        RAW_DIR / stored_name,
+        _case_dir(case_id) / 'evidence' / stored_name,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+
+    raise FileNotFoundError(f'Evidence file not found: {stored_name}')
+
+
+def get_case_evidence_paths(case: dict[str, object]) -> list[tuple[dict[str, object], Path]]:
+    """Returns every evidence entry in the case paired with its resolved file path.
+
+    Used by report/graph export so the analysis reflects ALL evidence in the case,
+    not just the most recently imported file.
+    """
     evidence = [entry for entry in case.get('evidence', []) if isinstance(entry, dict)]
     if not evidence:
         raise FileNotFoundError(f'No evidence recorded for case {case["id"]}')
 
-    selected_name = file_name or str(evidence[-1]['stored_name'])
-    evidence_paths = [
-        RAW_DIR / selected_name,
-        _case_dir(str(case['id'])) / 'evidence' / selected_name,
-    ]
-
-    for path in evidence_paths:
-        if path.exists():
-            return path
-
-    raise FileNotFoundError(f'Evidence file not found: {selected_name}')
+    return [(entry, _resolve_evidence_path(str(case['id']), str(entry['stored_name']))) for entry in evidence]

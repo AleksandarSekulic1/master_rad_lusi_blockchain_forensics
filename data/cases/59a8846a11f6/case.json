@@ -1,0 +1,46 @@
+{
+  "id": "59a8846a11f6",
+  "name": "Moj slucak",
+  "description": "rucak",
+  "analyst": "aco",
+  "status": "closed",
+  "created_at": "2026-07-15T17:50:49.832110+00:00",
+  "updated_at": "2026-07-15T19:07:32.748642+00:00",
+  "evidence": [
+    {
+      "file_name": "onchain_mainnet_0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045.csv",
+      "stored_name": "20260715_175140_051261_onchain_mainnet_0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045.csv",
+      "imported_at": "2026-07-15T17:51:40.170543+00:00",
+      "size_bytes": 180543,
+      "sha256": "33cfcfc0ce0835e22b7d0231090c6ba7a41fedcfaf7e3b276c21a72808c32703",
+      "analyst": "aco"
+    },
+    {
+      "file_name": "onchain_mainnet_0xD7711559879aB70E0D0727cef9d7C7D1dBBcA7Bb.csv",
+      "stored_name": "20260715_180210_439717_onchain_mainnet_0xD7711559879aB70E0D0727cef9d7C7D1dBBcA7Bb.csv",
+      "imported_at": "2026-07-15T18:02:10.575847+00:00",
+      "size_bytes": 65663,
+      "sha256": "83f88858688dcb8aecb638a6bc3e714fe0e8064bab29a22727a6c4594cabb9b6",
+      "analyst": "aco"
+    },
+    {
+      "file_name": "onchain_mainnet_tx_single_0x62384f60a865ffac768053634858be784d4ed1687863112b001afe695b5afbff.csv",
+      "stored_name": "20260715_183033_062299_onchain_mainnet_tx_single_0x62384f60a865ffac768053634858be784d4ed1687863112b001afe695b5afbff.csv",
+      "imported_at": "2026-07-15T18:30:33.159188+00:00",
+      "size_bytes": 242,
+      "sha256": "35198bd19ba12378e8dfc1474a877d7d225a9afb5cb597457fc264d3d95a909a",
+      "analyst": "aco"
+    },
+    {
+      "file_name": "onchain_mainnet_tx_expand_sender_0x782ad740c44eebd3a915a3df66572f238ace7fa5.csv",
+      "stored_name": "20260715_183046_059106_onchain_mainnet_tx_expand_sender_0x782ad740c44eebd3a915a3df66572f238ace7fa5.csv",
+      "imported_at": "2026-07-15T18:30:46.183627+00:00",
+      "size_bytes": 183473,
+      "sha256": "63f3a9f422c137011503931a776afc361e1392ac8ec8fa34be68e3ddc29fddf6",
+      "analyst": "aco"
+    }
+  ],
+  "evidence_count": 4,
+  "total_size_bytes": 429921,
+  "last_imported_at": "2026-07-15T18:30:46.183627+00:00"
+}

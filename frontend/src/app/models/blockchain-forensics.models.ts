@@ -22,6 +22,17 @@ export interface UploadCsvResponse {
   preview: TransactionPreviewRow[];
   case?: CaseSummary;
   evidence?: EvidenceEntry;
+  resolved_query?: string;
+}
+
+export type OnchainNetwork = 'mainnet' | 'sepolia';
+export type OnchainMode = 'address_history' | 'tx_single' | 'tx_expand_sender';
+
+export interface FetchOnchainRequest {
+  query: string;
+  network: OnchainNetwork;
+  case_id: string;
+  mode: OnchainMode;
 }
 
 export interface GraphNodeData {
@@ -44,6 +55,9 @@ export interface GraphNodeData {
   chain_hop_flag?: boolean;
   chain_hop_type?: string;
   chain_hop_reasons?: string[];
+  total_received?: number;
+  total_sent?: number;
+  net_flow?: number;
   [key: string]: unknown;
 }
 
@@ -123,6 +137,23 @@ export interface GraphSearchResult {
   score: number;
 }
 
+export type AddressType = 'contract' | 'eoa' | 'unknown';
+
+export interface AddressEnrichment {
+  address: string;
+  address_type: AddressType;
+  ens_name: string | null;
+  balance_eth: number | null;
+  first_seen_onchain: string | null;
+  last_seen_onchain: string | null;
+  funding_source: string | null;
+  funding_amount_eth: number | null;
+  funding_source_type: AddressType | null;
+  funding_source_ens: string | null;
+  tokens: string[];
+  tokens_total_count: number;
+}
+
 export interface EvidenceEntry {
   file_name: string;
   stored_name: string;
@@ -132,12 +163,14 @@ export interface EvidenceEntry {
   analyst: string;
 }
 
+export type CaseStatus = 'open' | 'closed';
+
 export interface CaseSummary {
   id: string;
   name: string;
   description: string | null;
   analyst: string;
-  status: string;
+  status: CaseStatus;
   created_at: string;
   updated_at: string;
   evidence_count: number;

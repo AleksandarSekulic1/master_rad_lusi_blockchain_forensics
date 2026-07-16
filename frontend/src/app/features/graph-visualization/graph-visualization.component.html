@@ -1,4 +1,29 @@
 <div class="graph-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+    <button type="button" class="ghost-button" (click)="loadActiveCaseGraph()" [disabled]="!activeCase || isLoadingCaseGraph">
+      {{ isLoadingCaseGraph ? 'Učitavanje...' : 'Osveži graf slučaja' }}
+    </button>
+  </div>
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+  <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
+
   <div class="graph-header">
     <div>
       <p class="panel-kicker">Vizuelna analitika</p>
@@ -19,6 +44,79 @@
       <h3>{{ node.address ?? node.id }}</h3>
       <dl>
         <div>
+          <dt>ENS ime</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.ens_name ?? 'Nema') }}</dd>
+        </div>
+        <div>
+          <dt>Tip adrese</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
+        </div>
+        <div>
+          <dt>Trenutni balans</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Ukupan promet (u ovom slučaju)</dt>
+          <dd>
+            primljeno {{ node.total_received ?? 0 | number : '1.2-6' }} · poslato {{ node.total_sent ?? 0 | number : '1.2-6' }}
+          </dd>
+        </div>
+        <div>
+          <dt>Prva aktivnost na lancu</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Poslednja aktivnost na lancu</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Izvor sredstava (ko je finansirao adresu)</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a') }}
+            <span *ngIf="addressEnrichment?.funding_amount_eth != null">
+              ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Tip izvora sredstava</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
+            <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
+          </dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
+          <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}Sumnjivo mali iznos finansiranja ("dust")</dt>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+          <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
+          <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">Ne</dd>
+          <dd *ngIf="!isEnrichingAddress && isDustFunding">
+            Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.
+          </dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
+          <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}Direktna veza sa crnom listom</dt>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+          <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">Ne</dd>
+          <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
+            Izvor sredstava je na crnoj listi u ovom slučaju: {{ flaggedSource.blacklist_label ?? 'Nema opisa' }}
+            <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
+          </dd>
+        </div>
+        <div>
+          <dt>ERC-20 tokeni</dt>
+          <dd *ngIf="!isEnrichingAddress">
+            <ng-container *ngIf="addressEnrichment?.tokens?.length; else noTokens">
+              {{ addressEnrichment!.tokens.join(', ') }}
+              <span *ngIf="addressEnrichment!.tokens_total_count > addressEnrichment!.tokens.length">
+                (+{{ addressEnrichment!.tokens_total_count - addressEnrichment!.tokens.length }} više)
+              </span>
+            </ng-container>
+            <ng-template #noTokens>Nema</ng-template>
+          </dd>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+        </div>
+        <div>
           <dt>Skor rizika</dt>
           <dd>{{ node.risk_score ?? 0 }}</dd>
         </div>
@@ -26,9 +124,9 @@
           <dt>Klaster</dt>
           <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
         </div>
-        <div>
-          <dt>Oznake</dt>
-          <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : 'Nema' }}</dd>
+        <div [class.blacklist-warning]="selectedNodeFlags.length > 0">
+          <dt>{{ selectedNodeFlags.length > 0 ? '⚠ ' : '' }}Zašto je čvor sumnjiv (oznake)</dt>
+          <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : 'Nema — čvor nije označen' }}</dd>
         </div>
         <div>
           <dt>Crne liste</dt>
@@ -51,5 +149,44 @@
         <p>Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake.</p>
       </aside>
     </ng-template>
+  </div>
+
+  <div class="graph-legend">
+    <p class="panel-kicker">Legenda — zašto je čvor obojen tako</p>
+    <div class="legend-items">
+      <div class="legend-item">
+        <span class="legend-swatch normal"></span>
+        Normalno — bez detektovanih upozorenja
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch anomaly"></span>
+        Anomalija (isprekidana ivica) — neuobičajen obrazac transakcija
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch chain-hop"></span>
+        Skok lanca (šestougao) — sredstva prelaze između različitih mostova/mreža
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch high-risk"></span>
+        Visok skor rizika (≥ 70)
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch peel-chain"></span>
+        Peel lanac (dijamant) — postepeno "guljenje" manjih iznosa iz glavne sume
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch blacklisted"></span>
+        Na crnoj listi — potvrđeno zlonamerna adresa
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch clustered"></span>
+        Deo klastera (isprekidan prsten) — verovatno ista osoba/grupa iza više adresa
+      </div>
+    </div>
+    <p class="legend-hint">
+      Kliknite na čvor da vidite tačno zbog čega je označen kao sumnjiv (polje "Zašto je čvor sumnjiv" u panelu desno).
+      Čvor može imati više upozorenja odjednom — boja uvek prikazuje najozbiljnije, dok oblik i ivica čuvaju ostale.
+      Klaster (prsten) je nezavisan od boje/oblika i može se pojaviti uz bilo koje upozorenje.
+    </p>
   </div>
 </div>
