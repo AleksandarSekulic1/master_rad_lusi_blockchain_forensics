@@ -148,6 +148,8 @@ export interface AddressEnrichment {
   last_seen_onchain: string | null;
   funding_source: string | null;
   funding_amount_eth: number | null;
+  funding_source_type: AddressType | null;
+  funding_source_ens: string | null;
   tokens: string[];
   tokens_total_count: number;
 }

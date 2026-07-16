@@ -12,6 +12,7 @@ import { AnalysisStateService } from '../../core/services/analysis-state.service
 import { ApiService } from '../../core/services/api.service';
 import {
   AddressEnrichment,
+  AddressType,
   CaseSummary,
   EvidenceEntry,
   GraphLinkData,
@@ -159,7 +160,42 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   get addressTypeLabel(): string {
-    switch (this.addressEnrichment?.address_type) {
+    return this.typeLabel(this.addressEnrichment?.address_type);
+  }
+
+  get fundingSourceTypeLabel(): string {
+    return this.typeLabel(this.addressEnrichment?.funding_source_type);
+  }
+
+  /** Below this, a funding transfer looks like "just enough for gas" rather than a real
+   * transfer of value - a classic pattern for activating a fresh mule/burner wallet before
+   * routing the real illicit funds through it. */
+  private static readonly DUST_FUNDING_THRESHOLD_ETH = 0.02;
+
+  get isDustFunding(): boolean {
+    const amount = this.addressEnrichment?.funding_amount_eth;
+    return amount != null && amount > 0 && amount < GraphVisualizationComponent.DUST_FUNDING_THRESHOLD_ETH;
+  }
+
+  /** Is the funding source itself a blacklisted address in this case's own graph? A direct
+   * hit means the selected node is one hop away from an entity we already flagged. */
+  get fundingSourceBlacklistMatch(): GraphNodeData | null {
+    const fundingAddress = this.addressEnrichment?.funding_source;
+    const nodes = this.state.analyticsSnapshot?.nodes;
+    if (!fundingAddress || !nodes) {
+      return null;
+    }
+
+    const normalized = fundingAddress.toLowerCase();
+    return (
+      nodes.find(
+        (candidate) => String(candidate.address ?? candidate.id ?? '').toLowerCase() === normalized && candidate.blacklist_flag,
+      ) ?? null
+    );
+  }
+
+  private typeLabel(type: AddressType | null | undefined): string {
+    switch (type) {
       case 'contract':
         return 'Pametni ugovor';
       case 'eoa':

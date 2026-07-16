@@ -157,6 +157,21 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.node-inspector .blacklist-warning {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.node-inspector .blacklist-warning dt {
+  color: #fca5a5;
+}
+
+.node-inspector .blacklist-warning dd {
+  color: #fecaca;
+}
+
 .node-inspector.empty {
   display: grid;
   place-items: center;

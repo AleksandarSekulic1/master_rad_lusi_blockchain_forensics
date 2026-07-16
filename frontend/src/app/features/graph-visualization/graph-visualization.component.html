@@ -79,6 +79,31 @@
           </dd>
         </div>
         <div>
+          <dt>Tip izvora sredstava</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
+            <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
+          </dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
+          <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}Sumnjivo mali iznos finansiranja ("dust")</dt>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+          <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
+          <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">Ne</dd>
+          <dd *ngIf="!isEnrichingAddress && isDustFunding">
+            Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.
+          </dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
+          <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}Direktna veza sa crnom listom</dt>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+          <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">Ne</dd>
+          <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
+            Izvor sredstava je na crnoj listi u ovom slučaju: {{ flaggedSource.blacklist_label ?? 'Nema opisa' }}
+            <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
+          </dd>
+        </div>
+        <div>
           <dt>ERC-20 tokeni</dt>
           <dd *ngIf="!isEnrichingAddress">
             <ng-container *ngIf="addressEnrichment?.tokens?.length; else noTokens">

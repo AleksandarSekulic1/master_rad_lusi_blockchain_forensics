@@ -128,6 +128,8 @@ def get_activity_and_funding(address: str, network: str = 'mainnet') -> dict[str
         'last_seen_onchain': None,
         'funding_source': None,
         'funding_amount_eth': None,
+        'funding_source_type': None,
+        'funding_source_ens': None,
     }
     if not _is_valid_address(address):
         return empty
@@ -146,8 +148,16 @@ def get_activity_and_funding(address: str, network: str = 'mainnet') -> dict[str
         # Only a genuine "funding" event if the address's very first on-chain appearance
         # was as the *recipient* (an address whose first activity was outgoing wasn't funded by it).
         if str(first_tx.get('to', '')).lower() == address.lower():
-            result['funding_source'] = first_tx.get('from')
+            funding_source = str(first_tx.get('from', ''))
+            result['funding_source'] = funding_source
             result['funding_amount_eth'] = _wei_to_eth(first_tx.get('value', 0))
+            # A shallow look at *who* funded this wallet: a known exchange/mixer contract
+            # is a much bigger forensic lead than an ordinary EOA-to-EOA transfer.
+            try:
+                result['funding_source_type'] = get_address_type(funding_source, network)
+            except (RuntimeError, ValueError):
+                result['funding_source_type'] = 'unknown'
+            result['funding_source_ens'] = get_ens_name(funding_source)
     if last_tx:
         result['last_seen_onchain'] = _to_iso_timestamp(last_tx.get('timeStamp', 0))
 
