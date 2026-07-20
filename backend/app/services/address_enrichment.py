@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal
 
 import requests
@@ -11,11 +14,33 @@ _ADDRESS_PATTERN = re.compile(r'^0x[0-9a-fA-F]{40}$')
 
 ENS_RESOLVE_URL = 'https://api.ensideas.com/ens/resolve/{address}'
 
+KNOWN_ENTITIES_PATH = Path(__file__).parent / 'known_entities.json'
+
 AddressType = Literal['contract', 'eoa', 'unknown']
+KnownEntityCategory = Literal['exchange', 'mixer', 'sanctioned']
 
 
 def _is_valid_address(address: str) -> bool:
     return bool(_ADDRESS_PATTERN.match(address))
+
+
+@lru_cache(maxsize=1)
+def _known_entities() -> dict[str, dict[str, str]]:
+    """Curated address -> {name, category} lookup for well-known exchanges, mixers and
+    OFAC-sanctioned addresses, sourced from Etherscan's own public labels (see
+    known_entities.json). Local dict lookup - no network call, no rate limit."""
+    with KNOWN_ENTITIES_PATH.open(encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def get_known_entity(address: str) -> dict[str, str] | None:
+    """Whoever publicly controls this address, if it's a known exchange, mixer, or
+    OFAC-sanctioned address - the practical, honest substitute for "who created this
+    transaction": we can't geolocate a wallet, but a known platform has a real-world
+    operator and jurisdiction that a subpoena can actually reach."""
+    if not _is_valid_address(address):
+        return None
+    return _known_entities().get(address.lower())
 
 
 def get_address_type(address: str, network: str = 'mainnet') -> AddressType:
@@ -130,6 +155,8 @@ def get_activity_and_funding(address: str, network: str = 'mainnet') -> dict[str
         'funding_amount_eth': None,
         'funding_source_type': None,
         'funding_source_ens': None,
+        'funding_source_entity': None,
+        'funding_source_entity_category': None,
     }
     if not _is_valid_address(address):
         return empty
@@ -158,6 +185,10 @@ def get_activity_and_funding(address: str, network: str = 'mainnet') -> dict[str
             except (RuntimeError, ValueError):
                 result['funding_source_type'] = 'unknown'
             result['funding_source_ens'] = get_ens_name(funding_source)
+            entity = get_known_entity(funding_source)
+            if entity:
+                result['funding_source_entity'] = entity['name']
+                result['funding_source_entity_category'] = entity['category']
     if last_tx:
         result['last_seen_onchain'] = _to_iso_timestamp(last_tx.get('timeStamp', 0))
 
@@ -215,11 +246,15 @@ def enrich_address(address: str, network: str = 'mainnet') -> dict[str, Any]:
     except (RuntimeError, ValueError):
         address_type = 'unknown'
 
+    known_entity = get_known_entity(address)
+
     return {
         'address': address,
         'address_type': address_type,
         'ens_name': get_ens_name(address),
         'balance_eth': get_balance_eth(address, network),
+        'known_entity': known_entity['name'] if known_entity else None,
+        'known_entity_category': known_entity['category'] if known_entity else None,
         **get_activity_and_funding(address, network),
         **get_token_symbols(address, network),
     }

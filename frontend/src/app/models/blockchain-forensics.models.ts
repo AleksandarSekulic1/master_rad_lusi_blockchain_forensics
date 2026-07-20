@@ -138,18 +138,23 @@ export interface GraphSearchResult {
 }
 
 export type AddressType = 'contract' | 'eoa' | 'unknown';
+export type KnownEntityCategory = 'exchange' | 'mixer' | 'sanctioned';
 
 export interface AddressEnrichment {
   address: string;
   address_type: AddressType;
   ens_name: string | null;
   balance_eth: number | null;
+  known_entity: string | null;
+  known_entity_category: KnownEntityCategory | null;
   first_seen_onchain: string | null;
   last_seen_onchain: string | null;
   funding_source: string | null;
   funding_amount_eth: number | null;
   funding_source_type: AddressType | null;
   funding_source_ens: string | null;
+  funding_source_entity: string | null;
+  funding_source_entity_category: KnownEntityCategory | null;
   tokens: string[];
   tokens_total_count: number;
 }

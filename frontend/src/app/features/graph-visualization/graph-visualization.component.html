@@ -57,6 +57,13 @@
           <dt>Tip adrese</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
         </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
+          <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.known_entity ?? 'Nepoznat') }}
+            <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+          </dd>
+        </div>
         <div>
           <dt>Trenutni balans</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
@@ -89,6 +96,16 @@
           <dd>
             {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
             <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
+          </dd>
+        </div>
+        <div
+          *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
+          [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
+        >
+          <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet izvora</dt>
+          <dd>
+            {{ addressEnrichment!.funding_source_entity ?? 'Nepoznat' }}
+            <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
           </dd>
         </div>
         <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">

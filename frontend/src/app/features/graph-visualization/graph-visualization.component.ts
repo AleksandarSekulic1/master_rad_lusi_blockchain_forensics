@@ -19,6 +19,7 @@ import {
   AddressEnrichment,
   AddressType,
   CaseSummary,
+  KnownEntityCategory,
   EvidenceEntry,
   GraphLinkData,
   GraphNodeData,
@@ -221,6 +222,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         return 'Obična adresa (EOA)';
       default:
         return 'Nepoznato';
+    }
+  }
+
+  entityCategoryLabel(category: KnownEntityCategory): string {
+    switch (category) {
+      case 'exchange':
+        return 'berza';
+      case 'mixer':
+        return 'mikser za prikrivanje sredstava';
+      case 'sanctioned':
+        return 'OFAC sankcionisano';
+      default:
+        return category;
     }
   }
 
