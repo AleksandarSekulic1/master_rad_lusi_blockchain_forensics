@@ -127,6 +127,24 @@ h3 {
   overflow: hidden;
 }
 
+.graph-canvas-wrap {
+  position: relative;
+}
+
+.layout-status {
+  position: absolute;
+  top: 0.85rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.9);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  color: #7dd3fc;
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
 .node-inspector {
   padding: 1rem;
 }

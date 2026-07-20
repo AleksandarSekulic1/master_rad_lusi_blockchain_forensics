@@ -7,6 +7,11 @@ import { forkJoin } from 'rxjs';
 import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition } from 'cytoscape';
+import fcose from 'cytoscape-fcose';
+import layoutUtilities from 'cytoscape-layout-utilities';
+
+cytoscape.use(fcose);
+cytoscape.use(layoutUtilities);
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
@@ -40,9 +45,11 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected evidenceOptions: EvidenceEntry[] = [];
   protected selectedEvidence: string | null = null;
   protected addressEnrichment: AddressEnrichment | null = null;
+  protected isLayoutRunning = false;
   protected isEnrichingAddress = false;
 
   private cy: Core | null = null;
+  private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -136,12 +143,20 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.cy?.destroy();
     this.cy = null;
+    if (this.layoutIndicatorTimer !== null) {
+      clearTimeout(this.layoutIndicatorTimer);
+      this.layoutIndicatorTimer = null;
+    }
   }
 
   @HostListener('window:resize')
   onResize(): void {
     this.cy?.resize();
     this.cy?.fit(undefined, 80);
+  }
+
+  fitWholeGraph(): void {
+    this.cy?.fit(undefined, 60);
   }
 
   loadAddressEnrichment(): void {
@@ -256,12 +271,24 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
     this.cy?.destroy();
     this.cy = null;
+    if (this.layoutIndicatorTimer !== null) {
+      clearTimeout(this.layoutIndicatorTimer);
+      this.layoutIndicatorTimer = null;
+    }
+    this.isLayoutRunning = false;
 
     if (!this.graph) {
       return;
     }
 
     const elements = this.buildElements(this.graph);
+    const nodeCount = this.graph.nodes.length;
+    // Smaller nodes leave more breathing room for the layout to actually spread a
+    // dense graph out - at hundreds of nodes, keeping the small-graph node size would
+    // force overlap no matter how strong the layout's separation forces are.
+    const sizeScale = nodeCount > 150 ? 0.4 : nodeCount > 60 ? 0.65 : 1;
+    const minNodeSize = Math.round(36 * sizeScale);
+    const maxNodeSize = Math.round(72 * sizeScale);
     const graphStyles: any = [
       {
         selector: 'core',
@@ -279,14 +306,15 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'text-valign': 'center',
           'text-halign': 'center',
           'font-size': 11,
+          'min-zoomed-font-size': 8,
           color: '#ecf2ff',
           'text-outline-width': 2,
           'text-outline-color': '#07111f',
           'background-color': '#4f8cff',
           'border-width': 2,
           'border-color': '#9bd1ff',
-          width: 'mapData(totalAmount, 0, 250, 36, 72)',
-          height: 'mapData(totalAmount, 0, 250, 36, 72)',
+          width: `mapData(totalAmount, 0, 250, ${minNodeSize}, ${maxNodeSize})`,
+          height: `mapData(totalAmount, 0, 250, ${minNodeSize}, ${maxNodeSize})`,
         },
       },
       // Fill-color rules are ordered least → most severe: cytoscape applies later
@@ -363,6 +391,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           opacity: 0.72,
           label: 'data(label)',
           'font-size': 9,
+          'min-zoomed-font-size': 7,
           color: '#b3c3df',
           'text-background-color': '#07111f',
           'text-background-opacity': 0.8,
@@ -382,14 +411,34 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       elements,
       wheelSensitivity: 0.2,
       layout: {
-        name: 'cose',
+        name: 'fcose',
+        // 'proof' quality (slow cooling) looked meaningfully better in testing, but on
+        // a few hundred nodes it can run for a minute or more - impractical to wait for.
+        // 'default' converges in a few seconds; the larger separation/repulsion below
+        // still meaningfully improves it within that time budget.
+        quality: 'default',
+        randomize: true,
         animate: false,
         fit: true,
         padding: 60,
-        randomize: false,
-      },
+        nodeSeparation: nodeCount > 60 ? 150 : 100,
+        nodeRepulsion: nodeCount > 60 ? 10000 : 6000,
+        idealEdgeLength: nodeCount > 60 ? 100 : 80,
+      } as any,
       style: graphStyles,
     });
+
+    // fcose's 'layoutstop' doesn't fire reliably here (observed hanging indefinitely,
+    // likely tied to animate:false plus the case/evidence load path re-rendering the
+    // graph a second time in quick succession) - a fixed estimate is simpler and more
+    // predictable than chasing that event.
+    if (nodeCount > 60) {
+      this.isLayoutRunning = true;
+      this.layoutIndicatorTimer = setTimeout(() => {
+        this.isLayoutRunning = false;
+        this.layoutIndicatorTimer = null;
+      }, 6000);
+    }
 
     this.cy.on('tap', 'node', (event) => {
       const nodeData = event.target.data() as GraphNodeData;
@@ -414,6 +463,16 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Full-length addresses as node labels are unreadable clutter once a graph has more
+   * than a handful of nodes - the full value is still always shown in the "Detalji čvora"
+   * panel on click, this is purely for keeping the canvas itself legible. */
+  private truncateAddress(value: string): string {
+    if (value.length <= 14) {
+      return value;
+    }
+    return `${value.slice(0, 6)}…${value.slice(-4)}`;
+  }
+
   private buildElements(graph: NodeLinkGraphResponse): ElementDefinition[] {
     const nodes = graph.nodes.map((node) => {
       const classes = this.nodeClasses(node).join(' ');
@@ -421,7 +480,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         data: {
           ...node,
           totalAmount: Number(node.risk_score ?? 0),
-          label: node.label ?? node.address ?? node.id,
+          label: this.truncateAddress(String(node.label ?? node.address ?? node.id)),
         },
         classes,
       } as ElementDefinition;

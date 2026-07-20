@@ -33,11 +33,17 @@
     <div class="stats">
       <span>{{ nodeCount }} čvorova</span>
       <span>{{ edgeCount }} veza</span>
+      <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!hasLoadedGraph">
+        Prikaži ceo graf
+      </button>
     </div>
   </div>
 
   <div class="graph-content">
-    <div #graphCanvas class="graph-canvas"></div>
+    <div class="graph-canvas-wrap">
+      <div #graphCanvas class="graph-canvas"></div>
+      <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
+    </div>
 
     <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
