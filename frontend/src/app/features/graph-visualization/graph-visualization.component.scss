@@ -131,6 +131,20 @@ h3 {
   white-space: nowrap;
 }
 
+.timeline-speed {
+  flex: none;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.timeline-speed option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
 .graph-content {
   display: grid;
   gap: 1rem;

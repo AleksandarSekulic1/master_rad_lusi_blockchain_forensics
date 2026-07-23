@@ -52,6 +52,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected timelinePosition = 1;
   protected timelineMaxRank = 0;
   protected isTimelinePlaying = false;
+  protected timelineSpeed = 1;
+  protected readonly timelineSpeedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
   private cy: Core | null = null;
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -198,6 +200,23 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.timelinePosition = 1;
     }
     this.isTimelinePlaying = true;
+    this.startTimelinePlayInterval();
+  }
+
+  /** Changing speed mid-playback restarts the interval at the new rate rather than
+   * waiting for the current tick to elapse - it should feel immediate, like YouTube. */
+  onTimelineSpeedChange(speed: number): void {
+    this.timelineSpeed = speed;
+    if (this.isTimelinePlaying) {
+      this.startTimelinePlayInterval();
+    }
+  }
+
+  private startTimelinePlayInterval(): void {
+    if (this.timelinePlayTimer !== null) {
+      clearInterval(this.timelinePlayTimer);
+    }
+    const baseIntervalMs = 700;
     this.timelinePlayTimer = setInterval(() => {
       if (this.timelinePosition >= this.timelineMaxRank) {
         this.stopTimelinePlay();
@@ -205,7 +224,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       }
       this.timelinePosition += 1;
       this.applyTimelineFilter();
-    }, 700);
+    }, baseIntervalMs / this.timelineSpeed);
   }
 
   private stopTimelinePlay(): void {

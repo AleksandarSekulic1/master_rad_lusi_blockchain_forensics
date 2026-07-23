@@ -63,6 +63,14 @@
       Transakcija {{ timelinePosition }} / {{ timelineMaxRank }}
       <ng-container *ngIf="timelineCurrentDate"> — {{ timelineCurrentDate }}</ng-container>
     </span>
+    <select
+      class="timeline-speed"
+      [ngModel]="timelineSpeed"
+      (ngModelChange)="onTimelineSpeedChange($event)"
+      title="Brzina reprodukcije"
+    >
+      <option *ngFor="let speed of timelineSpeedOptions" [ngValue]="speed">{{ speed }}x</option>
+    </select>
   </div>
 
   <div class="graph-content">
