@@ -56,8 +56,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected readonly timelineSpeedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   protected timelineSubtitlesEnabled = true;
   protected timelineFollowEnabled = true;
+  protected deadEndFilterEnabled = false;
+  protected fundingSourceFilterEnabled = false;
 
   private cy: Core | null = null;
+  /** Ids of nodes that only ever received funds within this case's evidence (out-degree
+   * = 0) and aren't already flagged as suspicious - recomputed whenever the graph loads,
+   * so the "Sakrij slepe ulice" toggle can hide/show them without recomputation on every
+   * click. */
+  private deadEndNodeIds = new Set<string>();
+  /** The mirror image of deadEndNodeIds: nodes that only ever sent funds (in-degree = 0)
+   * and aren't flagged as suspicious - common in single-address "deposits only" evidence,
+   * where every counterparty is a one-way funding source rather than a forwarding hop. */
+  private fundingSourceNodeIds = new Set<string>();
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
   private timelinePlayTimer: ReturnType<typeof setInterval> | null = null;
   /** Index 0 = the label for rank 1, etc. - so the slider can show "do transakcije #N
@@ -236,7 +247,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     for (let rank = this.timelinePosition + 1; rank <= this.timelineMaxRank; rank++) {
       if (this.timelineSuspiciousRanks.has(rank)) {
         this.timelinePosition = rank;
-        this.applyTimelineFilter();
+        this.applyVisibilityFilters();
         return;
       }
     }
@@ -247,12 +258,34 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (!this.timelineEnabled) {
       this.stopTimelinePlay();
     }
-    this.applyTimelineFilter();
+    this.applyVisibilityFilters();
   }
 
   onTimelinePositionChange(value: number): void {
     this.timelinePosition = value;
-    this.applyTimelineFilter();
+    this.applyVisibilityFilters();
+  }
+
+  /** Number of "dead-end" nodes in the currently loaded graph - shown on the toggle
+   * button so an investigator knows upfront whether the filter would do anything. */
+  get deadEndNodeCount(): number {
+    return this.deadEndNodeIds.size;
+  }
+
+  toggleDeadEndFilter(): void {
+    this.deadEndFilterEnabled = !this.deadEndFilterEnabled;
+    this.applyVisibilityFilters();
+  }
+
+  /** Number of one-way funding-source nodes in the currently loaded graph - the mirror
+   * stat to deadEndNodeCount, shown on the funding-source toggle button. */
+  get fundingSourceNodeCount(): number {
+    return this.fundingSourceNodeIds.size;
+  }
+
+  toggleFundingSourceFilter(): void {
+    this.fundingSourceFilterEnabled = !this.fundingSourceFilterEnabled;
+    this.applyVisibilityFilters();
   }
 
   toggleTimelinePlay(): void {
@@ -287,7 +320,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         return;
       }
       this.timelinePosition += 1;
-      this.applyTimelineFilter();
+      this.applyVisibilityFilters();
     }, baseIntervalMs / this.timelineSpeed);
   }
 
@@ -299,27 +332,27 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.isTimelinePlaying = false;
   }
 
-  /** Reveals the graph as of the current timeline position without re-running the
-   * layout - node/edge positions stay put, only visibility toggles, so "playing" the
-   * timeline reads as the trail unfolding rather than the graph jumping around. */
-  private applyTimelineFilter(): void {
+  /** Reveals the graph as of the current timeline position, and separately hides any
+   * "dead-end" nodes when that filter is on - without re-running the layout, so node/edge
+   * positions stay put and only visibility toggles (hiding a node's display also hides its
+   * connected edges automatically, so dead-end nodes disappear cleanly). */
+  private applyVisibilityFilters(): void {
     if (!this.cy) {
-      return;
-    }
-
-    if (!this.timelineEnabled) {
-      this.cy.elements().style('display', 'element');
       return;
     }
 
     const position = this.timelinePosition;
     this.cy.nodes().forEach((node) => {
       const rank = node.data('chronoRank');
-      node.style('display', rank == null || rank <= position ? 'element' : 'none');
+      const timelineVisible = !this.timelineEnabled || rank == null || rank <= position;
+      const hiddenAsDeadEnd = this.deadEndFilterEnabled && this.deadEndNodeIds.has(node.id());
+      const hiddenAsFundingSource = this.fundingSourceFilterEnabled && this.fundingSourceNodeIds.has(node.id());
+      node.style('display', timelineVisible && !hiddenAsDeadEnd && !hiddenAsFundingSource ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {
       const rank = edge.data('chronoRank');
-      edge.style('display', rank != null && rank <= position ? 'element' : 'none');
+      const timelineVisible = !this.timelineEnabled || (rank != null && rank <= position);
+      edge.style('display', timelineVisible ? 'element' : 'none');
     });
 
     this.focusOnCurrentTransaction();
@@ -521,6 +554,61 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** In/out-degree per node within this graph's own links, shared by the dead-end and
+   * funding-source computations below so both can be derived from a single pass. */
+  private computeNodeDegrees(graph: NodeLinkGraphResponse): { inDegree: Map<string, number>; outDegree: Map<string, number> } {
+    const inDegree = new Map<string, number>();
+    const outDegree = new Map<string, number>();
+    for (const link of graph.links) {
+      const source = String(link.source);
+      const target = String(link.target);
+      outDegree.set(source, (outDegree.get(source) ?? 0) + 1);
+      inDegree.set(target, (inDegree.get(target) ?? 0) + 1);
+    }
+    return { inDegree, outDegree };
+  }
+
+  /** "Slepa ulica": čvor koji je u okviru dokaza ovog slučaja primio sredstva bar
+   * jednom (in-degree > 0) ali ih nikada nije prosledio dalje (out-degree = 0), i koji
+   * pritom nije već označen kao sumnjiv (crna lista/visok rizik/anomalija/peel
+   * lanac/skok lanca) - takvi čvorovi retko nose dodatnu forenzičku vrednost i na
+   * velikim grafovima najviše doprinose "hairball" efektu. */
+  private computeDeadEndNodeIds(graph: NodeLinkGraphResponse): Set<string> {
+    const { inDegree, outDegree } = this.computeNodeDegrees(graph);
+
+    const deadEnds = new Set<string>();
+    for (const node of graph.nodes) {
+      const id = String(node.id);
+      const hasIncoming = (inDegree.get(id) ?? 0) > 0;
+      const hasOutgoing = (outDegree.get(id) ?? 0) > 0;
+      if (hasIncoming && !hasOutgoing && !this.isNodeSuspicious(node)) {
+        deadEnds.add(id);
+      }
+    }
+    return deadEnds;
+  }
+
+  /** "Izvor sredstava": mirror slučaj slepe ulice - čvor koji je samo slao sredstva
+   * (out-degree > 0) a nikada ih nije primio (in-degree = 0), i nije već označen kao
+   * sumnjiv. Tipično se javlja kod evidencije "sve transakcije jedne adrese" gde je
+   * praćena adresa hub, a svaka druga strana se pojavljuje samo kao jednosmerni
+   * pošiljalac (nikad kao primalac) - taj slučaj sam po sebi nema "slepih ulica" u
+   * gornjem smislu, pa je ovaj filter njegov prirodni komplement. */
+  private computeFundingSourceNodeIds(graph: NodeLinkGraphResponse): Set<string> {
+    const { inDegree, outDegree } = this.computeNodeDegrees(graph);
+
+    const fundingSources = new Set<string>();
+    for (const node of graph.nodes) {
+      const id = String(node.id);
+      const hasIncoming = (inDegree.get(id) ?? 0) > 0;
+      const hasOutgoing = (outDegree.get(id) ?? 0) > 0;
+      if (hasOutgoing && !hasIncoming && !this.isNodeSuspicious(node)) {
+        fundingSources.add(id);
+      }
+    }
+    return fundingSources;
+  }
+
   private renderGraph(): void {
     if (!this.graphCanvas) {
       return;
@@ -538,6 +626,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.timelinePosition = 1;
 
     if (!this.graph) {
+      this.deadEndNodeIds = new Set();
+      this.fundingSourceNodeIds = new Set();
       return;
     }
 
@@ -726,6 +816,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.state.setSelectedNode(nodeData);
     });
 
+    this.applyVisibilityFilters();
     this.syncSelection();
   }
 
@@ -754,6 +845,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   private buildElements(graph: NodeLinkGraphResponse): ElementDefinition[] {
+    this.deadEndNodeIds = this.computeDeadEndNodeIds(graph);
+    this.fundingSourceNodeIds = this.computeFundingSourceNodeIds(graph);
+
     const { rank: chronologicalRank, count: rankedCount, dates, captions, gapNotes, cumulativeTotals } =
       this.buildChronologicalRank(graph.links);
     this.timelineMaxRank = rankedCount;

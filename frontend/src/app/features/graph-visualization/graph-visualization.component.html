@@ -44,6 +44,22 @@
       <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!hasLoadedGraph">
         Prikaži ceo graf
       </button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="toggleDeadEndFilter()"
+        title="Sakrij čvorove koji su samo primili sredstva i nisu ih dalje prosledili, a nisu već označeni kao sumnjivi"
+      >
+        {{ deadEndFilterEnabled ? 'Prikaži čvorove bez odliva' : 'Sakrij čvorove bez odliva' }} ({{ deadEndNodeCount }})
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="toggleFundingSourceFilter()"
+        title="Sakrij čvorove koji su samo slali sredstva i nikada ih nisu primili, a nisu već označeni kao sumnjivi"
+      >
+        {{ fundingSourceFilterEnabled ? 'Prikaži čvorove bez priliva' : 'Sakrij čvorove bez priliva' }} ({{ fundingSourceNodeCount }})
+      </button>
     </div>
   </div>
 
