@@ -266,6 +266,21 @@ h3 {
   border: 2px dashed #22d3ee;
 }
 
+.legend-line {
+  flex: none;
+  width: 1.5rem;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.legend-line.first-transaction {
+  background: #4ade80;
+}
+
+.legend-line.last-transaction {
+  background: #fbbf24;
+}
+
 .legend-hint {
   margin: 0.9rem 0 0;
   font-size: 0.78rem;

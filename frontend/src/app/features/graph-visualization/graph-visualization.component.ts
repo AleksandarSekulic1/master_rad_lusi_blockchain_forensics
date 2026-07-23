@@ -418,6 +418,26 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'line-style': 'dashed',
         },
       },
+      // Chronologically first/last transaction in the graph - the temporal bounds of
+      // this evidence, a natural place to start (or currently end) an investigation.
+      {
+        selector: 'edge.first-transaction',
+        style: {
+          'line-color': '#4ade80',
+          'target-arrow-color': '#4ade80',
+          width: 4,
+          opacity: 1,
+        },
+      },
+      {
+        selector: 'edge.last-transaction',
+        style: {
+          'line-color': '#fbbf24',
+          'target-arrow-color': '#fbbf24',
+          width: 4,
+          opacity: 1,
+        },
+      },
     ];
 
     this.cy = cytoscape({
@@ -500,13 +520,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       } as ElementDefinition;
     });
 
+    const { rank: chronologicalRank, count: rankedCount } = this.buildChronologicalRank(graph.links);
+
     const links = graph.links.map((link) => {
-      const classes = this.linkClasses(link).join(' ');
+      const rank = chronologicalRank.get(link);
+      const isFirst = rank === 1;
+      const isLast = rank != null && rank === rankedCount && rankedCount > 1;
+      const classes = this.linkClasses(link, isFirst, isLast).join(' ');
+      const amountLabel = Number(link.total_amount ?? link.amount ?? 0).toFixed(2);
       return {
         data: {
           ...link,
           id: `${link.source}__${link.target}__${Math.round(Number(link.total_amount ?? link.amount ?? 0) * 1000)}`,
-          label: Number(link.total_amount ?? link.amount ?? 0).toFixed(2),
+          label: rank != null ? `#${rank} · ${amountLabel}` : amountLabel,
           totalAmount: Number(link.total_amount ?? link.amount ?? 0),
         },
         classes,
@@ -514,6 +540,22 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     });
 
     return [...nodes, ...links];
+  }
+
+  /** Chronological rank (1 = earliest) of each link by its first-seen timestamp, so the
+   * very first and very last transactions in time can be called out distinctly on the
+   * graph - the temporal bounds of the activity captured in this case, a natural
+   * "where did this trail begin/end (so far)" anchor for an investigation. Links without
+   * a parseable timestamp are left unranked rather than guessed at. */
+  private buildChronologicalRank(links: GraphLinkData[]): { rank: Map<GraphLinkData, number>; count: number } {
+    const dated = links
+      .map((link) => ({ link, time: link.first_seen ? Date.parse(link.first_seen) : NaN }))
+      .filter((entry) => !Number.isNaN(entry.time))
+      .sort((a, b) => a.time - b.time);
+
+    const rank = new Map<GraphLinkData, number>();
+    dated.forEach((entry, index) => rank.set(entry.link, index + 1));
+    return { rank, count: dated.length };
   }
 
   private nodeClasses(node: GraphNodeData): string[] {
@@ -542,10 +584,16 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     return classes;
   }
 
-  private linkClasses(link: GraphLinkData): string[] {
+  private linkClasses(link: GraphLinkData, isFirst: boolean, isLast: boolean): string[] {
     const classes: string[] = [];
     if (link.bridge_edge) {
       classes.push('bridge-edge');
+    }
+    if (isFirst) {
+      classes.push('first-transaction');
+    }
+    if (isLast) {
+      classes.push('last-transaction');
     }
     return classes;
   }
