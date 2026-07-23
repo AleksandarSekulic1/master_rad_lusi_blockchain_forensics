@@ -71,7 +71,14 @@
     >
       <option *ngFor="let speed of timelineSpeedOptions" [ngValue]="speed">{{ speed }}x</option>
     </select>
+    <label class="timeline-subtitles-toggle">
+      <input type="checkbox" [ngModel]="timelineSubtitlesEnabled" (ngModelChange)="toggleTimelineSubtitles()" />
+      Titlovi
+    </label>
   </div>
+  <p class="timeline-subtitle" *ngIf="timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">
+    {{ timelineCurrentCaption }}
+  </p>
 
   <div class="graph-content">
     <div class="graph-canvas-wrap">

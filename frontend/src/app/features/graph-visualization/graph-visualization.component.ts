@@ -54,6 +54,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected isTimelinePlaying = false;
   protected timelineSpeed = 1;
   protected readonly timelineSpeedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  protected timelineSubtitlesEnabled = true;
 
   private cy: Core | null = null;
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,6 +62,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   /** Index 0 = the label for rank 1, etc. - so the slider can show "do transakcije #N
    * (datum)" without re-deriving it from the graph on every drag tick. */
   private timelineDates: string[] = [];
+  /** Index 0 = the "pošiljalac → primalac · iznos · datum" caption for rank 1, etc. -
+   * the subtitle text shown over the canvas during playback. */
+  private timelineCaptions: string[] = [];
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -176,6 +180,17 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       return null;
     }
     return this.timelineDates[this.timelinePosition - 1];
+  }
+
+  get timelineCurrentCaption(): string | null {
+    if (this.timelinePosition < 1 || this.timelinePosition > this.timelineCaptions.length) {
+      return null;
+    }
+    return this.timelineCaptions[this.timelinePosition - 1];
+  }
+
+  toggleTimelineSubtitles(): void {
+    this.timelineSubtitlesEnabled = !this.timelineSubtitlesEnabled;
   }
 
   toggleTimeline(): void {
@@ -649,9 +664,10 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   private buildElements(graph: NodeLinkGraphResponse): ElementDefinition[] {
-    const { rank: chronologicalRank, count: rankedCount, dates } = this.buildChronologicalRank(graph.links);
+    const { rank: chronologicalRank, count: rankedCount, dates, captions } = this.buildChronologicalRank(graph.links);
     this.timelineMaxRank = rankedCount;
     this.timelineDates = dates;
+    this.timelineCaptions = captions;
     if (this.timelinePosition > rankedCount) {
       this.timelinePosition = rankedCount || 1;
     }
@@ -711,7 +727,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * graph - the temporal bounds of the activity captured in this case, a natural
    * "where did this trail begin/end (so far)" anchor for an investigation. Links without
    * a parseable timestamp are left unranked rather than guessed at. */
-  private buildChronologicalRank(links: GraphLinkData[]): { rank: Map<GraphLinkData, number>; count: number; dates: string[] } {
+  private buildChronologicalRank(
+    links: GraphLinkData[],
+  ): { rank: Map<GraphLinkData, number>; count: number; dates: string[]; captions: string[] } {
     const dated = links
       .map((link) => ({ link, time: link.first_seen ? Date.parse(link.first_seen) : NaN }))
       .filter((entry) => !Number.isNaN(entry.time))
@@ -719,11 +737,18 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
     const rank = new Map<GraphLinkData, number>();
     const dates: string[] = [];
+    const captions: string[] = [];
     dated.forEach((entry, index) => {
       rank.set(entry.link, index + 1);
-      dates.push(new Date(entry.time).toLocaleString());
+      const dateLabel = new Date(entry.time).toLocaleString();
+      dates.push(dateLabel);
+
+      const source = String(entry.link.source);
+      const target = String(entry.link.target);
+      const amount = Number(entry.link.total_amount ?? entry.link.amount ?? 0).toFixed(2);
+      captions.push(`${source} → ${target} · ${amount} · ${dateLabel}`);
     });
-    return { rank, count: dated.length, dates };
+    return { rank, count: dated.length, dates, captions };
   }
 
   private nodeClasses(node: GraphNodeData): string[] {
