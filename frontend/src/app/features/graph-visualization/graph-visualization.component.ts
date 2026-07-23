@@ -48,9 +48,17 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected addressEnrichment: AddressEnrichment | null = null;
   protected isLayoutRunning = false;
   protected isEnrichingAddress = false;
+  protected timelineEnabled = false;
+  protected timelinePosition = 1;
+  protected timelineMaxRank = 0;
+  protected isTimelinePlaying = false;
 
   private cy: Core | null = null;
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
+  private timelinePlayTimer: ReturnType<typeof setInterval> | null = null;
+  /** Index 0 = the label for rank 1, etc. - so the slider can show "do transakcije #N
+   * (datum)" without re-deriving it from the graph on every drag tick. */
+  private timelineDates: string[] = [];
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -148,6 +156,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       clearTimeout(this.layoutIndicatorTimer);
       this.layoutIndicatorTimer = null;
     }
+    this.stopTimelinePlay();
   }
 
   @HostListener('window:resize')
@@ -158,6 +167,77 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
   fitWholeGraph(): void {
     this.cy?.fit(undefined, 60);
+  }
+
+  get timelineCurrentDate(): string | null {
+    if (this.timelinePosition < 1 || this.timelinePosition > this.timelineDates.length) {
+      return null;
+    }
+    return this.timelineDates[this.timelinePosition - 1];
+  }
+
+  toggleTimeline(): void {
+    this.timelineEnabled = !this.timelineEnabled;
+    if (!this.timelineEnabled) {
+      this.stopTimelinePlay();
+    }
+    this.applyTimelineFilter();
+  }
+
+  onTimelinePositionChange(value: number): void {
+    this.timelinePosition = value;
+    this.applyTimelineFilter();
+  }
+
+  toggleTimelinePlay(): void {
+    if (this.isTimelinePlaying) {
+      this.stopTimelinePlay();
+      return;
+    }
+    if (this.timelinePosition >= this.timelineMaxRank) {
+      this.timelinePosition = 1;
+    }
+    this.isTimelinePlaying = true;
+    this.timelinePlayTimer = setInterval(() => {
+      if (this.timelinePosition >= this.timelineMaxRank) {
+        this.stopTimelinePlay();
+        return;
+      }
+      this.timelinePosition += 1;
+      this.applyTimelineFilter();
+    }, 700);
+  }
+
+  private stopTimelinePlay(): void {
+    if (this.timelinePlayTimer !== null) {
+      clearInterval(this.timelinePlayTimer);
+      this.timelinePlayTimer = null;
+    }
+    this.isTimelinePlaying = false;
+  }
+
+  /** Reveals the graph as of the current timeline position without re-running the
+   * layout - node/edge positions stay put, only visibility toggles, so "playing" the
+   * timeline reads as the trail unfolding rather than the graph jumping around. */
+  private applyTimelineFilter(): void {
+    if (!this.cy) {
+      return;
+    }
+
+    if (!this.timelineEnabled) {
+      this.cy.elements().style('display', 'element');
+      return;
+    }
+
+    const position = this.timelinePosition;
+    this.cy.nodes().forEach((node) => {
+      const rank = node.data('chronoRank');
+      node.style('display', rank == null || rank <= position ? 'element' : 'none');
+    });
+    this.cy.edges().forEach((edge) => {
+      const rank = edge.data('chronoRank');
+      edge.style('display', rank != null && rank <= position ? 'element' : 'none');
+    });
   }
 
   loadAddressEnrichment(): void {
@@ -329,6 +409,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.layoutIndicatorTimer = null;
     }
     this.isLayoutRunning = false;
+    this.stopTimelinePlay();
+    this.timelineEnabled = false;
+    this.timelinePosition = 1;
 
     if (!this.graph) {
       return;
@@ -547,6 +630,29 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   private buildElements(graph: NodeLinkGraphResponse): ElementDefinition[] {
+    const { rank: chronologicalRank, count: rankedCount, dates } = this.buildChronologicalRank(graph.links);
+    this.timelineMaxRank = rankedCount;
+    this.timelineDates = dates;
+    if (this.timelinePosition > rankedCount) {
+      this.timelinePosition = rankedCount || 1;
+    }
+
+    // A node's own "first appearance" rank = the earliest rank among the edges that
+    // touch it, so the timeline can reveal a node exactly when it first gets involved.
+    const nodeFirstRank = new Map<string, number>();
+    for (const link of graph.links) {
+      const rank = chronologicalRank.get(link);
+      if (rank == null) {
+        continue;
+      }
+      for (const endpoint of [String(link.source), String(link.target)]) {
+        const current = nodeFirstRank.get(endpoint);
+        if (current == null || rank < current) {
+          nodeFirstRank.set(endpoint, rank);
+        }
+      }
+    }
+
     const nodes = graph.nodes.map((node) => {
       const classes = this.nodeClasses(node).join(' ');
       return {
@@ -554,12 +660,11 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           ...node,
           totalAmount: Number(node.risk_score ?? 0),
           label: this.truncateAddress(String(node.label ?? node.address ?? node.id)),
+          chronoRank: nodeFirstRank.get(String(node.id)) ?? null,
         },
         classes,
       } as ElementDefinition;
     });
-
-    const { rank: chronologicalRank, count: rankedCount } = this.buildChronologicalRank(graph.links);
 
     const links = graph.links.map((link) => {
       const rank = chronologicalRank.get(link);
@@ -573,6 +678,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           id: `${link.source}__${link.target}__${Math.round(Number(link.total_amount ?? link.amount ?? 0) * 1000)}`,
           label: rank != null ? `#${rank} · ${amountLabel}` : amountLabel,
           totalAmount: Number(link.total_amount ?? link.amount ?? 0),
+          chronoRank: rank ?? null,
         },
         classes,
       } as ElementDefinition;
@@ -586,15 +692,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * graph - the temporal bounds of the activity captured in this case, a natural
    * "where did this trail begin/end (so far)" anchor for an investigation. Links without
    * a parseable timestamp are left unranked rather than guessed at. */
-  private buildChronologicalRank(links: GraphLinkData[]): { rank: Map<GraphLinkData, number>; count: number } {
+  private buildChronologicalRank(links: GraphLinkData[]): { rank: Map<GraphLinkData, number>; count: number; dates: string[] } {
     const dated = links
       .map((link) => ({ link, time: link.first_seen ? Date.parse(link.first_seen) : NaN }))
       .filter((entry) => !Number.isNaN(entry.time))
       .sort((a, b) => a.time - b.time);
 
     const rank = new Map<GraphLinkData, number>();
-    dated.forEach((entry, index) => rank.set(entry.link, index + 1));
-    return { rank, count: dated.length };
+    const dates: string[] = [];
+    dated.forEach((entry, index) => {
+      rank.set(entry.link, index + 1);
+      dates.push(new Date(entry.time).toLocaleString());
+    });
+    return { rank, count: dated.length, dates };
   }
 
   private nodeClasses(node: GraphNodeData): string[] {

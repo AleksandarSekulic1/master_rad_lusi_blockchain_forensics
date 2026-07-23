@@ -109,6 +109,28 @@ h3 {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.timeline-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(4, 9, 18, 0.78);
+}
+
+.timeline-slider {
+  flex: 1;
+  accent-color: #7bd6ff;
+}
+
+.timeline-position {
+  flex: none;
+  font-size: 0.82rem;
+  color: #9ab1d0;
+  white-space: nowrap;
+}
+
 .graph-content {
   display: grid;
   gap: 1rem;

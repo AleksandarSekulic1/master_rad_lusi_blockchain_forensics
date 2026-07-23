@@ -33,10 +33,36 @@
     <div class="stats">
       <span>{{ nodeCount }} čvorova</span>
       <span>{{ edgeCount }} veza</span>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="toggleTimeline()"
+        [disabled]="!hasLoadedGraph || timelineMaxRank === 0"
+      >
+        {{ timelineEnabled ? 'Isključi vremensku traku' : 'Vremenska traka' }}
+      </button>
       <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!hasLoadedGraph">
         Prikaži ceo graf
       </button>
     </div>
+  </div>
+
+  <div class="timeline-panel" *ngIf="timelineEnabled">
+    <button type="button" class="ghost-button" (click)="toggleTimelinePlay()">
+      {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
+    </button>
+    <input
+      type="range"
+      min="1"
+      [max]="timelineMaxRank"
+      [ngModel]="timelinePosition"
+      (ngModelChange)="onTimelinePositionChange($event)"
+      class="timeline-slider"
+    />
+    <span class="timeline-position">
+      Transakcija {{ timelinePosition }} / {{ timelineMaxRank }}
+      <ng-container *ngIf="timelineCurrentDate"> — {{ timelineCurrentDate }}</ng-container>
+    </span>
   </div>
 
   <div class="graph-content">
