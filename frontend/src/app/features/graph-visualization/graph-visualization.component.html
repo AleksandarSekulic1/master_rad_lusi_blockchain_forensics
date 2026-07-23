@@ -92,6 +92,12 @@
   <p class="timeline-subtitle" *ngIf="timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">
     {{ timelineCurrentCaption }}
   </p>
+  <p class="timeline-cumulative" *ngIf="timelineEnabled && timelineCurrentCumulativeTotal !== null">
+    Ukupno preneto do sada: {{ timelineCurrentCumulativeTotal | number: '1.2-2' }}
+  </p>
+  <p class="timeline-gap-note" *ngIf="timelineEnabled && timelineCurrentGapNote">
+    {{ timelineCurrentGapNote }}
+  </p>
 
   <div class="graph-content">
     <div class="graph-canvas-wrap">

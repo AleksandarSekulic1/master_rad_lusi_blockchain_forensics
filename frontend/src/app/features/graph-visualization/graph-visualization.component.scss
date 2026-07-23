@@ -145,6 +145,28 @@ h3 {
   background: #ffffff;
 }
 
+.timeline-cumulative {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(134, 239, 172, 0.3);
+  background: rgba(134, 239, 172, 0.08);
+  color: #86efac;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.timeline-gap-note {
+  margin: 0;
+  padding: 0.55rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 .graph-content {
   display: grid;
   gap: 1rem;

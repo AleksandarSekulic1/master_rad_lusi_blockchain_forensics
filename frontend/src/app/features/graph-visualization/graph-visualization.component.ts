@@ -70,6 +70,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * peel lanac/skok lanca) - lets "Sledeća sumnjiva transakcija" jump straight there
    * instead of stepping through every single transaction on a large graph. */
   private timelineSuspiciousRanks = new Set<number>();
+  /** Index 0 = a "⏱ pauza od ..." note for rank 1, or null if the gap since the
+   * previous transaction wasn't notably large - a dormant wallet suddenly reactivating
+   * is itself a forensic signal, easy to miss when every step looks equally spaced. */
+  private timelineGapNotes: (string | null)[] = [];
+  /** Index 0 = running total transferred up to and including rank 1, etc. - shows how
+   * much value has moved through this trail by the current point in the playback. */
+  private timelineCumulativeTotals: number[] = [];
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -192,6 +199,20 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       return null;
     }
     return this.timelineCaptions[this.timelinePosition - 1];
+  }
+
+  get timelineCurrentGapNote(): string | null {
+    if (this.timelinePosition < 1 || this.timelinePosition > this.timelineGapNotes.length) {
+      return null;
+    }
+    return this.timelineGapNotes[this.timelinePosition - 1];
+  }
+
+  get timelineCurrentCumulativeTotal(): number | null {
+    if (this.timelinePosition < 1 || this.timelinePosition > this.timelineCumulativeTotals.length) {
+      return null;
+    }
+    return this.timelineCumulativeTotals[this.timelinePosition - 1];
   }
 
   toggleTimelineSubtitles(): void {
@@ -733,10 +754,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   private buildElements(graph: NodeLinkGraphResponse): ElementDefinition[] {
-    const { rank: chronologicalRank, count: rankedCount, dates, captions } = this.buildChronologicalRank(graph.links);
+    const { rank: chronologicalRank, count: rankedCount, dates, captions, gapNotes, cumulativeTotals } =
+      this.buildChronologicalRank(graph.links);
     this.timelineMaxRank = rankedCount;
     this.timelineDates = dates;
     this.timelineCaptions = captions;
+    this.timelineGapNotes = gapNotes;
+    this.timelineCumulativeTotals = cumulativeTotals;
     if (this.timelinePosition > rankedCount) {
       this.timelinePosition = rankedCount || 1;
     }
@@ -809,17 +833,36 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * graph - the temporal bounds of the activity captured in this case, a natural
    * "where did this trail begin/end (so far)" anchor for an investigation. Links without
    * a parseable timestamp are left unranked rather than guessed at. */
-  private buildChronologicalRank(
-    links: GraphLinkData[],
-  ): { rank: Map<GraphLinkData, number>; count: number; dates: string[]; captions: string[] } {
+  private buildChronologicalRank(links: GraphLinkData[]): {
+    rank: Map<GraphLinkData, number>;
+    count: number;
+    dates: string[];
+    captions: string[];
+    gapNotes: (string | null)[];
+    cumulativeTotals: number[];
+  } {
     const dated = links
       .map((link) => ({ link, time: link.first_seen ? Date.parse(link.first_seen) : NaN }))
       .filter((entry) => !Number.isNaN(entry.time))
       .sort((a, b) => a.time - b.time);
 
+    const gaps: number[] = [];
+    for (let i = 1; i < dated.length; i++) {
+      gaps.push(dated[i].time - dated[i - 1].time);
+    }
+    const averageGapMs = gaps.length > 0 ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length : 0;
+    // A gap only counts as "notable" (worth flagging as a dormancy period) if it's both
+    // clearly out of the ordinary for this specific trail AND large in absolute terms -
+    // otherwise a tight, evenly-spaced trail would flag its own normal jitter.
+    const notableGapThresholdMs = Math.max(averageGapMs * 3, 6 * 60 * 60 * 1000);
+
     const rank = new Map<GraphLinkData, number>();
     const dates: string[] = [];
     const captions: string[] = [];
+    const gapNotes: (string | null)[] = [];
+    const cumulativeTotals: number[] = [];
+    let runningTotal = 0;
+
     dated.forEach((entry, index) => {
       rank.set(entry.link, index + 1);
       const dateLabel = new Date(entry.time).toLocaleString();
@@ -827,10 +870,45 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
       const source = String(entry.link.source);
       const target = String(entry.link.target);
-      const amount = Number(entry.link.total_amount ?? entry.link.amount ?? 0).toFixed(2);
-      captions.push(`${source} → ${target} · ${amount} · ${dateLabel}`);
+      const amount = Number(entry.link.total_amount ?? entry.link.amount ?? 0);
+      captions.push(`${source} → ${target} · ${amount.toFixed(2)} · ${dateLabel}`);
+
+      runningTotal += amount;
+      cumulativeTotals.push(runningTotal);
+
+      if (index === 0) {
+        gapNotes.push(null);
+      } else {
+        const gap = entry.time - dated[index - 1].time;
+        gapNotes.push(gap >= notableGapThresholdMs ? `⏱ Pauza od ${this.formatGapDuration(gap)} pre ove transakcije` : null);
+      }
     });
-    return { rank, count: dated.length, dates, captions };
+
+    return { rank, count: dated.length, dates, captions, gapNotes, cumulativeTotals };
+  }
+
+  /** Human-readable duration for the gap note - coarse on purpose (one unit, one
+   * decimal), since the point is "a dormant wallet reactivated", not precision timing. */
+  private formatGapDuration(ms: number): string {
+    const minutes = ms / 60_000;
+    const hours = minutes / 60;
+    const days = hours / 24;
+    const months = days / 30.44;
+    const years = days / 365.25;
+
+    if (years >= 1) {
+      return `${years.toFixed(1)} god.`;
+    }
+    if (months >= 1) {
+      return `${months.toFixed(1)} mes.`;
+    }
+    if (days >= 1) {
+      return `${days.toFixed(1)} d.`;
+    }
+    if (hours >= 1) {
+      return `${hours.toFixed(1)} h.`;
+    }
+    return `${Math.round(minutes)} min.`;
   }
 
   private nodeClasses(node: GraphNodeData): string[] {
