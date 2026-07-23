@@ -82,6 +82,13 @@
           </dd>
         </div>
         <div>
+          <dt>Primaoci u ovom slučaju</dt>
+          <dd *ngIf="caseOutgoingRecipients.length === 0">Nema — čvor nije poslao sredstva u ovom slučaju</dd>
+          <dd *ngFor="let recipient of caseOutgoingRecipients">
+            {{ recipient.address }} ({{ recipient.amount | number : '1.2-6' }})
+          </dd>
+        </div>
+        <div>
           <dt>Prva aktivnost na lancu</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
         </div>

@@ -220,21 +220,32 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * on-chain funding source is n/a, because that first-ever transaction predates or
    * otherwise falls outside what this case's evidence actually captured. */
   get caseIncomingSenders(): Array<{ address: string; amount: number }> {
+    return this.aggregateCaseCounterparties('incoming');
+  }
+
+  /** Everyone the selected node sent funds to within this case's own evidence - the
+   * outgoing mirror of caseIncomingSenders, for "where did this node's money go". */
+  get caseOutgoingRecipients(): Array<{ address: string; amount: number }> {
+    return this.aggregateCaseCounterparties('outgoing');
+  }
+
+  private aggregateCaseCounterparties(direction: 'incoming' | 'outgoing'): Array<{ address: string; amount: number }> {
     if (!this.selectedNode) {
       return [];
     }
 
-    const nodeId = this.selectedNode.id;
+    const nodeId = String(this.selectedNode.id);
     const links = this.graph?.links ?? [];
     const totals = new Map<string, number>();
 
     for (const link of links) {
-      if (String(link.target) !== String(nodeId)) {
+      const matches = direction === 'incoming' ? String(link.target) === nodeId : String(link.source) === nodeId;
+      if (!matches) {
         continue;
       }
-      const source = String(link.source);
+      const counterparty = String(direction === 'incoming' ? link.source : link.target);
       const amount = Number(link.total_amount ?? link.amount ?? 0);
-      totals.set(source, (totals.get(source) ?? 0) + amount);
+      totals.set(counterparty, (totals.get(counterparty) ?? 0) + amount);
     }
 
     return Array.from(totals.entries())
