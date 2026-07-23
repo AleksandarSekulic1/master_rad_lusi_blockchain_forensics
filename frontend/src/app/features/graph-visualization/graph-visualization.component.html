@@ -75,6 +75,13 @@
           </dd>
         </div>
         <div>
+          <dt>Pošiljaoci u ovom slučaju</dt>
+          <dd *ngIf="caseIncomingSenders.length === 0">Nema — čvor nije primio sredstva u ovom slučaju</dd>
+          <dd *ngFor="let sender of caseIncomingSenders">
+            {{ sender.address }} ({{ sender.amount | number : '1.2-6' }})
+          </dd>
+        </div>
+        <div>
           <dt>Prva aktivnost na lancu</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
         </div>
@@ -83,9 +90,9 @@
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
         </div>
         <div>
-          <dt>Izvor sredstava (ko je finansirao adresu)</dt>
+          <dt>Izvor sredstava (prva ikada on-chain transakcija)</dt>
           <dd>
-            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a') }}
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog slučaja') }}
             <span *ngIf="addressEnrichment?.funding_amount_eth != null">
               ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
             </span>

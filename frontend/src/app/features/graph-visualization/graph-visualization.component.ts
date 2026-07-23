@@ -214,6 +214,34 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** Senders that funded the selected node *within this case's own evidence* - distinct
+   * from "Izvor sredstava" (that address's first-ever on-chain transaction, its whole
+   * history). A node can show received funds here from several senders even when the
+   * on-chain funding source is n/a, because that first-ever transaction predates or
+   * otherwise falls outside what this case's evidence actually captured. */
+  get caseIncomingSenders(): Array<{ address: string; amount: number }> {
+    if (!this.selectedNode) {
+      return [];
+    }
+
+    const nodeId = this.selectedNode.id;
+    const links = this.graph?.links ?? [];
+    const totals = new Map<string, number>();
+
+    for (const link of links) {
+      if (String(link.target) !== String(nodeId)) {
+        continue;
+      }
+      const source = String(link.source);
+      const amount = Number(link.total_amount ?? link.amount ?? 0);
+      totals.set(source, (totals.get(source) ?? 0) + amount);
+    }
+
+    return Array.from(totals.entries())
+      .map(([address, amount]) => ({ address, amount }))
+      .sort((a, b) => b.amount - a.amount);
+  }
+
   private typeLabel(type: AddressType | null | undefined): string {
     switch (type) {
       case 'contract':
