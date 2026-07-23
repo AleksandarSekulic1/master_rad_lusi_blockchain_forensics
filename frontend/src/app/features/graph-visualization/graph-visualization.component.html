@@ -51,6 +51,15 @@
     <button type="button" class="ghost-button" (click)="toggleTimelinePlay()">
       {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
     </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="skipToNextSuspiciousTransaction()"
+      [disabled]="!hasNextSuspiciousTransaction"
+      title="Preskoči na sledeću transakciju koja uključuje označen (sumnjiv) čvor"
+    >
+      ⏭ Sledeća sumnjiva
+    </button>
     <input
       type="range"
       min="1"
@@ -74,6 +83,10 @@
     <label class="timeline-subtitles-toggle">
       <input type="checkbox" [ngModel]="timelineSubtitlesEnabled" (ngModelChange)="toggleTimelineSubtitles()" />
       Titlovi
+    </label>
+    <label class="timeline-subtitles-toggle">
+      <input type="checkbox" [ngModel]="timelineFollowEnabled" (ngModelChange)="toggleTimelineFollow()" />
+      Prati kameru
     </label>
   </div>
   <p class="timeline-subtitle" *ngIf="timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">

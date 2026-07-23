@@ -55,6 +55,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected timelineSpeed = 1;
   protected readonly timelineSpeedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   protected timelineSubtitlesEnabled = true;
+  protected timelineFollowEnabled = true;
 
   private cy: Core | null = null;
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -65,6 +66,10 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   /** Index 0 = the "pošiljalac → primalac · iznos · datum" caption for rank 1, etc. -
    * the subtitle text shown over the canvas during playback. */
   private timelineCaptions: string[] = [];
+  /** Ranks whose transaction touches a flagged node (crna lista/visok rizik/anomalija/
+   * peel lanac/skok lanca) - lets "Sledeća sumnjiva transakcija" jump straight there
+   * instead of stepping through every single transaction on a large graph. */
+  private timelineSuspiciousRanks = new Set<number>();
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -193,6 +198,29 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.timelineSubtitlesEnabled = !this.timelineSubtitlesEnabled;
   }
 
+  toggleTimelineFollow(): void {
+    this.timelineFollowEnabled = !this.timelineFollowEnabled;
+  }
+
+  get hasNextSuspiciousTransaction(): boolean {
+    for (let rank = this.timelinePosition + 1; rank <= this.timelineMaxRank; rank++) {
+      if (this.timelineSuspiciousRanks.has(rank)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  skipToNextSuspiciousTransaction(): void {
+    for (let rank = this.timelinePosition + 1; rank <= this.timelineMaxRank; rank++) {
+      if (this.timelineSuspiciousRanks.has(rank)) {
+        this.timelinePosition = rank;
+        this.applyTimelineFilter();
+        return;
+      }
+    }
+  }
+
   toggleTimeline(): void {
     this.timelineEnabled = !this.timelineEnabled;
     if (!this.timelineEnabled) {
@@ -272,6 +300,31 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       const rank = edge.data('chronoRank');
       edge.style('display', rank != null && rank <= position ? 'element' : 'none');
     });
+
+    this.focusOnCurrentTransaction();
+  }
+
+  /** Pans/zooms to the just-revealed transaction, but only when it's actually outside
+   * the current view - if it's already visible, the camera stays put so following the
+   * trail doesn't feel jumpy, especially at faster playback speeds. */
+  private focusOnCurrentTransaction(): void {
+    if (!this.cy || !this.timelineFollowEnabled) {
+      return;
+    }
+
+    const currentEdge = this.cy.edges().filter((edge) => edge.data('chronoRank') === this.timelinePosition);
+    if (currentEdge.empty()) {
+      return;
+    }
+
+    const extent = this.cy.extent();
+    const box = currentEdge.boundingBox();
+    const isVisible = box.x1 >= extent.x1 && box.x2 <= extent.x2 && box.y1 >= extent.y1 && box.y2 <= extent.y2;
+    if (isVisible) {
+      return;
+    }
+
+    this.cy.animate({ fit: { eles: currentEdge, padding: 150 } }, { duration: 350 });
   }
 
   loadAddressEnrichment(): void {
@@ -429,6 +482,22 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       flags.push('Anomalija');
     }
     return flags;
+  }
+
+  /** Same criteria as selectedNodeFlags (crna lista/visok rizik/anomalija/peel lanac/
+   * skok lanca) but as a plain predicate, for scanning every node while building the
+   * timeline's suspicious-rank index rather than just the currently selected one. */
+  private isNodeSuspicious(node: GraphNodeData | undefined): boolean {
+    if (!node) {
+      return false;
+    }
+    return (
+      Boolean(node.blacklist_flag) ||
+      Boolean(node.peel_chain_flag) ||
+      Number(node.risk_score ?? 0) >= 70 ||
+      Boolean(node.chain_hop_flag) ||
+      Boolean(node.anomaly_flag)
+    );
   }
 
   private renderGraph(): void {
@@ -687,6 +756,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         }
       }
     }
+
+    const nodeById = new Map(graph.nodes.map((node) => [String(node.id), node]));
+    const suspiciousRanks = new Set<number>();
+    for (const link of graph.links) {
+      const rank = chronologicalRank.get(link);
+      if (rank == null) {
+        continue;
+      }
+      if (this.isNodeSuspicious(nodeById.get(String(link.source))) || this.isNodeSuspicious(nodeById.get(String(link.target)))) {
+        suspiciousRanks.add(rank);
+      }
+    }
+    this.timelineSuspiciousRanks = suspiciousRanks;
 
     const nodes = graph.nodes.map((node) => {
       const classes = this.nodeClasses(node).join(' ');
