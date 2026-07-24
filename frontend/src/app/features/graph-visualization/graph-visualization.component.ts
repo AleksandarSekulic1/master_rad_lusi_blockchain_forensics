@@ -58,6 +58,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected timelineFollowEnabled = true;
   protected deadEndFilterEnabled = false;
   protected fundingSourceFilterEnabled = false;
+  protected showAllSenders = false;
+  protected showAllRecipients = false;
+
+  /** A node with hundreds of counterparties (e.g. a deposit hub) would otherwise render
+   * hundreds of <dd> rows in the inspector panel, forcing the whole page to scroll past
+   * the graph canvas just to reach the rest of a single node's details - previewing the
+   * top few and letting the investigator expand on demand keeps the panel usable. */
+  private static readonly COUNTERPARTY_PREVIEW_LIMIT = 15;
 
   private cy: Core | null = null;
   /** Ids of nodes that only ever received funds within this case's evidence (out-degree
@@ -107,6 +115,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
     this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
+      this.showAllSenders = false;
+      this.showAllRecipients = false;
       this.syncSelection();
       this.loadAddressEnrichment();
     });
@@ -448,6 +458,32 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * outgoing mirror of caseIncomingSenders, for "where did this node's money go". */
   get caseOutgoingRecipients(): Array<{ address: string; amount: number }> {
     return this.aggregateCaseCounterparties('outgoing');
+  }
+
+  get visibleIncomingSenders(): Array<{ address: string; amount: number }> {
+    const senders = this.caseIncomingSenders;
+    return this.showAllSenders ? senders : senders.slice(0, GraphVisualizationComponent.COUNTERPARTY_PREVIEW_LIMIT);
+  }
+
+  get hiddenSendersCount(): number {
+    return Math.max(0, this.caseIncomingSenders.length - GraphVisualizationComponent.COUNTERPARTY_PREVIEW_LIMIT);
+  }
+
+  toggleShowAllSenders(): void {
+    this.showAllSenders = !this.showAllSenders;
+  }
+
+  get visibleOutgoingRecipients(): Array<{ address: string; amount: number }> {
+    const recipients = this.caseOutgoingRecipients;
+    return this.showAllRecipients ? recipients : recipients.slice(0, GraphVisualizationComponent.COUNTERPARTY_PREVIEW_LIMIT);
+  }
+
+  get hiddenRecipientsCount(): number {
+    return Math.max(0, this.caseOutgoingRecipients.length - GraphVisualizationComponent.COUNTERPARTY_PREVIEW_LIMIT);
+  }
+
+  toggleShowAllRecipients(): void {
+    this.showAllRecipients = !this.showAllRecipients;
   }
 
   private aggregateCaseCounterparties(direction: 'incoming' | 'outgoing'): Array<{ address: string; amount: number }> {

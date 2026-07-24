@@ -36,6 +36,7 @@
       <button
         type="button"
         class="ghost-button"
+        [class.active]="timelineEnabled"
         (click)="toggleTimeline()"
         [disabled]="!hasLoadedGraph || timelineMaxRank === 0"
       >
@@ -47,6 +48,7 @@
       <button
         type="button"
         class="ghost-button"
+        [class.active]="deadEndFilterEnabled"
         (click)="toggleDeadEndFilter()"
         title="Sakrij čvorove koji su samo primili sredstva i nisu ih dalje prosledili, a nisu već označeni kao sumnjivi"
       >
@@ -55,6 +57,7 @@
       <button
         type="button"
         class="ghost-button"
+        [class.active]="fundingSourceFilterEnabled"
         (click)="toggleFundingSourceFilter()"
         title="Sakrij čvorove koji su samo slali sredstva i nikada ih nisu primili, a nisu već označeni kao sumnjivi"
       >
@@ -64,7 +67,7 @@
   </div>
 
   <div class="timeline-panel" *ngIf="timelineEnabled">
-    <button type="button" class="ghost-button" (click)="toggleTimelinePlay()">
+    <button type="button" class="ghost-button" [class.active]="isTimelinePlaying" (click)="toggleTimelinePlay()">
       {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
     </button>
     <button
@@ -153,16 +156,22 @@
         <div>
           <dt>Pošiljaoci u ovom slučaju</dt>
           <dd *ngIf="caseIncomingSenders.length === 0">Nema — čvor nije primio sredstva u ovom slučaju</dd>
-          <dd *ngFor="let sender of caseIncomingSenders">
-            {{ sender.address }} ({{ sender.amount | number : '1.2-6' }})
+          <dd *ngFor="let sender of visibleIncomingSenders">
+            <span class="mono-address">{{ sender.address }}</span> ({{ sender.amount | number : '1.2-6' }})
           </dd>
+          <button type="button" class="show-more-button" *ngIf="hiddenSendersCount > 0" (click)="toggleShowAllSenders()">
+            {{ showAllSenders ? 'Prikaži manje' : 'Prikaži još ' + hiddenSendersCount }}
+          </button>
         </div>
         <div>
           <dt>Primaoci u ovom slučaju</dt>
           <dd *ngIf="caseOutgoingRecipients.length === 0">Nema — čvor nije poslao sredstva u ovom slučaju</dd>
-          <dd *ngFor="let recipient of caseOutgoingRecipients">
-            {{ recipient.address }} ({{ recipient.amount | number : '1.2-6' }})
+          <dd *ngFor="let recipient of visibleOutgoingRecipients">
+            <span class="mono-address">{{ recipient.address }}</span> ({{ recipient.amount | number : '1.2-6' }})
           </dd>
+          <button type="button" class="show-more-button" *ngIf="hiddenRecipientsCount > 0" (click)="toggleShowAllRecipients()">
+            {{ showAllRecipients ? 'Prikaži manje' : 'Prikaži još ' + hiddenRecipientsCount }}
+          </button>
         </div>
         <div>
           <dt>Prva aktivnost na lancu</dt>
