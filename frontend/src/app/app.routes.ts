@@ -38,6 +38,12 @@ export const appRoutes: Routes = [
 			import('./features/graph-visualization/graph-visualization.component').then((module) => module.GraphVisualizationComponent),
 	},
 	{
+		path: 'taint',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/taint-analysis/taint-analysis.component').then((module) => module.TaintAnalysisComponent),
+	},
+	{
 		path: 'reports',
 		canActivate: [authGuard],
 		loadComponent: () =>

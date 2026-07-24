@@ -1,0 +1,133 @@
+<div class="taint-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+  </div>
+
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+  <p class="case-graph-error" *ngIf="graphError">{{ graphError }}</p>
+
+  <div class="taint-header">
+    <div>
+      <p class="panel-kicker">Praćenje zaprljanih sredstava</p>
+      <h2>Taint analiza</h2>
+      <p *ngIf="!hasRunTaint">
+        Klikni na jedan ili više čvorova na grafu da ih označiš kao izvor ("prljav" čvor), ili unesi adresu ručno ispod.
+      </p>
+      <p *ngIf="hasRunTaint">
+        Boja čvora pokazuje procenat zaprljanosti — od tamne (0%) do crvene (100%). Klikni na čvor za detalje.
+      </p>
+    </div>
+    <div class="stats">
+      <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!graph">Prikaži ceo graf</button>
+      <button type="button" class="ghost-button" *ngIf="hasRunTaint" (click)="startNewAnalysis()">Nova analiza</button>
+    </div>
+  </div>
+
+  <div class="seed-panel" *ngIf="!hasRunTaint">
+    <div class="seed-input">
+      <input
+        type="text"
+        placeholder="Unesi adresu ručno (0x...)"
+        [(ngModel)]="manualSeedInput"
+        (keydown.enter)="addManualSeed()"
+      />
+      <button type="button" class="ghost-button" (click)="addManualSeed()">Dodaj</button>
+    </div>
+    <div class="seed-chips" *ngIf="seedAddresses.length > 0">
+      <span class="seed-chip" *ngFor="let address of seedAddresses">
+        {{ address }}
+        <button type="button" (click)="removeSeed(address)" title="Ukloni">×</button>
+      </span>
+    </div>
+    <p class="muted" *ngIf="seedAddresses.length === 0">
+      Bez ručno izabranog izvora, analiza će automatski koristiti adrese koje su već na crnoj listi (ako ih ima).
+    </p>
+    <p class="taint-error" *ngIf="taintError">{{ taintError }}</p>
+    <button type="button" class="primary-button" (click)="runTaintAnalysis()" [disabled]="!graph || isRunningTaint">
+      {{
+        isRunningTaint
+          ? 'Pokretanje...'
+          : seedAddresses.length > 0
+            ? 'Pokreni taint analizu (' + seedAddresses.length + ')'
+            : 'Pokreni taint analizu (crna lista)'
+      }}
+    </button>
+  </div>
+
+  <div class="taint-content">
+    <div class="graph-canvas-wrap">
+      <div #taintCanvas class="graph-canvas"></div>
+      <p class="loading-overlay" *ngIf="isLoadingGraph">Učitavanje grafa...</p>
+    </div>
+
+    <aside class="node-inspector" *ngIf="hasRunTaint">
+      <ng-container *ngIf="selectedNode as node; else noSelection">
+        <p class="panel-kicker">Detalji čvora</p>
+        <h3>{{ node.address ?? node.id }}</h3>
+        <dl>
+          <div>
+            <dt>Taint %</dt>
+            <dd>{{ node.taint_percentage ?? 0 | number : '1.2-2' }}%</dd>
+          </div>
+          <div>
+            <dt>Izvor (seed)</dt>
+            <dd>{{ node.is_taint_seed ? 'Da' : 'Ne' }}</dd>
+          </div>
+        </dl>
+        <p class="panel-kicker hops-title" *ngIf="selectedNodeHops.length > 0">Zaprljane transakcije ovog čvora</p>
+        <ul class="hops-list" *ngIf="selectedNodeHops.length > 0">
+          <li *ngFor="let hop of selectedNodeHops">
+            <span class="mono-address">{{ hop.source }}</span> → <span class="mono-address">{{ hop.target }}</span>
+            <br />
+            {{ hop.tainted_amount | number : '1.2-6' }} / {{ hop.amount | number : '1.2-6' }} ({{ hop.taint_pct_at_hop }}%)
+            · {{ hop.timestamp | date : 'short' }}
+          </li>
+        </ul>
+      </ng-container>
+      <ng-template #noSelection>
+        <p class="panel-kicker">Detalji čvora</p>
+        <p class="muted">Klikni na čvor da vidiš njegov taint % i istoriju.</p>
+      </ng-template>
+
+      <div class="taint-legend">
+        <p class="panel-kicker">Legenda</p>
+        <div class="gradient-bar"></div>
+        <div class="gradient-labels">
+          <span>0%</span>
+          <span>50%</span>
+          <span>100%</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch seed"></span>
+          Izvor (seed adresa)
+        </div>
+      </div>
+
+      <div class="top-tainted" *ngIf="topTaintedNodes.length > 0">
+        <p class="panel-kicker">Najviše zaprljane adrese</p>
+        <ol>
+          <li *ngFor="let item of topTaintedNodes">
+            <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
+            <span *ngIf="item.is_taint_seed" class="seed-tag">izvor</span>
+          </li>
+        </ol>
+      </div>
+    </aside>
+  </div>
+</div>

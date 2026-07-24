@@ -9,6 +9,7 @@
       <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Kontrolna tabla</a>
       <a routerLink="/cases" routerLinkActive="active">Slučajevi</a>
       <a routerLink="/graph" routerLinkActive="active">Graf</a>
+      <a routerLink="/taint" routerLinkActive="active">Taint analiza</a>
       <a routerLink="/reports" routerLinkActive="active">Izveštaji</a>
       <a routerLink="/admin/users" routerLinkActive="active" *ngIf="user.role === 'admin'">Administracija</a>
       <span class="user-chip">{{ user.username }}</span>

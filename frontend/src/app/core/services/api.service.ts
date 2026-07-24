@@ -83,9 +83,10 @@ export class ApiService {
     return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`, { params });
   }
 
-  runCaseAnalytics(caseId: string, evidence?: string | null): Observable<AnalyticsResponse> {
+  runCaseAnalytics(caseId: string, evidence?: string | null, seedAddresses?: string[] | null): Observable<AnalyticsResponse> {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
-    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, {}, { params });
+    const body = seedAddresses?.length ? { seed_addresses: seedAddresses } : {};
+    return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, body, { params });
   }
 
   enrichAddress(address: string, network: OnchainNetwork = 'mainnet'): Observable<AddressEnrichment> {

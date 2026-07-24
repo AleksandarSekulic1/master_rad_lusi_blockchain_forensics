@@ -7,12 +7,8 @@ import { forkJoin } from 'rxjs';
 import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition } from 'cytoscape';
-import fcose from 'cytoscape-fcose';
-import layoutUtilities from 'cytoscape-layout-utilities';
 
-cytoscape.use(fcose);
-cytoscape.use(layoutUtilities);
-
+import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import {
@@ -101,7 +97,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
     private readonly destroyRef: DestroyRef,
-  ) {}
+  ) {
+    ensureCytoscapeExtensionsRegistered();
+  }
 
   ngOnInit(): void {
     // Rendered from analytics$, not graph$: the plain /graph response has no

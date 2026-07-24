@@ -58,7 +58,27 @@ export interface GraphNodeData {
   total_received?: number;
   total_sent?: number;
   net_flow?: number;
+  taint_percentage?: number;
+  is_taint_seed?: boolean;
   [key: string]: unknown;
+}
+
+export interface TaintedHop {
+  source: string;
+  target: string;
+  timestamp: string;
+  amount: number;
+  tainted_amount: number;
+  taint_pct_at_hop: number;
+}
+
+export interface TaintAnalysisResult {
+  plugin: 'taint_analysis';
+  description: string;
+  seed_addresses: string[];
+  tainted_node_count: number;
+  tainted_hops: TaintedHop[];
+  results: Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }>;
 }
 
 export interface GraphLinkData {
