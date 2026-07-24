@@ -38,6 +38,12 @@ class SetCaseStatusRequest(BaseModel):
     status: str = Field(pattern='^(open|closed)$')
 
 
+class RunAnalyticsRequest(BaseModel):
+    # Extra taint-analysis seed addresses (e.g. a known theft address that isn't on any
+    # blacklist) on top of whatever taint_analysis already auto-seeds from blacklist_flag.
+    seed_addresses: list[str] | None = None
+
+
 @router.get('')
 def get_cases() -> dict[str, object]:
     return {'cases': list_cases()}
@@ -110,13 +116,14 @@ def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, objec
 
 
 @router.post('/{case_id}/analytics/run')
-def run_case_analytics(case_id: str, evidence: str | None = None) -> dict[str, object]:
+def run_case_analytics(case_id: str, evidence: str | None = None, request: RunAnalyticsRequest | None = None) -> dict[str, object]:
     """Runs the full analytics pipeline over the case's evidence graph, optionally scoped to one evidence file."""
     case = _get_case_or_404(case_id)
     evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
 
     combined_frame, graph = build_case_graph(evidence_paths)
-    plugin_results = run_plugin_pipeline(dataframe=combined_frame, graph=graph)
+    seed_addresses = request.seed_addresses if request else None
+    plugin_results = run_plugin_pipeline(dataframe=combined_frame, graph=graph, seed_addresses=seed_addresses)
 
     payload = transaction_graph_to_node_link_json(graph)
     payload['case_id'] = case_id

@@ -18,6 +18,7 @@ from app.analytics.graph_building import build_transaction_graph
 from app.analytics.plugins.peel_chains import run_peel_chains
 from app.analytics.plugins.manager import run_plugin_pipeline
 from app.analytics.plugins.risk_scoring import run_risk_scoring
+from app.analytics.plugins.taint_analysis import run_taint_analysis
 
 
 def main() -> None:
@@ -64,6 +65,8 @@ def main() -> None:
 
     graph = build_transaction_graph(dataframe)
     blacklist_result = run_blacklist_check(dataframe=dataframe, graph=graph)
+    # Must run after blacklist_check - it auto-seeds from blacklist_flag by default.
+    taint_result = run_taint_analysis(dataframe=dataframe, graph=graph)
     clustering_result = run_wallet_clustering(dataframe=dataframe, graph=graph)
     risk_result = run_risk_scoring(dataframe=dataframe, graph=graph)
 
@@ -73,8 +76,19 @@ def main() -> None:
 
     bridge_node = graph.nodes['0xBridge']
     blacklisted_node = graph.nodes['0xbad0000000000000000000000000000000000001']
+    cashout_node = graph.nodes['0xCashout']
+
+    assert blacklisted_node.get('taint_percentage') == 100.0, 'Blacklist-seeded address should show as 100% tainted.'
+    assert cashout_node.get('taint_percentage') == 100.0, 'Funds received straight from the tainted seed should be fully tainted.'
+    assert bridge_node.get('taint_percentage', 0.0) == 0.0, (
+        'Bridge only ever SENT to the blacklisted address, never received from it - taint must not flow backwards.'
+    )
 
     print('blacklist_matches=', blacklist_result['matched_count'])
+    print('taint_seeds=', taint_result['seed_addresses'])
+    print('taint_seed_pct=', blacklisted_node.get('taint_percentage'))
+    print('taint_cashout_pct=', cashout_node.get('taint_percentage'))
+    print('taint_bridge_pct=', bridge_node.get('taint_percentage'))
     print('clusters=', clustering_result['cluster_count'])
     print('bridge_risk=', bridge_node.get('risk_score'))
     print('blacklisted_score=', blacklisted_node.get('risk_score'))
@@ -122,6 +136,37 @@ def main() -> None:
     print('chain_hops=', chain_hop_result['hop_count'])
     print('anomalies=', anomaly_result['anomaly_count'])
     print('pipeline_plugins=', ','.join(advanced_results.keys()))
+
+    # Proportional-dilution check: 0xThief seeds 1000 (explicit seed, not blacklisted),
+    # 0xMixer also receives 500 clean funds, then forwards 750 onward. Expected ratio at
+    # the mixer (and carried forward to whoever it pays) is 1000 / (1000 + 500) = 66.67%.
+    taint_frame = pd.DataFrame(
+        [
+            {'sender_address': '0xThief', 'recipient_address': '0xMixer', 'amount': 1000, 'timestamp': '2024-03-01T00:00:00Z', 'metadata': 'stolen_funds'},
+            {'sender_address': '0xCleanUser', 'recipient_address': '0xMixer', 'amount': 500, 'timestamp': '2024-03-01T00:05:00Z', 'metadata': 'unrelated_deposit'},
+            {'sender_address': '0xMixer', 'recipient_address': '0xExitWallet', 'amount': 750, 'timestamp': '2024-03-01T00:10:00Z', 'metadata': 'mixer_payout'},
+        ]
+    )
+    taint_frame['timestamp'] = pd.to_datetime(taint_frame['timestamp'], utc=True)
+
+    taint_graph = build_transaction_graph(taint_frame)
+    dilution_result = run_taint_analysis(dataframe=taint_frame, graph=taint_graph, seed_addresses=['0xThief'], seed_from_blacklist=False)
+
+    thief_pct = taint_graph.nodes['0xThief']['taint_percentage']
+    mixer_pct = taint_graph.nodes['0xMixer']['taint_percentage']
+    exit_pct = taint_graph.nodes['0xExitWallet']['taint_percentage']
+    clean_user_pct = taint_graph.nodes['0xCleanUser']['taint_percentage']
+
+    assert thief_pct == 100.0, 'Explicit seed address should show as 100% tainted.'
+    assert mixer_pct == 66.67, f'Expected mixer to dilute to 1000/1500=66.67%, got {mixer_pct}.'
+    assert exit_pct == 66.67, f'Exit wallet should inherit the mixer\'s exact ratio at time of payout, got {exit_pct}.'
+    assert clean_user_pct == 0.0, 'A pure funding source unrelated to the seed should never show any taint.'
+
+    print('dilution_seeds=', dilution_result['seed_addresses'])
+    print('dilution_thief_pct=', thief_pct)
+    print('dilution_mixer_pct=', mixer_pct)
+    print('dilution_exit_pct=', exit_pct)
+    print('dilution_clean_user_pct=', clean_user_pct)
 
 
 if __name__ == '__main__':

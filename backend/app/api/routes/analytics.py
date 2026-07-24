@@ -18,6 +18,9 @@ router = APIRouter(prefix='/analytics', tags=['analytics'])
 class AnalyticsRequest(BaseModel):
     file_name: str | None = None
     plugins: list[str] | None = Field(default=None, description='Optional ordered subset of analytics plugins to run.')
+    seed_addresses: list[str] | None = Field(
+        default=None, description='Extra taint_analysis seed addresses, on top of anything auto-seeded from blacklist_flag.'
+    )
 
 
 def _raw_dir() -> Path:
@@ -48,6 +51,7 @@ def run_analytics(request: AnalyticsRequest) -> dict[str, object]:
         dataframe=cleaned_frame,
         graph=graph,
         plugin_names=request.plugins,
+        seed_addresses=request.seed_addresses,
     )
 
     payload = transaction_graph_to_node_link_json(graph)
