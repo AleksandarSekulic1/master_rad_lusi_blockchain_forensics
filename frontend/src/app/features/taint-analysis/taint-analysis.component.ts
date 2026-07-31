@@ -58,6 +58,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected timelineSubtitlesEnabled = true;
   protected timelineFollowEnabled = true;
   protected hideNonTaintedNodes = false;
+  /** "Hide nodes at or below this %" - defaults to 0 (the old fixed behavior: only
+   * exactly-untainted nodes). Raising it matters on graphs with many seeds, where almost
+   * nothing sits at exactly 0% but plenty of nodes carry only a negligible sliver. */
+  protected taintHideThreshold = 0;
 
   private cy: Core | null = null;
   private lastClickedHopKey: string | null = null;
@@ -536,12 +540,20 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.timelineFollowEnabled = !this.timelineFollowEnabled;
   }
 
-  /** Hides every node that never carries any taint - both during static viewing and
+  /** Hides every node at or below the current threshold - both during static viewing and
    * mid-playback - since on a few-hundred-node graph the vast majority of nodes are
-   * usually untouched by the seed(s), and seeing only the ones that actually matter is
-   * the whole point of "which addresses does this money actually reach". */
+   * usually untouched (or barely touched) by the seed(s), and seeing only the ones that
+   * actually matter is the whole point of "which addresses does this money actually
+   * reach". Defaults to a 0% threshold (hide only the untouched ones); raising it also
+   * hides negligible slivers, which matters most when many seeds are selected at once
+   * and almost nothing sits at exactly 0% anymore. */
   toggleHideNonTaintedNodes(): void {
     this.hideNonTaintedNodes = !this.hideNonTaintedNodes;
+    this.applyTaintTimeline();
+  }
+
+  onTaintThresholdChange(value: number): void {
+    this.taintHideThreshold = Math.min(100, Math.max(0, Number(value) || 0));
     this.applyTaintTimeline();
   }
 
@@ -654,7 +666,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         const finalPct = Number(node.data('finalTaintPercentage') ?? 0);
         node.data('taint_percentage', finalPct);
         node.data('displayLabel', this.hasRunTaint ? `${finalPct}%` : '');
-        node.style('display', this.hideNonTaintedNodes && finalPct <= 0 ? 'none' : 'element');
+        node.style('display', this.hideNonTaintedNodes && finalPct <= this.taintHideThreshold ? 'none' : 'element');
       });
       this.cy.edges().forEach((edge) => {
         edge.style('display', 'element');
@@ -672,7 +684,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         node.data('taint_percentage', pct);
         node.data('displayLabel', `${pct}%`);
       }
-      const hiddenByFilter = this.hideNonTaintedNodes && pct <= 0;
+      const hiddenByFilter = this.hideNonTaintedNodes && pct <= this.taintHideThreshold;
       node.style('display', revealed && !hiddenByFilter ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {

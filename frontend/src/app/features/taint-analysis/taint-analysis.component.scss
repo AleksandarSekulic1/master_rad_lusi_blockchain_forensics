@@ -159,6 +159,26 @@ h3 {
   background: rgba(125, 211, 252, 0.3);
 }
 
+.threshold-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.4rem;
+  font-size: 0.82rem;
+  color: #9ab1d0;
+}
+
+.threshold-input input {
+  width: 3.2rem;
+  padding: 0.5rem 0.4rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  color: #eef4ff;
+  font: inherit;
+  text-align: right;
+}
+
 .timeline-panel {
   display: flex;
   align-items: center;

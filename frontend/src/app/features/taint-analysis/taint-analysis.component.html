@@ -50,10 +50,22 @@
         [class.active]="hideNonTaintedNodes"
         *ngIf="hasRunTaint"
         (click)="toggleHideNonTaintedNodes()"
-        title="Sakrij čvorove koji nikad nisu primili niti poslali zaprljana sredstva"
+        title="Sakrij čvorove čiji je taint % na ili ispod praga podešenog desno"
       >
-        {{ hideNonTaintedNodes ? 'Prikaži sve čvorove' : 'Sakrij nezaprljane čvorove' }}
+        {{ hideNonTaintedNodes ? 'Prikaži sve čvorove' : 'Sakrij ispod praga' }}
       </button>
+      <label class="threshold-input" *ngIf="hasRunTaint" title="Prag za filter iznad (u procentima)">
+        ispod
+        <input
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          [ngModel]="taintHideThreshold"
+          (ngModelChange)="onTaintThresholdChange($event)"
+        />
+        %
+      </label>
       <button
         type="button"
         class="ghost-button"
