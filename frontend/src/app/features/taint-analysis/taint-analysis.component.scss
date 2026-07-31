@@ -424,6 +424,15 @@ h3 {
   border: 3px double #fbbf24;
 }
 
+.legend-swatch.path {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #4f8cff;
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
+
 .top-tainted {
   margin-top: 1.25rem;
   padding-top: 1rem;

@@ -414,6 +414,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       return;
     }
     this.selectedNode = node;
+    this.applyPathHighlight(address);
 
     const element = this.cy?.getElementById(address);
     if (!element || element.empty()) {
@@ -422,6 +423,87 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.cy?.elements().unselect();
     element.select();
     this.cy?.animate({ fit: { eles: element, padding: 200 } }, { duration: 300 });
+  }
+
+  /** Traces the actual tainted-money path touching a node: backward through
+   * tainted_hops to find where its dirty funds came from, and forward to find
+   * everywhere they eventually went - not just its immediate neighbors, the whole
+   * connected lineage. Respects the same "full vs as-of-now" rule as the inspector
+   * panel: the complete path when the timeline is off, only hops up to the current
+   * scrub position while it's on. */
+  private getTaintedPathElements(nodeId: string, maxRank: number | null): { nodeIds: Set<string>; edgeKeys: Set<string> } {
+    const allHops = this.taintResult?.tainted_hops ?? [];
+    const hops = maxRank == null ? allHops : allHops.filter((hop) => hop.rank <= maxRank);
+
+    const outgoing = new Map<string, TaintedHop[]>();
+    const incoming = new Map<string, TaintedHop[]>();
+    for (const hop of hops) {
+      if (!outgoing.has(hop.source)) {
+        outgoing.set(hop.source, []);
+      }
+      outgoing.get(hop.source)!.push(hop);
+      if (!incoming.has(hop.target)) {
+        incoming.set(hop.target, []);
+      }
+      incoming.get(hop.target)!.push(hop);
+    }
+
+    const nodeIds = new Set<string>([nodeId]);
+    const edgeKeys = new Set<string>();
+
+    const forwardQueue = [nodeId];
+    while (forwardQueue.length > 0) {
+      const current = forwardQueue.pop()!;
+      for (const hop of outgoing.get(current) ?? []) {
+        edgeKeys.add(`${hop.source}__${hop.target}`);
+        if (!nodeIds.has(hop.target)) {
+          nodeIds.add(hop.target);
+          forwardQueue.push(hop.target);
+        }
+      }
+    }
+
+    const backwardQueue = [nodeId];
+    while (backwardQueue.length > 0) {
+      const current = backwardQueue.pop()!;
+      for (const hop of incoming.get(current) ?? []) {
+        edgeKeys.add(`${hop.source}__${hop.target}`);
+        if (!nodeIds.has(hop.source)) {
+          nodeIds.add(hop.source);
+          backwardQueue.push(hop.source);
+        }
+      }
+    }
+
+    return { nodeIds, edgeKeys };
+  }
+
+  /** Lights up the tainted path touching nodeId and fades everything else - clears back
+   * to a normal, fully-lit view when nodeId is null (nothing selected) or when the node
+   * has no tainted hops at all (yet), rather than dimming the whole graph for nothing. */
+  private applyPathHighlight(nodeId: string | null): void {
+    if (!this.cy) {
+      return;
+    }
+
+    this.cy.elements().removeClass('path-highlighted path-dimmed');
+    if (!nodeId) {
+      return;
+    }
+
+    const maxRank = this.timelineEnabled ? this.timelinePosition : null;
+    const { nodeIds, edgeKeys } = this.getTaintedPathElements(nodeId, maxRank);
+    if (edgeKeys.size === 0) {
+      return;
+    }
+
+    this.cy.nodes().forEach((node) => {
+      node.addClass(nodeIds.has(node.id()) ? 'path-highlighted' : 'path-dimmed');
+    });
+    this.cy.edges().forEach((edge) => {
+      const key = `${edge.data('source')}__${edge.data('target')}`;
+      edge.addClass(edgeKeys.has(key) ? 'path-highlighted' : 'path-dimmed');
+    });
   }
 
   private get currentTimelineEvent(): TaintTimelineEvent | null {
@@ -577,6 +659,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       this.cy.edges().forEach((edge) => {
         edge.style('display', 'element');
       });
+      this.applyPathHighlight(this.selectedNode ? String(this.selectedNode.id) : null);
       return;
     }
 
@@ -597,6 +680,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       edge.style('display', rank != null && rank <= position ? 'element' : 'none');
     });
 
+    this.applyPathHighlight(this.selectedNode ? String(this.selectedNode.id) : null);
     this.focusOnCurrentTransaction();
   }
 
@@ -760,6 +844,39 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             opacity: 0.6,
           },
         },
+        // Path highlight uses outline-* (drawn outside the border) rather than
+        // border-*, so it layers independently on top of the seed's gold border
+        // instead of fighting it for the same property.
+        {
+          selector: 'node.path-highlighted',
+          style: {
+            'outline-width': 4,
+            'outline-color': '#7dd3fc',
+            'outline-style': 'solid',
+            'outline-offset': 2,
+          },
+        },
+        {
+          selector: 'edge.path-highlighted',
+          style: {
+            'line-color': '#7dd3fc',
+            'target-arrow-color': '#7dd3fc',
+            opacity: 1,
+            width: 3,
+          },
+        },
+        {
+          selector: 'node.path-dimmed',
+          style: {
+            opacity: 0.15,
+          },
+        },
+        {
+          selector: 'edge.path-dimmed',
+          style: {
+            opacity: 0.06,
+          },
+        },
       ],
     });
 
@@ -769,6 +886,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         this.toggleSeed(String(nodeData.id));
       } else {
         this.selectedNode = nodeData;
+        this.applyPathHighlight(String(nodeData.id));
       }
     });
 
