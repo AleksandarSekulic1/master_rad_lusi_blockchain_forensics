@@ -202,7 +202,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (!address) {
       return;
     }
-    this.addSeedAddress(address);
+    this.addSeedAddress(this.resolveNodeId(address));
   }
 
   /** Mirror of addManualSeed - lets you paste/type an address to remove it directly,
@@ -213,7 +213,18 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (!address) {
       return;
     }
-    this.removeSeedAddress(address);
+    this.removeSeedAddress(this.resolveNodeId(address));
+  }
+
+  /** Ethereum addresses are case-insensitive in practice (checksummed mixed-case is just
+   * a typo-check convention, not a different address) - typing one in a different case
+   * than the graph's own would otherwise silently fail to match the actual node, so this
+   * looks up the graph's real, correctly-cased id before it's ever added/removed/sent to
+   * the backend. Falls back to the raw input unchanged if no matching node exists (still
+   * a harmless no-op seed, same as before). */
+  private resolveNodeId(address: string): string {
+    const match = this.graph?.nodes.find((node) => String(node.id).toLowerCase() === address.toLowerCase());
+    return match ? String(match.id) : address;
   }
 
   /** Runs the existing heuristics (blacklist, risk score, anomaly, peel-chain, chain-hop
