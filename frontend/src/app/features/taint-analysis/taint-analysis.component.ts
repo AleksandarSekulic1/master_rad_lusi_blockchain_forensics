@@ -315,6 +315,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.graph = response;
         this.taintResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+        // Otherwise a node selected in an earlier run (e.g. before "Izmeni izvore") would
+        // carry over and show up immediately in the inspector on the new run, with no
+        // click having happened yet in this run at all.
+        this.selectedNode = null;
         // The backend may have auto-seeded extra addresses from the blacklist that we
         // never explicitly added (e.g. an empty-seed "crna lista" run) - without this,
         // seedAddresses would still be empty while those nodes show a gold seed ring on
@@ -355,12 +359,38 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.showAllTopTainted = !this.showAllTopTainted;
   }
 
+  /** The node's real, final taint % - always the complete result, regardless of where
+   * the timeline scrubber happens to be. Used whenever the timeline isn't actively
+   * driving the display (see selectedNodeTaintPercentage below). */
+  get selectedNodeFinalTaintPercentage(): number {
+    return Number(this.selectedNode?.taint_percentage ?? 0);
+  }
+
+  /** While the timeline is OFF, the inspector always shows the complete, final picture -
+   * full percentage, full hop history - same as before this feature existed. Only while
+   * it's actively turned ON does either one reflect "as of this scrub position" instead,
+   * since that's the one case where showing partial/in-progress state is the actual
+   * point (watching a value change), not a regression. */
+  get selectedNodeTaintPercentage(): number {
+    if (!this.selectedNode) {
+      return 0;
+    }
+    if (!this.timelineEnabled) {
+      return this.selectedNodeFinalTaintPercentage;
+    }
+    return this.getNodeTaintAtRank(String(this.selectedNode.id), this.timelinePosition);
+  }
+
   get selectedNodeHops(): TaintedHop[] {
     if (!this.selectedNode || !this.taintResult) {
       return [];
     }
     const id = String(this.selectedNode.id);
-    return this.taintResult.tainted_hops.filter((hop) => hop.source === id || hop.target === id);
+    const hops = this.taintResult.tainted_hops.filter((hop) => hop.source === id || hop.target === id);
+    if (!this.timelineEnabled) {
+      return hops;
+    }
+    return hops.filter((hop) => hop.rank <= this.timelinePosition);
   }
 
   /** First click on a hop jumps to who RECEIVED the funds; clicking the exact same hop
@@ -463,6 +493,22 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (this.isTimelinePlaying) {
       this.startTimelinePlayInterval();
     }
+  }
+
+  /** tainted_hops is already in ascending rank order (the backend appends to it in the
+   * same chronological pass it ranks events in), so "next" is just the first one past
+   * the current position - no separate sort needed. */
+  get hasNextTaintedTransaction(): boolean {
+    return (this.taintResult?.tainted_hops ?? []).some((hop) => hop.rank > this.timelinePosition);
+  }
+
+  skipToNextTaintedTransaction(): void {
+    const next = (this.taintResult?.tainted_hops ?? []).find((hop) => hop.rank > this.timelinePosition);
+    if (!next) {
+      return;
+    }
+    this.timelinePosition = next.rank;
+    this.applyTaintTimeline();
   }
 
   private startTimelinePlayInterval(): void {

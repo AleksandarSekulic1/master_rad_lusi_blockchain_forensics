@@ -128,6 +128,15 @@
     <button type="button" class="ghost-button" [class.active]="isTimelinePlaying" (click)="toggleTimelinePlay()">
       {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
     </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="skipToNextTaintedTransaction()"
+      [disabled]="!hasNextTaintedTransaction"
+      title="Preskoči na sledeću transakciju koja stvarno prenosi zaprljana sredstva"
+    >
+      ⏭ Sledeća zaprljana
+    </button>
     <input
       type="range"
       min="1"
@@ -173,14 +182,18 @@
         <h3>{{ node.address ?? node.id }}</h3>
         <dl>
           <div>
-            <dt>Taint %</dt>
-            <dd>{{ node.taint_percentage ?? 0 | number : '1.2-2' }}%</dd>
+            <dt>{{ timelineEnabled ? 'Taint % (na trenutnoj poziciji trake)' : 'Taint %' }}</dt>
+            <dd>{{ selectedNodeTaintPercentage | number : '1.2-2' }}%</dd>
           </div>
           <div>
             <dt>Izvor (seed)</dt>
             <dd>{{ node.is_taint_seed ? 'Da' : 'Ne' }}</dd>
           </div>
         </dl>
+        <p class="muted top-tainted-hint" *ngIf="timelineEnabled">
+          Vremenska traka je uključena — procenat i lista ispod prikazuju stanje samo do transakcije {{ timelinePosition }}.
+          Isključi traku da vidiš konačan, potpun rezultat.
+        </p>
         <p class="panel-kicker hops-title">Zaprljane transakcije ovog čvora</p>
         <p class="muted top-tainted-hint" *ngIf="selectedNodeHops.length > 0">
           Klikni na transakciju da odeš do primaoca; klikni istu ponovo da se vratiš na pošiljaoca.
