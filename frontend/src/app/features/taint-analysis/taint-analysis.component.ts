@@ -168,6 +168,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.renderGraph();
   }
 
+  /** Re-opens the seed panel on top of the just-computed results, without clearing
+   * anything - the current seed chips and the graph's existing colors/markers stay
+   * exactly as they are, so you can add or remove a few addresses and re-run instead of
+   * starting over from an empty seed list every time. */
+  editSeeds(): void {
+    this.hasRunTaint = false;
+  }
+
   get isSeedSelectionMode(): boolean {
     return !this.hasRunTaint;
   }

@@ -35,11 +35,23 @@
     </div>
     <div class="stats">
       <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!graph">Prikaži ceo graf</button>
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="hasRunTaint"
+        (click)="editSeeds()"
+        title="Dodaj ili ukloni izvore bez brisanja trenutnih rezultata i izbora"
+      >
+        Izmeni izvore ({{ seedAddresses.length }})
+      </button>
       <button type="button" class="ghost-button" *ngIf="hasRunTaint" (click)="startNewAnalysis()">Nova analiza</button>
     </div>
   </div>
 
   <div class="seed-panel" *ngIf="!hasRunTaint">
+    <p class="muted top-tainted-hint" *ngIf="seedAddresses.length > 0">
+      Uređuješ postojeći izbor izvora — dodaj ili ukloni adrese, pa ponovo pokreni analizu.
+    </p>
     <div class="seed-input">
       <input
         type="text"
@@ -98,9 +110,13 @@
             <dd>{{ node.is_taint_seed ? 'Da' : 'Ne' }}</dd>
           </div>
         </dl>
-        <p class="panel-kicker hops-title" *ngIf="selectedNodeHops.length > 0">Zaprljane transakcije ovog čvora</p>
+        <p class="panel-kicker hops-title">Zaprljane transakcije ovog čvora</p>
         <p class="muted top-tainted-hint" *ngIf="selectedNodeHops.length > 0">
           Klikni na transakciju da odeš do primaoca; klikni istu ponovo da se vratiš na pošiljaoca.
+        </p>
+        <p class="muted top-tainted-hint" *ngIf="selectedNodeHops.length === 0">
+          Nema zabeleženih zaprljanih transakcija za ovaj čvor — ili nije poslao/primio ništa u ovoj evidenciji, ili je jedina
+          transakcija imala iznos 0 (dust), pa se ne računa kao prenos vrednosti.
         </p>
         <ul class="hops-list" *ngIf="selectedNodeHops.length > 0">
           <li *ngFor="let hop of selectedNodeHops">
