@@ -23,14 +23,9 @@
   <p class="case-graph-error" *ngIf="graphError">{{ graphError }}</p>
 
   <div class="taint-header">
-    <div>
+    <div class="taint-header-text">
       <p class="panel-kicker">Praćenje zaprljanih sredstava</p>
       <h2>Taint analiza</h2>
-      <p class="intro-hint">
-        Cilj: kad se sumnjiv/ukraden novac pomeša sa tuđim, čistim sredstvima (npr. u mikseru), ova analiza pokazuje
-        <strong>koliko tačno</strong> od sredstava na svakoj adresi zapravo potiče od tog izvora — ne samo "da li je umešana",
-        nego i koliki procenat.
-      </p>
       <p *ngIf="!hasRunTaint">
         Klikni na jedan ili više čvorova na grafu da ih označiš kao izvor ("prljav" čvor), ili unesi adresu ručno ispod.
       </p>
@@ -52,6 +47,12 @@
       <button type="button" class="ghost-button" *ngIf="hasRunTaint" (click)="startNewAnalysis()">Nova analiza</button>
     </div>
   </div>
+
+  <p class="intro-hint">
+    Cilj: kad se sumnjiv/ukraden novac pomeša sa tuđim, čistim sredstvima (npr. u mikseru), ova analiza pokazuje
+    <strong>koliko tačno</strong> od sredstava na svakoj adresi zapravo potiče od tog izvora — ne samo "da li je umešana",
+    nego i koliki procenat.
+  </p>
 
   <div class="seed-panel" *ngIf="!hasRunTaint">
     <p class="muted top-tainted-hint" *ngIf="seedAddresses.length > 0">
