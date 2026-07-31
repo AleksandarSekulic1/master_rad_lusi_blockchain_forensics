@@ -157,7 +157,13 @@ h3 {
 .seed-chips {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0.5rem;
+  // Caps the visible chip area at roughly 3 rows - with dozens of manually added seeds
+  // this used to grow the panel (and push the canvas down the page) without bound.
+  max-height: 7.5rem;
+  overflow-y: auto;
+  padding-right: 0.3rem;
 }
 
 .seed-chip {
@@ -273,12 +279,23 @@ h3 {
   gap: 0.6rem;
 }
 
-.hops-list li {
+.hop-button {
+  display: block;
+  width: 100%;
+  text-align: left;
   padding: 0.5rem 0.6rem;
   border-radius: 0.6rem;
+  border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.03);
+  font: inherit;
   font-size: 0.78rem;
   color: #d5e0f6;
+  cursor: pointer;
+}
+
+.hop-button:hover {
+  background: rgba(125, 211, 252, 0.1);
+  border-color: rgba(125, 211, 252, 0.3);
 }
 
 .taint-legend {
@@ -325,13 +342,56 @@ h3 {
   border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
+.top-tainted-hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.74rem;
+}
+
+.show-more-button {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  background: rgba(125, 211, 252, 0.08);
+  color: #7dd6ff;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.show-more-button:hover {
+  background: rgba(125, 211, 252, 0.16);
+  border-color: rgba(125, 211, 252, 0.5);
+}
+
 .top-tainted ol {
   margin: 0.5rem 0 0;
   padding-left: 1.1rem;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.3rem;
   font-size: 0.78rem;
   color: #d5e0f6;
+}
+
+.ranked-address-button {
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ranked-address-button:hover {
+  background: rgba(125, 211, 252, 0.1);
+  border-color: rgba(125, 211, 252, 0.3);
+}
+
+.ranked-address-button.is-selected {
+  background: rgba(125, 211, 252, 0.16);
+  border-color: rgba(125, 211, 252, 0.45);
 }
 
 .seed-tag {

@@ -48,6 +48,14 @@
         (keydown.enter)="addManualSeed()"
       />
       <button type="button" class="ghost-button" (click)="addManualSeed()">Dodaj</button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="removeManualSeed()"
+        title="Ukloni ovu adresu sa liste, ako je slučajno dodata"
+      >
+        Ukloni
+      </button>
     </div>
     <div class="seed-chips" *ngIf="seedAddresses.length > 0">
       <span class="seed-chip" *ngFor="let address of seedAddresses">
@@ -91,12 +99,22 @@
           </div>
         </dl>
         <p class="panel-kicker hops-title" *ngIf="selectedNodeHops.length > 0">Zaprljane transakcije ovog čvora</p>
+        <p class="muted top-tainted-hint" *ngIf="selectedNodeHops.length > 0">
+          Klikni na transakciju da odeš do primaoca; klikni istu ponovo da se vratiš na pošiljaoca.
+        </p>
         <ul class="hops-list" *ngIf="selectedNodeHops.length > 0">
           <li *ngFor="let hop of selectedNodeHops">
-            <span class="mono-address">{{ hop.source }}</span> → <span class="mono-address">{{ hop.target }}</span>
-            <br />
-            {{ hop.tainted_amount | number : '1.2-6' }} / {{ hop.amount | number : '1.2-6' }} ({{ hop.taint_pct_at_hop }}%)
-            · {{ hop.timestamp | date : 'short' }}
+            <button
+              type="button"
+              class="hop-button"
+              (click)="toggleHopNode(hop)"
+              title="Klikni za primaoca, klikni ponovo za pošiljaoca"
+            >
+              <span class="mono-address">{{ hop.source }}</span> → <span class="mono-address">{{ hop.target }}</span>
+              <br />
+              {{ hop.tainted_amount | number : '1.2-6' }} / {{ hop.amount | number : '1.2-6' }} ({{ hop.taint_pct_at_hop }}%)
+              · {{ hop.timestamp | date : 'short' }}
+            </button>
           </li>
         </ul>
       </ng-container>
@@ -121,12 +139,23 @@
 
       <div class="top-tainted" *ngIf="topTaintedNodes.length > 0">
         <p class="panel-kicker">Najviše zaprljane adrese</p>
+        <p class="muted top-tainted-hint">Klikni na adresu da je pronađeš i fokusiraš na grafu.</p>
         <ol>
           <li *ngFor="let item of topTaintedNodes">
-            <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
-            <span *ngIf="item.is_taint_seed" class="seed-tag">izvor</span>
+            <button
+              type="button"
+              class="ranked-address-button"
+              [class.is-selected]="selectedNode?.id === item.address"
+              (click)="selectNodeFromList(item.address)"
+            >
+              <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
+              <span *ngIf="item.is_taint_seed" class="seed-tag">izvor</span>
+            </button>
           </li>
         </ol>
+        <button type="button" class="show-more-button" *ngIf="hiddenTopTaintedCount > 0" (click)="toggleShowAllTopTainted()">
+          {{ showAllTopTainted ? 'Prikaži manje' : 'Prikaži još ' + hiddenTopTaintedCount }}
+        </button>
       </div>
     </aside>
   </div>

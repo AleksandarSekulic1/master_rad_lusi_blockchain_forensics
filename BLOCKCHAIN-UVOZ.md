@@ -79,7 +79,43 @@ Ako želiš da sam kreiraš kontrolisan set transakcija (npr. da simuliraš tok 
 
 Ove transakcije su podjednako "prave" (potvrđene na blockchain-u, sa pravim hešom) kao i mainnet transakcije — razlika je samo što je novac na testnet-u bezvredan.
 
-## 6. Šta se dešava u pozadini (za tehnički deo rada)
+## 6. Testiranje Taint analize
+
+Taint analiza (stranica **Taint analiza** u navigaciji) prati kako se "prljava" sredstva proporcionalno šire kroz graf, počevši od jednog ili više ručno izabranih ("seed") čvorova, ili automatski od svake adrese koja je već na crnoj listi. Postoje dva načina da je testiraš — kontrolisan sintetički scenario (da proveriš tačne brojeve) i test na pravim, već uvezenim podacima.
+
+### 6.1 Kontrolisan scenario (tačni brojevi, za proveru algoritma)
+
+U slučaju **"Demo: Sumnjiva laundering sema (hakovan novcanik)"** već postoji poseban dokaz **`demo_taint_dilution.csv`** napravljen baš za ovo (dodat skriptom `backend/scripts/seed_demo_taint_evidence.py`):
+
+```
+sender_address,recipient_address,amount,timestamp
+0xThief,0xMixer,1000,2026-03-01T00:00:00Z
+0xCleanUser,0xMixer,500,2026-03-01T00:05:00Z
+0xMixer,0xExitWallet,750,2026-03-01T00:10:00Z
+```
+
+1. Idi na **Slučajevi** → izaberi "Demo: Sumnjiva laundering sema".
+2. Idi na **Taint analiza** → u "Prikaz transakcija" izaberi `demo_taint_dilution.csv`.
+3. Klikni na čvor `0xThief` (postaje seed) → **"Pokreni taint analizu (1)"**.
+4. Očekivano: `0xThief` = 100%, `0xMixer` i `0xExitWallet` = tačno **66.67%** (1000 prljavo / 1500 ukupno u mikseru), `0xCleanUser` = 0%.
+
+Pošto je model proporcionalan (ne zavisi od toga koji je čvor izabran), možeš probati i suprotno — izaberi `0xCleanUser` kao seed umesto `0xThief` i pokreni ponovo: sad će `0xCleanUser` biti 100%, a `0xMixer`/`0xExitWallet` će pasti na **33.33%** (500/1500), dok će `0xThief` ostati na 0%. Ovo je dobar način da se u odbrani rada pokaže da algoritam ispravno reaguje na izbor izvora, a ne da su brojevi "zakucani".
+
+### 6.2 Test na realnim podacima (slučaj "test 1")
+
+Slučaj **"test 1"** sadrži prave, sa Etherscan-a povučene transakcije za adresu `0x28b1Dc1a5E3699A428BC51d234DFab7C9CB2a183` (~620 čvorova, ~900 transakcija). Bitna specifičnost ovog konkretnog skupa podataka: **sve transakcije su uplate KA toj adresi** — nijedna nije isplata iz nje (provereno direktno na CSV-u). To znači da je ovo tzv. "fan-in" graf: svaka od ~600 drugih adresa se pojavljuje samo kao jednosmerni pošiljalac.
+
+Šta to znači za taint analizu i šta realno očekivati kad testiraš:
+
+1. Idi na **Taint analiza** → izaberi slučaj "test 1".
+2. Klikni na **bilo koji čvor osim same adrese 0x28b1...** (npr. jedan od "listova" na obodu grafa) da ga označiš kao seed.
+3. Pokreni analizu.
+4. Očekivano: taj čvor = 100% (seed), a centralna adresa `0x28b1...` će pokazati **mali, ali nenulti procenat** — tačno onoliko koliko taj jedan pošiljalac čini od *ukupnog* priliva na tu adresu (npr. ako je taj pošiljalac poslao 2 ETH od ukupno 300 ETH primljenih u ovoj evidenciji, centralna adresa će pokazati ~0.67%). Svi ostali čvorovi ostaju na 0%, jer centralna adresa u ovoj evidenciji nikad ništa dalje ne šalje — taint nema kuda dalje da se širi.
+5. Za realističniji scenario "da li su sredstva sa nekoliko poznatih sumnjivih adresa završila na ovoj adresi" — izaberi **više** čvorova kao seed odjednom (klikni na 2-3 različita "lista") i pokreni ponovo; procenat na `0x28b1...` će se sabrati proporcionalno doprinosu svih izabranih pošiljalaca.
+
+Ovo je i sam po sebi koristan forenzički nalaz za tezu: pokazuje kako se taint drastično razblažuje kad sredstva uđu u adresu koja prima od stotina različitih izvora (tipično za berzu/menjačnicu), za razliku od uskog "peel chain" toka gde ostaje skoro nerazblaženo (vidi 6.1 iznad, ili peel-chain scenario u demo slučaju).
+
+## 7. Šta se dešava u pozadini (za tehnički deo rada)
 
 - Backend: `backend/app/services/onchain_ingestion.py`:
   - `fetch_address_transactions()` — poziva Etherscan V2 API modul `account`/`txlist` (`/v2/api?chainid=...`), pretvara odgovor u isti tabelarni format koji koristi CSV ingestion (`sender_address`, `recipient_address`, `amount`, `timestamp`, `metadata`), preskače neuspele (revertovane) transakcije.

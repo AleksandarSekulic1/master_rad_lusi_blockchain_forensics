@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -44,12 +44,16 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected hasRunTaint = false;
   protected taintResult: TaintAnalysisResult | null = null;
   protected selectedNode: GraphNodeData | null = null;
+  protected showAllTopTainted = false;
 
   private cy: Core | null = null;
+  private lastClickedHopKey: string | null = null;
+  private lastHopClickWentToTarget = false;
   private static readonly TAINT_LOW_COLOR = '#1c2333';
   private static readonly TAINT_MID_COLOR = '#f59e0b';
   private static readonly TAINT_HIGH_COLOR = '#ff4d4d';
   private static readonly TAINT_MID_THRESHOLD = 50;
+  private static readonly TOP_TAINTED_PREVIEW_LIMIT = 15;
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -80,6 +84,20 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.cy?.destroy();
     this.cy = null;
+  }
+
+  /** The seed chip list (or the seed-panel disappearing once analysis runs) changes the
+   * height of content ABOVE the canvas, which shifts the canvas down/up on the page -
+   * cytoscape caches its container's on-screen position and only re-measures it on an
+   * explicit resize(), so without this, clicks on nodes drift further out of alignment
+   * with the cursor as more seeds get added (or the layout otherwise changes). */
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.cy?.resize();
+  }
+
+  private scheduleCyResize(): void {
+    requestAnimationFrame(() => this.cy?.resize());
   }
 
   loadEvidenceOptions(caseId: string): void {
@@ -141,6 +159,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.taintResult = null;
     this.taintError = null;
     this.selectedNode = null;
+    this.showAllTopTainted = false;
+    this.lastClickedHopKey = null;
   }
 
   startNewAnalysis(): void {
@@ -156,27 +176,54 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (this.hasRunTaint) {
       return;
     }
-    const index = this.seedAddresses.indexOf(nodeId);
-    if (index >= 0) {
-      this.seedAddresses.splice(index, 1);
+    if (this.seedAddresses.includes(nodeId)) {
+      this.removeSeedAddress(nodeId);
     } else {
-      this.seedAddresses.push(nodeId);
+      this.addSeedAddress(nodeId);
     }
-    this.cy?.getElementById(nodeId).toggleClass('taint-seed', this.seedAddresses.includes(nodeId));
   }
 
   removeSeed(address: string): void {
-    this.toggleSeed(address);
+    this.removeSeedAddress(address);
   }
 
   addManualSeed(): void {
     const address = this.manualSeedInput.trim();
     this.manualSeedInput = '';
-    if (!address || this.seedAddresses.includes(address)) {
+    if (!address) {
+      return;
+    }
+    this.addSeedAddress(address);
+  }
+
+  /** Mirror of addManualSeed - lets you paste/type an address to remove it directly,
+   * instead of having to visually find its chip among dozens of others to click its ×. */
+  removeManualSeed(): void {
+    const address = this.manualSeedInput.trim();
+    this.manualSeedInput = '';
+    if (!address) {
+      return;
+    }
+    this.removeSeedAddress(address);
+  }
+
+  private addSeedAddress(address: string): void {
+    if (this.seedAddresses.includes(address)) {
       return;
     }
     this.seedAddresses.push(address);
     this.cy?.getElementById(address).addClass('taint-seed');
+    this.scheduleCyResize();
+  }
+
+  private removeSeedAddress(address: string): void {
+    const index = this.seedAddresses.indexOf(address);
+    if (index < 0) {
+      return;
+    }
+    this.seedAddresses.splice(index, 1);
+    this.cy?.getElementById(address).removeClass('taint-seed');
+    this.scheduleCyResize();
   }
 
   runTaintAnalysis(): void {
@@ -203,8 +250,21 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
   }
 
+  private get nonZeroTaintedNodes(): Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }> {
+    return (this.taintResult?.results ?? []).filter((item) => item.taint_percentage > 0);
+  }
+
   get topTaintedNodes(): Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }> {
-    return (this.taintResult?.results ?? []).filter((item) => item.taint_percentage > 0).slice(0, 15);
+    const all = this.nonZeroTaintedNodes;
+    return this.showAllTopTainted ? all : all.slice(0, TaintAnalysisComponent.TOP_TAINTED_PREVIEW_LIMIT);
+  }
+
+  get hiddenTopTaintedCount(): number {
+    return Math.max(0, this.nonZeroTaintedNodes.length - TaintAnalysisComponent.TOP_TAINTED_PREVIEW_LIMIT);
+  }
+
+  toggleShowAllTopTainted(): void {
+    this.showAllTopTainted = !this.showAllTopTainted;
   }
 
   get selectedNodeHops(): TaintedHop[] {
@@ -215,11 +275,35 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return this.taintResult.tainted_hops.filter((hop) => hop.source === id || hop.target === id);
   }
 
-  private truncateAddress(value: string): string {
-    if (value.length <= 14) {
-      return value;
+  /** First click on a hop jumps to who RECEIVED the funds; clicking the exact same hop
+   * again jumps back to who SENT them, then back to the recipient, and so on - lets you
+   * step back and forth along one hop without losing your place. Clicking a different
+   * hop always starts fresh at its recipient. */
+  toggleHopNode(hop: TaintedHop): void {
+    const key = `${hop.source}__${hop.target}__${hop.timestamp}`;
+    const goToTarget = this.lastClickedHopKey === key ? !this.lastHopClickWentToTarget : true;
+    this.lastClickedHopKey = key;
+    this.lastHopClickWentToTarget = goToTarget;
+    this.selectNodeFromList(goToTarget ? hop.target : hop.source);
+  }
+
+  /** Clicking a ranked address in the sidebar both opens its inspector details (same as
+   * clicking it on canvas) and pans/zooms the graph to it - on a few-hundred-node graph,
+   * finding a specific ranked node by eye in the hairball isn't realistic otherwise. */
+  selectNodeFromList(address: string): void {
+    const node = this.graph?.nodes.find((candidate) => String(candidate.id) === address);
+    if (!node) {
+      return;
     }
-    return `${value.slice(0, 6)}…${value.slice(-4)}`;
+    this.selectedNode = node;
+
+    const element = this.cy?.getElementById(address);
+    if (!element || element.empty()) {
+      return;
+    }
+    this.cy?.elements().unselect();
+    element.select();
+    this.cy?.animate({ fit: { eles: element, padding: 200 } }, { duration: 300 });
   }
 
   private renderGraph(): void {
@@ -239,27 +323,40 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         const id = String(node.id);
         const isSeed = Boolean(node.is_taint_seed) || this.seedAddresses.includes(id);
         const taintPercentage = node.taint_percentage ?? 0;
-        const addressLabel = this.truncateAddress(String(node.label ?? node.address ?? node.id));
         return {
           data: {
             ...node,
             id,
             taint_percentage: taintPercentage,
-            // Percentage goes on the node itself, not just the inspector panel - two
-            // colors on a sequential ramp can look close enough at a glance (see
-            // 66.67% vs 100% in testing) that color alone isn't a safe read.
-            label: this.hasRunTaint ? `${addressLabel}\n${taintPercentage}%` : addressLabel,
+            // No address/hash text on canvas at all - on a few-hundred-node graph it's
+            // pure clutter, and the full address is always one click away in the
+            // inspector panel. Just the percentage (once analysis has run) stays, since
+            // color alone isn't always a safe read for two nearby values (e.g. 66.67%
+            // vs 100% looked too similar in testing).
+            label: this.hasRunTaint ? `${taintPercentage}%` : '',
           },
           classes: isSeed ? 'taint-seed' : '',
         } as ElementDefinition;
       }),
-      ...this.graph.links.map((link) => ({
-        data: {
-          ...link,
-          id: `${link.source}__${link.target}__${Math.round(Number(link.total_amount ?? link.amount ?? 0) * 1000)}`,
-        },
-      })) as ElementDefinition[],
+      ...this.graph.links.map((link) => {
+        const totalAmount = Number(link.total_amount ?? link.amount ?? 0);
+        return {
+          data: {
+            ...link,
+            id: `${link.source}__${link.target}__${Math.round(totalAmount * 1000)}`,
+            totalAmount,
+          },
+        } as ElementDefinition;
+      }),
     ];
+    const maxLinkAmount = Math.max(1, ...this.graph.links.map((link) => Number(link.total_amount ?? link.amount ?? 0)));
+
+    // Fixed node size and spacing looks fine for a handful of nodes but crams a few
+    // hundred into a single overlapping blob - scale both down/up with node count, same
+    // approach as the main graph page.
+    const nodeCount = this.graph.nodes.length;
+    const sizeScale = nodeCount > 150 ? 0.45 : nodeCount > 60 ? 0.7 : 1;
+    const nodeSize = Math.round(34 * sizeScale);
 
     this.cy = cytoscape({
       container: this.taintCanvas.nativeElement,
@@ -272,6 +369,9 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         animate: false,
         fit: true,
         padding: 60,
+        nodeSeparation: nodeCount > 60 ? 150 : 100,
+        nodeRepulsion: nodeCount > 60 ? 10000 : 6000,
+        idealEdgeLength: nodeCount > 60 ? 100 : 80,
       } as any,
       style: [
         {
@@ -280,8 +380,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             label: 'data(label)',
             'text-valign': 'center',
             'text-halign': 'center',
-            'text-wrap': 'wrap',
-            'font-size': 10,
+            'font-size': 9,
             'min-zoomed-font-size': 8,
             color: '#ecf2ff',
             'text-outline-width': 2,
@@ -293,8 +392,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             'background-color': `mapData(taint_percentage, 0, ${TaintAnalysisComponent.TAINT_MID_THRESHOLD}, ${TaintAnalysisComponent.TAINT_LOW_COLOR}, ${TaintAnalysisComponent.TAINT_MID_COLOR})`,
             'border-width': 2,
             'border-color': '#3a4a63',
-            width: 34,
-            height: 34,
+            width: nodeSize,
+            height: nodeSize,
           },
         },
         {
@@ -321,12 +420,13 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         {
           selector: 'edge',
           style: {
-            width: 'mapData(totalAmount, 0, 250, 1, 5)',
+            width: `mapData(totalAmount, 0, ${maxLinkAmount}, 1, 3.5)`,
             'line-color': '#3a4a63',
             'target-arrow-color': '#3a4a63',
             'target-arrow-shape': 'triangle',
+            'arrow-scale': 0.55,
             'curve-style': 'bezier',
-            opacity: 0.65,
+            opacity: 0.6,
           },
         },
       ],
@@ -340,6 +440,11 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         this.selectedNode = nodeData;
       }
     });
+
+    // The seed-panel above the canvas just appeared/disappeared (or changed) as part of
+    // this same render pass - give the DOM a frame to settle into its final layout, then
+    // make sure cytoscape's container measurement matches it exactly.
+    this.scheduleCyResize();
   }
 
   fitWholeGraph(): void {
