@@ -36,7 +36,12 @@ class TaintAnalysisPlugin(BasePlugin):
         if seed_from_blacklist:
             seeds |= {node for node, attrs in graph.nodes(data=True) if attrs.get('blacklist_flag')}
 
-        events = self._collect_chronological_events(graph)
+        # Zero/negative-amount transactions never change any balance below, so they're
+        # dropped from the ranked sequence entirely here (not just skipped mid-loop) -
+        # otherwise the timeline slider would have "dead" positions where scrubbing does
+        # nothing, which real on-chain data (dust/contract-interaction transfers) does
+        # contain.
+        events = [event for event in self._collect_chronological_events(graph) if event[3] > 0]
 
         # Balans i "prljavi" deo balansa po adresi, posmatrano samo unutar ove evidencije -
         # nema pristupa prilivima van uvezenih transakcija, pa je ovo "closed-world"
@@ -47,6 +52,13 @@ class TaintAnalysisPlugin(BasePlugin):
         # deljenje sa nula-balansom izbrisalo istorijski trag da je adresa uopšte bila umešana.
         peak_taint_pct: dict[str, float] = {}
         tainted_hops: list[dict[str, Any]] = []
+        # Complete per-node taint % history, one entry per event that actually touches
+        # that node - unlike tainted_hops (only hops carrying nonzero tainted value),
+        # this also captures dilution: a node's % can drop purely because CLEAN money
+        # arrived, which is not itself a "tainted hop" but does change the node's state.
+        # A timeline scrubber built only from tainted_hops would show stale values at
+        # exactly those moments.
+        node_taint_series: dict[str, list[dict[str, Any]]] = {}
 
         def taint_pct(node: str) -> float:
             bal = balance.get(node, 0.0)
@@ -54,9 +66,16 @@ class TaintAnalysisPlugin(BasePlugin):
                 return peak_taint_pct.get(node, 100.0 if node in seeds else 0.0)
             return 100.0 * tainted_balance.get(node, 0.0) / bal
 
-        for timestamp, source, target, amount in events:
-            if amount <= 0:
-                continue
+        # First chronological appearance of each node/edge - lets the frontend's timeline
+        # scrubber reveal elements in the exact same order the simulation itself uses,
+        # rather than re-deriving that order independently in JS and risking drift.
+        node_first_rank: dict[str, int] = {}
+        edge_first_rank: dict[str, int] = {}
+
+        for rank, (timestamp, source, target, amount) in enumerate(events, start=1):
+            node_first_rank.setdefault(source, rank)
+            node_first_rank.setdefault(target, rank)
+            edge_first_rank.setdefault(f'{source}__{target}', rank)
 
             source_balance = balance.get(source, 0.0)
             source_ratio = (
@@ -68,7 +87,9 @@ class TaintAnalysisPlugin(BasePlugin):
 
             balance[source] = source_balance - amount
             tainted_balance[source] = tainted_balance.get(source, 0.0) - tainted_amount
-            peak_taint_pct[source] = max(peak_taint_pct.get(source, 0.0), taint_pct(source))
+            source_pct_after = taint_pct(source)
+            peak_taint_pct[source] = max(peak_taint_pct.get(source, 0.0), source_pct_after)
+            node_taint_series.setdefault(source, []).append({'rank': rank, 'taint_percentage': round(source_pct_after, 2)})
 
             balance[target] = balance.get(target, 0.0) + amount
             tainted_balance[target] = tainted_balance.get(target, 0.0) + tainted_amount
@@ -76,17 +97,22 @@ class TaintAnalysisPlugin(BasePlugin):
                 # Seed adresa "ponovo ubrizgava" pun taint na svaki dolazni transfer i - u
                 # slučaju da isti akter dobije svež ukraden novac iz više različitih incidenata.
                 tainted_balance[target] = balance[target]
-            peak_taint_pct[target] = max(peak_taint_pct.get(target, 0.0), taint_pct(target))
+            target_pct_after = taint_pct(target)
+            peak_taint_pct[target] = max(peak_taint_pct.get(target, 0.0), target_pct_after)
+            node_taint_series.setdefault(target, []).append({'rank': rank, 'taint_percentage': round(target_pct_after, 2)})
 
             if tainted_amount > 1e-9:
                 tainted_hops.append(
                     {
+                        'rank': rank,
                         'source': source,
                         'target': target,
                         'timestamp': timestamp.isoformat(),
                         'amount': amount,
                         'tainted_amount': tainted_amount,
                         'taint_pct_at_hop': round(100.0 * tainted_amount / amount, 2),
+                        'source_taint_pct_after': round(source_pct_after, 2),
+                        'target_taint_pct_after': round(target_pct_after, 2),
                     }
                 )
 
@@ -113,6 +139,23 @@ class TaintAnalysisPlugin(BasePlugin):
             'tainted_node_count': sum(1 for item in results if item['taint_percentage'] > 0),
             'tainted_hops': tainted_hops,
             'results': results,
+            'node_first_rank': node_first_rank,
+            'edge_first_rank': edge_first_rank,
+            'node_taint_series': node_taint_series,
+            'timeline_max_rank': len(events),
+            # Enough per-rank detail (who sent what to whom, and when) for the frontend
+            # to build a caption/subtitle and to pan the camera to the right edge during
+            # playback, without needing a second request or re-deriving it from `graph`.
+            'timeline_events': [
+                {
+                    'rank': rank,
+                    'source': source,
+                    'target': target,
+                    'amount': amount,
+                    'timestamp': timestamp.isoformat(),
+                }
+                for rank, (timestamp, source, target, amount) in enumerate(events, start=1)
+            ],
         }
 
     @staticmethod

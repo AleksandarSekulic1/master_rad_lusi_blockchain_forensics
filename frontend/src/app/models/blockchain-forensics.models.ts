@@ -64,12 +64,28 @@ export interface GraphNodeData {
 }
 
 export interface TaintedHop {
+  rank: number;
   source: string;
   target: string;
   timestamp: string;
   amount: number;
   tainted_amount: number;
   taint_pct_at_hop: number;
+  source_taint_pct_after: number;
+  target_taint_pct_after: number;
+}
+
+export interface TaintTimelineEntry {
+  rank: number;
+  taint_percentage: number;
+}
+
+export interface TaintTimelineEvent {
+  rank: number;
+  source: string;
+  target: string;
+  amount: number;
+  timestamp: string;
 }
 
 export interface TaintAnalysisResult {
@@ -79,6 +95,11 @@ export interface TaintAnalysisResult {
   tainted_node_count: number;
   tainted_hops: TaintedHop[];
   results: Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }>;
+  node_first_rank: Record<string, number>;
+  edge_first_rank: Record<string, number>;
+  node_taint_series: Record<string, TaintTimelineEntry[]>;
+  timeline_max_rank: number;
+  timeline_events: TaintTimelineEvent[];
 }
 
 export interface GraphLinkData {

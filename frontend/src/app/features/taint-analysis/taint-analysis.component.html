@@ -38,6 +38,25 @@
       <button
         type="button"
         class="ghost-button"
+        [class.active]="timelineEnabled"
+        *ngIf="hasRunTaint && timelineMaxRank > 0"
+        (click)="toggleTimeline()"
+      >
+        {{ timelineEnabled ? 'Isključi vremensku traku' : 'Vremenska traka' }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="hideNonTaintedNodes"
+        *ngIf="hasRunTaint"
+        (click)="toggleHideNonTaintedNodes()"
+        title="Sakrij čvorove koji nikad nisu primili niti poslali zaprljana sredstva"
+      >
+        {{ hideNonTaintedNodes ? 'Prikaži sve čvorove' : 'Sakrij nezaprljane čvorove' }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
         *ngIf="hasRunTaint"
         (click)="editSeeds()"
         title="Dodaj ili ukloni izvore bez brisanja trenutnih rezultata i izbora"
@@ -104,6 +123,43 @@
       }}
     </button>
   </div>
+
+  <div class="timeline-panel" *ngIf="hasRunTaint && timelineEnabled">
+    <button type="button" class="ghost-button" [class.active]="isTimelinePlaying" (click)="toggleTimelinePlay()">
+      {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
+    </button>
+    <input
+      type="range"
+      min="1"
+      [max]="timelineMaxRank"
+      [ngModel]="timelinePosition"
+      (ngModelChange)="onTimelinePositionChange($event)"
+      class="timeline-slider"
+    />
+    <span class="timeline-position">
+      Transakcija {{ timelinePosition }} / {{ timelineMaxRank }}
+      <ng-container *ngIf="timelineCurrentDate"> — {{ timelineCurrentDate | date : 'short' }}</ng-container>
+    </span>
+    <select
+      class="timeline-speed"
+      [ngModel]="timelineSpeed"
+      (ngModelChange)="onTimelineSpeedChange($event)"
+      title="Brzina reprodukcije"
+    >
+      <option *ngFor="let speed of timelineSpeedOptions" [ngValue]="speed">{{ speed }}x</option>
+    </select>
+    <label class="timeline-toggle">
+      <input type="checkbox" [ngModel]="timelineSubtitlesEnabled" (ngModelChange)="toggleTimelineSubtitles()" />
+      Titlovi
+    </label>
+    <label class="timeline-toggle">
+      <input type="checkbox" [ngModel]="timelineFollowEnabled" (ngModelChange)="toggleTimelineFollow()" />
+      Prati kameru
+    </label>
+  </div>
+  <p class="timeline-subtitle" *ngIf="hasRunTaint && timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">
+    {{ timelineCurrentCaption }}
+  </p>
 
   <div class="taint-content">
     <div class="graph-canvas-wrap">

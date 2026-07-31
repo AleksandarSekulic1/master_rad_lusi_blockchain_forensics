@@ -17,6 +17,8 @@ import {
   NodeLinkGraphResponse,
   TaintAnalysisResult,
   TaintedHop,
+  TaintTimelineEntry,
+  TaintTimelineEvent,
 } from '../../models/blockchain-forensics.models';
 
 @Component({
@@ -47,9 +49,20 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected selectedNode: GraphNodeData | null = null;
   protected showAllTopTainted = false;
 
+  protected timelineEnabled = false;
+  protected timelinePosition = 1;
+  protected timelineMaxRank = 0;
+  protected isTimelinePlaying = false;
+  protected timelineSpeed = 1;
+  protected readonly timelineSpeedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  protected timelineSubtitlesEnabled = true;
+  protected timelineFollowEnabled = true;
+  protected hideNonTaintedNodes = false;
+
   private cy: Core | null = null;
   private lastClickedHopKey: string | null = null;
   private lastHopClickWentToTarget = false;
+  private timelinePlayTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly TAINT_LOW_COLOR = '#1c2333';
   private static readonly TAINT_MID_COLOR = '#f59e0b';
   private static readonly TAINT_HIGH_COLOR = '#ff4d4d';
@@ -85,6 +98,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.cy?.destroy();
     this.cy = null;
+    this.stopTimelinePlay();
   }
 
   /** The seed chip list (or the seed-panel disappearing once analysis runs) changes the
@@ -162,6 +176,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.selectedNode = null;
     this.showAllTopTainted = false;
     this.lastClickedHopKey = null;
+    this.stopTimelinePlay();
+    this.timelineEnabled = false;
+    this.timelinePosition = 1;
+    this.timelineMaxRank = 0;
   }
 
   startNewAnalysis(): void {
@@ -174,6 +192,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * exactly as they are, so you can add or remove a few addresses and re-run instead of
    * starting over from an empty seed list every time. */
   editSeeds(): void {
+    this.stopTimelinePlay();
     this.hasRunTaint = false;
   }
 
@@ -304,6 +323,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         this.seedAddresses = [...(this.taintResult?.seed_addresses ?? [])];
         this.hasRunTaint = true;
         this.isRunningTaint = false;
+        this.timelineMaxRank = this.taintResult?.timeline_max_rank ?? 0;
+        // Starts fully revealed at the final state (matches what you'd see with the
+        // timeline off) - scrubbing backwards from there to watch it unfold is the
+        // natural direction, rather than starting blank and having to press play first.
+        this.timelinePosition = this.timelineMaxRank || 1;
+        this.timelineEnabled = false;
         this.renderGraph();
       },
       error: () => {
@@ -369,6 +394,199 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.cy?.animate({ fit: { eles: element, padding: 200 } }, { duration: 300 });
   }
 
+  private get currentTimelineEvent(): TaintTimelineEvent | null {
+    const events = this.taintResult?.timeline_events ?? [];
+    if (this.timelinePosition < 1 || this.timelinePosition > events.length) {
+      return null;
+    }
+    return events[this.timelinePosition - 1];
+  }
+
+  get timelineCurrentDate(): string | null {
+    return this.currentTimelineEvent?.timestamp ?? null;
+  }
+
+  /** "pošiljalac → primalac · iznos · datum" - same caption format as the /graph page's
+   * own timeline, for a consistent feel between the two replay features. */
+  get timelineCurrentCaption(): string | null {
+    const event = this.currentTimelineEvent;
+    if (!event) {
+      return null;
+    }
+    return `${event.source} → ${event.target} · ${event.amount.toFixed(2)}`;
+  }
+
+  toggleTimelineSubtitles(): void {
+    this.timelineSubtitlesEnabled = !this.timelineSubtitlesEnabled;
+  }
+
+  toggleTimelineFollow(): void {
+    this.timelineFollowEnabled = !this.timelineFollowEnabled;
+  }
+
+  /** Hides every node that never carries any taint - both during static viewing and
+   * mid-playback - since on a few-hundred-node graph the vast majority of nodes are
+   * usually untouched by the seed(s), and seeing only the ones that actually matter is
+   * the whole point of "which addresses does this money actually reach". */
+  toggleHideNonTaintedNodes(): void {
+    this.hideNonTaintedNodes = !this.hideNonTaintedNodes;
+    this.applyTaintTimeline();
+  }
+
+  toggleTimeline(): void {
+    this.timelineEnabled = !this.timelineEnabled;
+    if (!this.timelineEnabled) {
+      this.stopTimelinePlay();
+    }
+    this.applyTaintTimeline();
+  }
+
+  onTimelinePositionChange(value: number): void {
+    this.timelinePosition = value;
+    this.applyTaintTimeline();
+  }
+
+  toggleTimelinePlay(): void {
+    if (this.isTimelinePlaying) {
+      this.stopTimelinePlay();
+      return;
+    }
+    if (this.timelinePosition >= this.timelineMaxRank) {
+      this.timelinePosition = 1;
+    }
+    this.isTimelinePlaying = true;
+    this.startTimelinePlayInterval();
+  }
+
+  onTimelineSpeedChange(speed: number): void {
+    this.timelineSpeed = speed;
+    if (this.isTimelinePlaying) {
+      this.startTimelinePlayInterval();
+    }
+  }
+
+  private startTimelinePlayInterval(): void {
+    if (this.timelinePlayTimer !== null) {
+      clearInterval(this.timelinePlayTimer);
+    }
+    const baseIntervalMs = 500;
+    this.timelinePlayTimer = setInterval(() => {
+      if (this.timelinePosition >= this.timelineMaxRank) {
+        this.stopTimelinePlay();
+        return;
+      }
+      this.timelinePosition += 1;
+      this.applyTaintTimeline();
+    }, baseIntervalMs / this.timelineSpeed);
+  }
+
+  private stopTimelinePlay(): void {
+    if (this.timelinePlayTimer !== null) {
+      clearInterval(this.timelinePlayTimer);
+      this.timelinePlayTimer = null;
+    }
+    this.isTimelinePlaying = false;
+  }
+
+  /** Looks up what a node's taint % actually was right after the Nth chronological event
+   * that touched it - reconstructed purely from the backend's own per-node history
+   * (node_taint_series), never re-simulated in JS, so the replay can't drift from what
+   * the real algorithm computed. */
+  private getNodeTaintAtRank(nodeId: string, rank: number): number {
+    const series: TaintTimelineEntry[] | undefined = this.taintResult?.node_taint_series?.[nodeId];
+    if (!series || series.length === 0) {
+      const isSeed = this.taintResult?.seed_addresses.includes(nodeId) ?? false;
+      const firstRank = this.taintResult?.node_first_rank?.[nodeId];
+      return isSeed && firstRank != null && firstRank <= rank ? 100 : 0;
+    }
+    let pct = 0;
+    for (const entry of series) {
+      if (entry.rank > rank) {
+        break;
+      }
+      pct = entry.taint_percentage;
+    }
+    return pct;
+  }
+
+  /** Reveals nodes/edges as of the current timeline position AND recolors every visible
+   * node to what its taint % actually was at that point - unlike the /graph page's
+   * timeline (which only toggles visibility), the whole point here is watching the
+   * percentage itself evolve hop by hop, so the color has to change too, not just what's
+   * shown. Also applies the "hide non-tainted" filter, on or off the timeline alike -
+   * hiding a node here hides its connected edges too (cytoscape does this automatically
+   * for any node with display:none), so untainted edges never need separate handling. */
+  private applyTaintTimeline(): void {
+    if (!this.cy) {
+      return;
+    }
+
+    if (!this.timelineEnabled) {
+      this.cy.nodes().forEach((node) => {
+        const finalPct = Number(node.data('finalTaintPercentage') ?? 0);
+        node.data('taint_percentage', finalPct);
+        node.data('displayLabel', this.hasRunTaint ? `${finalPct}%` : '');
+        node.style('display', this.hideNonTaintedNodes && finalPct <= 0 ? 'none' : 'element');
+      });
+      this.cy.edges().forEach((edge) => {
+        edge.style('display', 'element');
+      });
+      return;
+    }
+
+    const position = this.timelinePosition;
+    this.cy.nodes().forEach((node) => {
+      const rank = node.data('chronoRank');
+      const revealed = rank == null || rank <= position;
+      const pct = revealed ? this.getNodeTaintAtRank(node.id(), position) : 0;
+      if (revealed) {
+        node.data('taint_percentage', pct);
+        node.data('displayLabel', `${pct}%`);
+      }
+      const hiddenByFilter = this.hideNonTaintedNodes && pct <= 0;
+      node.style('display', revealed && !hiddenByFilter ? 'element' : 'none');
+    });
+    this.cy.edges().forEach((edge) => {
+      const rank = edge.data('chronoRank');
+      edge.style('display', rank != null && rank <= position ? 'element' : 'none');
+    });
+
+    this.focusOnCurrentTransaction();
+  }
+
+  /** Pans/zooms to the edge that just got revealed, but only when it's actually outside
+   * the current view - if it's already visible, the camera stays put so following the
+   * trail doesn't feel jumpy, especially at faster playback speeds. Looks the edge up by
+   * its actual source/target for the current rank (not by chronoRank, which is only an
+   * edge's FIRST occurrence) so a repeat transfer on an already-revealed edge still gets
+   * followed correctly. */
+  private focusOnCurrentTransaction(): void {
+    if (!this.cy || !this.timelineFollowEnabled) {
+      return;
+    }
+
+    const event = this.currentTimelineEvent;
+    if (!event) {
+      return;
+    }
+
+    const currentEdge = this.cy
+      .edges()
+      .filter((edge) => edge.data('source') === event.source && edge.data('target') === event.target);
+    if (currentEdge.empty()) {
+      return;
+    }
+
+    const extent = this.cy.extent();
+    const box = currentEdge.boundingBox();
+    const isVisible = box.x1 >= extent.x1 && box.x2 <= extent.x2 && box.y1 >= extent.y1 && box.y2 <= extent.y2;
+    if (isVisible) {
+      return;
+    }
+
+    this.cy.animate({ fit: { eles: currentEdge, padding: 150 } }, { duration: 350 });
+  }
+
   private renderGraph(): void {
     if (!this.taintCanvas) {
       return;
@@ -391,12 +609,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             ...node,
             id,
             taint_percentage: taintPercentage,
+            finalTaintPercentage: taintPercentage,
+            chronoRank: this.taintResult?.node_first_rank?.[id] ?? null,
             // No address/hash text on canvas at all - on a few-hundred-node graph it's
             // pure clutter, and the full address is always one click away in the
             // inspector panel. Just the percentage (once analysis has run) stays, since
             // color alone isn't always a safe read for two nearby values (e.g. 66.67%
-            // vs 100% looked too similar in testing).
-            label: this.hasRunTaint ? `${taintPercentage}%` : '',
+            // vs 100% looked too similar in testing). Kept in its own field (not baked
+            // into a static label string) so the timeline scrubber can update it live.
+            displayLabel: this.hasRunTaint ? `${taintPercentage}%` : '',
           },
           classes: isSeed ? 'taint-seed' : '',
         } as ElementDefinition;
@@ -408,6 +629,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             ...link,
             id: `${link.source}__${link.target}__${Math.round(totalAmount * 1000)}`,
             totalAmount,
+            chronoRank: this.taintResult?.edge_first_rank?.[`${link.source}__${link.target}`] ?? null,
           },
         } as ElementDefinition;
       }),
@@ -440,7 +662,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         {
           selector: 'node',
           style: {
-            label: 'data(label)',
+            label: 'data(displayLabel)',
             'text-valign': 'center',
             'text-halign': 'center',
             'font-size': 9,
@@ -508,6 +730,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     // this same render pass - give the DOM a frame to settle into its final layout, then
     // make sure cytoscape's container measurement matches it exactly.
     this.scheduleCyResize();
+    this.applyTaintTimeline();
   }
 
   fitWholeGraph(): void {
