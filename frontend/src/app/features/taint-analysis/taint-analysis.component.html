@@ -325,6 +325,26 @@
         </div>
       </div>
 
+      <div class="top-tainted cash-out-points" *ngIf="cashOutCandidates.length > 0">
+        <p class="panel-kicker">Verovatne tačke unovčavanja</p>
+        <p class="muted top-tainted-hint">
+          Primili su zaprljana sredstva i nikad ih dalje nisu poslali u ovoj evidenciji — verovatno mesto gde je novac
+          napustio praćenu mrežu (stvarno unovčavanje, ili van dometa ove evidencije).
+        </p>
+        <ol>
+          <li *ngFor="let item of cashOutCandidates">
+            <button
+              type="button"
+              class="ranked-address-button"
+              [class.is-selected]="selectedNode?.id === item.address"
+              (click)="selectNodeFromList(item.address)"
+            >
+              <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
+            </button>
+          </li>
+        </ol>
+      </div>
+
       <div class="top-tainted" *ngIf="topTaintedNodes.length > 0">
         <p class="panel-kicker">Najviše zaprljane adrese</p>
         <p class="muted top-tainted-hint">Klikni na adresu da je pronađeš i fokusiraš na grafu.</p>

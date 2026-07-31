@@ -474,6 +474,17 @@ h3 {
   border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
+.cash-out-points {
+  padding: 0.85rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 0.9rem;
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.cash-out-points .panel-kicker {
+  color: #fbbf24;
+}
+
 .top-tainted-hint {
   margin: 0.2rem 0 0;
   font-size: 0.74rem;

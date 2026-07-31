@@ -357,6 +357,25 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return (this.taintResult?.results ?? []).filter((item) => item.taint_percentage > 0);
   }
 
+  /** Nodes that received tainted funds but never sent anything onward in this evidence -
+   * the natural candidates for "where did the money leave the traceable network" (a real
+   * cash-out, or simply outside this case's evidence window). Seeds are excluded even if
+   * they also never send anything, since they're the origin of the trail, not its end. */
+  get cashOutCandidates(): Array<{ address: string; taint_percentage: number }> {
+    if (!this.graph) {
+      return [];
+    }
+    const outDegree = new Map<string, number>();
+    for (const link of this.graph.links) {
+      const source = String(link.source);
+      outDegree.set(source, (outDegree.get(source) ?? 0) + 1);
+    }
+    return this.nonZeroTaintedNodes
+      .filter((item) => !item.is_taint_seed && (outDegree.get(item.address) ?? 0) === 0)
+      .map((item) => ({ address: item.address, taint_percentage: item.taint_percentage }))
+      .sort((a, b) => b.taint_percentage - a.taint_percentage);
+  }
+
   get topTaintedNodes(): Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }> {
     const all = this.nonZeroTaintedNodes;
     return this.showAllTopTainted ? all : all.slice(0, TaintAnalysisComponent.TOP_TAINTED_PREVIEW_LIMIT);
@@ -749,6 +768,22 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return pct;
   }
 
+  /** What % of THIS specific transfer (not the node's overall balance) was tainted -
+   * looked up from tainted_hops for the given (source, target) pair, as of maxRank (or
+   * the final state if null). Returns '' when the pair never carried any tainted value,
+   * so plain/clean edges stay unlabeled instead of cluttering the graph with "0%"
+   * everywhere. tainted_hops is already chronologically ordered, so the last matching
+   * entry is simply the most recent one. */
+  private getEdgeTaintLabel(source: string, target: string, maxRank: number | null): string {
+    const hops = (this.taintResult?.tainted_hops ?? []).filter(
+      (hop) => hop.source === source && hop.target === target && (maxRank == null || hop.rank <= maxRank),
+    );
+    if (hops.length === 0) {
+      return '';
+    }
+    return `${hops[hops.length - 1].taint_pct_at_hop}%`;
+  }
+
   /** Reveals nodes/edges as of the current timeline position AND recolors every visible
    * node to what its taint % actually was at that point - unlike the /graph page's
    * timeline (which only toggles visibility), the whole point here is watching the
@@ -769,6 +804,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         node.style('display', this.hideNonTaintedNodes && finalPct <= this.taintHideThreshold ? 'none' : 'element');
       });
       this.cy.edges().forEach((edge) => {
+        edge.data('edgeLabel', this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), null));
         edge.style('display', 'element');
       });
       this.applyPathHighlight(this.selectedNode ? String(this.selectedNode.id) : null);
@@ -789,6 +825,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
     this.cy.edges().forEach((edge) => {
       const rank = edge.data('chronoRank');
+      edge.data('edgeLabel', this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), position));
       edge.style('display', rank != null && rank <= position ? 'element' : 'none');
     });
 
@@ -866,12 +903,17 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       }),
       ...this.graph.links.map((link) => {
         const totalAmount = Number(link.total_amount ?? link.amount ?? 0);
+        const source = String(link.source);
+        const target = String(link.target);
         return {
           data: {
             ...link,
             id: `${link.source}__${link.target}__${Math.round(totalAmount * 1000)}`,
             totalAmount,
-            chronoRank: this.taintResult?.edge_first_rank?.[`${link.source}__${link.target}`] ?? null,
+            chronoRank: this.taintResult?.edge_first_rank?.[`${source}__${target}`] ?? null,
+            // What % of THIS transfer was tainted, e.g. "66.67%" - blank for edges that
+            // never carried any tainted value, so clean edges don't clutter the graph.
+            edgeLabel: this.getEdgeTaintLabel(source, target, null),
           },
         } as ElementDefinition;
       }),
@@ -951,9 +993,22 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             'line-color': '#3a4a63',
             'target-arrow-color': '#3a4a63',
             'target-arrow-shape': 'triangle',
-            'arrow-scale': 0.55,
+            // Bigger than the /graph page's - on a graph this sparse, direction is the
+            // whole point of the arrow, so it needs to actually read as one at a glance.
+            'arrow-scale': 1,
             'curve-style': 'bezier',
             opacity: 0.6,
+            // % of THIS transfer that was tainted (blank on clean edges - see
+            // getEdgeTaintLabel) rotated to sit along the line, not fighting for space
+            // with the percentage already shown on each node.
+            label: 'data(edgeLabel)',
+            'font-size': 8,
+            'min-zoomed-font-size': 7,
+            color: '#7dd6ff',
+            'text-outline-width': 2,
+            'text-outline-color': '#07111f',
+            'text-rotation': 'autorotate',
+            'text-margin-y': -8,
           },
         },
         // Path highlight uses outline-* (drawn outside the border) rather than
