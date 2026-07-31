@@ -83,7 +83,28 @@ Ove transakcije su podjednako "prave" (potvrđene na blockchain-u, sa pravim he�
 
 Taint analiza (stranica **Taint analiza** u navigaciji) prati kako se "prljava" sredstva proporcionalno šire kroz graf, počevši od jednog ili više ručno izabranih ("seed") čvorova, ili automatski od svake adrese koja je već na crnoj listi. Postoje dva načina da je testiraš — kontrolisan sintetički scenario (da proveriš tačne brojeve) i test na pravim, već uvezenim podacima.
 
+### Zašto je ovo uopšte bitno u digitalnoj forenzici
+
+Zamisli da neko ukrade novac i onda ga počne da prosleđuje kroz gomilu različitih novčanika, mešajući ga usput sa tuđim, čistim parama — baš da zamrsi trag ko je šta poslao kome.
+
+**Taint %** je odgovor na jedno prosto pitanje: *"Od svega što se sad nalazi na ovoj adresi, koliki deo je zapravo taj ukradeni novac?"* — npr. "40% para na ovoj adresi potiče od te krađe, ostalih 60% je tuđ, čist novac koji se slučajno našao u istom loncu."
+
+Zašto nam je to korisno u istrazi:
+
+1. **Ne moramo ručno da proveravamo stotine adresa.** Kad imamo veliki graf, program nam odmah pokaže koje adrese su najviše "umešane" — tu prvo gledamo, ne gubimo vreme na sve ostale.
+2. **Pomaže da nađemo gde novac izlazi napolje.** Lopova obično već znamo. Ono što nas zanima je gde se taj ukradeni novac na kraju pretvara nazad u pravi novac (npr. na nekoj berzi) — jer tačno tu ga vlasti mogu da zaustave/zamrznu. Taint analiza nam crta tu putanju do te tačke.
+3. **Dajemo broj, ne samo "da ili ne".** Umesto da kažemo "ova adresa je umešana" (crno-belo), možemo da kažemo TAČNO koliko — "31% je prljavo". To je jači dokaz na sudu, jer se vidi razlika između nekoga ko je skoro sigurno umešan i nekoga ko je samo malo dotaknut velikim, uglavnom čistim tokom novca.
+4. **Zašto ne kažemo prosto "ako je iole dodirnuo prljav novac, cela adresa je 100% kriva"?** Zato što bi to bilo nepravedno — zamisli da si ti potpuno nevin, samo si slučajno koristio isti servis (npr. isti mikser/berzu) gde je i lopov prao svoj novac. Ne bi bilo fer da te sad svi tretiraju kao lopova. Zato računamo pravi, realan udeo, a ne bacamo svakoga u isti koš.
+
 ### 6.1 Kontrolisan scenario (tačni brojevi, za proveru algoritma)
+
+**Šta ovim testom dokazujemo:** ovo nije test da li aplikacija "radi" u smislu da nešto iscrta na ekranu — cilj je da se na skupu podataka sa unapred ručno izračunatim, poznatim odgovorom potvrdi da je **matematika proporcionalnog (haircut) modela zaprljanosti tačna**, i to na tri konkretne tvrdnje:
+
+- **Zaprljanost se ispravno razblažuje kad se pomeša sa čistim sredstvima** — kad 1000 "prljavih" i 500 čistih sredstava uđu u isti novčanik (mikser), izlaz ne bi trebalo da bude ni 100% prljav (to bi bio pogrešan, "poison" model), ni 0% (to bi značilo da se zaprljanost uopšte ne prati) — nego tačno proporcionalan udeo, **1000/1500 = 66.67%**.
+- **Zaprljanost dalje putuje istim procentom kroz sledeći prenos** — novac koji mikser prosledi dalje (`0xExitWallet`) treba da ponese *isti* procenat koji je mikser imao u trenutku slanja, ne neki nov/proizvoljan broj.
+- **Model ne zavisi od toga koji je čvor proizvoljno izabran kao izvor** — ako je algoritam ispravan, zamena izvora treba predvidljivo da promeni koji je čvor 100%, a procenti kod ostalih da se preračunaju u skladu s tim (videti korak niže sa `0xCleanUser`), a ne da ostanu isti ili se slome.
+
+Ako sve tri tvrdnje važe (a dole su i tačno izmerene), to je čvrst dokaz da implementacija algoritma odgovara teorijskom modelu opisanom u radu, a ne da su brojevi slučajno "ispali dobro" na jednom prikazu.
 
 U slučaju **"Demo: Sumnjiva laundering sema (hakovan novcanik)"** već postoji poseban dokaz **`demo_taint_dilution.csv`** napravljen baš za ovo (dodat skriptom `backend/scripts/seed_demo_taint_evidence.py`):
 

@@ -40,6 +40,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected seedAddresses: string[] = [];
   protected manualSeedInput = '';
   protected isRunningTaint = false;
+  protected isSuggestingSeeds = false;
   protected taintError: string | null = null;
   protected hasRunTaint = false;
   protected taintResult: TaintAnalysisResult | null = null;
@@ -215,6 +216,43 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.removeSeedAddress(address);
   }
 
+  /** Runs the existing heuristics (blacklist, risk score, anomaly, peel-chain, chain-hop
+   * - the same plugins already used to color the main Graf page) purely to find good
+   * starting candidates, and adds whatever they flag to the current seed selection. This
+   * doesn't run or change the taint analysis itself - it's just a shortcut so you don't
+   * have to manually click through a few-hundred-node graph looking for the suspicious
+   * ones; anything suggested can still be removed same as a manually picked seed. */
+  suggestSeeds(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || !this.graph || this.isSuggestingSeeds) {
+      return;
+    }
+
+    this.isSuggestingSeeds = true;
+    this.taintError = null;
+
+    this.api.runCaseAnalytics(caseId, this.selectedEvidence).subscribe({
+      next: (response) => {
+        this.isSuggestingSeeds = false;
+        const suggested = response.nodes.filter(
+          (node) =>
+            Boolean(node.blacklist_flag) ||
+            Boolean(node.peel_chain_flag) ||
+            Boolean(node.chain_hop_flag) ||
+            Boolean(node.anomaly_flag) ||
+            Number(node.risk_score ?? 0) >= 70,
+        );
+        for (const node of suggested) {
+          this.addSeedAddress(String(node.id));
+        }
+      },
+      error: () => {
+        this.isSuggestingSeeds = false;
+        this.taintError = 'Neuspešno predlaganje čvorova.';
+      },
+    });
+  }
+
   private addSeedAddress(address: string): void {
     if (this.seedAddresses.includes(address)) {
       return;
@@ -247,6 +285,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.graph = response;
         this.taintResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+        // The backend may have auto-seeded extra addresses from the blacklist that we
+        // never explicitly added (e.g. an empty-seed "crna lista" run) - without this,
+        // seedAddresses would still be empty while those nodes show a gold seed ring on
+        // canvas, so clicking one to "remove" it would silently ADD it instead (it
+        // wasn't tracked as present), looking like the click did nothing.
+        this.seedAddresses = [...(this.taintResult?.seed_addresses ?? [])];
         this.hasRunTaint = true;
         this.isRunningTaint = false;
         this.renderGraph();

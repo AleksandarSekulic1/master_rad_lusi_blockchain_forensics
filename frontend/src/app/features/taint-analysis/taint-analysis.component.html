@@ -52,6 +52,15 @@
     <p class="muted top-tainted-hint" *ngIf="seedAddresses.length > 0">
       Uređuješ postojeći izbor izvora — dodaj ili ukloni adrese, pa ponovo pokreni analizu.
     </p>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="suggestSeeds()"
+      [disabled]="!graph || isSuggestingSeeds"
+      title="Automatski doda čvorove koje su heuristike (crna lista, visok rizik, anomalija, peel lanac, skok lanca) već označile kao sumnjive"
+    >
+      {{ isSuggestingSeeds ? 'Tražim sumnjive čvorove...' : 'Predloži čvorove' }}
+    </button>
     <div class="seed-input">
       <input
         type="text"
