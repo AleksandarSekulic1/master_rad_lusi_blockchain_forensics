@@ -202,6 +202,78 @@
             <dd>{{ node.is_taint_seed ? 'Da' : 'Ne' }}</dd>
           </div>
         </dl>
+
+        <p class="panel-kicker hops-title">Ko je zapravo iza ove adrese (on-chain podaci)</p>
+        <dl>
+          <div>
+            <dt>ENS ime</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.ens_name ?? 'Nema') }}</dd>
+          </div>
+          <div>
+            <dt>Tip adrese</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
+            <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet</dt>
+            <dd>
+              {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.known_entity ?? 'Nepoznat') }}
+              <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Trenutni balans</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>Prva aktivnost na lancu</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>Izvor sredstava (prva ikada on-chain transakcija)</dt>
+            <dd>
+              {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog uvida') }}
+              <span *ngIf="addressEnrichment?.funding_amount_eth != null">
+                ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
+              </span>
+            </dd>
+          </div>
+          <div *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source">
+            <dt>Tip izvora sredstava</dt>
+            <dd>
+              {{ fundingSourceTypeLabel }}
+              <span *ngIf="addressEnrichment.funding_source_ens as ens"> · {{ ens }}</span>
+            </dd>
+          </div>
+          <div
+            *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
+            [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
+          >
+            <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet izvora</dt>
+            <dd>
+              {{ addressEnrichment!.funding_source_entity ?? 'Nepoznat' }}
+              <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+            </dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
+            <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}Sumnjivo mali iznos finansiranja ("dust")</dt>
+            <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+            <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
+            <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">Ne</dd>
+            <dd *ngIf="!isEnrichingAddress && isDustFunding">
+              Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.
+            </dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
+            <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}Direktna veza sa crnom listom</dt>
+            <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+            <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">Ne</dd>
+            <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
+              Izvor sredstava je na crnoj listi: {{ flaggedSource.blacklist_label ?? 'Nema opisa' }}
+              <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
+            </dd>
+          </div>
+        </dl>
+
         <p class="muted top-tainted-hint" *ngIf="timelineEnabled">
           Vremenska traka je uključena — procenat i lista ispod prikazuju stanje samo do transakcije {{ timelinePosition }}.
           Isključi traku da vidiš konačan, potpun rezultat.

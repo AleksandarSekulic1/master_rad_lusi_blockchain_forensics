@@ -11,9 +11,12 @@ import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup'
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import {
+  AddressEnrichment,
+  AddressType,
   CaseSummary,
   EvidenceEntry,
   GraphNodeData,
+  KnownEntityCategory,
   NodeLinkGraphResponse,
   TaintAnalysisResult,
   TaintedHop,
@@ -48,6 +51,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected taintResult: TaintAnalysisResult | null = null;
   protected selectedNode: GraphNodeData | null = null;
   protected showAllTopTainted = false;
+  protected addressEnrichment: AddressEnrichment | null = null;
+  protected isEnrichingAddress = false;
 
   protected timelineEnabled = false;
   protected timelinePosition = 1;
@@ -178,6 +183,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.taintResult = null;
     this.taintError = null;
     this.selectedNode = null;
+    this.addressEnrichment = null;
     this.showAllTopTainted = false;
     this.lastClickedHopKey = null;
     this.stopTimelinePlay();
@@ -323,6 +329,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         // carry over and show up immediately in the inspector on the new run, with no
         // click having happened yet in this run at all.
         this.selectedNode = null;
+        this.addressEnrichment = null;
         // The backend may have auto-seeded extra addresses from the blacklist that we
         // never explicitly added (e.g. an empty-seed "crna lista" run) - without this,
         // seedAddresses would still be empty while those nodes show a gold seed ring on
@@ -409,6 +416,100 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.selectNodeFromList(goToTarget ? hop.target : hop.source);
   }
 
+  /** Single choke point for "this node is now being inspected" - used by every selection
+   * entry point (canvas tap, ranked-list click, hop click) so path highlighting and
+   * on-chain enrichment always stay in sync with whatever's currently selected, without
+   * duplicating the same three calls at every call site. */
+  private selectNode(node: GraphNodeData): void {
+    this.selectedNode = node;
+    this.applyPathHighlight(String(node.id));
+    this.loadAddressEnrichment();
+  }
+
+  /** Real on-chain identity/provenance for the selected address (ENS name, known entity,
+   * balance, and - most relevant for "whose money is this really" - its own funding
+   * source: whoever sent it its very first transaction ever, on-chain, independent of
+   * this case's own evidence). A seed node's taint % has no "parent" inside the taint
+   * model by definition, so this is the only way to see where ITS money actually came
+   * from in real life. */
+  loadAddressEnrichment(): void {
+    this.addressEnrichment = null;
+    const address = this.selectedNode?.address ?? this.selectedNode?.id;
+    if (!address) {
+      return;
+    }
+
+    this.isEnrichingAddress = true;
+    this.api.enrichAddress(String(address)).subscribe({
+      next: (result) => {
+        this.addressEnrichment = result;
+        this.isEnrichingAddress = false;
+      },
+      error: () => {
+        this.isEnrichingAddress = false;
+      },
+    });
+  }
+
+  get addressTypeLabel(): string {
+    return this.typeLabel(this.addressEnrichment?.address_type);
+  }
+
+  get fundingSourceTypeLabel(): string {
+    return this.typeLabel(this.addressEnrichment?.funding_source_type);
+  }
+
+  private typeLabel(type: AddressType | null | undefined): string {
+    switch (type) {
+      case 'contract':
+        return 'Pametni ugovor';
+      case 'eoa':
+        return 'Obična adresa (EOA)';
+      default:
+        return 'Nepoznato';
+    }
+  }
+
+  entityCategoryLabel(category: KnownEntityCategory): string {
+    switch (category) {
+      case 'exchange':
+        return 'berza';
+      case 'mixer':
+        return 'mikser za prikrivanje sredstava';
+      case 'sanctioned':
+        return 'OFAC sankcionisano';
+      default:
+        return category;
+    }
+  }
+
+  /** Below this, a funding transfer looks like "just enough for gas" rather than a real
+   * transfer of value - a classic pattern for activating a fresh mule/burner wallet before
+   * routing the real illicit funds through it. */
+  private static readonly DUST_FUNDING_THRESHOLD_ETH = 0.02;
+
+  get isDustFunding(): boolean {
+    const amount = this.addressEnrichment?.funding_amount_eth;
+    return amount != null && amount > 0 && amount < TaintAnalysisComponent.DUST_FUNDING_THRESHOLD_ETH;
+  }
+
+  /** Is the funding source itself a blacklisted address in this graph? A direct hit means
+   * the selected node is one hop away from an entity already flagged. */
+  get fundingSourceBlacklistMatch(): GraphNodeData | null {
+    const fundingAddress = this.addressEnrichment?.funding_source;
+    const nodes = this.graph?.nodes;
+    if (!fundingAddress || !nodes) {
+      return null;
+    }
+
+    const normalized = fundingAddress.toLowerCase();
+    return (
+      nodes.find(
+        (candidate) => String(candidate.address ?? candidate.id ?? '').toLowerCase() === normalized && candidate.blacklist_flag,
+      ) ?? null
+    );
+  }
+
   /** Clicking a ranked address in the sidebar both opens its inspector details (same as
    * clicking it on canvas) and pans/zooms the graph to it - on a few-hundred-node graph,
    * finding a specific ranked node by eye in the hairball isn't realistic otherwise. */
@@ -417,8 +518,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (!node) {
       return;
     }
-    this.selectedNode = node;
-    this.applyPathHighlight(address);
+    this.selectNode(node);
 
     const element = this.cy?.getElementById(address);
     if (!element || element.empty()) {
@@ -897,8 +997,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       if (this.isSeedSelectionMode) {
         this.toggleSeed(String(nodeData.id));
       } else {
-        this.selectedNode = nodeData;
-        this.applyPathHighlight(String(nodeData.id));
+        this.selectNode(nodeData);
       }
     });
 
