@@ -156,3 +156,47 @@ Ovo je i sam po sebi koristan forenzički nalaz za tezu: pokazuje kako se taint 
   - `fetch_single_transaction_frame()` / `fetch_expanded_sender_history()` — obrađuju heš u jedan od dva režima opisana gore.
 - Ruta: `POST /api/v1/onchain/fetch` (`backend/app/api/routes/onchain.py`) — automatski prepoznaje da li je uneta adresa (42 karaktera) ili heš transakcije (66 karaktera) na osnovu regex-a, primenjuje izabrani `mode`, snima rezultat kao CSV u `data/raw/`, računa SHA-256, povezuje ga sa slučajem (isti mehanizam kao `/upload/csv`) i upisuje audit log zapis sa akcijom `onchain_fetch_<mreža>_<režim>`.
 - Frontend: `ApiService.fetchOnchainTransactions()` poziva tu rutu; rezultat se obrađuje potpuno isto kao odgovor na CSV upload (isti `loadDerivedViews()` poziv), tako da graf i analitika rade bez ikakvih izmena.
+
+## 8. Napredne funkcije Taint analize
+
+Ove tri funkcije su dodate posle osnovne taint analize opisane u sekciji 6, da bi analiza bila detaljnija i transparentnija — svaka je testirana na `demo_taint_dilution.csv` (isti fajl iz 6.1), da brojevi budu proverljivi.
+
+### 8.1 Filter po pojedinačnom izvoru
+
+**Šta radi:** kad je u analizu uključeno više seed adresa odjednom, panel **"Filter po izvoru"** (pojavljuje se iznad grafa, samo kad ima više od jednog seed-a i vremenska traka je isključena) omogućava da privremeno "isključiš" jedan ili više izvora iz prikaza — bez ponovnog pokretanja cele analize. Procenti, boje čvorova, natpisi na granama i isticanje putanje se momentalno preračunaju da pokažu **samo** doprinos onih izvora koji su ostali uključeni.
+
+**Zašto je ovo korisno:** kad se u istrazi sretnu dve nezavisne kriminalne aktivnosti čiji se novac spoji na istoj adresi (npr. dva različita hakovana novčanika), ukupan procenat ti kaže "koliko je ukupno prljavo", ali ne i "šta bi se videlo da pratim SAMO prvi upad, a ne i drugi". Filter po izvoru ti daje tačno to — izolovan pogled na širenje jednog konkretnog izvora, korak po korak, kao da je jedini.
+
+**Primer (na `demo_taint_dilution.csv`):**
+
+1. Izaberi **oba** `0xHacker1` i `0xHacker2` kao seed → pokreni analizu. Kao u 6.1: `0xLaunderingHub` i `0xFinalDestination` = 100%, raspodela 60%/40%.
+2. U panelu "Filter po izvoru", klikni na `0xHacker2` da ga isključiš (ostaje samo `0xHacker1` aktivan).
+3. Očekivano: `0xLaunderingHub` i `0xFinalDestination` sada pokazuju tačno **60%** (samo Hacker1-ov deo), a `0xHacker2` sam po sebi pada na 0% i nestaje sa grafa (ako je "Sakrij ispod praga" uključeno).
+4. Isključi i `0xHacker1` (nijedan izvor aktivan) → svi procenti padaju na 0%, ceo "prljavi" deo grafa nestaje.
+5. Klikni **"Prikaži sve izvore"** da se vratiš na kombinovani prikaz (60%+40%).
+
+### 8.2 Detalji transakcije (klik na granu)
+
+**Šta radi:** klik na strelicu (granu) između dve adrese otvara panel **"Detalji transakcije"** sa spiskom **svake pojedinačne transakcije** koja je ikad prošla između te dve adrese — ne samo zbirni iznos koji se vidi na strelici. Za svaku transakciju se prikazuje: tačan iznos, vremenska oznaka, identifikator transakcije (tx heš — ako ga evidencija ima; u suprotnom piše "n/a"), koliki procenat baš te transakcije je bio zaprljan, i raspodela po izvorima ako ih ima više.
+
+**Zašto je ovo korisno:** natpis na strelici (npr. "60%+40%") je nužno sažet — ako je između dve adrese bilo više odvojenih transakcija u različito vreme, strelica pokazuje samo poslednju. Ovaj panel daje kompletnu, revizijski preciznu evidenciju svake pojedinačne transakcije, uključujući i tx heš kad postoji (bitno ako se izveštaj mora povezati sa stvarnim blockchain zapisom).
+
+**Primer (na `demo_taint_dilution.csv`, seed = `0xThief`):**
+
+1. Pokreni analizu sa `0xThief` kao seed (scenario iz 6.1).
+2. Klikni na strelicu `0xThief → 0xMixer`.
+3. Očekivano: panel pokaže tačno **1 transakciju** — iznos 1000, vreme `2026-03-01T00:00:00Z`, procenat zaprljanosti **100%** (celih 1000 je prljavo, jer u tom trenutku `0xThief` šalje ceo svoj "prljavi" balans), identifikator transakcije **"n/a"** (ovaj demo CSV nema kolonu sa tx hešom — kod pravih on-chain podataka povučenih preko Etherscan-a, ovde bi stajao stvarni heš).
+
+### 8.3 Objašnjenje procenta (kompletna istorija razblaživanja)
+
+**Šta radi:** kad izabereš čvor, ispod liste "Zaprljane transakcije ovog čvora" nalazi se nova sekcija **"Objašnjenje procenta (kompletna istorija)"** — spisak **baš svake** transakcije koja je ikad promenila balans te adrese (i zaprljane i potpuno čiste), sa procentom **pre** i **posle** svake od njih. Kad neka transakcija spusti procenat, to je jasno obeleženo ("razblaženo ovim prilivom").
+
+**Zašto je ovo korisno:** dosadašnja lista "Zaprljane transakcije" pokazuje samo transakcije koje su DONELE prljav novac — ali ne objašnjava zašto je procenat nekad i OPAO. Pad se dešava kad adresa primi čist (ili manje prljav) novac, što se ranije nigde nije eksplicitno videlo. Ova sekcija čini ceo račun proverljivim korak po korak, umesto da se konačni procenat "pojavi" bez objašnjenja.
+
+**Primer (na `demo_taint_dilution.csv`, seed = `0xThief`, izabran čvor `0xMixer`):**
+
+Očekivana istorija za `0xMixer`, tačno tim redosledom:
+
+1. Prima 1000 od `0xThief` → **0% → 100%** (nema promene naniže, sav prvi priliv je prljav).
+2. Prima 500 od `0xCleanUser` → **100% → 66.67%** (`-33.33% — razblaženo ovim prilivom`) — ovo je tačan trenutak razblaživanja, sa istim brojem (66.67%) koji se već proverava u 6.1.
+3. Šalje 750 ka `0xExitWallet` → **66.67% → 66.67%** (delta 0%) — odliv ne menja procenat, samo srazmerno "iznosi" i prljavi i čisti deo napolje, što je i teorijski očekivano ponašanje proporcionalnog (haircut) modela.

@@ -194,6 +194,28 @@
     {{ timelineCurrentCaption }}
   </p>
 
+  <div class="source-filter-panel" *ngIf="hasRunTaint && !timelineEnabled && (taintResult?.seed_addresses?.length ?? 0) > 1">
+    <span class="panel-kicker">Filter po izvoru</span>
+    <div class="source-filter-chips">
+      <button
+        type="button"
+        class="ghost-button source-chip"
+        *ngFor="let seed of taintResult?.seed_addresses"
+        [class.active]="activeSeeds.has(seed)"
+        (click)="toggleSeedFilter(seed)"
+        [title]="activeSeeds.has(seed) ? 'Isključi doprinos ovog izvora iz prikaza' : 'Uključi doprinos ovog izvora u prikaz'"
+      >
+        {{ seed }}
+      </button>
+    </div>
+    <button type="button" class="show-more-button" *ngIf="!isAllSeedsActive" (click)="showAllSeedSources()">
+      Prikaži sve izvore
+    </button>
+    <p class="muted top-tainted-hint" *ngIf="!isAllSeedsActive">
+      Prikazan je samo doprinos izabranih izvora — procenti, boje i grane su preračunati da pokažu isključivo njihovo prostiranje.
+    </p>
+  </div>
+
   <div class="taint-content">
     <div class="graph-canvas-wrap">
       <div #taintCanvas class="graph-canvas"></div>
@@ -322,11 +344,86 @@
             </div>
           </li>
         </ul>
+
+        <p class="panel-kicker hops-title">Objašnjenje procenta (kompletna istorija)</p>
+        <p class="muted top-tainted-hint">
+          Svaka transakcija koja je promenila balans ove adrese — uključujući čiste (ili manje zaprljane) prilive koji su
+          razblažili procenat, ne samo one koje su ga povećale.
+        </p>
+        <ul class="hops-list" *ngIf="selectedNodeEventLogPreview.length > 0">
+          <li *ngFor="let event of selectedNodeEventLogPreview">
+            <div class="event-log-row">
+              <span class="mono-address">{{ event.direction === 'in' ? '←' : '→' }} {{ event.counterparty }}</span>
+              <br />
+              {{ event.amount | number : '1.2-6' }}
+              <span *ngIf="event.taintedAmount > 0">(od čega {{ event.taintedAmount | number : '1.2-6' }} zaprljano)</span>
+              · {{ event.timestamp | date : 'short' }}
+              <br />
+              <span [class.dilution-down]="event.delta < 0" [class.dilution-up]="event.delta > 0">
+                {{ event.pctBefore }}% → {{ event.pctAfter }}%
+                <ng-container *ngIf="event.delta !== 0">
+                  ({{ event.delta > 0 ? '+' : '' }}{{ event.delta }}%{{ event.delta < 0 ? ' — razblaženo ovim prilivom' : '' }})
+                </ng-container>
+              </span>
+            </div>
+          </li>
+        </ul>
+        <p class="muted" *ngIf="selectedNodeEventLogPreview.length === 0">Nema zabeleženih transakcija za ovaj čvor.</p>
+        <button type="button" class="show-more-button" *ngIf="hiddenEventLogCount > 0" (click)="toggleShowAllEventLog()">
+          {{ showAllEventLog ? 'Prikaži manje' : 'Prikaži još ' + hiddenEventLogCount }}
+        </button>
       </ng-container>
       <ng-template #noSelection>
         <p class="panel-kicker">Detalji čvora</p>
         <p class="muted">Klikni na čvor da vidiš njegov taint % i istoriju.</p>
       </ng-template>
+
+      <div class="edge-details" *ngIf="selectedEdgeDetails as edgeDetails">
+        <p class="panel-kicker">Detalji transakcije</p>
+        <h3>
+          <span class="mono-address">{{ edgeDetails.source }}</span> → <span class="mono-address">{{ edgeDetails.target }}</span>
+        </h3>
+        <dl>
+          <div>
+            <dt>Ukupno preneto (svih {{ edgeDetails.transactions.length }} transakcija)</dt>
+            <dd>{{ edgeDetails.totalAmount | number : '1.2-6' }}</dd>
+          </div>
+        </dl>
+        <ul class="hops-list">
+          <li *ngFor="let tx of edgeDetails.transactions">
+            <dl class="edge-tx">
+              <div>
+                <dt>Iznos</dt>
+                <dd>{{ tx.amount | number : '1.2-6' }}</dd>
+              </div>
+              <div>
+                <dt>Vremenska oznaka</dt>
+                <dd>{{ tx.timestamp | date : 'medium' }}</dd>
+              </div>
+              <div>
+                <dt>Identifikator transakcije</dt>
+                <dd class="mono-address">{{ tx.metadata ?? 'n/a — evidencija nema kolonu sa hešom transakcije' }}</dd>
+              </div>
+              <div *ngIf="tx.taintPctAtHop !== null; else notTainted">
+                <dt>Procenat zaprljanosti prenet ovom transakcijom</dt>
+                <dd>{{ tx.taintedAmount | number : '1.2-6' }} / {{ tx.amount | number : '1.2-6' }} ({{ tx.taintPctAtHop }}%)</dd>
+              </div>
+              <ng-template #notTainted>
+                <div>
+                  <dt>Procenat zaprljanosti prenet ovom transakcijom</dt>
+                  <dd>0% — čista transakcija</dd>
+                </div>
+              </ng-template>
+              <div *ngIf="edgeTransactionSourceBreakdown(tx).length > 1">
+                <dt>Raspodela po izvorima</dt>
+                <dd *ngFor="let entry of edgeTransactionSourceBreakdown(tx)">
+                  <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+                </dd>
+              </div>
+            </dl>
+          </li>
+        </ul>
+      </div>
 
       <div class="taint-legend">
         <p class="panel-kicker">Legenda</p>

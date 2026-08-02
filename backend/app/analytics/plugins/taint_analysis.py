@@ -93,7 +93,7 @@ class TaintAnalysisPlugin(BasePlugin):
         node_first_rank: dict[str, int] = {}
         edge_first_rank: dict[str, int] = {}
 
-        for rank, (timestamp, source, target, amount) in enumerate(events, start=1):
+        for rank, (timestamp, source, target, amount, tx_metadata) in enumerate(events, start=1):
             node_first_rank.setdefault(source, rank)
             node_first_rank.setdefault(target, rank)
             edge_first_rank.setdefault(f'{source}__{target}', rank)
@@ -122,7 +122,17 @@ class TaintAnalysisPlugin(BasePlugin):
             peak_taint_pct[source] = max(peak_taint_pct.get(source, 0.0), source_pct_after)
             if balance[source] > 1e-12:
                 peak_breakdown[source] = breakdown_pct(source)
-            node_taint_series.setdefault(source, []).append({'rank': rank, 'taint_percentage': round(source_pct_after, 2)})
+            node_taint_series.setdefault(source, []).append(
+                {
+                    'rank': rank,
+                    'taint_percentage': round(source_pct_after, 2),
+                    'direction': 'out',
+                    'counterparty': target,
+                    'amount': amount,
+                    'tainted_amount': tainted_amount,
+                    'timestamp': timestamp.isoformat(),
+                }
+            )
 
             balance[target] = balance.get(target, 0.0) + amount
             new_target_tainted = dict(tainted_balance.get(target, {}))
@@ -138,7 +148,17 @@ class TaintAnalysisPlugin(BasePlugin):
             peak_taint_pct[target] = max(peak_taint_pct.get(target, 0.0), target_pct_after)
             if balance[target] > 1e-12:
                 peak_breakdown[target] = breakdown_pct(target)
-            node_taint_series.setdefault(target, []).append({'rank': rank, 'taint_percentage': round(target_pct_after, 2)})
+            node_taint_series.setdefault(target, []).append(
+                {
+                    'rank': rank,
+                    'taint_percentage': round(target_pct_after, 2),
+                    'direction': 'in',
+                    'counterparty': source,
+                    'amount': amount,
+                    'tainted_amount': tainted_amount,
+                    'timestamp': timestamp.isoformat(),
+                }
+            )
 
             if tainted_amount > 1e-9:
                 hop_breakdown = {
@@ -161,6 +181,11 @@ class TaintAnalysisPlugin(BasePlugin):
                         # e.g. {'0xSeedA': 60.0, '0xSeedB': 40.0} when two sources mixed
                         # together before this specific transfer.
                         'taint_by_source': hop_breakdown,
+                        # Whatever the source CSV's tx_hash/hash column carried for this
+                        # exact transaction (see ingestion.py's COLUMN_ALIASES) - None when
+                        # the evidence never had one, so the frontend can fall back to
+                        # "n/a" instead of showing a missing/undefined value.
+                        'tx_metadata': tx_metadata,
                     }
                 )
 
@@ -203,27 +228,28 @@ class TaintAnalysisPlugin(BasePlugin):
                     'target': target,
                     'amount': amount,
                     'timestamp': timestamp.isoformat(),
+                    'tx_metadata': tx_metadata,
                 }
-                for rank, (timestamp, source, target, amount) in enumerate(events, start=1)
+                for rank, (timestamp, source, target, amount, tx_metadata) in enumerate(events, start=1)
             ],
         }
 
     @staticmethod
-    def _collect_chronological_events(graph: nx.DiGraph) -> list[tuple[pd.Timestamp, str, str, float]]:
+    def _collect_chronological_events(graph: nx.DiGraph) -> list[tuple[pd.Timestamp, str, str, float, Any]]:
         """Flattens every individual transaction across every edge into one time-ordered
         stream - taint has to follow real chronological order across the whole graph, not
         edge-by-edge, since transactions on different edges interleave in time."""
 
-        events: list[tuple[pd.Timestamp, str, str, float]] = []
+        events: list[tuple[pd.Timestamp, str, str, float, Any]] = []
         for source, target, attrs in graph.edges(data=True):
             transactions = attrs.get('transactions') or [
-                {'amount': attrs.get('total_amount', 0.0), 'timestamp': attrs.get('first_seen')}
+                {'amount': attrs.get('total_amount', 0.0), 'timestamp': attrs.get('first_seen'), 'metadata': None}
             ]
             for tx in transactions:
                 timestamp = pd.to_datetime(tx.get('timestamp'), utc=True, errors='coerce')
                 if pd.isna(timestamp):
                     continue
-                events.append((timestamp, source, target, float(tx.get('amount', 0.0) or 0.0)))
+                events.append((timestamp, source, target, float(tx.get('amount', 0.0) or 0.0), tx.get('metadata')))
 
         events.sort(key=lambda event: event[0])
         return events

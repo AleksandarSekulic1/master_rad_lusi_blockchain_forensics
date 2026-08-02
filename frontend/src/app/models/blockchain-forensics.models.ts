@@ -79,11 +79,22 @@ export interface TaintedHop {
   /** What % of THIS hop's tainted amount came from each seed, e.g. {"0xA": 60, "0xB": 40}
    * when funds from multiple seeds had already mixed together before this transfer. */
   taint_by_source: Record<string, number>;
+  /** Whatever the source CSV's tx_hash/hash column carried for this exact transaction, if
+   * any - null when the evidence never had one. */
+  tx_metadata: string | null;
 }
 
 export interface TaintTimelineEntry {
   rank: number;
   taint_percentage: number;
+  /** "in" when this address received the transfer, "out" when it sent it - outflows leave
+   * the % unchanged (proportional haircut), so only "in" entries actually explain a
+   * percentage change; kept for both directions anyway so the full ledger is complete. */
+  direction: 'in' | 'out';
+  counterparty: string;
+  amount: number;
+  tainted_amount: number;
+  timestamp: string;
 }
 
 export interface TaintTimelineEvent {
@@ -92,6 +103,7 @@ export interface TaintTimelineEvent {
   target: string;
   amount: number;
   timestamp: string;
+  tx_metadata: string | null;
 }
 
 export interface TaintNodeResult {

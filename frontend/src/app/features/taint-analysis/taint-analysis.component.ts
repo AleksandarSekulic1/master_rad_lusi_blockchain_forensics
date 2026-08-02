@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { map } from 'rxjs/operators';
 
-import cytoscape, { Core, ElementDefinition, NodeSingular } from 'cytoscape';
+import cytoscape, { Core, EdgeSingular, ElementDefinition, NodeSingular } from 'cytoscape';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -27,6 +27,33 @@ import {
   TaintTimelineEntry,
   TaintTimelineEvent,
 } from '../../models/blockchain-forensics.models';
+
+/** One individual transaction on a clicked edge, joined from the raw per-transaction data
+ * cytoscape already carries (amount/timestamp/metadata) with whatever taint contribution
+ * that exact transaction had (null when it never carried any tainted value at all). */
+interface EdgeTransactionDetail {
+  amount: number;
+  timestamp: string;
+  metadata: string | null;
+  taintedAmount: number | null;
+  taintPctAtHop: number | null;
+  taintBySource: Record<string, number> | null;
+}
+
+/** One entry in a node's complete transaction ledger, with the % right before and after
+ * it - the "why is my percentage what it is" explanation, including the clean (or merely
+ * less-tainted-than-average) inflows that pure tainted_hops leaves invisible. */
+interface NodeEventLogEntry {
+  rank: number;
+  direction: 'in' | 'out';
+  counterparty: string;
+  amount: number;
+  taintedAmount: number;
+  timestamp: string;
+  pctBefore: number;
+  pctAfter: number;
+  delta: number;
+}
 
 @Component({
   selector: 'app-taint-analysis',
@@ -55,6 +82,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected taintResult: TaintAnalysisResult | null = null;
   protected selectedNode: GraphNodeData | null = null;
   protected showAllTopTainted = false;
+  protected showAllEventLog = false;
   protected addressEnrichment: AddressEnrichment | null = null;
   protected isEnrichingAddress = false;
 
@@ -72,6 +100,18 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * nothing sits at exactly 0% but plenty of nodes carry only a negligible sliver. */
   protected taintHideThreshold = 0;
   protected isExportingPdf = false;
+  /** Which seed(s) currently count towards displayed %/color/labels - starts as "all seeds"
+   * right after a run (the familiar combined view). Deselecting one doesn't remove it as a
+   * seed, it just excludes its share from what's drawn, so you can isolate one source's own
+   * spread when several independent seeds happen to converge on the same addresses. */
+  protected activeSeeds = new Set<string>();
+
+  protected selectedEdgeDetails: {
+    source: string;
+    target: string;
+    totalAmount: number;
+    transactions: EdgeTransactionDetail[];
+  } | null = null;
 
   private cy: Core | null = null;
   private lastClickedHopKey: string | null = null;
@@ -83,6 +123,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private static readonly TAINT_HIGH_COLOR = '#ff4d4d';
   private static readonly TAINT_MID_THRESHOLD = 50;
   private static readonly TOP_TAINTED_PREVIEW_LIMIT = 15;
+  private static readonly EVENT_LOG_PREVIEW_LIMIT = 10;
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -194,10 +235,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.showAllTopTainted = false;
     this.lastClickedHopKey = null;
     this.selectedEdgeKey = null;
+    this.selectedEdgeDetails = null;
     this.stopTimelinePlay();
     this.timelineEnabled = false;
     this.timelinePosition = 1;
     this.timelineMaxRank = 0;
+    this.activeSeeds.clear();
   }
 
   startNewAnalysis(): void {
@@ -344,6 +387,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         // canvas, so clicking one to "remove" it would silently ADD it instead (it
         // wasn't tracked as present), looking like the click did nothing.
         this.seedAddresses = [...(this.taintResult?.seed_addresses ?? [])];
+        this.activeSeeds = new Set(this.seedAddresses);
         this.hasRunTaint = true;
         this.isRunningTaint = false;
         this.timelineMaxRank = this.taintResult?.timeline_max_rank ?? 0;
@@ -430,6 +474,51 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return hops.filter((hop) => hop.rank <= this.timelinePosition);
   }
 
+  /** Every transaction that ever touched the selected node's balance, tainted or not, each
+   * paired with the % right before and right after it - the full "why is my percentage
+   * what it is" audit trail. tainted_hops only records transfers that carried SOME tainted
+   * value, so a clean inflow that diluted the balance (grew it without growing the tainted
+   * share) would otherwise never show up anywhere in the inspector at all. Respects the
+   * same "full vs as-of-now" rule as the hops list above. */
+  get selectedNodeEventLog(): NodeEventLogEntry[] {
+    if (!this.selectedNode || !this.taintResult) {
+      return [];
+    }
+    const id = String(this.selectedNode.id);
+    const series = this.taintResult.node_taint_series?.[id] ?? [];
+    const visible = this.timelineEnabled ? series.filter((entry) => entry.rank <= this.timelinePosition) : series;
+
+    let previousPct = 0;
+    return visible.map((entry) => {
+      const row: NodeEventLogEntry = {
+        rank: entry.rank,
+        direction: entry.direction,
+        counterparty: entry.counterparty,
+        amount: entry.amount,
+        taintedAmount: entry.tainted_amount,
+        timestamp: entry.timestamp,
+        pctBefore: previousPct,
+        pctAfter: entry.taint_percentage,
+        delta: Math.round((entry.taint_percentage - previousPct) * 100) / 100,
+      };
+      previousPct = entry.taint_percentage;
+      return row;
+    });
+  }
+
+  get selectedNodeEventLogPreview(): NodeEventLogEntry[] {
+    const all = this.selectedNodeEventLog;
+    return this.showAllEventLog ? all : all.slice(0, TaintAnalysisComponent.EVENT_LOG_PREVIEW_LIMIT);
+  }
+
+  get hiddenEventLogCount(): number {
+    return Math.max(0, this.selectedNodeEventLog.length - TaintAnalysisComponent.EVENT_LOG_PREVIEW_LIMIT);
+  }
+
+  toggleShowAllEventLog(): void {
+    this.showAllEventLog = !this.showAllEventLog;
+  }
+
   /** Full (uncapped) per-seed breakdown of the selected node's own taint % - "" for a
    * single-seed run, where the aggregate % already tells the whole story. Always the
    * final result, same as the ranked lists elsewhere in this panel. */
@@ -451,6 +540,94 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.pct - a.pct);
   }
 
+  edgeTransactionSourceBreakdown(tx: EdgeTransactionDetail): Array<{ address: string; pct: number }> {
+    return Object.entries(tx.taintBySource ?? {})
+      .map(([address, pct]) => ({ address, pct }))
+      .sort((a, b) => b.pct - a.pct);
+  }
+
+  /** Joins the edge's own raw transaction list (every transfer between this pair, tainted
+   * or not - cytoscape already carries it verbatim from the graph payload) against
+   * tainted_hops to attach taint data to whichever of those transactions actually carried
+   * some. Matched by (timestamp, amount) since that's the only thing both records share -
+   * tainted_hops has no transaction id of its own to join on directly. */
+  private buildEdgeDetails(
+    edge: EdgeSingular,
+  ): { source: string; target: string; totalAmount: number; transactions: EdgeTransactionDetail[] } {
+    const source = String(edge.data('source'));
+    const target = String(edge.data('target'));
+    const rawTransactions = (edge.data('transactions') as Array<Record<string, unknown>> | undefined) ?? [];
+    const hops = (this.taintResult?.tainted_hops ?? []).filter((hop) => hop.source === source && hop.target === target);
+
+    const transactions: EdgeTransactionDetail[] = rawTransactions.map((tx) => {
+      const amount = Number(tx['amount'] ?? 0);
+      const timestamp = String(tx['timestamp'] ?? '');
+      const metadataValue = tx['metadata'];
+      const matchingHop = hops.find((hop) => hop.timestamp === timestamp && Math.abs(hop.amount - amount) < 1e-9);
+      return {
+        amount,
+        timestamp,
+        metadata: metadataValue == null || metadataValue === '' ? null : String(metadataValue),
+        taintedAmount: matchingHop?.tainted_amount ?? null,
+        taintPctAtHop: matchingHop?.taint_pct_at_hop ?? null,
+        taintBySource: matchingHop?.taint_by_source ?? null,
+      };
+    });
+
+    transactions.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    // Same aggregate the arrow label is derived from - reused directly rather than
+    // re-summed here, so this total can never drift from what's already shown on canvas.
+    const totalAmount = Number(edge.data('totalAmount') ?? 0);
+    return { source, target, totalAmount, transactions };
+  }
+
+  /** True once every known seed is switched on - the normal, unfiltered "combined" view.
+   * Used to skip the filtering math entirely in the common case and fall back to the
+   * backend's own aggregate fields, rather than re-deriving a sum that should equal them
+   * anyway but could drift by a rounding hair since each per-seed share is independently
+   * rounded to 2 decimals server-side. */
+  get isAllSeedsActive(): boolean {
+    return this.activeSeeds.size >= (this.taintResult?.seed_addresses.length ?? 0);
+  }
+
+  toggleSeedFilter(seed: string): void {
+    if (this.activeSeeds.has(seed)) {
+      this.activeSeeds.delete(seed);
+    } else {
+      this.activeSeeds.add(seed);
+    }
+    this.applyTaintTimeline();
+  }
+
+  showAllSeedSources(): void {
+    this.activeSeeds = new Set(this.taintResult?.seed_addresses ?? []);
+    this.applyTaintTimeline();
+  }
+
+  /** Restricts a per-seed breakdown down to only the currently active seeds - the one
+   * piece of math this whole feature boils down to, reused for node %, edge %, and path
+   * tracing alike so "isolate this source" means the same thing everywhere on the page. */
+  private filteredBreakdown(bySource: Record<string, number> | undefined): Record<string, number> {
+    if (!bySource) {
+      return {};
+    }
+    if (this.isAllSeedsActive) {
+      return bySource;
+    }
+    return Object.fromEntries(Object.entries(bySource).filter(([seed]) => this.activeSeeds.has(seed)));
+  }
+
+  private filteredSum(bySource: Record<string, number> | undefined): number {
+    return Object.values(this.filteredBreakdown(bySource)).reduce((sum, pct) => sum + pct, 0);
+  }
+
+  /** The node's displayed % once the active-seed filter is applied - the real aggregate
+   * field when every seed is active (avoids rounding drift, see isAllSeedsActive), or the
+   * summed share of just the selected seed(s) otherwise. */
+  private nodeFilteredPct(fullPct: number, bySource: Record<string, number> | undefined): number {
+    return this.isAllSeedsActive ? fullPct : Math.round(this.filteredSum(bySource) * 100) / 100;
+  }
+
   /** First click on a hop jumps to who RECEIVED the funds; clicking the exact same hop
    * again jumps back to who SENT them, then back to the recipient, and so on - lets you
    * step back and forth along one hop without losing your place. Clicking a different
@@ -469,6 +646,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * duplicating the same three calls at every call site. */
   private selectNode(node: GraphNodeData): void {
     this.selectedNode = node;
+    this.showAllEventLog = false;
     this.applyPathHighlight(String(node.id));
     this.loadAddressEnrichment();
   }
@@ -479,6 +657,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private deselectNode(): void {
     this.selectedNode = null;
     this.addressEnrichment = null;
+    this.showAllEventLog = false;
     this.applyPathHighlight(null);
   }
 
@@ -593,7 +772,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * scrub position while it's on. */
   private getTaintedPathElements(nodeId: string, maxRank: number | null): { nodeIds: Set<string>; edgeKeys: Set<string> } {
     const allHops = this.taintResult?.tainted_hops ?? [];
-    const hops = maxRank == null ? allHops : allHops.filter((hop) => hop.rank <= maxRank);
+    // Seed filter only applies to the full/final view (maxRank === null) - see the
+    // scoping note on applyTaintTimeline.
+    const applySeedFilter = maxRank == null && !this.isAllSeedsActive;
+    const hops = allHops.filter(
+      (hop) => (maxRank == null || hop.rank <= maxRank) && (!applySeedFilter || this.filteredSum(hop.taint_by_source) > 1e-9),
+    );
 
     const outgoing = new Map<string, TaintedHop[]>();
     const incoming = new Map<string, TaintedHop[]>();
@@ -811,7 +995,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * so plain/clean edges stay unlabeled instead of cluttering the graph with "0%"
    * everywhere. tainted_hops is already chronologically ordered, so the last matching
    * entry is simply the most recent one. */
-  private getEdgeTaintLabel(source: string, target: string, maxRank: number | null): string {
+  /** The seed filter only applies in the full/final view (timeline off) - see the
+   * scoping note on applyTaintTimeline - so timeline playback always passes
+   * ignoreSeedFilter=true and shows every seed's contribution regardless of what's
+   * currently toggled, rather than mixing "as-of-position" with "as-of-filter" in a way
+   * that's hard to reason about while scrubbing. */
+  private getEdgeTaintLabel(source: string, target: string, maxRank: number | null, ignoreSeedFilter = false): string {
     const hops = (this.taintResult?.tainted_hops ?? []).filter(
       (hop) => hop.source === source && hop.target === target && (maxRank == null || hop.rank <= maxRank),
     );
@@ -819,11 +1008,20 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       return '';
     }
     const latest = hops[hops.length - 1];
-    // Capped at 2 shares (+ a "how many more" count) so the arrow label stays readable
-    // even when a dozen+ seeds all feed the same edge - the uncapped, full breakdown is
-    // available in the node inspector once you click either end of this edge.
-    const breakdown = TaintAnalysisComponent.formatBreakdown(latest.taint_by_source, 2);
-    return breakdown || `${latest.taint_pct_at_hop}%`;
+    if (ignoreSeedFilter || this.isAllSeedsActive) {
+      // Capped at 2 shares (+ a "how many more" count) so the arrow label stays readable
+      // even when a dozen+ seeds all feed the same edge - the uncapped, full breakdown is
+      // available in the node inspector once you click either end of this edge.
+      const breakdown = TaintAnalysisComponent.formatBreakdown(latest.taint_by_source, 2);
+      return breakdown || `${latest.taint_pct_at_hop}%`;
+    }
+    const filteredBySource = this.filteredBreakdown(latest.taint_by_source);
+    const filteredPct = Object.values(filteredBySource).reduce((sum, pct) => sum + pct, 0);
+    if (filteredPct <= 1e-9) {
+      return '';
+    }
+    const breakdown = TaintAnalysisComponent.formatBreakdown(filteredBySource, 2);
+    return breakdown || `${Math.round(filteredPct * 100) / 100}%`;
   }
 
   /** "" when there's 0 or 1 contributing source (the plain aggregate % already covers
@@ -865,7 +1063,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * percentage itself evolve hop by hop, so the color has to change too, not just what's
    * shown. Also applies the "hide non-tainted" filter, on or off the timeline alike -
    * hiding a node here hides its connected edges too (cytoscape does this automatically
-   * for any node with display:none), so untainted edges never need separate handling. */
+   * for any node with display:none), so untainted edges never need separate handling.
+   *
+   * The per-seed source filter ("Filter po izvoru") only applies in this OFF branch. The
+   * backend only stores a per-node taint_by_source snapshot of the CURRENT/final state,
+   * not a full per-seed history at every past rank the way node_taint_series does for the
+   * aggregate - so there's no historically-accurate way to isolate one seed's share while
+   * scrubbing. Rather than show a filtered view that's silently wrong mid-scrub, the
+   * timeline branch below always ignores the filter and shows every seed's contribution. */
   private applyTaintTimeline(): void {
     if (!this.cy) {
       return;
@@ -874,13 +1079,19 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (!this.timelineEnabled) {
       this.cy.nodes().forEach((node) => {
         const finalPct = Number(node.data('finalTaintPercentage') ?? 0);
-        node.data('taint_percentage', finalPct);
-        node.data('displayLabel', this.hasRunTaint ? `${this.nodeAddressLabel(node)}\n${finalPct}%` : '');
-        node.style('display', this.hideNonTaintedNodes && finalPct <= this.taintHideThreshold ? 'none' : 'element');
+        const bySource = node.data('taint_by_source') as Record<string, number> | undefined;
+        const displayPct = this.nodeFilteredPct(finalPct, bySource);
+        node.data('taint_percentage', displayPct);
+        node.data('displayLabel', this.hasRunTaint ? `${this.nodeAddressLabel(node)}\n${displayPct}%` : '');
+        const hiddenByThreshold = this.hideNonTaintedNodes && displayPct <= this.taintHideThreshold;
+        const hiddenBySeedFilter = !this.isAllSeedsActive && displayPct <= 1e-9;
+        node.style('display', hiddenByThreshold || hiddenBySeedFilter ? 'none' : 'element');
       });
       this.cy.edges().forEach((edge) => {
-        edge.data('edgeLabel', this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), null));
-        edge.style('display', 'element');
+        const label = this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), null);
+        edge.data('edgeLabel', label);
+        const hiddenBySeedFilter = !this.isAllSeedsActive && label === '';
+        edge.style('display', hiddenBySeedFilter ? 'none' : 'element');
       });
       this.applyPathHighlight(this.selectedNode ? String(this.selectedNode.id) : null);
       return;
@@ -900,7 +1111,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
     this.cy.edges().forEach((edge) => {
       const rank = edge.data('chronoRank');
-      edge.data('edgeLabel', this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), position));
+      edge.data('edgeLabel', this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), position, true));
       edge.style('display', rank != null && rank <= position ? 'element' : 'none');
     });
 
@@ -1163,9 +1374,11 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       this.cy?.edges().removeClass('edge-focused');
       if (this.selectedEdgeKey === key) {
         this.selectedEdgeKey = null;
+        this.selectedEdgeDetails = null;
       } else {
         this.selectedEdgeKey = key;
         edge.addClass('edge-focused');
+        this.selectedEdgeDetails = this.buildEdgeDetails(edge);
       }
     });
 
