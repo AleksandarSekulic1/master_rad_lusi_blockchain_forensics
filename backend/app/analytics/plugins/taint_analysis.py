@@ -17,8 +17,9 @@ def _normalize_seed_addresses(seed_addresses: list[str] | None) -> set[str]:
 class TaintAnalysisPlugin(BasePlugin):
     name = 'taint_analysis'
     description = (
-        'Propagates a proportional ("haircut") taint percentage from seed addresses through the '
-        'graph, processing every individual transaction in strict chronological order.'
+        'Propagates a proportional ("haircut") taint percentage - broken down per individual '
+        'seed - from seed addresses through the graph, processing every transaction in strict '
+        'chronological order.'
     )
 
     def run(
@@ -47,10 +48,15 @@ class TaintAnalysisPlugin(BasePlugin):
         # nema pristupa prilivima van uvezenih transakcija, pa je ovo "closed-world"
         # pretpostavka (videti napomenu u opisu plugina/tezi o ograničenju).
         balance: dict[str, float] = {}
-        tainted_balance: dict[str, float] = {}
-        # Poslednji poznati taint % pre nego što je balans pao na (blizu) nule - inače bi
-        # deljenje sa nula-balansom izbrisalo istorijski trag da je adresa uopšte bila umešana.
+        # Zaprljani deo balansa RAZLOŽEN po pojedinačnom izvoru (seed adresi), ne samo
+        # jedan zbirni broj - omogućava da se za svaki čvor/transakciju kaže "od čega je
+        # sastavljen" taint (npr. "52.72% = 30% od seed-a A + 22.72% od seed-a B").
+        tainted_balance: dict[str, dict[str, float]] = {}
+        # Poslednji poznati (zbirni i razloženi) taint pre nego što je balans pao na
+        # (blizu) nule - inače bi deljenje sa nula-balansom izbrisalo istorijski trag da
+        # je adresa uopšte bila umešana.
         peak_taint_pct: dict[str, float] = {}
+        peak_breakdown: dict[str, dict[str, float]] = {}
         tainted_hops: list[dict[str, Any]] = []
         # Complete per-node taint % history, one entry per event that actually touches
         # that node - unlike tainted_hops (only hops carrying nonzero tainted value),
@@ -60,11 +66,26 @@ class TaintAnalysisPlugin(BasePlugin):
         # exactly those moments.
         node_taint_series: dict[str, list[dict[str, Any]]] = {}
 
+        def total_tainted(node: str) -> float:
+            return sum(tainted_balance.get(node, {}).values())
+
         def taint_pct(node: str) -> float:
             bal = balance.get(node, 0.0)
             if bal <= 1e-12:
                 return peak_taint_pct.get(node, 100.0 if node in seeds else 0.0)
-            return 100.0 * tainted_balance.get(node, 0.0) / bal
+            return 100.0 * total_tainted(node) / bal
+
+        def breakdown_pct(node: str) -> dict[str, float]:
+            bal = balance.get(node, 0.0)
+            if bal <= 1e-12:
+                if node in peak_breakdown:
+                    return peak_breakdown[node]
+                return {node: 100.0} if node in seeds else {}
+            return {
+                seed: round(100.0 * amount / bal, 2)
+                for seed, amount in tainted_balance.get(node, {}).items()
+                if amount > 1e-9
+            }
 
         # First chronological appearance of each node/edge - lets the frontend's timeline
         # scrubber reveal elements in the exact same order the simulation itself uses,
@@ -78,30 +99,53 @@ class TaintAnalysisPlugin(BasePlugin):
             edge_first_rank.setdefault(f'{source}__{target}', rank)
 
             source_balance = balance.get(source, 0.0)
-            source_ratio = (
-                tainted_balance.get(source, 0.0) / source_balance
-                if source_balance > 1e-12
-                else (1.0 if source in seeds else 0.0)
-            )
-            tainted_amount = amount * source_ratio
+            source_tainted = tainted_balance.get(source, {})
+            if source_balance > 1e-12:
+                transferred_by_seed = {
+                    seed: amount * (seed_amount / source_balance) for seed, seed_amount in source_tainted.items()
+                }
+            elif source in seeds:
+                # Untouched seed spending for the first time - the whole transfer is
+                # attributed to itself, not to whatever (nonexistent) balance it had.
+                transferred_by_seed = {source: amount}
+            else:
+                transferred_by_seed = {}
+
+            tainted_amount = sum(transferred_by_seed.values())
 
             balance[source] = source_balance - amount
-            tainted_balance[source] = tainted_balance.get(source, 0.0) - tainted_amount
+            new_source_tainted = dict(source_tainted)
+            for seed, seed_amount in transferred_by_seed.items():
+                new_source_tainted[seed] = new_source_tainted.get(seed, 0.0) - seed_amount
+            tainted_balance[source] = new_source_tainted
             source_pct_after = taint_pct(source)
             peak_taint_pct[source] = max(peak_taint_pct.get(source, 0.0), source_pct_after)
+            if balance[source] > 1e-12:
+                peak_breakdown[source] = breakdown_pct(source)
             node_taint_series.setdefault(source, []).append({'rank': rank, 'taint_percentage': round(source_pct_after, 2)})
 
             balance[target] = balance.get(target, 0.0) + amount
-            tainted_balance[target] = tainted_balance.get(target, 0.0) + tainted_amount
+            new_target_tainted = dict(tainted_balance.get(target, {}))
+            for seed, seed_amount in transferred_by_seed.items():
+                new_target_tainted[seed] = new_target_tainted.get(seed, 0.0) + seed_amount
             if target in seeds:
-                # Seed adresa "ponovo ubrizgava" pun taint na svaki dolazni transfer i - u
-                # slučaju da isti akter dobije svež ukraden novac iz više različitih incidenata.
-                tainted_balance[target] = balance[target]
+                # Seed adresa "ponovo ubrizgava" pun taint (pripisan sebi samoj) na svaki
+                # dolazni transfer - u slučaju da isti akter dobije svež ukraden novac iz
+                # više različitih incidenata, prethodna mešavina izvora više nije bitna.
+                new_target_tainted = {target: balance[target]}
+            tainted_balance[target] = new_target_tainted
             target_pct_after = taint_pct(target)
             peak_taint_pct[target] = max(peak_taint_pct.get(target, 0.0), target_pct_after)
+            if balance[target] > 1e-12:
+                peak_breakdown[target] = breakdown_pct(target)
             node_taint_series.setdefault(target, []).append({'rank': rank, 'taint_percentage': round(target_pct_after, 2)})
 
             if tainted_amount > 1e-9:
+                hop_breakdown = {
+                    seed: round(100.0 * seed_amount / amount, 2)
+                    for seed, seed_amount in transferred_by_seed.items()
+                    if seed_amount > 1e-9
+                }
                 tainted_hops.append(
                     {
                         'rank': rank,
@@ -113,12 +157,17 @@ class TaintAnalysisPlugin(BasePlugin):
                         'taint_pct_at_hop': round(100.0 * tainted_amount / amount, 2),
                         'source_taint_pct_after': round(source_pct_after, 2),
                         'target_taint_pct_after': round(target_pct_after, 2),
+                        # What fraction of THIS hop's tainted amount came from each seed -
+                        # e.g. {'0xSeedA': 60.0, '0xSeedB': 40.0} when two sources mixed
+                        # together before this specific transfer.
+                        'taint_by_source': hop_breakdown,
                     }
                 )
 
         for node in graph.nodes:
             graph.nodes[node]['taint_percentage'] = round(taint_pct(node), 2)
             graph.nodes[node]['is_taint_seed'] = node in seeds
+            graph.nodes[node]['taint_by_source'] = breakdown_pct(node)
 
         results = sorted(
             (
@@ -126,6 +175,7 @@ class TaintAnalysisPlugin(BasePlugin):
                     'address': node,
                     'taint_percentage': graph.nodes[node]['taint_percentage'],
                     'is_taint_seed': graph.nodes[node]['is_taint_seed'],
+                    'taint_by_source': graph.nodes[node]['taint_by_source'],
                 }
                 for node in graph.nodes
             ),

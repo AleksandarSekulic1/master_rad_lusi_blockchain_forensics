@@ -421,6 +421,22 @@ h3 {
   border-color: rgba(125, 211, 252, 0.3);
 }
 
+.hop-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0.2rem 0;
+  font-size: 0.7rem;
+  color: #9ab1d0;
+}
+
+.hop-breakdown span {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow-wrap: anywhere;
+}
+
 .taint-legend {
   margin-top: 1.25rem;
   padding-top: 1rem;

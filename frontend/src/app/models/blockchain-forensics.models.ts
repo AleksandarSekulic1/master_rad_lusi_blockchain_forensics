@@ -60,6 +60,9 @@ export interface GraphNodeData {
   net_flow?: number;
   taint_percentage?: number;
   is_taint_seed?: boolean;
+  /** How much of taint_percentage came from each seed address, e.g. {"0xA": 66.67,
+   * "0xB": 33.33} - only meaningful/populated when more than one seed was selected. */
+  taint_by_source?: Record<string, number>;
   [key: string]: unknown;
 }
 
@@ -73,6 +76,9 @@ export interface TaintedHop {
   taint_pct_at_hop: number;
   source_taint_pct_after: number;
   target_taint_pct_after: number;
+  /** What % of THIS hop's tainted amount came from each seed, e.g. {"0xA": 60, "0xB": 40}
+   * when funds from multiple seeds had already mixed together before this transfer. */
+  taint_by_source: Record<string, number>;
 }
 
 export interface TaintTimelineEntry {
@@ -88,13 +94,20 @@ export interface TaintTimelineEvent {
   timestamp: string;
 }
 
+export interface TaintNodeResult {
+  address: string;
+  taint_percentage: number;
+  is_taint_seed: boolean;
+  taint_by_source: Record<string, number>;
+}
+
 export interface TaintAnalysisResult {
   plugin: 'taint_analysis';
   description: string;
   seed_addresses: string[];
   tainted_node_count: number;
   tainted_hops: TaintedHop[];
-  results: Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }>;
+  results: TaintNodeResult[];
   node_first_rank: Record<string, number>;
   edge_first_rank: Record<string, number>;
   node_taint_series: Record<string, TaintTimelineEntry[]>;

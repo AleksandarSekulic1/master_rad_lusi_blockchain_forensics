@@ -106,14 +106,19 @@ Zašto nam je to korisno u istrazi:
 
 Ako sve tri tvrdnje važe (a dole su i tačno izmerene), to je čvrst dokaz da implementacija algoritma odgovara teorijskom modelu opisanom u radu, a ne da su brojevi slučajno "ispali dobro" na jednom prikazu.
 
-U slučaju **"Demo: Sumnjiva laundering sema (hakovan novcanik)"** već postoji poseban dokaz **`demo_taint_dilution.csv`** napravljen baš za ovo (dodat skriptom `backend/scripts/seed_demo_taint_evidence.py`):
+U slučaju **"Demo: Sumnjiva laundering sema (hakovan novcanik)"** već postoji poseban dokaz **`demo_taint_dilution.csv`** napravljen baš za ovo (dodat/proširen skriptom `backend/scripts/seed_demo_taint_evidence.py`) — sadrži dva nezavisna scenarija u istom fajlu, na potpuno različitim adresama, tako da testiranje jednog ne utiče na drugi:
 
 ```
 sender_address,recipient_address,amount,timestamp
 0xThief,0xMixer,1000,2026-03-01T00:00:00Z
 0xCleanUser,0xMixer,500,2026-03-01T00:05:00Z
 0xMixer,0xExitWallet,750,2026-03-01T00:10:00Z
+0xHacker1,0xLaunderingHub,600,2026-04-01T00:00:00Z
+0xHacker2,0xLaunderingHub,400,2026-04-01T00:05:00Z
+0xLaunderingHub,0xFinalDestination,800,2026-04-01T00:10:00Z
 ```
+
+**Prve tri linije — razblaživanje jednim izvorom:**
 
 1. Idi na **Slučajevi** → izaberi "Demo: Sumnjiva laundering sema".
 2. Idi na **Taint analiza** → u "Prikaz transakcija" izaberi `demo_taint_dilution.csv`.
@@ -121,6 +126,13 @@ sender_address,recipient_address,amount,timestamp
 4. Očekivano: `0xThief` = 100%, `0xMixer` i `0xExitWallet` = tačno **66.67%** (1000 prljavo / 1500 ukupno u mikseru), `0xCleanUser` = 0%.
 
 Pošto je model proporcionalan (ne zavisi od toga koji je čvor izabran), možeš probati i suprotno — izaberi `0xCleanUser` kao seed umesto `0xThief` i pokreni ponovo: sad će `0xCleanUser` biti 100%, a `0xMixer`/`0xExitWallet` će pasti na **33.33%** (500/1500), dok će `0xThief` ostati na 0%. Ovo je dobar način da se u odbrani rada pokaže da algoritam ispravno reaguje na izbor izvora, a ne da su brojevi "zakucani".
+
+**Poslednje tri linije — raspodela po pojedinačnom izvoru (kad ima više seed-ova odjednom):**
+
+1. U istom `demo_taint_dilution.csv`, izaberi **oba** čvora `0xHacker1` i `0xHacker2` kao seed (2 klika) → **"Pokreni taint analizu (2)"**.
+2. Očekivano: `0xLaunderingHub` = 100%, sa panelom "Poreklo po izvoru" koji pokazuje tačno **60% od `0xHacker1`, 40% od `0xHacker2`** (600/1000 i 400/1000). Na grani `0xLaunderingHub → 0xFinalDestination` piše direktno **"60%+40%"** umesto jednog zbirnog broja, jer `0xFinalDestination` nasleđuje identičnu raspodelu.
+
+Ovo dokazuje da algoritam ne samo da tačno računa *koliko* je nešto zaprljano, nego i da ispravno prati *od koga* — bitno kad istraga ima više poznatih sumnjivih adresa istovremeno, ne samo jednu.
 
 ### 6.2 Test na realnim podacima (slučaj "test 1")
 

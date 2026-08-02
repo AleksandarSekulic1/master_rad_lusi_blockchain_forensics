@@ -201,6 +201,12 @@
             <dt>Izvor (seed)</dt>
             <dd>{{ node.is_taint_seed ? 'Da' : 'Ne' }}</dd>
           </div>
+          <div *ngIf="selectedNodeSourceBreakdown.length > 1">
+            <dt>Poreklo po izvoru</dt>
+            <dd *ngFor="let entry of selectedNodeSourceBreakdown">
+              <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+            </dd>
+          </div>
         </dl>
 
         <p class="panel-kicker hops-title">Ko je zapravo iza ove adrese (on-chain podaci)</p>
@@ -299,6 +305,9 @@
               {{ hop.tainted_amount | number : '1.2-6' }} / {{ hop.amount | number : '1.2-6' }} ({{ hop.taint_pct_at_hop }}%)
               · {{ hop.timestamp | date : 'short' }}
             </button>
+            <div class="hop-breakdown" *ngIf="hopSourceBreakdown(hop).length > 1">
+              <span *ngFor="let entry of hopSourceBreakdown(hop)">{{ entry.address }}: {{ entry.pct }}%</span>
+            </div>
           </li>
         </ul>
       </ng-container>

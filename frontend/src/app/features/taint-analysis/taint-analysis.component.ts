@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { map } from 'rxjs/operators';
 
-import cytoscape, { Core, ElementDefinition } from 'cytoscape';
+import cytoscape, { Core, ElementDefinition, NodeSingular } from 'cytoscape';
 
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
@@ -20,6 +20,7 @@ import {
   NodeLinkGraphResponse,
   TaintAnalysisResult,
   TaintedHop,
+  TaintNodeResult,
   TaintTimelineEntry,
   TaintTimelineEvent,
 } from '../../models/blockchain-forensics.models';
@@ -71,6 +72,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private cy: Core | null = null;
   private lastClickedHopKey: string | null = null;
   private lastHopClickWentToTarget = false;
+  private selectedEdgeKey: string | null = null;
   private timelinePlayTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly TAINT_LOW_COLOR = '#1c2333';
   private static readonly TAINT_MID_COLOR = '#f59e0b';
@@ -186,6 +188,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.addressEnrichment = null;
     this.showAllTopTainted = false;
     this.lastClickedHopKey = null;
+    this.selectedEdgeKey = null;
     this.stopTimelinePlay();
     this.timelineEnabled = false;
     this.timelinePosition = 1;
@@ -353,7 +356,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
   }
 
-  private get nonZeroTaintedNodes(): Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }> {
+  private get nonZeroTaintedNodes(): TaintNodeResult[] {
     return (this.taintResult?.results ?? []).filter((item) => item.taint_percentage > 0);
   }
 
@@ -361,7 +364,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * the natural candidates for "where did the money leave the traceable network" (a real
    * cash-out, or simply outside this case's evidence window). Seeds are excluded even if
    * they also never send anything, since they're the origin of the trail, not its end. */
-  get cashOutCandidates(): Array<{ address: string; taint_percentage: number }> {
+  get cashOutCandidates(): TaintNodeResult[] {
     if (!this.graph) {
       return [];
     }
@@ -372,11 +375,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
     return this.nonZeroTaintedNodes
       .filter((item) => !item.is_taint_seed && (outDegree.get(item.address) ?? 0) === 0)
-      .map((item) => ({ address: item.address, taint_percentage: item.taint_percentage }))
       .sort((a, b) => b.taint_percentage - a.taint_percentage);
   }
 
-  get topTaintedNodes(): Array<{ address: string; taint_percentage: number; is_taint_seed: boolean }> {
+  get topTaintedNodes(): TaintNodeResult[] {
     const all = this.nonZeroTaintedNodes;
     return this.showAllTopTainted ? all : all.slice(0, TaintAnalysisComponent.TOP_TAINTED_PREVIEW_LIMIT);
   }
@@ -423,6 +425,27 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return hops.filter((hop) => hop.rank <= this.timelinePosition);
   }
 
+  /** Full (uncapped) per-seed breakdown of the selected node's own taint % - "" for a
+   * single-seed run, where the aggregate % already tells the whole story. Always the
+   * final result, same as the ranked lists elsewhere in this panel. */
+  get selectedNodeSourceBreakdown(): Array<{ address: string; pct: number }> {
+    const bySource = this.selectedNode?.taint_by_source;
+    if (!bySource) {
+      return [];
+    }
+    return Object.entries(bySource)
+      .map(([address, pct]) => ({ address, pct }))
+      .sort((a, b) => b.pct - a.pct);
+  }
+
+  /** Same idea as selectedNodeSourceBreakdown but for one specific hop - "" when only one
+   * seed's money made up that transfer. */
+  hopSourceBreakdown(hop: TaintedHop): Array<{ address: string; pct: number }> {
+    return Object.entries(hop.taint_by_source ?? {})
+      .map(([address, pct]) => ({ address, pct }))
+      .sort((a, b) => b.pct - a.pct);
+  }
+
   /** First click on a hop jumps to who RECEIVED the funds; clicking the exact same hop
    * again jumps back to who SENT them, then back to the recipient, and so on - lets you
    * step back and forth along one hop without losing your place. Clicking a different
@@ -443,6 +466,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.selectedNode = node;
     this.applyPathHighlight(String(node.id));
     this.loadAddressEnrichment();
+  }
+
+  /** Clears the current node selection (inspector panel + path highlight + enrichment) -
+   * the counterpart to selectNode, reached by tapping the already-selected node again or
+   * tapping empty canvas. */
+  private deselectNode(): void {
+    this.selectedNode = null;
+    this.addressEnrichment = null;
+    this.applyPathHighlight(null);
   }
 
   /** Real on-chain identity/provenance for the selected address (ENS name, known entity,
@@ -781,7 +813,45 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (hops.length === 0) {
       return '';
     }
-    return `${hops[hops.length - 1].taint_pct_at_hop}%`;
+    const latest = hops[hops.length - 1];
+    // Capped at 2 shares (+ a "how many more" count) so the arrow label stays readable
+    // even when a dozen+ seeds all feed the same edge - the uncapped, full breakdown is
+    // available in the node inspector once you click either end of this edge.
+    const breakdown = TaintAnalysisComponent.formatBreakdown(latest.taint_by_source, 2);
+    return breakdown || `${latest.taint_pct_at_hop}%`;
+  }
+
+  /** "" when there's 0 or 1 contributing source (the plain aggregate % already covers
+   * that case) - otherwise each source's share, largest first, e.g. "60%+40%", capped at
+   * maxEntries with a "+N" tail for how many more beyond that weren't shown. */
+  private static formatBreakdown(bySource: Record<string, number> | undefined, maxEntries: number): string {
+    const entries = Object.entries(bySource ?? {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length <= 1) {
+      return '';
+    }
+    const shown = entries
+      .slice(0, maxEntries)
+      .map(([, pct]) => `${pct}%`)
+      .join('+');
+    const remaining = entries.length - maxEntries;
+    return remaining > 0 ? `${shown}+${remaining}` : shown;
+  }
+
+  /** Full addresses on canvas were pure clutter on a few-hundred-node graph (see earlier
+   * cleanup), but with real result numbers now flying around it's genuinely hard to tell
+   * "which circle was that 100% one again" without ANY label - a short, still-unique-
+   * enough prefix/suffix strikes the balance. */
+  private truncateAddress(value: string): string {
+    if (value.length <= 14) {
+      return value;
+    }
+    return `${value.slice(0, 6)}…${value.slice(-4)}`;
+  }
+
+  /** "0x7c33…45ac" - the truncated address a cytoscape node element already carries in
+   * its data, falling back to its id if address was never set. */
+  private nodeAddressLabel(node: NodeSingular): string {
+    return this.truncateAddress(String(node.data('address') ?? node.id()));
   }
 
   /** Reveals nodes/edges as of the current timeline position AND recolors every visible
@@ -800,7 +870,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       this.cy.nodes().forEach((node) => {
         const finalPct = Number(node.data('finalTaintPercentage') ?? 0);
         node.data('taint_percentage', finalPct);
-        node.data('displayLabel', this.hasRunTaint ? `${finalPct}%` : '');
+        node.data('displayLabel', this.hasRunTaint ? `${this.nodeAddressLabel(node)}\n${finalPct}%` : '');
         node.style('display', this.hideNonTaintedNodes && finalPct <= this.taintHideThreshold ? 'none' : 'element');
       });
       this.cy.edges().forEach((edge) => {
@@ -818,7 +888,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       const pct = revealed ? this.getNodeTaintAtRank(node.id(), position) : 0;
       if (revealed) {
         node.data('taint_percentage', pct);
-        node.data('displayLabel', `${pct}%`);
+        node.data('displayLabel', `${this.nodeAddressLabel(node)}\n${pct}%`);
       }
       const hiddenByFilter = this.hideNonTaintedNodes && pct <= this.taintHideThreshold;
       node.style('display', revealed && !hiddenByFilter ? 'element' : 'none');
@@ -890,13 +960,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             taint_percentage: taintPercentage,
             finalTaintPercentage: taintPercentage,
             chronoRank: this.taintResult?.node_first_rank?.[id] ?? null,
-            // No address/hash text on canvas at all - on a few-hundred-node graph it's
-            // pure clutter, and the full address is always one click away in the
-            // inspector panel. Just the percentage (once analysis has run) stays, since
-            // color alone isn't always a safe read for two nearby values (e.g. 66.67%
-            // vs 100% looked too similar in testing). Kept in its own field (not baked
-            // into a static label string) so the timeline scrubber can update it live.
-            displayLabel: this.hasRunTaint ? `${taintPercentage}%` : '',
+            // No label at all before a run (pure clutter while just picking seeds on a
+            // few-hundred-node graph). Once results exist, show a short address prefix
+            // alongside the % - color alone isn't always a safe read for two nearby
+            // values (e.g. 66.67% vs 100% looked too similar in testing), and with real
+            // results on screen it's genuinely hard to tell which circle is which
+            // without some address hint. Kept in its own field (not baked into a static
+            // label string) so the timeline scrubber can update it live.
+            displayLabel: this.hasRunTaint ? `${this.truncateAddress(String(node.address ?? node.id))}\n${taintPercentage}%` : '',
           },
           classes: isSeed ? 'taint-seed' : '',
         } as ElementDefinition;
@@ -949,6 +1020,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             label: 'data(displayLabel)',
             'text-valign': 'center',
             'text-halign': 'center',
+            'text-wrap': 'wrap',
             'font-size': 9,
             'min-zoomed-font-size': 8,
             color: '#ecf2ff',
@@ -1044,6 +1116,23 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             opacity: 0.06,
           },
         },
+        // Tap-to-focus on a single edge (separate from path highlighting). Gold AND
+        // dashed - not just a different color - so it's unmistakable even when this
+        // same edge is already cyan from a selected node's path highlight (color alone
+        // wasn't enough there: toggling this off still leaves the cyan path-highlight
+        // showing, which read as "nothing happened" until the dash pattern made the
+        // on/off states visibly distinct regardless of what's layered underneath).
+        {
+          selector: 'edge.edge-focused',
+          style: {
+            'line-color': '#fbbf24',
+            'target-arrow-color': '#fbbf24',
+            'line-style': 'dashed',
+            opacity: 1,
+            width: 4,
+            'font-size': 10,
+          },
+        },
       ],
     });
 
@@ -1051,8 +1140,36 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       const nodeData = event.target.data() as GraphNodeData;
       if (this.isSeedSelectionMode) {
         this.toggleSeed(String(nodeData.id));
+      } else if (this.selectedNode && String(this.selectedNode.id) === String(nodeData.id)) {
+        // Tapping the already-selected node again deselects it - same toggle rule as
+        // edges below, so there's always a click-based way back to "nothing selected"
+        // without having to pick a different node first.
+        this.deselectNode();
       } else {
         this.selectNode(nodeData);
+      }
+    });
+
+    // Tapping an edge toggles a highlight on it - tap the SAME edge again to clear it,
+    // rather than it staying stuck highlighted with no way back short of picking a node.
+    this.cy.on('tap', 'edge', (event) => {
+      const edge = event.target;
+      const key = `${edge.data('source')}__${edge.data('target')}`;
+      this.cy?.edges().removeClass('edge-focused');
+      if (this.selectedEdgeKey === key) {
+        this.selectedEdgeKey = null;
+      } else {
+        this.selectedEdgeKey = key;
+        edge.addClass('edge-focused');
+      }
+    });
+
+    // Tapping empty canvas (not any node/edge) clears the current selection - the
+    // standard "click elsewhere to deselect" escape hatch, since without it the only
+    // way to clear a selected node's path highlight was to pick a different node.
+    this.cy.on('tap', (event) => {
+      if (event.target === this.cy) {
+        this.deselectNode();
       }
     });
 
