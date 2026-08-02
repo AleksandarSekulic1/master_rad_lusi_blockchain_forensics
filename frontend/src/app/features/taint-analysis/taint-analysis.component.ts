@@ -1194,7 +1194,34 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private static readonly PDF_TEXT_GRAY: [number, number, number] = [100, 112, 128];
   private static readonly PDF_TEXT_DARK: [number, number, number] = [24, 28, 36];
   private static readonly PDF_WHITE: [number, number, number] = [255, 255, 255];
+  private static readonly PDF_AMBER: [number, number, number] = [217, 119, 6];
+  private static readonly PDF_RISK_HIGH: [number, number, number] = [220, 38, 38];
+  private static readonly PDF_RISK_MEDIUM: [number, number, number] = [217, 119, 6];
+  private static readonly PDF_RISK_LOW: [number, number, number] = [22, 163, 74];
   private static readonly PDF_CANVAS_BG = '#070d1a';
+
+  /** Same 3-tier split the on-canvas color ramp already uses at 50% (dark/amber pivot) -
+   * reusing it here means a node reads as the same risk tier in the PDF table as it does
+   * by color on screen, instead of inventing a second, inconsistent scale. */
+  private static riskLabel(pct: number): string {
+    if (pct >= 50) {
+      return 'VISOK';
+    }
+    if (pct >= 10) {
+      return 'SREDNJI';
+    }
+    return 'NIZAK';
+  }
+
+  private static riskColor(pct: number): [number, number, number] {
+    if (pct >= 50) {
+      return TaintAnalysisComponent.PDF_RISK_HIGH;
+    }
+    if (pct >= 10) {
+      return TaintAnalysisComponent.PDF_RISK_MEDIUM;
+    }
+    return TaintAnalysisComponent.PDF_RISK_LOW;
+  }
 
   /** jsPDF's built-in core fonts (helvetica/courier) only cover WinAnsi/Latin-1, which is
    * missing č/ć/đ (and renders š/ž unreliably) - embedding a Unicode TTF just for this
@@ -1243,15 +1270,69 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   }
 
   /** "" for a single contributing source (the plain % column already covers that case) -
-   * otherwise every source's own share, e.g. "0xHacker1: 60%, 0xHacker2: 40%". Unlike the
-   * on-canvas edge label this isn't capped, since a PDF table cell isn't fighting for
-   * space against a graph drawn underneath it. */
-  private formatBreakdownForPdf(bySource: Record<string, number> | undefined): string {
+   * otherwise the top few sources by share, truncated, with a "+N drugih" tail. A real
+   * case can easily have dozens of seeds feeding one address - printing all of them
+   * uncapped (as this used to) blew up a single table cell into a wall of full-length
+   * hex addresses that dwarfed the rest of the row, so this is capped the same way the
+   * on-canvas edge label already is, just with a slightly higher limit since a report
+   * page has more room to work with than an arrow label. */
+  private formatBreakdownForPdf(
+    bySource: Record<string, number> | undefined,
+    options?: { maxEntries?: number; separator?: string; truncateAddresses?: boolean },
+  ): string {
+    const maxEntries = options?.maxEntries ?? 3;
+    const separator = options?.separator ?? ', ';
+    const truncate = options?.truncateAddresses ?? true;
     const entries = Object.entries(bySource ?? {}).sort((a, b) => b[1] - a[1]);
     if (entries.length <= 1) {
       return '';
     }
-    return entries.map(([address, pct]) => `${address}: ${pct}%`).join(', ');
+    const shown = entries
+      .slice(0, maxEntries)
+      .map(([address, pct]) => `${truncate ? this.truncateAddress(address) : address}: ${pct}%`)
+      .join(separator);
+    const remaining = entries.length - maxEntries;
+    return remaining > 0 ? `${shown}${separator}+${remaining} drugih` : shown;
+  }
+
+  /** Auto-composed plain-language wrap-up for the very end of the report - the same facts
+   * as the summary cards/key-findings box up top, but read as prose rather than numbers, so
+   * the report doesn't force a reader to reconstruct the story themselves from raw tables. */
+  private buildConclusionParagraph(): string {
+    const tainted = this.nonZeroTaintedNodes;
+    const totalNodes = this.graph?.nodes.length ?? 0;
+    const cashOut = this.cashOutCandidates;
+    const maxPct = tainted.reduce((max, item) => Math.max(max, item.taint_percentage), 0);
+    const seedCount = this.taintResult?.seed_addresses.length ?? 0;
+    const multiSourceNode = tainted.find((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
+
+    const sentences: string[] = [
+      `Analiza je identifikovala ${tainted.length} adresa koje sadrze zaprljana sredstva, od ukupno ${totalNodes} adresa obuhvacenih ovom evidencijom.`,
+    ];
+
+    if (cashOut.length === 0) {
+      sentences.push('Nije detektovana nijedna verovatna tacka unovcavanja u ovoj evidenciji.');
+    } else if (cashOut.length === 1) {
+      sentences.push(
+        `Detektovana je jedna verovatna tacka unovcavanja (adresa ${cashOut[0].address}) sa konacnim procentom zaprljanosti od ${cashOut[0].taint_percentage}%.`,
+      );
+    } else {
+      const pcts = cashOut.map((item) => item.taint_percentage);
+      sentences.push(
+        `Detektovano je ${cashOut.length} verovatnih tacaka unovcavanja, sa procentom zaprljanosti u rasponu od ${Math.min(...pcts)}% do ${Math.max(...pcts)}%.`,
+      );
+    }
+
+    sentences.push(`Koriscen je ${seedCount} ${seedCount === 1 ? 'pocetni izvor' : 'pocetnih izvora'} (seed adresa).`);
+    sentences.push(`Najveci zabelezeni procenat zaprljanosti iznosio je ${maxPct}% (nivo rizika: ${TaintAnalysisComponent.riskLabel(maxPct)}).`);
+
+    if (multiSourceNode) {
+      sentences.push(
+        `Pracena adresa ${multiSourceNode.address} sadrzala je sredstva poreklom iz vise razlicitih izvora (${this.formatBreakdownForPdf(multiSourceNode.taint_by_source)}).`,
+      );
+    }
+
+    return sentences.join(' ');
   }
 
   private buildTaintPdf(graphImage: string, imageSize: { width: number; height: number }): void {
@@ -1313,13 +1394,135 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setTextColor(...TEXT_DARK);
     };
 
+    const drawSummaryCards = (cards: Array<[string, string | number, [number, number, number]]>): void => {
+      const gap = 3;
+      const colWidth = (usableWidth - gap * (cards.length - 1)) / cards.length;
+      const y0 = y;
+      let x = marginX;
+      for (const [label, value, color] of cards) {
+        doc.setFillColor(...color);
+        doc.rect(x, y0, colWidth, 15, 'F');
+        doc.setTextColor(...WHITE);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text(String(value), x + colWidth / 2, y0 + 6.5, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text(doc.splitTextToSize(label, colWidth - 4), x + colWidth / 2, y0 + 11, { align: 'center' });
+        x += colWidth + gap;
+      }
+      y = y0 + 15 + 6;
+      doc.setTextColor(...TEXT_DARK);
+    };
+
+    sectionTitle('Rezime analize');
+    const maxTaintPct = this.nonZeroTaintedNodes.reduce((max, item) => Math.max(max, item.taint_percentage), 0);
+    const hasMultiSourceOverall = this.nonZeroTaintedNodes.some((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
+    drawSummaryCards([
+      ['Ukupno adresa', this.graph?.nodes.length ?? 0, ACCENT],
+      ['Zaprljanih adresa', this.nonZeroTaintedNodes.length, ACCENT],
+      ['Izvora (seed)', result.seed_addresses.length, ACCENT],
+      ['Tacaka unovcavanja', this.cashOutCandidates.length, this.cashOutCandidates.length > 0 ? TaintAnalysisComponent.PDF_AMBER : TEXT_GRAY],
+    ]);
+
+    const findingLines: string[] = [`${this.nonZeroTaintedNodes.length} adresa sa zaprljanim sredstvima identifikovano`];
+    if (this.cashOutCandidates.length > 0) {
+      findingLines.push(
+        `${this.cashOutCandidates.length} ${this.cashOutCandidates.length === 1 ? 'verovatna tacka unovcavanja' : 'verovatnih tacaka unovcavanja'} detektovano`,
+      );
+    }
+    findingLines.push(`Najveci procenat zaprljanosti: ${maxTaintPct}%`);
+    if (hasMultiSourceOverall) {
+      findingLines.push('Otkriveno mesanje sredstava iz vise razlicitih izvora');
+    }
+
+    sectionTitle('Kljucni nalazi');
+    const findingsLineHeight = 6.5;
+    const findingsBoxTop = y - 5;
+    const findingsBoxHeight = (findingLines.length + 1) * findingsLineHeight + 6;
+    doc.setFillColor(240, 247, 253);
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(marginX, findingsBoxTop, usableWidth, findingsBoxHeight, 2, 2, 'FD');
+
+    const drawCheckmark = (checkX: number, baseline: number): void => {
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.6);
+      doc.lines(
+        [
+          [1.1, 1.5],
+          [2.0, -2.9],
+        ],
+        checkX,
+        baseline - 1.4,
+        [1, 1],
+        'S',
+        false,
+      );
+    };
+
+    let findingY = findingsBoxTop + 7;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...TEXT_DARK);
+    for (const line of findingLines) {
+      drawCheckmark(marginX + 4, findingY);
+      doc.text(line, marginX + 11, findingY);
+      findingY += findingsLineHeight;
+    }
+    drawCheckmark(marginX + 4, findingY);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Nivo rizika: ', marginX + 11, findingY);
+    const riskPrefixWidth = doc.getTextWidth('Nivo rizika: ');
+    doc.setTextColor(...TaintAnalysisComponent.riskColor(maxTaintPct));
+    doc.text(TaintAnalysisComponent.riskLabel(maxTaintPct), marginX + 11 + riskPrefixWidth, findingY);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...TEXT_DARK);
+    y = findingsBoxTop + findingsBoxHeight + 9;
+
     sectionTitle('Izvori (seed adrese)');
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(9);
-    const seedText = result.seed_addresses.length > 0 ? result.seed_addresses.join(', ') : '(automatski, sa crne liste)';
-    const seedLines: string[] = doc.splitTextToSize(seedText, usableWidth);
-    doc.text(seedLines, marginX, y);
-    y += seedLines.length * 4.5 + 4;
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      head: [['#', 'Seed adresa']],
+      body:
+        result.seed_addresses.length > 0
+          ? result.seed_addresses.map((address, index) => [`Seed #${index + 1}`, address])
+          : [['-', '(automatski, sa crne liste)']],
+      styles: { fontSize: 8.5, cellPadding: 1.8, font: 'courier', textColor: TEXT_DARK },
+      headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [240, 245, 250] },
+      columnStyles: { 0: { cellWidth: 26, font: 'helvetica' } },
+    });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+
+    sectionTitle('Evidencija (SHA-256)');
+    const relevantEvidence = this.selectedEvidence
+      ? this.evidenceOptions.filter((entry) => entry.stored_name === this.selectedEvidence)
+      : this.evidenceOptions;
+    if (relevantEvidence.length === 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(...TEXT_GRAY);
+      doc.text('Podaci o evidenciji nisu dostupni.', marginX, y);
+      y += 6;
+      doc.setTextColor(...TEXT_DARK);
+    } else {
+      for (const entry of relevantEvidence) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...TEXT_DARK);
+        doc.text(this.asciiSafe(entry.file_name), marginX, y);
+        y += 4;
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...TEXT_GRAY);
+        doc.text(entry.sha256, marginX, y);
+        y += 5.5;
+      }
+      doc.setTextColor(...TEXT_DARK);
+    }
+    y += 1;
 
     sectionTitle('Podesavanja prikaza u trenutku izvoza');
     doc.setFont('helvetica', 'normal');
@@ -1351,7 +1554,6 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
     y += 3;
 
-    sectionTitle('Graficki prikaz mreze');
     const maxImgHeight = 145;
     let renderWidth = usableWidth;
     let renderHeight = (imageSize.height / imageSize.width) * renderWidth;
@@ -1359,10 +1561,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       renderHeight = maxImgHeight;
       renderWidth = (imageSize.width / imageSize.height) * renderHeight;
     }
-    if (y + renderHeight > pageHeight - 20) {
+    // Checked BEFORE printing the heading (not after) - otherwise a too-tall image pushes
+    // itself to a fresh page while "Graficki prikaz mreze" is left stranded alone at the
+    // bottom of the previous one, with nothing under it until the page break.
+    const sectionTitleHeight = 11;
+    if (y + sectionTitleHeight + renderHeight > pageHeight - 20) {
       doc.addPage();
       y = 16;
     }
+    sectionTitle('Graficki prikaz mreze');
     const imgX = marginX + (usableWidth - renderWidth) / 2;
     doc.setFillColor(7, 13, 26);
     doc.rect(imgX, y, renderWidth, renderHeight, 'F');
@@ -1378,17 +1585,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     doc.text(doc.splitTextToSize(legendText, usableWidth), marginX, y);
     doc.setTextColor(...TEXT_DARK);
 
-    const hasMultiSource = this.nonZeroTaintedNodes.some((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
-    const topHeaders = hasMultiSource
-      ? ['#', 'Adresa', 'Taint %', 'Izvor?', 'Poreklo po izvoru']
-      : ['#', 'Adresa', 'Taint %', 'Izvor?'];
-    const topRows = this.nonZeroTaintedNodes.map((item, index) => {
-      const row = [String(index + 1), item.address, `${item.taint_percentage}%`, item.is_taint_seed ? 'Da' : 'Ne'];
-      if (hasMultiSource) {
-        row.push(this.formatBreakdownForPdf(item.taint_by_source));
-      }
-      return row;
-    });
+    const topRows = this.nonZeroTaintedNodes.map((item, index) => [
+      String(index + 1),
+      item.address,
+      `${item.taint_percentage}% (${TaintAnalysisComponent.riskLabel(item.taint_percentage)})`,
+      item.is_taint_seed ? 'Da' : 'Ne',
+    ]);
 
     doc.addPage();
     y = 16;
@@ -1396,14 +1598,70 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [topHeaders],
+      head: [['#', 'Adresa', 'Taint %', 'Izvor?']],
       body: topRows,
       styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
       headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 245, 250] },
-      columnStyles: { 0: { cellWidth: 8, font: 'helvetica' }, 3: { cellWidth: 14, font: 'helvetica' } },
+      columnStyles: { 0: { cellWidth: 8, font: 'helvetica' }, 2: { cellWidth: 26 }, 3: { cellWidth: 14, font: 'helvetica' } },
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+
+    // A ranked overview table (one line per address) and a full per-source breakdown don't
+    // fit the same row: with dozens of contributing seeds on a real case, cramming every
+    // "address: pct%" pair into one cell of an already-narrow column wrapped and overflowed
+    // the page (see the mangled last page this replaced). Giving each multi-source address
+    // its own full-width mini-table below keeps the ranked list compact while still listing
+    // every single source at full, untruncated length, sorted highest share first.
+    const multiSourceNodes = this.nonZeroTaintedNodes.filter((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
+    if (multiSourceNodes.length > 0) {
+      y += 4;
+      if (y > pageHeight - 40) {
+        doc.addPage();
+        y = 16;
+      }
+      sectionTitle('Detaljna raspodela po izvoru');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...TEXT_GRAY);
+      const breakdownNote = doc.splitTextToSize(
+        'Pun spisak doprinosa svakog izvora za adrese cija su sredstva poreklom iz vise razlicitih seed adresa, sortiran od najveceg ka najmanjem procentu.',
+        usableWidth,
+      );
+      doc.text(breakdownNote, marginX, y);
+      y += breakdownNote.length * 4 + 4;
+      doc.setTextColor(...TEXT_DARK);
+
+      for (const node of multiSourceNodes) {
+        const entries = Object.entries(node.taint_by_source ?? {}).sort((a, b) => b[1] - a[1]);
+        if (y > pageHeight - 35) {
+          doc.addPage();
+          y = 16;
+        }
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...NAVY);
+        doc.text(
+          `${node.address}  -  ${node.taint_percentage}% (${TaintAnalysisComponent.riskLabel(node.taint_percentage)})`,
+          marginX,
+          y,
+        );
+        y += 5;
+        doc.setTextColor(...TEXT_DARK);
+
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [['Izvor (seed adresa)', 'Procenat']],
+          body: entries.map(([address, pct]) => [address, `${pct}%`]),
+          styles: { fontSize: 8, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
+          headStyles: { fillColor: ACCENT, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [240, 245, 250] },
+          columnStyles: { 1: { cellWidth: 26, font: 'helvetica' } },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+      }
+    }
 
     if (this.cashOutCandidates.length > 0) {
       y += 4;
@@ -1430,11 +1688,24 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         head: [['#', 'Adresa', 'Taint %']],
         body: this.cashOutCandidates.map((item, index) => [String(index + 1), item.address, `${item.taint_percentage}%`]),
         styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
-        headStyles: { fillColor: [217, 119, 6], textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+        headStyles: { fillColor: TaintAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [253, 246, 227] },
         columnStyles: { 0: { cellWidth: 8, font: 'helvetica' } },
       });
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
     }
+
+    y += 6;
+    if (y > pageHeight - 45) {
+      doc.addPage();
+      y = 16;
+    }
+    sectionTitle('Zakljucak analize');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...TEXT_DARK);
+    const conclusionLines = doc.splitTextToSize(this.buildConclusionParagraph(), usableWidth);
+    doc.text(conclusionLines, marginX, y);
 
     const pageCount = doc.getNumberOfPages();
     for (let page = 1; page <= pageCount; page++) {
