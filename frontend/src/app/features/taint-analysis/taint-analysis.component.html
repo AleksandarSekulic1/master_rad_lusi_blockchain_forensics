@@ -76,8 +76,20 @@
         Izmeni izvore ({{ seedAddresses.length }})
       </button>
       <button type="button" class="ghost-button" *ngIf="hasRunTaint" (click)="startNewAnalysis()">Nova analiza</button>
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="hasRunTaint"
+        (click)="exportPdfReport()"
+        [disabled]="isExportingPdf"
+        title="Izvezi PDF izveštaj sa trenutnim grafičkim prikazom (poštuje aktivni filter praga) i rezultatima analize"
+      >
+        {{ isExportingPdf ? 'Generisanje PDF-a...' : 'Izvezi PDF izveštaj' }}
+      </button>
     </div>
   </div>
+
+  <p class="taint-error" *ngIf="hasRunTaint && taintError">{{ taintError }}</p>
 
   <p class="intro-hint">
     Cilj: kad se sumnjiv/ukraden novac pomeša sa tuđim, čistim sredstvima (npr. u mikseru), ova analiza pokazuje

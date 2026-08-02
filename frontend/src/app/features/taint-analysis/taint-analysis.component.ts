@@ -6,10 +6,13 @@ import { RouterLink } from '@angular/router';
 import { map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition, NodeSingular } from 'cytoscape';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import {
   AddressEnrichment,
   AddressType,
@@ -68,6 +71,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * exactly-untainted nodes). Raising it matters on graphs with many seeds, where almost
    * nothing sits at exactly 0% but plenty of nodes carry only a negligible sliver. */
   protected taintHideThreshold = 0;
+  protected isExportingPdf = false;
 
   private cy: Core | null = null;
   private lastClickedHopKey: string | null = null;
@@ -83,6 +87,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   constructor(
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
+    private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
   ) {
     ensureCytoscapeExtensionsRegistered();
@@ -1182,5 +1187,264 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
   fitWholeGraph(): void {
     this.cy?.fit(undefined, 60);
+  }
+
+  private static readonly PDF_NAVY: [number, number, number] = [13, 24, 40];
+  private static readonly PDF_ACCENT: [number, number, number] = [43, 130, 191];
+  private static readonly PDF_TEXT_GRAY: [number, number, number] = [100, 112, 128];
+  private static readonly PDF_TEXT_DARK: [number, number, number] = [24, 28, 36];
+  private static readonly PDF_WHITE: [number, number, number] = [255, 255, 255];
+  private static readonly PDF_CANVAS_BG = '#070d1a';
+
+  /** jsPDF's built-in core fonts (helvetica/courier) only cover WinAnsi/Latin-1, which is
+   * missing č/ć/đ (and renders š/ž unreliably) - embedding a Unicode TTF just for this
+   * report isn't worth the bundle size, so report text is transliterated to plain ASCII
+   * instead. Addresses/numbers are unaffected since they never contain these characters. */
+  private static readonly ASCII_MAP: Record<string, string> = {
+    č: 'c', ć: 'c', š: 's', ž: 'z', đ: 'dj',
+    Č: 'C', Ć: 'C', Š: 'S', Ž: 'Z', Đ: 'Dj',
+  };
+
+  private asciiSafe(value: string | null | undefined): string {
+    return (value ?? '').replace(/[čćšžđČĆŠŽĐ]/g, (match) => TaintAnalysisComponent.ASCII_MAP[match] ?? match);
+  }
+
+  private static loadImageSize(dataUrl: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error('image load failed'));
+      image.src = dataUrl;
+    });
+  }
+
+  /** Snapshots the graph EXACTLY as currently rendered - same colors, same arrows, and
+   * critically, the same set of nodes/edges that are actually visible right now. Nodes
+   * hidden by the taint-threshold filter (display:none) are excluded from cytoscape's own
+   * bounding box and never rendered into the PNG, so the exported picture automatically
+   * matches whatever "Sakrij ispod praga" is currently set to, without any extra logic
+   * here - same goes for the timeline's reveal state if it happens to be scrubbed mid-way. */
+  async exportPdfReport(): Promise<void> {
+    if (!this.cy || !this.taintResult || !this.activeCase || this.isExportingPdf) {
+      return;
+    }
+
+    this.isExportingPdf = true;
+    this.taintError = null;
+    try {
+      const graphImage = this.cy.png({ full: true, scale: 2, bg: TaintAnalysisComponent.PDF_CANVAS_BG });
+      const imageSize = await TaintAnalysisComponent.loadImageSize(graphImage);
+      this.buildTaintPdf(graphImage, imageSize);
+    } catch {
+      this.taintError = 'Neuspesno generisanje PDF izvestaja.';
+    } finally {
+      this.isExportingPdf = false;
+    }
+  }
+
+  /** "" for a single contributing source (the plain % column already covers that case) -
+   * otherwise every source's own share, e.g. "0xHacker1: 60%, 0xHacker2: 40%". Unlike the
+   * on-canvas edge label this isn't capped, since a PDF table cell isn't fighting for
+   * space against a graph drawn underneath it. */
+  private formatBreakdownForPdf(bySource: Record<string, number> | undefined): string {
+    const entries = Object.entries(bySource ?? {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length <= 1) {
+      return '';
+    }
+    return entries.map(([address, pct]) => `${address}: ${pct}%`).join(', ');
+  }
+
+  private buildTaintPdf(graphImage: string, imageSize: { width: number; height: number }): void {
+    const result = this.taintResult!;
+    const caseSummary = this.activeCase!;
+    const NAVY = TaintAnalysisComponent.PDF_NAVY;
+    const ACCENT = TaintAnalysisComponent.PDF_ACCENT;
+    const TEXT_GRAY = TaintAnalysisComponent.PDF_TEXT_GRAY;
+    const TEXT_DARK = TaintAnalysisComponent.PDF_TEXT_DARK;
+    const WHITE = TaintAnalysisComponent.PDF_WHITE;
+
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 14;
+    const usableWidth = pageWidth - marginX * 2;
+    let y = 32;
+
+    doc.setFillColor(...NAVY);
+    doc.rect(0, 0, pageWidth, 24, 'F');
+    doc.setTextColor(...WHITE);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text('Lusi v1.0 - Izvestaj taint analize', marginX, 11);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, marginX, 19);
+    doc.setTextColor(...TEXT_DARK);
+
+    const kv = (label: string, value: string): void => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...TEXT_GRAY);
+      doc.text(label, marginX, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...TEXT_DARK);
+      const lines: string[] = doc.splitTextToSize(value || 'n/a', usableWidth - 42);
+      doc.text(lines, marginX + 42, y);
+      y += Math.max(6, lines.length * 5);
+    };
+
+    kv('CASE ID', caseSummary.id);
+    kv('IZVEZAO', this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
+    kv('EVIDENCIJA', this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : 'Sve transakcije (kombinovano)');
+    kv('GENERISANO', new Date().toLocaleString());
+    y += 2;
+
+    const sectionTitle = (title: string): void => {
+      y += 3;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...NAVY);
+      doc.text(title, marginX, y);
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.6);
+      doc.line(marginX, y + 2, pageWidth - marginX, y + 2);
+      y += 8;
+      doc.setTextColor(...TEXT_DARK);
+    };
+
+    sectionTitle('Izvori (seed adrese)');
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(9);
+    const seedText = result.seed_addresses.length > 0 ? result.seed_addresses.join(', ') : '(automatski, sa crne liste)';
+    const seedLines: string[] = doc.splitTextToSize(seedText, usableWidth);
+    doc.text(seedLines, marginX, y);
+    y += seedLines.length * 4.5 + 4;
+
+    sectionTitle('Podesavanja prikaza u trenutku izvoza');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    const settingsRows: Array<[string, string]> = [
+      [
+        'Filter praga',
+        this.hideNonTaintedNodes
+          ? `Ukljucen - sakriveni cvorovi sa taint % <= ${this.taintHideThreshold}%`
+          : 'Iskljucen - prikazani svi cvorovi',
+      ],
+      [
+        'Vremenska traka',
+        this.timelineEnabled
+          ? `Ukljucena - snimak stanja na transakciji ${this.timelinePosition} / ${this.timelineMaxRank}`
+          : 'Iskljucena - prikazan konacan, potpun rezultat analize',
+      ],
+    ];
+    if (this.selectedNode) {
+      settingsRows.push(['Istaknuta putanja', `Cvor ${this.asciiSafe(String(this.selectedNode.address ?? this.selectedNode.id))}`]);
+    }
+    for (const [label, value] of settingsRows) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${label}:`, marginX, y);
+      doc.setFont('helvetica', 'normal');
+      const lines: string[] = doc.splitTextToSize(value, usableWidth - 42);
+      doc.text(lines, marginX + 42, y);
+      y += Math.max(5.5, lines.length * 5);
+    }
+    y += 3;
+
+    sectionTitle('Graficki prikaz mreze');
+    const maxImgHeight = 145;
+    let renderWidth = usableWidth;
+    let renderHeight = (imageSize.height / imageSize.width) * renderWidth;
+    if (renderHeight > maxImgHeight) {
+      renderHeight = maxImgHeight;
+      renderWidth = (imageSize.width / imageSize.height) * renderHeight;
+    }
+    if (y + renderHeight > pageHeight - 20) {
+      doc.addPage();
+      y = 16;
+    }
+    const imgX = marginX + (usableWidth - renderWidth) / 2;
+    doc.setFillColor(7, 13, 26);
+    doc.rect(imgX, y, renderWidth, renderHeight, 'F');
+    doc.addImage(graphImage, 'PNG', imgX, y, renderWidth, renderHeight);
+    y += renderHeight + 5;
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_GRAY);
+    const legendText =
+      'Boja cvora: tamno (0%) -> zuto/narandzasto (50%) -> crveno (100%). Duplo zlatna ivica = izvor (seed adresa). ' +
+      'Slika prikazuje tacno ono sto je bilo vidljivo na ekranu u trenutku izvoza (ukljucujuci aktivni filter praga).';
+    doc.text(doc.splitTextToSize(legendText, usableWidth), marginX, y);
+    doc.setTextColor(...TEXT_DARK);
+
+    const hasMultiSource = this.nonZeroTaintedNodes.some((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
+    const topHeaders = hasMultiSource
+      ? ['#', 'Adresa', 'Taint %', 'Izvor?', 'Poreklo po izvoru']
+      : ['#', 'Adresa', 'Taint %', 'Izvor?'];
+    const topRows = this.nonZeroTaintedNodes.map((item, index) => {
+      const row = [String(index + 1), item.address, `${item.taint_percentage}%`, item.is_taint_seed ? 'Da' : 'Ne'];
+      if (hasMultiSource) {
+        row.push(this.formatBreakdownForPdf(item.taint_by_source));
+      }
+      return row;
+    });
+
+    doc.addPage();
+    y = 16;
+    sectionTitle('Najvise zaprljane adrese');
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      head: [topHeaders],
+      body: topRows,
+      styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
+      headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [240, 245, 250] },
+      columnStyles: { 0: { cellWidth: 8, font: 'helvetica' }, 3: { cellWidth: 14, font: 'helvetica' } },
+    });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+
+    if (this.cashOutCandidates.length > 0) {
+      y += 4;
+      if (y > pageHeight - 40) {
+        doc.addPage();
+        y = 16;
+      }
+      sectionTitle('Verovatne tacke unovcavanja');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...TEXT_GRAY);
+      const note = doc.splitTextToSize(
+        'Primili su zaprljana sredstva i nikad ih dalje nisu poslali u ovoj evidenciji - verovatno mesto gde je novac ' +
+          'napustio pracenu mrezu.',
+        usableWidth,
+      );
+      doc.text(note, marginX, y);
+      y += note.length * 4 + 3;
+      doc.setTextColor(...TEXT_DARK);
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [['#', 'Adresa', 'Taint %']],
+        body: this.cashOutCandidates.map((item, index) => [String(index + 1), item.address, `${item.taint_percentage}%`]),
+        styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
+        headStyles: { fillColor: [217, 119, 6], textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [253, 246, 227] },
+        columnStyles: { 0: { cellWidth: 8, font: 'helvetica' } },
+      });
+    }
+
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page++) {
+      doc.setPage(page);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...TEXT_GRAY);
+      doc.text(`Lusi v1.0 forensic export | Strana ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+    }
+
+    doc.save(`${caseSummary.id}_taint_report.pdf`);
   }
 }
