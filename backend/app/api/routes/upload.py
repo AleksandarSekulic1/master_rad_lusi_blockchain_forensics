@@ -68,6 +68,8 @@ async def upload_csv(
         action='csv_upload',
         user=user,
         case_id=str(case['id']),
+        case_name=str(case.get('name') or ''),
+        details={'original_name': safe_name, 'size_bytes': size_bytes},
     )
 
     cleaned_frame = clean_transaction_csv(stored_path)

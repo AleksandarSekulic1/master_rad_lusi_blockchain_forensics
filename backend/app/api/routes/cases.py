@@ -9,6 +9,7 @@ from app.analytics.case_graph import build_case_graph, graph_summary
 from app.analytics.graph_building import transaction_graph_to_node_link_json
 from app.analytics.plugins.manager import run_plugin_pipeline
 from app.api.deps import get_current_user
+from app.evidence.audit_log import write_audit_log
 from app.services.case_management import (
     create_case,
     delete_case,
@@ -51,7 +52,14 @@ def get_cases() -> dict[str, object]:
 
 @router.post('')
 def post_case(request: CreateCaseRequest, current_user: dict[str, object] = Depends(get_current_user)) -> dict[str, object]:
-    return create_case(name=request.name, analyst=str(current_user['username']), description=request.description)
+    case = create_case(name=request.name, analyst=str(current_user['username']), description=request.description)
+    write_audit_log(
+        action='case_created',
+        user=str(current_user['username']),
+        case_id=str(case.get('id') or ''),
+        case_name=str(case.get('name') or ''),
+    )
+    return case
 
 
 @router.get('/{case_id}')
@@ -66,17 +74,40 @@ def get_case_evidence(case_id: str) -> dict[str, object]:
 
 
 @router.patch('/{case_id}/status')
-def patch_case_status(case_id: str, request: SetCaseStatusRequest) -> dict[str, object]:
-    _get_case_or_404(case_id)
-    return set_case_status(case_id, request.status)
+def patch_case_status(
+    case_id: str,
+    request: SetCaseStatusRequest,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    case = _get_case_or_404(case_id)
+    updated = set_case_status(case_id, request.status)
+    write_audit_log(
+        action='case_status_changed',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        details={'from': str(case.get('status') or ''), 'to': request.status},
+    )
+    return updated
 
 
 @router.delete('/{case_id}', status_code=204)
-def delete_case_route(case_id: str) -> None:
+def delete_case_route(case_id: str, current_user: dict[str, object] = Depends(get_current_user)) -> None:
+    # Read the name BEFORE deleting - once the case file is gone there is nothing left to
+    # resolve the id against, and "case X was deleted" is exactly the kind of entry that
+    # must stay readable years later.
+    case = _get_case_or_404(case_id)
+    case_name = str(case.get('name') or '')
     try:
         delete_case(case_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    write_audit_log(
+        action='case_deleted',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=case_name,
+    )
 
 
 def _case_evidence_paths_or_404(case: dict[str, object]) -> list[tuple[dict[str, object], object]]:
@@ -116,7 +147,12 @@ def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, objec
 
 
 @router.post('/{case_id}/analytics/run')
-def run_case_analytics(case_id: str, evidence: str | None = None, request: RunAnalyticsRequest | None = None) -> dict[str, object]:
+def run_case_analytics(
+    case_id: str,
+    evidence: str | None = None,
+    request: RunAnalyticsRequest | None = None,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
     """Runs the full analytics pipeline over the case's evidence graph, optionally scoped to one evidence file."""
     case = _get_case_or_404(case_id)
     evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
@@ -124,6 +160,24 @@ def run_case_analytics(case_id: str, evidence: str | None = None, request: RunAn
     combined_frame, graph = build_case_graph(evidence_paths)
     seed_addresses = request.seed_addresses if request else None
     plugin_results = run_plugin_pipeline(dataframe=combined_frame, graph=graph, seed_addresses=seed_addresses)
+
+    # Which analysis produced a given finding is itself part of the chain of custody: two
+    # analysts running the same case over a different evidence scope, or with a different
+    # seed list, legitimately get different percentages - without this record there is no
+    # way to reconstruct afterwards which run a disputed number actually came from.
+    write_audit_log(
+        action='analytics_run',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        details={
+            'evidence_scope': evidence or 'combined',
+            'seed_addresses': seed_addresses or [],
+            'seed_count': len(seed_addresses or []),
+            'rows': int(len(combined_frame)),
+            'node_count': int(graph.number_of_nodes()),
+        },
+    )
 
     payload = transaction_graph_to_node_link_json(graph)
     payload['case_id'] = case_id
