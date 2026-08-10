@@ -20,6 +20,7 @@ from app.evidence.audit_log import local_day_bounds_utc
 from app.exports.activity_report import (
     action_label,
     build_activity_csv,
+    build_activity_pdf,
     format_period,
     format_tz_label,
     summarize_details,
@@ -205,6 +206,41 @@ class TestReportContent:
         assert action_label('analytics_run') == 'Pokrenuta analiza'
         assert action_label('onchain_fetch_mainnet_address') == 'Povučene transakcije sa blockchain-a'
 
+    def test_export_record_states_format_period_and_count(self):
+        """Zapis o izvozu navodi format, period i broj zapisa
+
+        Sam izvoz izveštaja se upisuje u log. Da bi se dva izveštaja kasnije razlikovala,
+        zapis mora reći koji je vremenski okvir bio izabran - inače stoji samo "izvezen
+        izveštaj", što ne dokazuje ništa.
+        """
+        entry = {
+            'action': 'activity_report_exported',
+            'details': {'format': 'pdf', 'entry_count': 45, 'date_from': '2026-08-10',
+                        'date_to': '2026-08-10', 'users': ['admin', 'aco']},
+        }
+
+        summary = summarize_details(entry)
+
+        assert 'PDF' in summary
+        assert '45 zapisa' in summary
+        assert 'jedan dan: 10.08.2026.' in summary
+        assert 'admin, aco' in summary
+
+    def test_export_record_shows_full_range_and_all_activities(self):
+        """Zapis o izvozu razlikuje opseg od svih aktivnosti
+
+        Tri ponuđena režima (sve / jedan dan / opseg) moraju se i u logu pročitati kao
+        tri različite stvari.
+        """
+        def summary_for(date_from, date_to):
+            return summarize_details({
+                'action': 'activity_report_exported',
+                'details': {'format': 'csv', 'entry_count': 1, 'date_from': date_from, 'date_to': date_to},
+            })
+
+        assert 'sve aktivnosti' in summary_for(None, None)
+        assert '01.07.2026. – 31.07.2026.' in summary_for('2026-07-01', '2026-07-31')
+
     def test_analysis_summary_states_seeds_and_scope(self):
         """Rezime analize navodi izvore i opseg evidencije
 
@@ -214,6 +250,74 @@ class TestReportContent:
         entry = {'action': 'analytics_run', 'details': {'seed_count': 2, 'evidence_scope': 'combined'}}
 
         assert summarize_details(entry) == '2 izvora (seed) · sva evidencija (kombinovano)'
+
+
+class TestPdfGeneration:
+    """Generisanje PDF dokumenta
+
+    Izveštaj se pravi na serveru, iz samog log fajla. Ovi testovi štite od pucanja na
+    graničnim slučajevima - dokument koji se ne generiše je gori od ružnog dokumenta.
+    """
+
+    @staticmethod
+    def _entry(timestamp: str, user: str = 'aco', action: str = 'analytics_run', **extra):
+        base = {
+            'timestamp': timestamp, 'user': user, 'action': action,
+            'case_id': 'abc', 'case_name': 'test 1', 'file_name': None, 'sha256': None,
+            'details': {'seed_count': 1, 'evidence_scope': 'combined'},
+        }
+        base.update(extra)
+        return base
+
+    def _build(self, entries):
+        return build_activity_pdf(
+            entries, generated_by='admin', date_from=None, date_to=None,
+            tz_offset_minutes=-120, selected_users=[], scope='all',
+        )
+
+    def test_produces_a_valid_pdf(self):
+        """Generisan fajl je ispravan PDF
+
+        Osnovna provera da izlaz nije prazan ili oštećen - dokument mora početi PDF
+        potpisom.
+        """
+        payload = self._build([self._entry('2026-07-27T10:00:00+00:00')])
+
+        assert payload.startswith(b'%PDF')
+        assert len(payload) > 1000
+
+    def test_embeds_a_unicode_font(self):
+        """PDF ugrađuje Unicode font
+
+        Bez ugrađenog TTF-a slova č/ć/š/ž/đ ne bi mogla da se prikažu, pa bi izveštaj na
+        srpskom bio neupotrebljiv.
+        """
+        payload = self._build([self._entry('2026-07-27T10:00:00+00:00')])
+
+        assert b'FontFile2' in payload
+
+    def test_handles_multiple_days_and_users(self):
+        """Podnosi više dana i više korisnika
+
+        Hronologija se grupiše po danima, a rezime po korisniku se dodaje samo kad ih ima
+        više - obe grane moraju proći bez greške.
+        """
+        entries = [
+            self._entry('2026-07-27T10:00:00+00:00', user='aco'),
+            self._entry('2026-07-26T10:00:00+00:00', user='admin', action='csv_upload'),
+            self._entry('2026-07-25T10:00:00+00:00', user='admin', action='test_suite_run'),
+        ]
+
+        assert self._build(entries).startswith(b'%PDF')
+
+    def test_handles_empty_and_unknown_actions(self):
+        """Podnosi prazan spisak i nepoznate akcije
+
+        Prazan izveštaj ruta ionako odbija, ali sam generator ne sme da pukne; nepoznata
+        akcija mora proći kroz obojenu oznaku bez greške.
+        """
+        assert self._build([]).startswith(b'%PDF')
+        assert self._build([self._entry('2026-07-27T10:00:00+00:00', action='nesto_novo')]).startswith(b'%PDF')
 
 
 class TestRequestValidation:

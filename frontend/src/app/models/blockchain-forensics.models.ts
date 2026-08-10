@@ -420,6 +420,17 @@ export interface ScenarioRunResponse {
   ran_at: string;
 }
 
+export type ActivityPeriodMode = 'all' | 'day' | 'range';
+
+export interface ActivityReportPreview {
+  count: number;
+  period: string;
+  scope: 'all' | 'self';
+  available_users: string[];
+  /** Subset of available_users that still exist as accounts; the rest are historical. */
+  active_users: string[];
+}
+
 export interface ActivityLogResponse {
   entries: ActivityLogEntry[];
   /** "all" for an admin (every account), "self" for everyone else - decided server-side. */

@@ -5,6 +5,7 @@ import { Observable, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   ActivityLogResponse,
+  ActivityReportPreview,
   AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
@@ -28,6 +29,15 @@ import {
   UploadCsvResponse,
   UserStatus,
 } from '../../models/blockchain-forensics.models';
+
+/** Filter for the activity report. Empty dates mean "everything since the system started
+ * being used"; a single day is dateFrom === dateTo. */
+export interface ActivityReportOptions {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  /** Admin-only; the backend ignores it for everyone else and returns their own entries. */
+  users?: string[];
+}
 
 @Injectable({
   providedIn: 'root',
@@ -162,6 +172,38 @@ export class ApiService {
   runScenarios(scenarioId?: string | null): Observable<ScenarioRunResponse> {
     const params = scenarioId ? new HttpParams().set('scenario_id', scenarioId) : undefined;
     return this.http.post<ScenarioRunResponse>(`${this.apiUrl}/api/v1/tests/scenarios/run`, {}, { params });
+  }
+
+  /** How many records the chosen report filter would produce - drives the disabled state
+   * of the generate buttons so an empty report is prevented before the click. */
+  getActivityReportPreview(options: ActivityReportOptions): Observable<ActivityReportPreview> {
+    return this.http.get<ActivityReportPreview>(`${this.apiUrl}/api/v1/activity-log/report/preview`, {
+      params: this.activityReportParams(options),
+    });
+  }
+
+  downloadActivityReport(options: ActivityReportOptions, format: 'pdf' | 'csv'): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/activity-log/report.${format}`, {
+      params: this.activityReportParams(options),
+      responseType: 'blob',
+    });
+  }
+
+  /** The timezone offset travels with every report request: the server stores UTC but the
+   * user picks days as they see them on screen, and the two only line up if the server
+   * knows which zone to convert against. */
+  private activityReportParams(options: ActivityReportOptions): HttpParams {
+    let params = new HttpParams().set('tz_offset_minutes', String(new Date().getTimezoneOffset()));
+    if (options.dateFrom) {
+      params = params.set('date_from', options.dateFrom);
+    }
+    if (options.dateTo) {
+      params = params.set('date_to', options.dateTo);
+    }
+    if (options.users?.length) {
+      params = params.set('users', options.users.join(','));
+    }
+    return params;
   }
 
   /** Recorded analyst actions, newest first. `user` is only honoured for admins - the

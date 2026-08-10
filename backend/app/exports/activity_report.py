@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,14 @@ _UNICODE_FONT_CANDIDATES: tuple[tuple[Path, Path], ...] = (
     (Path('/usr/share/fonts/dejavu/DejaVuSans.ttf'), Path('/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf')),
     (Path('C:/Windows/Fonts/arial.ttf'), Path('C:/Windows/Fonts/arialbd.ttf')),
 )
+
+_GROUP_EVIDENCE = (43, 130, 191)
+_GROUP_ANALYSIS = (217, 119, 6)
+_GROUP_CASE = (124, 92, 200)
+_GROUP_TEST = (34, 150, 88)
+_GROUP_REPORT = (99, 110, 200)
+_GROUP_OTHER = (120, 130, 145)
+_CARD_BG = (243, 247, 252)
 
 ACTION_LABELS: dict[str, str] = {
     'csv_upload': 'Otpremljena CSV evidencija',
@@ -60,6 +68,22 @@ def action_label(action: str) -> str:
     return action
 
 
+def action_color(action: str) -> tuple[int, int, int]:
+    """Colour by KIND of action, matching the Log aktivnosti page - so someone reading the
+    report and someone reading the screen are looking at the same visual language."""
+    if action.startswith('test_'):
+        return _GROUP_TEST
+    if action.startswith('case_'):
+        return _GROUP_CASE
+    if action in ('analytics_run', 'path_finding'):
+        return _GROUP_ANALYSIS
+    if action == 'csv_upload' or action.startswith('onchain_fetch'):
+        return _GROUP_EVIDENCE
+    if action == 'activity_report_exported':
+        return _GROUP_REPORT
+    return _GROUP_OTHER
+
+
 def format_tz_label(tz_offset_minutes: int) -> str:
     """-120 (JS convention for UTC+2) -> "UTC+02:00"."""
     total = -tz_offset_minutes
@@ -89,21 +113,33 @@ def _dmy(iso_date: str | None) -> str:
         return iso_date
 
 
-def _local_stamp(timestamp: str | None, tz_offset_minutes: int) -> str:
-    """Renders a stored UTC timestamp in the requested local zone, so the report reads the
-    same as the screen it was exported from."""
+def _to_local(timestamp: str | None, tz_offset_minutes: int) -> datetime | None:
     if not timestamp:
-        return ''
+        return None
     try:
         parsed = datetime.fromisoformat(str(timestamp))
     except ValueError:
-        return str(timestamp)
+        return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    from datetime import timedelta
+    return parsed - timedelta(minutes=tz_offset_minutes)
 
-    local = parsed - timedelta(minutes=tz_offset_minutes)
-    return local.strftime('%d.%m.%Y. %H:%M:%S')
+
+def _local_stamp(timestamp: str | None, tz_offset_minutes: int) -> str:
+    """Renders a stored UTC timestamp in the requested local zone, so the report reads the
+    same as the screen it was exported from."""
+    local = _to_local(timestamp, tz_offset_minutes)
+    return local.strftime('%d.%m.%Y. %H:%M:%S') if local else str(timestamp or '')
+
+
+_WEEKDAYS = ('ponedeljak', 'utorak', 'sreda', 'četvrtak', 'petak', 'subota', 'nedelja')
+
+
+def _local_day_heading(timestamp: str | None, tz_offset_minutes: int) -> str:
+    local = _to_local(timestamp, tz_offset_minutes)
+    if not local:
+        return 'Nepoznat datum'
+    return f'{local.strftime("%d.%m.%Y.")} — {_WEEKDAYS[local.weekday()]}'
 
 
 def summarize_details(entry: dict[str, Any]) -> str:
@@ -133,8 +169,22 @@ def summarize_details(entry: dict[str, Any]) -> str:
         query = details.get('query', '')
         return f'{query} · {rows} transakcija' if rows is not None else str(query)
     if action == 'activity_report_exported':
-        return f'{details.get("format", "")} · {details.get("entry_count", 0)} zapisa'
+        period = _short_period(details.get('date_from'), details.get('date_to'))
+        users = details.get('users')
+        users_text = f' · {", ".join(users)}' if isinstance(users, list) and users else ''
+        return f'{str(details.get("format", "")).upper()} · {details.get("entry_count", 0)} zapisa · {period}{users_text}'
     return str(entry.get('file_name') or '')
+
+
+def _short_period(date_from: Any, date_to: Any) -> str:
+    """Compact form of the window a report covered, for one table cell."""
+    if not date_from and not date_to:
+        return 'sve aktivnosti'
+    if date_from and date_to and date_from == date_to:
+        return f'jedan dan: {_dmy(str(date_from))}'
+    if date_from and date_to:
+        return f'{_dmy(str(date_from))} – {_dmy(str(date_to))}'
+    return f'od {_dmy(str(date_from))}' if date_from else f'do {_dmy(str(date_to))}'
 
 
 def _scope_text(entry: dict[str, Any]) -> str:
@@ -146,6 +196,8 @@ def _scope_text(entry: dict[str, Any]) -> str:
         return 'Testovi'
     if action == 'path_finding':
         return 'Graf'
+    if action == 'activity_report_exported':
+        return 'Izveštaj'
     return '-'
 
 
@@ -234,6 +286,59 @@ def _kv_row(pdf: FPDF, font: str, label: str, value: str) -> None:
     pdf.multi_cell(0, 5.5, value, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 
+def _summary_cards(pdf: FPDF, font: str, cards: list[tuple[str, str]]) -> None:
+    """A row of stat tiles - the shape of the period at a glance, before any raw rows."""
+    usable = pdf.w - pdf.l_margin - pdf.r_margin
+    gap = 4
+    width = (usable - gap * (len(cards) - 1)) / len(cards)
+    y0 = pdf.get_y()
+    x = pdf.l_margin
+    for value, label in cards:
+        pdf.set_fill_color(*_CARD_BG)
+        pdf.set_draw_color(*_ACCENT)
+        pdf.set_line_width(0.3)
+        pdf.rect(x, y0, width, 16, style='DF')
+        pdf.set_xy(x, y0 + 2)
+        pdf.set_font(font, 'B', 15)
+        pdf.set_text_color(*_NAVY)
+        pdf.cell(width, 7, value, align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_xy(x, y0 + 9.5)
+        pdf.set_font(font, '', 7.5)
+        pdf.set_text_color(*_TEXT_GRAY)
+        pdf.cell(width, 5, label, align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        x += width + gap
+    pdf.set_xy(pdf.l_margin, y0 + 16 + 5)
+    pdf.set_text_color(*_TEXT_DARK)
+
+
+def _tally_table(pdf: FPDF, font: str, rows: list[tuple[str, int, tuple[int, int, int] | None]], total: int) -> None:
+    """Count + label, with a proportional bar so the dominant activity is obvious without
+    comparing numbers."""
+    label_width = 78
+    bar_width = 60
+    for label, count, colour in rows:
+        pdf.set_font(font, '', 9)
+        pdf.set_text_color(*_TEXT_DARK)
+        if colour:
+            pdf.set_fill_color(*colour)
+            pdf.ellipse(pdf.l_margin, pdf.get_y() + 1.8, 2.2, 2.2, style='F')
+        pdf.set_x(pdf.l_margin + (5 if colour else 0))
+        pdf.cell(label_width, 5.5, _fit(pdf, label, label_width - 2), new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        pdf.set_font(font, 'B', 9)
+        pdf.cell(14, 5.5, str(count), align='R', new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        bar_x = pdf.get_x() + 4
+        bar_y = pdf.get_y() + 1.4
+        pdf.set_fill_color(225, 232, 240)
+        pdf.rect(bar_x, bar_y, bar_width, 2.6, style='F')
+        if total > 0:
+            pdf.set_fill_color(*(colour or _ACCENT))
+            pdf.rect(bar_x, bar_y, max(0.6, bar_width * count / total), 2.6, style='F')
+        pdf.ln(5.8)
+    pdf.ln(1)
+
+
 def build_activity_pdf(
     entries: list[dict[str, Any]],
     *,
@@ -250,6 +355,9 @@ def build_activity_pdf(
     pdf.add_page()
 
     tz_label = format_tz_label(tz_offset_minutes)
+    users_in_period = sorted({str(entry.get('user') or '') for entry in entries if entry.get('user')})
+    days_in_period = {_local_stamp(entry.get('timestamp'), tz_offset_minutes)[:10] for entry in entries}
+    cases_in_period = {str(entry.get('case_id')) for entry in entries if entry.get('case_id')}
 
     _section_title(pdf, font, 'Podaci o izveštaju')
     _kv_row(pdf, font, 'IZVEZAO', generated_by)
@@ -259,29 +367,50 @@ def build_activity_pdf(
         pdf, font, 'OBUHVAĆENI KORISNICI',
         ', '.join(selected_users) if selected_users else ('svi korisnici' if scope == 'all' else generated_by),
     )
-    _kv_row(pdf, font, 'UKUPNO ZAPISA', str(len(entries)))
-    pdf.ln(2)
+    _kv_row(pdf, font, 'REDOSLED', 'Od najnovije ka najstarijoj akciji')
+    pdf.ln(3)
 
-    # Per-action tally, so the reader gets the shape of the period before the raw rows.
-    tally: dict[str, int] = {}
-    for entry in entries:
-        key = action_label(str(entry.get('action') or ''))
-        tally[key] = tally.get(key, 0) + 1
-    if tally:
-        _section_title(pdf, font, 'Rezime po tipu akcije')
-        pdf.set_font(font, '', 9.5)
-        for label, count in sorted(tally.items(), key=lambda item: -item[1]):
-            pdf.cell(0, 5.5, f'{count} x  {label}', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.ln(2)
+    _summary_cards(pdf, font, [
+        (str(len(entries)), 'Ukupno akcija'),
+        (str(len(users_in_period)), 'Korisnika'),
+        (str(len(days_in_period)), 'Dana sa aktivnošću'),
+        (str(len(cases_in_period)), 'Slučajeva'),
+    ])
 
-    _section_title(pdf, font, 'Hronologija akcija')
     if not entries:
+        _section_title(pdf, font, 'Hronologija akcija')
         pdf.set_font(font, '', 9.5)
         pdf.set_text_color(*_TEXT_GRAY)
         pdf.cell(0, 6, 'Nema zabeleženih akcija u izabranom periodu.', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         return bytes(pdf.output())
 
-    widths = [38, 26, 58, 62, 0]
+    tally: dict[str, tuple[int, tuple[int, int, int]]] = {}
+    for entry in entries:
+        action = str(entry.get('action') or '')
+        label = action_label(action)
+        count, colour = tally.get(label, (0, action_color(action)))
+        tally[label] = (count + 1, colour)
+
+    _section_title(pdf, font, 'Raspodela po tipu akcije')
+    _tally_table(
+        pdf, font,
+        [(label, count, colour) for label, (count, colour) in sorted(tally.items(), key=lambda item: -item[1][0])],
+        len(entries),
+    )
+
+    # Only meaningful once more than one account is covered - for a single analyst's own
+    # report it would just repeat the total.
+    if len(users_in_period) > 1:
+        per_user: dict[str, int] = {}
+        for entry in entries:
+            key = str(entry.get('user') or '')
+            per_user[key] = per_user.get(key, 0) + 1
+        _section_title(pdf, font, 'Raspodela po korisniku')
+        _tally_table(pdf, font, [(user, count, None) for user, count in sorted(per_user.items(), key=lambda i: -i[1])], len(entries))
+
+    _section_title(pdf, font, 'Hronologija akcija')
+
+    widths = [24, 26, 58, 62, 0]
     widths[4] = (pdf.w - pdf.l_margin - pdf.r_margin) - sum(widths[:4])
     headers = ['Vreme', 'Korisnik', 'Akcija', 'Slučaj / opseg', 'Detalji']
 
@@ -290,32 +419,69 @@ def build_activity_pdf(
         pdf.set_fill_color(*_NAVY)
         pdf.set_text_color(*_WHITE)
         for width, title in zip(widths, headers):
-            pdf.cell(width, 7, title, border=0, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(width, 7, f' {title}', border=0, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
         pdf.ln(7)
         pdf.set_text_color(*_TEXT_DARK)
 
+    def draw_day_heading(text: str, count: int) -> None:
+        pdf.ln(1.5)
+        pdf.set_font(font, 'B', 9)
+        pdf.set_fill_color(226, 235, 245)
+        pdf.set_text_color(*_NAVY)
+        pdf.cell(sum(widths), 6.5, f'  {text}   ({count} {"akcija" if count != 1 else "akcija"})',
+                 fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(*_TEXT_DARK)
+
     draw_header_row()
-    pdf.set_font(font, '', 8)
-    for index, entry in enumerate(entries):
-        # Reprint the header after an automatic page break, otherwise continuation pages
-        # arrive as unlabelled columns.
-        if pdf.get_y() > pdf.h - 26:
+
+    # Grouped by day so a multi-day report can be scanned by date instead of read row by
+    # row - the single biggest navigation aid in a long chronology.
+    day_counts: dict[str, int] = {}
+    for entry in entries:
+        key = _local_day_heading(entry.get('timestamp'), tz_offset_minutes)
+        day_counts[key] = day_counts.get(key, 0) + 1
+
+    current_day: str | None = None
+    row_index = 0
+    for entry in entries:
+        if pdf.get_y() > pdf.h - 24:
             pdf.add_page()
             draw_header_row()
-            pdf.set_font(font, '', 8)
+            current_day = None
 
-        if index % 2 == 1:
+        day = _local_day_heading(entry.get('timestamp'), tz_offset_minutes)
+        if day != current_day:
+            draw_day_heading(day, day_counts[day])
+            current_day = day
+            row_index = 0
+
+        action = str(entry.get('action') or '')
+        local = _to_local(entry.get('timestamp'), tz_offset_minutes)
+        shaded = row_index % 2 == 1
+        row_y = pdf.get_y()
+
+        if shaded:
             pdf.set_fill_color(*_LIGHT_ROW)
+            pdf.rect(pdf.l_margin, row_y, sum(widths), 6, style='F')
+
+        # Colour dot in front of the action, same coding as the on-screen log.
+        pdf.set_fill_color(*action_color(action))
+        pdf.ellipse(pdf.l_margin + widths[0] + widths[1] + 1.5, row_y + 2.1, 2.0, 2.0, style='F')
+
+        pdf.set_xy(pdf.l_margin, row_y)
+        pdf.set_font(font, '', 8)
+        pdf.set_text_color(*_TEXT_DARK)
         row = [
-            _local_stamp(entry.get('timestamp'), tz_offset_minutes),
-            str(entry.get('user') or ''),
-            action_label(str(entry.get('action') or '')),
-            _scope_text(entry),
-            summarize_details(entry),
+            f' {local.strftime("%H:%M:%S")}' if local else '',
+            f' {entry.get("user") or ""}',
+            f'    {action_label(action)}',
+            f' {_scope_text(entry)}',
+            f' {summarize_details(entry)}',
         ]
         for width, value in zip(widths, row):
-            pdf.cell(width, 6, _fit(pdf, value, width - 2), border=0, fill=index % 2 == 1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(width, 6, _fit(pdf, value, width - 2), border=0, new_x=XPos.RIGHT, new_y=YPos.TOP)
         pdf.ln(6)
+        row_index += 1
 
     return bytes(pdf.output())
 
