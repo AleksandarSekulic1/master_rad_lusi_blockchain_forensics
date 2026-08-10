@@ -1784,6 +1784,28 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     kv('GENERISANO', new Date().toLocaleString());
     y += 2;
 
+    // A short "how to read the numbers below" note, deliberately placed BEFORE any result:
+    // the model used and the closed-world caveat change what every percentage in this
+    // report actually means, and a reader who never sees the source code has no other way
+    // of knowing. The full version is the last section of the report.
+    const methodologyNoteLines = doc.splitTextToSize(
+      'Ovaj izvestaj koristi proporcionalni ("haircut") model pracenja sredstava i obuhvata iskljucivo transakcije iz ' +
+        'navedene evidencije. Procenat od 0% znaci da u ovoj evidenciji nema traga o prilivu sa navedenih izvora - ' +
+        'ne znaci da je adresa cista. Detaljno objasnjenje i ogranicenja nalaze se na kraju izvestaja.',
+      usableWidth - 8,
+    );
+    const noteBoxHeight = methodologyNoteLines.length * 4.2 + 7;
+    doc.setFillColor(253, 250, 240);
+    doc.setDrawColor(...TaintAnalysisComponent.PDF_AMBER);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(marginX, y - 4, usableWidth, noteBoxHeight, 2, 2, 'FD');
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...TEXT_DARK);
+    doc.text(methodologyNoteLines, marginX + 4, y + 1);
+    y += noteBoxHeight + 3;
+    doc.setFont('helvetica', 'normal');
+
     const sectionTitle = (title: string): void => {
       y += 3;
       doc.setFont('helvetica', 'bold');
@@ -2283,6 +2305,111 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     doc.setTextColor(...TEXT_DARK);
     const conclusionLines = doc.splitTextToSize(this.buildConclusionParagraph(), usableWidth);
     doc.text(conclusionLines, marginX, y);
+    y += conclusionLines.length * 4.6;
+
+    // --- Methodology appendix ---------------------------------------------------------
+    // Everything above is numbers; this is what those numbers are allowed to mean. It sits
+    // at the end (rather than up front) so it reads as a formal appendix, with the short
+    // version already stated on page one.
+    const paragraph = (text: string, options?: { bold?: boolean; size?: number; gap?: number }): void => {
+      const size = options?.size ?? 9;
+      doc.setFont('helvetica', options?.bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      doc.setTextColor(...TEXT_DARK);
+      const lines: string[] = doc.splitTextToSize(text, usableWidth);
+      const lineHeight = size * 0.48;
+      if (y + lines.length * lineHeight > pageHeight - 18) {
+        doc.addPage();
+        y = 16;
+      }
+      doc.text(lines, marginX, y);
+      y += lines.length * lineHeight + (options?.gap ?? 3);
+    };
+
+    const bullet = (text: string): void => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...TEXT_DARK);
+      const lines: string[] = doc.splitTextToSize(text, usableWidth - 6);
+      if (y + lines.length * 4.4 > pageHeight - 18) {
+        doc.addPage();
+        y = 16;
+      }
+      doc.setFillColor(...TaintAnalysisComponent.PDF_ACCENT);
+      doc.circle(marginX + 1.4, y - 1.2, 0.7, 'F');
+      doc.text(lines, marginX + 6, y);
+      y += lines.length * 4.4 + 1.6;
+    };
+
+    y += 8;
+    if (y > pageHeight - 60) {
+      doc.addPage();
+      y = 16;
+    }
+    sectionTitle('Metodologija i ogranicenja');
+
+    paragraph('Primenjeni model pracenja', { bold: true, size: 10, gap: 2 });
+    paragraph(
+      'Koriscen je proporcionalni model, u praksi poznat kao "haircut". Kada se na jednoj adresi pomesaju zaprljana i ' +
+        'cista sredstva, svaki naredni odliv sa te adrese nosi isti procenat zaprljanosti kao balans sa kojeg je poslat. ' +
+        'Primer: ako adresa primi 1000 zaprljanih i 500 cistih jedinica, njen balans je 66.67% zaprljan, i svaka naredna ' +
+        'isplata sa te adrese nosi tacno 66.67% zaprljanih sredstava.',
+    );
+    paragraph(
+      'Izbor modela nije neutralan - isti podaci daju razlicite procente pod razlicitim modelima, pa se rezultati iz ovog ' +
+        'izvestaja ne mogu direktno porediti sa nalazom dobijenim drugom metodom. Najcesce alternative su:',
+    );
+    bullet(
+      'FIFO (first in, first out) - smatra se da prvi primljeni novac prvi i odlazi. Primenjuje se u nekim ' +
+        'jurisdikcijama zbog ustaljene sudske prakse u vezi sa mesanim sredstvima.',
+    );
+    bullet('LIFO (last in, first out) - obrnuta pretpostavka: poslednji priliv prvi napusta adresu.');
+    bullet(
+      'Poison / taint-by-contact - svaka adresa koja je ikada primila zaprljana sredstva ostaje trajno 100% zaprljana. ' +
+        'Daje najsire rezultate i po pravilu obuhvata veliki broj adresa bez stvarne veze sa delom.',
+    );
+    paragraph(
+      'Proporcionalni model je izabran jer ne prosiruje sumnju na adrese cija je stvarna izlozenost zanemarljiva, a ' +
+        'istovremeno zadrzava trag i posle visestrukog mesanja sredstava.',
+      { gap: 5 },
+    );
+
+    paragraph('Ogranicenje zatvorenog sveta (closed-world)', { bold: true, size: 10, gap: 2 });
+    paragraph(
+      'Analiza vidi iskljucivo transakcije sadrzane u evidenciji navedenoj na pocetku ovog izvestaja. Prilivi i odlivi ' +
+        'koji postoje na blokcejnu ali nisu uvezeni u ovaj slucaj ne ulaze u racun. Posledica je da procenat moze biti ' +
+        'i visi i nizi od stvarnog: nedostajuci cist priliv znaci da razblazivanje nije uracunato (procenat je precenjen), ' +
+        'a nedostajuci zaprljan priliv znaci da deo tereta nije ni vidljiv (procenat je potcenjen).',
+      { gap: 5 },
+    );
+
+    paragraph('Kako se tumaci rezultat od 0%', { bold: true, size: 10, gap: 2 });
+    paragraph(
+      'Vrednost 0% znaci da u ovoj evidenciji ne postoji trag da je do te adrese stigao novac sa navedenih pocetnih izvora. ' +
+        'To NIJE utvrdjenje da je adresa cista, niti da njen vlasnik nije povezan sa predmetom - odsustvo dokaza u ' +
+        'ogranicenom skupu podataka nije dokaz odsustva.',
+      { gap: 5 },
+    );
+
+    paragraph('Ostala ogranicenja', { bold: true, size: 10, gap: 2 });
+    bullet(
+      'Rezultat u potpunosti zavisi od izbora pocetnih izvora (seed adresa). Drugaciji izbor daje drugacije procente, ' +
+        'pa se uz svaki nalaz mora navesti i koje su adrese uzete kao polazne (videti sekciju "Izvori").',
+    );
+    bullet(
+      'Adresa nije isto sto i identitet. Jedno lice moze kontrolisati veliki broj adresa, dok jedna adresa (na primer ' +
+        'berzanski novcanik) moze pripadati hiljadama korisnika - povezivanje adrese sa licem zahteva dokaze van ove analize.',
+    );
+    bullet(
+      'Analiza posmatra iznose kao medjusobno uporedive. Ako uvezena evidencija mesa razlicite valute ili tokene bez ' +
+        'razdvajanja, izracunati procenti nisu smisleni.',
+    );
+    bullet('Sredstva se ne prate izmedju razlicitih blokcejn mreza (cross-chain), niti kroz konverzije van lanca.');
+    bullet('Svi procenti su zaokruzeni na dve decimale, pa zbir pojedinacnih udela moze odstupati za stoti deo procenta.');
+    bullet(
+      'Oznake poznatih entiteta (berza, mikser, sankcionisana adresa) poticu iz lokalne baze poznatih adresa i pokazuju ' +
+        'samo poklapanja koja u toj bazi postoje - izostanak oznake ne znaci da adresa nije berza ili mikser.',
+    );
 
     const pageCount = doc.getNumberOfPages();
     for (let page = 1; page <= pageCount; page++) {
