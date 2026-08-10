@@ -11,10 +11,12 @@ from app.analytics.plugins.chain_hopping import ChainHoppingPlugin
 from app.analytics.plugins.wallet_clustering import WalletClusteringPlugin
 from app.analytics.plugins.peel_chains import PeelChainsPlugin
 from app.analytics.plugins.risk_scoring import RiskScoringPlugin
+from app.analytics.plugins.taint_analysis import TaintAnalysisPlugin
 
 
 PLUGIN_REGISTRY = {
     'blacklist_check': BlacklistCheckPlugin,
+    'taint_analysis': TaintAnalysisPlugin,
     'peel_chains': PeelChainsPlugin,
     'chain_hopping': ChainHoppingPlugin,
     'anomaly_detection': AnomalyDetectionPlugin,
@@ -24,6 +26,8 @@ PLUGIN_REGISTRY = {
 
 DEFAULT_PIPELINE = (
     'blacklist_check',
+    # Needs blacklist_check's blacklist_flag already set, since it seeds from that by default.
+    'taint_analysis',
     'wallet_clustering',
     'risk_scoring',
     'peel_chains',

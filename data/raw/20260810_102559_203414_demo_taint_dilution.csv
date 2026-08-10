@@ -1,0 +1,9 @@
+sender_address,recipient_address,amount,timestamp
+0xThief,0xMixer,1000,2026-03-01T00:00:00Z
+0xCleanUser,0xMixer,500,2026-03-01T00:05:00Z
+0xMixer,0xExitWallet,750,2026-03-01T00:10:00Z
+0xHacker1,0xLaunderingHub,600,2026-04-01T00:00:00Z
+0xHacker2,0xLaunderingHub,400,2026-04-01T00:05:00Z
+0xLaunderingHub,0xFinalDestination,800,2026-04-01T00:10:00Z
+0xExchangeHacker,0xExchangeMule,200,2026-06-01T00:00:00Z
+0xExchangeMule,0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be,200,2026-06-01T00:05:00Z

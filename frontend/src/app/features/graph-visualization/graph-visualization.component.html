@@ -33,11 +33,96 @@
     <div class="stats">
       <span>{{ nodeCount }} čvorova</span>
       <span>{{ edgeCount }} veza</span>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="timelineEnabled"
+        (click)="toggleTimeline()"
+        [disabled]="!hasLoadedGraph || timelineMaxRank === 0"
+      >
+        {{ timelineEnabled ? 'Isključi vremensku traku' : 'Vremenska traka' }}
+      </button>
+      <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!hasLoadedGraph">
+        Prikaži ceo graf
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="deadEndFilterEnabled"
+        (click)="toggleDeadEndFilter()"
+        title="Sakrij čvorove koji su samo primili sredstva i nisu ih dalje prosledili, a nisu već označeni kao sumnjivi"
+      >
+        {{ deadEndFilterEnabled ? 'Prikaži čvorove bez odliva' : 'Sakrij čvorove bez odliva' }} ({{ deadEndNodeCount }})
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="fundingSourceFilterEnabled"
+        (click)="toggleFundingSourceFilter()"
+        title="Sakrij čvorove koji su samo slali sredstva i nikada ih nisu primili, a nisu već označeni kao sumnjivi"
+      >
+        {{ fundingSourceFilterEnabled ? 'Prikaži čvorove bez priliva' : 'Sakrij čvorove bez priliva' }} ({{ fundingSourceNodeCount }})
+      </button>
     </div>
   </div>
 
+  <div class="timeline-panel" *ngIf="timelineEnabled">
+    <button type="button" class="ghost-button" [class.active]="isTimelinePlaying" (click)="toggleTimelinePlay()">
+      {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
+    </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="skipToNextSuspiciousTransaction()"
+      [disabled]="!hasNextSuspiciousTransaction"
+      title="Preskoči na sledeću transakciju koja uključuje označen (sumnjiv) čvor"
+    >
+      ⏭ Sledeća sumnjiva
+    </button>
+    <input
+      type="range"
+      min="1"
+      [max]="timelineMaxRank"
+      [ngModel]="timelinePosition"
+      (ngModelChange)="onTimelinePositionChange($event)"
+      class="timeline-slider"
+    />
+    <span class="timeline-position">
+      Transakcija {{ timelinePosition }} / {{ timelineMaxRank }}
+      <ng-container *ngIf="timelineCurrentDate"> — {{ timelineCurrentDate }}</ng-container>
+    </span>
+    <select
+      class="timeline-speed"
+      [ngModel]="timelineSpeed"
+      (ngModelChange)="onTimelineSpeedChange($event)"
+      title="Brzina reprodukcije"
+    >
+      <option *ngFor="let speed of timelineSpeedOptions" [ngValue]="speed">{{ speed }}x</option>
+    </select>
+    <label class="timeline-subtitles-toggle">
+      <input type="checkbox" [ngModel]="timelineSubtitlesEnabled" (ngModelChange)="toggleTimelineSubtitles()" />
+      Titlovi
+    </label>
+    <label class="timeline-subtitles-toggle">
+      <input type="checkbox" [ngModel]="timelineFollowEnabled" (ngModelChange)="toggleTimelineFollow()" />
+      Prati kameru
+    </label>
+  </div>
+  <p class="timeline-subtitle" *ngIf="timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">
+    {{ timelineCurrentCaption }}
+  </p>
+  <p class="timeline-cumulative" *ngIf="timelineEnabled && timelineCurrentCumulativeTotal !== null">
+    Ukupno preneto do sada: {{ timelineCurrentCumulativeTotal | number: '1.2-2' }}
+  </p>
+  <p class="timeline-gap-note" *ngIf="timelineEnabled && timelineCurrentGapNote">
+    {{ timelineCurrentGapNote }}
+  </p>
+
   <div class="graph-content">
-    <div #graphCanvas class="graph-canvas"></div>
+    <div class="graph-canvas-wrap">
+      <div #graphCanvas class="graph-canvas"></div>
+      <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
+    </div>
 
     <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
@@ -51,6 +136,13 @@
           <dt>Tip adrese</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
         </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
+          <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.known_entity ?? 'Nepoznat') }}
+            <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+          </dd>
+        </div>
         <div>
           <dt>Trenutni balans</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
@@ -62,6 +154,26 @@
           </dd>
         </div>
         <div>
+          <dt>Pošiljaoci u ovom slučaju</dt>
+          <dd *ngIf="caseIncomingSenders.length === 0">Nema — čvor nije primio sredstva u ovom slučaju</dd>
+          <dd *ngFor="let sender of visibleIncomingSenders">
+            <span class="mono-address">{{ sender.address }}</span> ({{ sender.amount | number : '1.2-6' }})
+          </dd>
+          <button type="button" class="show-more-button" *ngIf="hiddenSendersCount > 0" (click)="toggleShowAllSenders()">
+            {{ showAllSenders ? 'Prikaži manje' : 'Prikaži još ' + hiddenSendersCount }}
+          </button>
+        </div>
+        <div>
+          <dt>Primaoci u ovom slučaju</dt>
+          <dd *ngIf="caseOutgoingRecipients.length === 0">Nema — čvor nije poslao sredstva u ovom slučaju</dd>
+          <dd *ngFor="let recipient of visibleOutgoingRecipients">
+            <span class="mono-address">{{ recipient.address }}</span> ({{ recipient.amount | number : '1.2-6' }})
+          </dd>
+          <button type="button" class="show-more-button" *ngIf="hiddenRecipientsCount > 0" (click)="toggleShowAllRecipients()">
+            {{ showAllRecipients ? 'Prikaži manje' : 'Prikaži još ' + hiddenRecipientsCount }}
+          </button>
+        </div>
+        <div>
           <dt>Prva aktivnost na lancu</dt>
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
         </div>
@@ -70,9 +182,9 @@
           <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
         </div>
         <div>
-          <dt>Izvor sredstava (ko je finansirao adresu)</dt>
+          <dt>Izvor sredstava (prva ikada on-chain transakcija)</dt>
           <dd>
-            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a') }}
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog slučaja') }}
             <span *ngIf="addressEnrichment?.funding_amount_eth != null">
               ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
             </span>
@@ -83,6 +195,16 @@
           <dd>
             {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
             <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
+          </dd>
+        </div>
+        <div
+          *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
+          [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
+        >
+          <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet izvora</dt>
+          <dd>
+            {{ addressEnrichment!.funding_source_entity ?? 'Nepoznat' }}
+            <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
           </dd>
         </div>
         <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
@@ -181,6 +303,14 @@
       <div class="legend-item">
         <span class="legend-swatch clustered"></span>
         Deo klastera (isprekidan prsten) — verovatno ista osoba/grupa iza više adresa
+      </div>
+      <div class="legend-item">
+        <span class="legend-line first-transaction"></span>
+        Prva transakcija hronološki (najranija u ovom prikazu)
+      </div>
+      <div class="legend-item">
+        <span class="legend-line last-transaction"></span>
+        Poslednja transakcija hronološki (najskorija u ovom prikazu)
       </div>
     </div>
     <p class="legend-hint">

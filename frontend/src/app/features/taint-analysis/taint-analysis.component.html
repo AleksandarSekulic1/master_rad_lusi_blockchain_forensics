@@ -1,0 +1,555 @@
+<div class="taint-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+  </div>
+
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+  <p class="case-graph-error" *ngIf="graphError">{{ graphError }}</p>
+
+  <div class="taint-header">
+    <div class="taint-header-text">
+      <p class="panel-kicker">Praćenje zaprljanih sredstava</p>
+      <h2>Taint analiza</h2>
+      <p *ngIf="!hasRunTaint">
+        Klikni na jedan ili više čvorova na grafu da ih označiš kao izvor ("prljav" čvor), ili unesi adresu ručno ispod.
+      </p>
+      <p *ngIf="hasRunTaint">
+        Boja čvora pokazuje procenat zaprljanosti — od tamne (0%) do crvene (100%). Klikni na čvor za detalje.
+      </p>
+    </div>
+    <div class="stats">
+      <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!graph">Prikaži ceo graf</button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="timelineEnabled"
+        *ngIf="hasRunTaint && timelineMaxRank > 0"
+        (click)="toggleTimeline()"
+      >
+        {{ timelineEnabled ? 'Isključi vremensku traku' : 'Vremenska traka' }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="hideNonTaintedNodes"
+        *ngIf="hasRunTaint"
+        (click)="toggleHideNonTaintedNodes()"
+        title="Sakrij čvorove čiji je taint % na ili ispod praga podešenog desno"
+      >
+        {{ hideNonTaintedNodes ? 'Prikaži sve čvorove' : 'Sakrij ispod praga' }}
+      </button>
+      <label class="threshold-input" *ngIf="hasRunTaint" title="Prag za filter iznad (u procentima)">
+        ispod
+        <input
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          [ngModel]="taintHideThreshold"
+          (ngModelChange)="onTaintThresholdChange($event)"
+        />
+        %
+      </label>
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="hasRunTaint"
+        (click)="editSeeds()"
+        title="Dodaj ili ukloni izvore bez brisanja trenutnih rezultata i izbora"
+      >
+        Izmeni izvore ({{ seedAddresses.length }})
+      </button>
+      <button type="button" class="ghost-button" *ngIf="hasRunTaint" (click)="startNewAnalysis()">Nova analiza</button>
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="hasRunTaint"
+        (click)="exportPdfReport()"
+        [disabled]="isExportingPdf"
+        title="Izvezi PDF izveštaj sa trenutnim grafičkim prikazom (poštuje aktivni filter praga) i rezultatima analize"
+      >
+        {{ isExportingPdf ? 'Generisanje PDF-a...' : 'Izvezi PDF izveštaj' }}
+      </button>
+    </div>
+  </div>
+
+  <p class="taint-error" *ngIf="hasRunTaint && taintError">{{ taintError }}</p>
+
+  <p class="intro-hint">
+    Cilj: kad se sumnjiv/ukraden novac pomeša sa tuđim, čistim sredstvima (npr. u mikseru), ova analiza pokazuje
+    <strong>koliko tačno</strong> od sredstava na svakoj adresi zapravo potiče od tog izvora — ne samo "da li je umešana",
+    nego i koliki procenat.
+  </p>
+
+  <div class="seed-panel" *ngIf="!hasRunTaint">
+    <p class="muted top-tainted-hint" *ngIf="seedAddresses.length > 0">
+      Uređuješ postojeći izbor izvora — dodaj ili ukloni adrese, pa ponovo pokreni analizu.
+    </p>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="suggestSeeds()"
+      [disabled]="!graph || isSuggestingSeeds"
+      title="Automatski doda čvorove koje su heuristike (crna lista, visok rizik, anomalija, peel lanac, skok lanca) već označile kao sumnjive"
+    >
+      {{ isSuggestingSeeds ? 'Tražim sumnjive čvorove...' : 'Predloži čvorove' }}
+    </button>
+    <div class="seed-input">
+      <input
+        type="text"
+        placeholder="Unesi adresu ručno (0x...)"
+        [(ngModel)]="manualSeedInput"
+        (keydown.enter)="addManualSeed()"
+      />
+      <button type="button" class="ghost-button" (click)="addManualSeed()">Dodaj</button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="removeManualSeed()"
+        title="Ukloni ovu adresu sa liste, ako je slučajno dodata"
+      >
+        Ukloni
+      </button>
+    </div>
+    <div class="seed-chips" *ngIf="seedAddresses.length > 0">
+      <span class="seed-chip" *ngFor="let address of seedAddresses">
+        {{ address }}
+        <button type="button" (click)="removeSeed(address)" title="Ukloni">×</button>
+      </span>
+    </div>
+    <p class="muted" *ngIf="seedAddresses.length === 0">
+      Bez ručno izabranog izvora, analiza će automatski koristiti adrese koje su već na crnoj listi (ako ih ima).
+    </p>
+    <p class="taint-error" *ngIf="taintError">{{ taintError }}</p>
+    <button type="button" class="primary-button" (click)="runTaintAnalysis()" [disabled]="!graph || isRunningTaint">
+      {{
+        isRunningTaint
+          ? 'Pokretanje...'
+          : seedAddresses.length > 0
+            ? 'Pokreni taint analizu (' + seedAddresses.length + ')'
+            : 'Pokreni taint analizu (crna lista)'
+      }}
+    </button>
+  </div>
+
+  <div class="timeline-panel" *ngIf="hasRunTaint && timelineEnabled">
+    <button type="button" class="ghost-button" [class.active]="isTimelinePlaying" (click)="toggleTimelinePlay()">
+      {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
+    </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="skipToNextTaintedTransaction()"
+      [disabled]="!hasNextTaintedTransaction"
+      title="Preskoči na sledeću transakciju koja stvarno prenosi zaprljana sredstva"
+    >
+      ⏭ Sledeća zaprljana
+    </button>
+    <input
+      type="range"
+      min="1"
+      [max]="timelineMaxRank"
+      [ngModel]="timelinePosition"
+      (ngModelChange)="onTimelinePositionChange($event)"
+      class="timeline-slider"
+    />
+    <span class="timeline-position">
+      Transakcija {{ timelinePosition }} / {{ timelineMaxRank }}
+      <ng-container *ngIf="timelineCurrentDate"> — {{ timelineCurrentDate | date : 'short' }}</ng-container>
+    </span>
+    <select
+      class="timeline-speed"
+      [ngModel]="timelineSpeed"
+      (ngModelChange)="onTimelineSpeedChange($event)"
+      title="Brzina reprodukcije"
+    >
+      <option *ngFor="let speed of timelineSpeedOptions" [ngValue]="speed">{{ speed }}x</option>
+    </select>
+    <label class="timeline-toggle">
+      <input type="checkbox" [ngModel]="timelineSubtitlesEnabled" (ngModelChange)="toggleTimelineSubtitles()" />
+      Titlovi
+    </label>
+    <label class="timeline-toggle">
+      <input type="checkbox" [ngModel]="timelineFollowEnabled" (ngModelChange)="toggleTimelineFollow()" />
+      Prati kameru
+    </label>
+  </div>
+  <p class="timeline-subtitle" *ngIf="hasRunTaint && timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">
+    {{ timelineCurrentCaption }}
+  </p>
+
+  <div class="source-filter-panel" *ngIf="hasRunTaint && (taintResult?.seed_addresses?.length ?? 0) > 1">
+    <span class="panel-kicker">Filter po izvoru</span>
+    <div class="source-filter-chips">
+      <button
+        type="button"
+        class="ghost-button source-chip"
+        *ngFor="let seed of taintResult?.seed_addresses"
+        [class.active]="activeSeeds.has(seed)"
+        (click)="toggleSeedFilter(seed)"
+        [title]="activeSeeds.has(seed) ? 'Isključi doprinos ovog izvora iz prikaza' : 'Uključi doprinos ovog izvora u prikaz'"
+      >
+        {{ seed }}
+      </button>
+    </div>
+    <button type="button" class="show-more-button" *ngIf="!isAllSeedsActive" (click)="showAllSeedSources()">
+      Prikaži sve izvore
+    </button>
+    <p class="muted top-tainted-hint" *ngIf="!isAllSeedsActive">
+      Prikazan je samo doprinos izabranih izvora — procenti, boje i grane su preračunati da pokažu isključivo njihovo prostiranje.
+    </p>
+  </div>
+
+  <div class="taint-content">
+    <div class="graph-canvas-wrap">
+      <div #taintCanvas class="graph-canvas"></div>
+      <p class="loading-overlay" *ngIf="isLoadingGraph">Učitavanje grafa...</p>
+    </div>
+
+    <aside class="node-inspector" *ngIf="hasRunTaint">
+      <ng-container *ngIf="selectedNode as node; else noSelection">
+        <p class="panel-kicker">Detalji čvora</p>
+        <h3>{{ node.address ?? node.id }}</h3>
+        <dl>
+          <div>
+            <dt>{{ timelineEnabled ? 'Taint % (na trenutnoj poziciji trake)' : 'Taint %' }}</dt>
+            <dd>{{ selectedNodeTaintPercentage | number : '1.2-2' }}%</dd>
+          </div>
+          <div>
+            <dt>Izvor (seed)</dt>
+            <dd>{{ node.is_taint_seed ? 'Da' : 'Ne' }}</dd>
+          </div>
+          <div *ngIf="selectedNodeSourceBreakdown.length > 1">
+            <dt>Poreklo po izvoru</dt>
+            <dd *ngFor="let entry of selectedNodeSourceBreakdown">
+              <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+            </dd>
+          </div>
+        </dl>
+
+        <p class="panel-kicker hops-title">Ko je zapravo iza ove adrese (on-chain podaci)</p>
+        <dl>
+          <div>
+            <dt>ENS ime</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.ens_name ?? 'Nema') }}</dd>
+          </div>
+          <div>
+            <dt>Tip adrese</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
+            <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet</dt>
+            <dd>
+              {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.known_entity ?? 'Nepoznat') }}
+              <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Trenutni balans</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>Prva aktivnost na lancu</dt>
+            <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>Izvor sredstava (prva ikada on-chain transakcija)</dt>
+            <dd>
+              {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog uvida') }}
+              <span *ngIf="addressEnrichment?.funding_amount_eth != null">
+                ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
+              </span>
+            </dd>
+          </div>
+          <div *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source">
+            <dt>Tip izvora sredstava</dt>
+            <dd>
+              {{ fundingSourceTypeLabel }}
+              <span *ngIf="addressEnrichment.funding_source_ens as ens"> · {{ ens }}</span>
+            </dd>
+          </div>
+          <div
+            *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
+            [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
+          >
+            <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet izvora</dt>
+            <dd>
+              {{ addressEnrichment!.funding_source_entity ?? 'Nepoznat' }}
+              <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+            </dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
+            <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}Sumnjivo mali iznos finansiranja ("dust")</dt>
+            <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+            <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
+            <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">Ne</dd>
+            <dd *ngIf="!isEnrichingAddress && isDustFunding">
+              Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.
+            </dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
+            <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}Direktna veza sa crnom listom</dt>
+            <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+            <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">Ne</dd>
+            <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
+              Izvor sredstava je na crnoj listi: {{ flaggedSource.blacklist_label ?? 'Nema opisa' }}
+              <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
+            </dd>
+          </div>
+        </dl>
+
+        <p class="muted top-tainted-hint" *ngIf="timelineEnabled">
+          Vremenska traka je uključena — procenat i lista ispod prikazuju stanje samo do transakcije {{ timelinePosition }}.
+          Isključi traku da vidiš konačan, potpun rezultat.
+        </p>
+        <p class="panel-kicker hops-title">Zaprljane transakcije ovog čvora</p>
+        <p class="muted top-tainted-hint" *ngIf="selectedNodeHops.length > 0">
+          Klikni na transakciju da odeš do primaoca; klikni istu ponovo da se vratiš na pošiljaoca.
+        </p>
+        <p class="muted top-tainted-hint" *ngIf="selectedNodeHops.length === 0">
+          Nema zabeleženih zaprljanih transakcija za ovaj čvor — ili nije poslao/primio ništa u ovoj evidenciji, ili je jedina
+          transakcija imala iznos 0 (dust), pa se ne računa kao prenos vrednosti.
+        </p>
+        <ul class="hops-list" *ngIf="selectedNodeHops.length > 0">
+          <li *ngFor="let hop of selectedNodeHops">
+            <button
+              type="button"
+              class="hop-button"
+              (click)="toggleHopNode(hop)"
+              title="Klikni za primaoca, klikni ponovo za pošiljaoca"
+            >
+              <span class="mono-address">{{ hop.source }}</span> → <span class="mono-address">{{ hop.target }}</span>
+              <br />
+              {{ hop.tainted_amount | number : '1.2-6' }} / {{ hop.amount | number : '1.2-6' }} ({{ hop.taint_pct_at_hop }}%)
+              · {{ hop.timestamp | date : 'short' }}
+            </button>
+            <div class="hop-breakdown" *ngIf="hopSourceBreakdown(hop).length > 1">
+              <span *ngFor="let entry of hopSourceBreakdown(hop)">{{ entry.address }}: {{ entry.pct }}%</span>
+            </div>
+          </li>
+        </ul>
+
+        <div class="taint-chart-block" *ngIf="taintChartPoints.length > 0">
+          <p class="panel-kicker hops-title">Kretanje procenta kroz vreme</p>
+          <p class="muted top-tainted-hint">
+            Klikni na tačku da skočiš na tu transakciju na vremenskoj traci.
+          </p>
+          <div class="taint-chart-wrap">
+            <svg
+              [attr.viewBox]="'0 0 280 90'"
+              preserveAspectRatio="none"
+              class="taint-chart-svg"
+              (mouseleave)="hoverChartPoint(null)"
+            >
+              <line x1="10" y1="10" x2="270" y2="10" class="chart-gridline" />
+              <line x1="10" y1="45" x2="270" y2="45" class="chart-gridline" />
+              <line x1="10" y1="80" x2="270" y2="80" class="chart-gridline" />
+              <text x="2" y="13" class="chart-axis-label">100</text>
+              <text x="2" y="48" class="chart-axis-label">50</text>
+              <text x="2" y="83" class="chart-axis-label">0</text>
+
+              <line
+                *ngIf="taintChartPlayheadX !== null"
+                [attr.x1]="taintChartPlayheadX"
+                y1="6"
+                [attr.x2]="taintChartPlayheadX"
+                y2="84"
+                class="chart-playhead"
+              />
+
+              <path [attr.d]="taintChartPath" class="chart-line" />
+
+              <g
+                *ngFor="let point of taintChartPoints; let i = index"
+                (mouseenter)="hoverChartPoint(i)"
+                (click)="jumpTimelineToRank(point.rank)"
+              >
+                <circle [attr.cx]="point.x" [attr.cy]="point.y" r="8" class="chart-hit-area" />
+                <circle
+                  [attr.cx]="point.x"
+                  [attr.cy]="point.y"
+                  r="3"
+                  class="chart-dot"
+                  [class.chart-dot-active]="hoveredChartIndex === i"
+                />
+              </g>
+            </svg>
+            <div class="chart-tooltip" *ngIf="hoveredChartPoint as hp" [style.left.%]="(hp.x / 280) * 100" [style.top.%]="(hp.y / 90) * 100">
+              <strong>{{ hp.pctBefore }}% → {{ hp.pctAfter }}%</strong>
+              <br />
+              {{ hp.direction === 'in' ? '←' : '→' }} <span class="mono-address">{{ hp.counterparty }}</span>
+              <br />
+              {{ hp.amount | number : '1.2-6' }} · {{ hp.timestamp | date : 'short' }}
+            </div>
+          </div>
+        </div>
+
+        <p class="panel-kicker hops-title">Objašnjenje procenta (kompletna istorija)</p>
+        <p class="muted top-tainted-hint">
+          Svaka transakcija koja je promenila balans ove adrese — uključujući čiste (ili manje zaprljane) prilive koji su
+          razblažili procenat, ne samo one koje su ga povećale.
+        </p>
+        <ul class="hops-list" *ngIf="selectedNodeEventLogPreview.length > 0">
+          <li *ngFor="let event of selectedNodeEventLogPreview">
+            <div class="event-log-row">
+              <span class="mono-address">{{ event.direction === 'in' ? '←' : '→' }} {{ event.counterparty }}</span>
+              <br />
+              {{ event.amount | number : '1.2-6' }}
+              <span *ngIf="event.taintedAmount > 0">(od čega {{ event.taintedAmount | number : '1.2-6' }} zaprljano)</span>
+              · {{ event.timestamp | date : 'short' }}
+              <br />
+              <span [class.dilution-down]="event.delta < 0" [class.dilution-up]="event.delta > 0">
+                {{ event.pctBefore }}% → {{ event.pctAfter }}%
+                <ng-container *ngIf="event.delta !== 0">
+                  ({{ event.delta > 0 ? '+' : '' }}{{ event.delta }}%{{ event.delta < 0 ? ' — razblaženo ovim prilivom' : '' }})
+                </ng-container>
+              </span>
+            </div>
+          </li>
+        </ul>
+        <p class="muted" *ngIf="selectedNodeEventLogPreview.length === 0">Nema zabeleženih transakcija za ovaj čvor.</p>
+        <button type="button" class="show-more-button" *ngIf="hiddenEventLogCount > 0" (click)="toggleShowAllEventLog()">
+          {{ showAllEventLog ? 'Prikaži manje' : 'Prikaži još ' + hiddenEventLogCount }}
+        </button>
+      </ng-container>
+      <ng-template #noSelection>
+        <p class="panel-kicker">Detalji čvora</p>
+        <p class="muted">Klikni na čvor da vidiš njegov taint % i istoriju.</p>
+      </ng-template>
+
+      <div class="edge-details" *ngIf="selectedEdgeDetails as edgeDetails">
+        <p class="panel-kicker">Detalji transakcije</p>
+        <h3>
+          <span class="mono-address">{{ edgeDetails.source }}</span> → <span class="mono-address">{{ edgeDetails.target }}</span>
+        </h3>
+        <dl>
+          <div>
+            <dt>Ukupno preneto (svih {{ edgeDetails.transactions.length }} transakcija)</dt>
+            <dd>{{ edgeDetails.totalAmount | number : '1.2-6' }}</dd>
+          </div>
+        </dl>
+        <ul class="hops-list">
+          <li *ngFor="let tx of edgeDetails.transactions">
+            <dl class="edge-tx">
+              <div>
+                <dt>Iznos</dt>
+                <dd>{{ tx.amount | number : '1.2-6' }}</dd>
+              </div>
+              <div>
+                <dt>Vremenska oznaka</dt>
+                <dd>{{ tx.timestamp | date : 'medium' }}</dd>
+              </div>
+              <div>
+                <dt>Identifikator transakcije</dt>
+                <dd class="mono-address">{{ tx.metadata ?? 'n/a — evidencija nema kolonu sa hešom transakcije' }}</dd>
+              </div>
+              <div *ngIf="tx.taintPctAtHop !== null; else notTainted">
+                <dt>Procenat zaprljanosti prenet ovom transakcijom</dt>
+                <dd>{{ tx.taintedAmount | number : '1.2-6' }} / {{ tx.amount | number : '1.2-6' }} ({{ tx.taintPctAtHop }}%)</dd>
+              </div>
+              <ng-template #notTainted>
+                <div>
+                  <dt>Procenat zaprljanosti prenet ovom transakcijom</dt>
+                  <dd>0% — čista transakcija</dd>
+                </div>
+              </ng-template>
+              <div *ngIf="edgeTransactionSourceBreakdown(tx).length > 1">
+                <dt>Raspodela po izvorima</dt>
+                <dd *ngFor="let entry of edgeTransactionSourceBreakdown(tx)">
+                  <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+                </dd>
+              </div>
+            </dl>
+          </li>
+        </ul>
+      </div>
+
+      <div class="taint-legend">
+        <p class="panel-kicker">Legenda</p>
+        <div class="gradient-bar"></div>
+        <div class="gradient-labels">
+          <span>0%</span>
+          <span>50%</span>
+          <span>100%</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch seed"></span>
+          Izvor (seed adresa)
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch path"></span>
+          Klikni na čvor da istakneš njegovu putanju zaprljanog novca — ostatak grafa se zatamni
+        </div>
+      </div>
+
+      <div class="top-tainted cash-out-points" *ngIf="cashOutCandidates.length > 0">
+        <p class="panel-kicker">Verovatne tačke unovčavanja</p>
+        <p class="muted top-tainted-hint">
+          Primili su zaprljana sredstva i nikad ih dalje nisu poslali u ovoj evidenciji — verovatno mesto gde je novac
+          napustio praćenu mrežu (stvarno unovčavanje, ili van dometa ove evidencije).
+        </p>
+        <ol>
+          <li *ngFor="let item of topCashOutCandidates">
+            <button
+              type="button"
+              class="ranked-address-button"
+              [class.is-selected]="selectedNode?.id === item.address"
+              (click)="selectNodeFromList(item.address)"
+            >
+              <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
+            </button>
+            <span
+              *ngIf="cashOutEntities.get(item.address) as entity"
+              class="entity-badge"
+              [class.entity-exchange]="entity.category === 'exchange'"
+              [class.entity-mixer]="entity.category === 'mixer'"
+              [class.entity-sanctioned]="entity.category === 'sanctioned'"
+            >
+              {{ entity.category === 'sanctioned' ? '⚠ ' : '' }}{{ entityCategoryLabel(entity.category) }}{{ entity.name ? ': ' + entity.name : '' }}
+            </span>
+          </li>
+        </ol>
+        <button type="button" class="show-more-button" *ngIf="hiddenCashOutCount > 0" (click)="toggleShowAllCashOut()">
+          {{ showAllCashOut ? 'Prikaži manje' : 'Prikaži još ' + hiddenCashOutCount }}
+        </button>
+      </div>
+
+      <div class="top-tainted" *ngIf="topTaintedNodes.length > 0">
+        <p class="panel-kicker">Najviše zaprljane adrese</p>
+        <p class="muted top-tainted-hint">Klikni na adresu da je pronađeš i fokusiraš na grafu.</p>
+        <ol>
+          <li *ngFor="let item of topTaintedNodes">
+            <button
+              type="button"
+              class="ranked-address-button"
+              [class.is-selected]="selectedNode?.id === item.address"
+              (click)="selectNodeFromList(item.address)"
+            >
+              <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
+              <span *ngIf="item.is_taint_seed" class="seed-tag">izvor</span>
+            </button>
+          </li>
+        </ol>
+        <button type="button" class="show-more-button" *ngIf="hiddenTopTaintedCount > 0" (click)="toggleShowAllTopTainted()">
+          {{ showAllTopTainted ? 'Prikaži manje' : 'Prikaži još ' + hiddenTopTaintedCount }}
+        </button>
+      </div>
+    </aside>
+  </div>
+</div>

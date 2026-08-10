@@ -58,7 +58,77 @@ export interface GraphNodeData {
   total_received?: number;
   total_sent?: number;
   net_flow?: number;
+  taint_percentage?: number;
+  is_taint_seed?: boolean;
+  /** How much of taint_percentage came from each seed address, e.g. {"0xA": 66.67,
+   * "0xB": 33.33} - only meaningful/populated when more than one seed was selected. */
+  taint_by_source?: Record<string, number>;
   [key: string]: unknown;
+}
+
+export interface TaintedHop {
+  rank: number;
+  source: string;
+  target: string;
+  timestamp: string;
+  amount: number;
+  tainted_amount: number;
+  taint_pct_at_hop: number;
+  source_taint_pct_after: number;
+  target_taint_pct_after: number;
+  /** What % of THIS hop's tainted amount came from each seed, e.g. {"0xA": 60, "0xB": 40}
+   * when funds from multiple seeds had already mixed together before this transfer. */
+  taint_by_source: Record<string, number>;
+  /** Whatever the source CSV's tx_hash/hash column carried for this exact transaction, if
+   * any - null when the evidence never had one. */
+  tx_metadata: string | null;
+}
+
+export interface TaintTimelineEntry {
+  rank: number;
+  taint_percentage: number;
+  /** "in" when this address received the transfer, "out" when it sent it - outflows leave
+   * the % unchanged (proportional haircut), so only "in" entries actually explain a
+   * percentage change; kept for both directions anyway so the full ledger is complete. */
+  direction: 'in' | 'out';
+  counterparty: string;
+  amount: number;
+  tainted_amount: number;
+  timestamp: string;
+  /** Per-seed split of this node's balance right after this exact event - lets the
+   * per-seed filter apply correctly while the timeline is scrubbing, not just in the
+   * final/full view (see taint-analysis.component.ts's nodeFilteredPct/getNodeTaintAtRank). */
+  taint_by_source: Record<string, number>;
+}
+
+export interface TaintTimelineEvent {
+  rank: number;
+  source: string;
+  target: string;
+  amount: number;
+  timestamp: string;
+  tx_metadata: string | null;
+}
+
+export interface TaintNodeResult {
+  address: string;
+  taint_percentage: number;
+  is_taint_seed: boolean;
+  taint_by_source: Record<string, number>;
+}
+
+export interface TaintAnalysisResult {
+  plugin: 'taint_analysis';
+  description: string;
+  seed_addresses: string[];
+  tainted_node_count: number;
+  tainted_hops: TaintedHop[];
+  results: TaintNodeResult[];
+  node_first_rank: Record<string, number>;
+  edge_first_rank: Record<string, number>;
+  node_taint_series: Record<string, TaintTimelineEntry[]>;
+  timeline_max_rank: number;
+  timeline_events: TaintTimelineEvent[];
 }
 
 export interface GraphLinkData {
@@ -138,18 +208,28 @@ export interface GraphSearchResult {
 }
 
 export type AddressType = 'contract' | 'eoa' | 'unknown';
+export type KnownEntityCategory = 'exchange' | 'mixer' | 'sanctioned';
+
+export interface KnownEntity {
+  name: string;
+  category: KnownEntityCategory;
+}
 
 export interface AddressEnrichment {
   address: string;
   address_type: AddressType;
   ens_name: string | null;
   balance_eth: number | null;
+  known_entity: string | null;
+  known_entity_category: KnownEntityCategory | null;
   first_seen_onchain: string | null;
   last_seen_onchain: string | null;
   funding_source: string | null;
   funding_amount_eth: number | null;
   funding_source_type: AddressType | null;
   funding_source_ens: string | null;
+  funding_source_entity: string | null;
+  funding_source_entity_category: KnownEntityCategory | null;
   tokens: string[];
   tokens_total_count: number;
 }
