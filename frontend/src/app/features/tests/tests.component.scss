@@ -44,8 +44,11 @@ h3 {
   margin: 0.4rem 0 0;
   max-width: 74ch;
   font-size: 0.85rem;
-  line-height: 1.55;
+  line-height: 1.6;
   color: #8ea6c7;
+  /* Keeps the paragraph from leaving one orphaned word (or a lone code span) on its own
+     line, which is what made the intro look ragged. */
+  text-wrap: pretty;
 }
 
 .panel-subtitle strong {
@@ -60,6 +63,8 @@ h3 {
   font-size: 0.8rem;
   color: #a5c9f0;
   background: rgba(255, 255, 255, 0.05);
+  /* A path must never be split across two lines mid-token. */
+  white-space: nowrap;
 }
 
 .toolbar {
@@ -190,16 +195,89 @@ h3 {
 }
 
 .test-item {
-  padding: 0.5rem 0.7rem;
   border-radius: 0.7rem;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(148, 163, 184, 0.1);
+  overflow: hidden;
 }
 
+/* The whole row is the toggle, so there is no small target to hunt for. */
 .test-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.test-row:hover {
+  background: rgba(96, 165, 250, 0.07);
+}
+
+.chevron {
+  color: #7788a4;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.16s ease;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.failed-flag {
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fecaca;
+  background: rgba(220, 38, 38, 0.22);
+}
+
+.test-detail {
+  padding: 0.2rem 0.7rem 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.detail-explanation {
+  margin: 0.6rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #b9c8e4;
+  white-space: pre-line;
+}
+
+.detail-block {
+  margin-top: 0.8rem;
+}
+
+.detail-label {
+  margin: 0 0 0.3rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8ea6c7;
+}
+
+.source-code {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.7rem;
+  background: rgba(4, 10, 20, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
 }
 
 .status-dot {

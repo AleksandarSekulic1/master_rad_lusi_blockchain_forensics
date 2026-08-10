@@ -13,6 +13,7 @@ docstring in app/services/test_scenarios.py for why that separation matters.
 
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 import tempfile
@@ -28,12 +29,82 @@ TESTS_DIR = BACKEND_ROOT / 'tests'
 RUN_TIMEOUT_SECONDS = 120
 
 
-def _readable_name(classname: str, name: str) -> str:
-    """"tests.test_taint_analysis.TestHaircutDilution" + "test_clean_inflow_dilutes_percentage"
-    -> "TestHaircutDilution · clean inflow dilutes percentage"."""
-    group = classname.split('.')[-1] if classname else ''
-    readable = name.removeprefix('test_').replace('_', ' ')
-    return f'{group} · {readable}' if group and group.startswith('Test') else readable
+def _split_docstring(docstring: str | None) -> tuple[str, str]:
+    """First line is the human-readable title, the rest is the explanation.
+
+    This is why the display name lives in the test's own docstring rather than in a
+    translation table somewhere else: renaming a test or changing what it checks updates
+    the UI automatically, so the two cannot drift apart.
+    """
+    if not docstring:
+        return '', ''
+    lines = [line.strip() for line in docstring.strip().splitlines()]
+    title = lines[0] if lines else ''
+    body = '\n'.join(lines[1:]).strip()
+    return title, body
+
+
+def _test_metadata() -> dict[str, dict[str, str]]:
+    """Docstring + source of every test function, read straight from the test files.
+
+    Parsed with `ast` rather than imported: reading the files can never execute them,
+    which keeps this safe to call from a request handler. Deliberately NOT cached - the
+    files are small, and a cache would keep serving the old docstring after a test is
+    edited, which is exactly the kind of quiet drift these tests exist to prevent.
+    """
+    metadata: dict[str, dict[str, str]] = {}
+    if not TESTS_DIR.exists():
+        return metadata
+
+    for path in sorted(TESTS_DIR.glob('test_*.py')):
+        try:
+            source = path.read_text(encoding='utf-8')
+            tree = ast.parse(source)
+        except (OSError, SyntaxError):
+            continue
+
+        def register(node: ast.FunctionDef, class_name: str, class_doc: str) -> None:
+            title, body = _split_docstring(ast.get_docstring(node))
+            metadata[node.name] = {
+                'title': title,
+                'explanation': body,
+                'source': ast.get_source_segment(source, node) or '',
+                'class_name': class_name,
+                'group_title': class_doc,
+                'module': path.stem,
+                'line': str(node.lineno),
+            }
+
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                group_title, _ = _split_docstring(ast.get_docstring(node))
+                for child in node.body:
+                    if isinstance(child, ast.FunctionDef) and child.name.startswith('test_'):
+                        register(child, node.name, group_title)
+            elif isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
+                register(node, '', '')
+
+    return metadata
+
+
+def _enrich(entry: dict[str, Any], raw_name: str) -> dict[str, Any]:
+    """Attaches the Serbian title/explanation/source pulled from the test file itself."""
+    meta = _test_metadata().get(raw_name)
+    if not meta:
+        # Fall back to a readable version of the function name so a test added without a
+        # docstring still shows up (unnamed, but never hidden).
+        entry['name'] = raw_name.removeprefix('test_').replace('_', ' ')
+        entry['explanation'] = ''
+        entry['source'] = ''
+        entry['group_title'] = entry.get('group', '')
+        return entry
+
+    entry['name'] = meta['title'] or raw_name.removeprefix('test_').replace('_', ' ')
+    entry['explanation'] = meta['explanation']
+    entry['source'] = meta['source']
+    entry['group_title'] = meta['group_title'] or meta['class_name']
+    entry['module'] = meta['module']
+    return entry
 
 
 def _module_of(classname: str) -> str:
@@ -59,7 +130,7 @@ def list_suite_tests() -> dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {'tests': [], 'total': 0, 'error': 'Isteklo vreme pri prikupljanju testova.'}
 
-    tests: list[dict[str, str]] = []
+    tests: list[dict[str, Any]] = []
     for line in completed.stdout.splitlines():
         line = line.strip()
         # "tests/test_taint_analysis.py::TestHaircutDilution::test_clean_inflow..."
@@ -69,13 +140,12 @@ def list_suite_tests() -> dict[str, Any]:
         file_part = parts[0]
         name = parts[-1]
         group = parts[1] if len(parts) > 2 else ''
-        tests.append({
+        tests.append(_enrich({
             'id': line,
-            'name': _readable_name(group, name),
             'raw_name': name,
             'group': group,
             'module': Path(file_part).stem,
-        })
+        }, name))
 
     return {'tests': tests, 'total': len(tests), 'error': None}
 
@@ -143,16 +213,15 @@ def _parse_junit_report(report_path: Path) -> dict[str, Any]:
             status = 'passed'
             message = None
 
-        results.append({
+        results.append(_enrich({
             'id': f'{classname}::{name}',
-            'name': _readable_name(classname, name),
             'raw_name': name,
             'group': classname.split('.')[-1] if classname.split('.')[-1].startswith('Test') else '',
             'module': _module_of(classname),
             'status': status,
             'message': message,
             'duration_ms': round(float(case.get('time', 0) or 0) * 1000, 2),
-        })
+        }, name))
 
     return {
         'results': results,

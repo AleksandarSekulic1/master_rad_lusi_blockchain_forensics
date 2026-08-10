@@ -93,10 +93,12 @@ export class TestsComponent implements OnInit {
     });
   }
 
+  /** Grouped by the containing class's Serbian docstring title, falling back to the class
+   * name for a class that has no docstring. */
   get suiteGroups(): Array<{ group: string; tests: SuiteTest[] }> {
     const byGroup = new Map<string, SuiteTest[]>();
     for (const test of this.suiteTests) {
-      const key = test.group || 'Ostalo';
+      const key = test.group_title || test.group || 'Ostali testovi';
       byGroup.set(key, [...(byGroup.get(key) ?? []), test]);
     }
     return [...byGroup.entries()].map(([group, tests]) => ({ group, tests }));

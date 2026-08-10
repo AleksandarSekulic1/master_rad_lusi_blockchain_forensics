@@ -8,9 +8,11 @@
         <p class="panel-kicker">Ispravnost algoritma</p>
         <h2>Sistemski testovi</h2>
         <p class="panel-subtitle">
-          Fiksni testovi nad taint algoritmom — provera haircut matematike, raspodele po izvorima i podataka za vremensku
-          traku. Nalaze se u verzionisanom kodu (<code>backend/tests/</code>) i <strong>ne mogu se menjati kroz aplikaciju</strong>:
-          kada bi dokaz ispravnosti mogao da se izmeni dok ne prođe, prestao bi da bude dokaz.
+          Fiksni testovi nad taint algoritmom — provera haircut matematike, raspodele po izvorima i podataka za vremensku traku.
+        </p>
+        <p class="panel-subtitle">
+          <strong>Ne mogu se menjati kroz aplikaciju</strong>, jer kada bi dokaz ispravnosti mogao da se izmeni dok ne prođe,
+          prestao bi da bude dokaz. Nalaze se u verzionisanom kodu.
         </p>
       </div>
       <div class="toolbar">
@@ -35,15 +37,27 @@
       <p class="group-title">{{ group.group }}</p>
       <ul class="test-list">
         <li *ngFor="let test of group.tests; trackBy: trackByTest" class="test-item" [ngClass]="'status-' + (test.status || 'unknown')">
-          <div class="test-row">
+          <button type="button" class="test-row" (click)="toggleTestDetails(test)" [attr.aria-expanded]="isTestExpanded(test)">
             <span class="status-dot"></span>
             <span class="test-name">{{ test.name }}</span>
+            <span class="failed-flag" *ngIf="test.status === 'failed'">pao</span>
             <span class="test-duration" *ngIf="test.duration_ms != null">{{ test.duration_ms | number : '1.0-0' }} ms</span>
-            <button type="button" class="detail-toggle" *ngIf="test.message" (click)="toggleTestDetails(test)">
-              {{ isTestExpanded(test) ? 'Sakrij' : 'Zašto je pao' }}
-            </button>
+            <span class="chevron" [class.open]="isTestExpanded(test)">›</span>
+          </button>
+
+          <div class="test-detail" *ngIf="isTestExpanded(test)">
+            <p class="detail-explanation" *ngIf="test.explanation">{{ test.explanation }}</p>
+
+            <div class="detail-block" *ngIf="test.message">
+              <p class="detail-label">Zašto je pao</p>
+              <pre class="failure-detail">{{ test.message }}</pre>
+            </div>
+
+            <div class="detail-block" *ngIf="test.source">
+              <p class="detail-label">Šta test tačno proverava</p>
+              <pre class="source-code">{{ test.source }}</pre>
+            </div>
           </div>
-          <pre class="failure-detail" *ngIf="isTestExpanded(test) && test.message">{{ test.message }}</pre>
         </li>
       </ul>
     </div>

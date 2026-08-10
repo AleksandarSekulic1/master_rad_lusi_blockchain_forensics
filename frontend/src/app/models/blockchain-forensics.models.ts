@@ -323,7 +323,14 @@ export interface ActivityLogEntry {
  * deliberately not editable through the API - see backend app/api/routes/tests.py. */
 export interface SuiteTest {
   id: string;
+  /** First line of the test's own docstring - the Serbian display name. */
   name: string;
+  /** Rest of the docstring: what the test proves and why it matters. */
+  explanation: string;
+  /** The test function's actual source, so the page can show exactly what is asserted. */
+  source: string;
+  /** First line of the containing class's docstring - the Serbian group heading. */
+  group_title: string;
   raw_name: string;
   group: string;
   module: string;

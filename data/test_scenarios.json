@@ -7,19 +7,19 @@
       {
         "sender": "0xThief",
         "recipient": "0xMixer",
-        "amount": 1000,
+        "amount": 1000.0,
         "timestamp": "2026-03-01T00:00:00Z"
       },
       {
         "sender": "0xCleanUser",
         "recipient": "0xMixer",
-        "amount": 500,
+        "amount": 500.0,
         "timestamp": "2026-03-01T00:05:00Z"
       },
       {
         "sender": "0xMixer",
         "recipient": "0xExitWallet",
-        "amount": 750,
+        "amount": 750.0,
         "timestamp": "2026-03-01T00:10:00Z"
       }
     ],
@@ -45,7 +45,7 @@
       }
     ],
     "created_at": "2026-08-10T16:12:20.512561+00:00",
-    "updated_at": "2026-08-10T16:12:20.512561+00:00",
+    "updated_at": "2026-08-10T16:54:09.305462+00:00",
     "created_by": "system"
   },
   {
