@@ -56,6 +56,12 @@ export const appRoutes: Routes = [
 			import('./features/activity-log/activity-log.component').then((module) => module.ActivityLogComponent),
 	},
 	{
+		path: 'tests',
+		canActivate: [adminGuard],
+		loadComponent: () =>
+			import('./features/tests/tests.component').then((module) => module.TestsComponent),
+	},
+	{
 		path: 'admin/users',
 		canActivate: [adminGuard],
 		loadComponent: () =>

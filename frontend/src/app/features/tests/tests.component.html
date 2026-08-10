@@ -1,0 +1,195 @@
+<section class="tests-page">
+  <p class="error-banner" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+  <!-- ============ Sistemski testovi (fiksni, samo za čitanje) ============ -->
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Ispravnost algoritma</p>
+        <h2>Sistemski testovi</h2>
+        <p class="panel-subtitle">
+          Fiksni testovi nad taint algoritmom — provera haircut matematike, raspodele po izvorima i podataka za vremensku
+          traku. Nalaze se u verzionisanom kodu (<code>backend/tests/</code>) i <strong>ne mogu se menjati kroz aplikaciju</strong>:
+          kada bi dokaz ispravnosti mogao da se izmeni dok ne prođe, prestao bi da bude dokaz.
+        </p>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="primary-button" (click)="runSuite()" [disabled]="isRunningSuite">
+          {{ isRunningSuite ? 'Pokretanje...' : 'Pokreni sistemske testove' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="summary-bar" *ngIf="suiteRan" [class.all-passed]="suiteFailed === 0" [class.has-failures]="suiteFailed > 0">
+      <span class="summary-icon">{{ suiteFailed === 0 ? '✓' : '✕' }}</span>
+      <strong>{{ suitePassed }} prošlo</strong>
+      <span *ngIf="suiteFailed > 0">· {{ suiteFailed }} palo</span>
+      <span class="muted">· {{ suiteDurationMs | number : '1.0-0' }} ms</span>
+    </div>
+    <p class="muted hint" *ngIf="!suiteRan && suiteTests.length > 0">
+      {{ suiteTests.length }} testova je pronađeno. Klikni "Pokreni sistemske testove" da vidiš rezultat.
+    </p>
+    <p class="error-banner" *ngIf="suiteError">{{ suiteError }}</p>
+
+    <div class="test-group" *ngFor="let group of suiteGroups">
+      <p class="group-title">{{ group.group }}</p>
+      <ul class="test-list">
+        <li *ngFor="let test of group.tests; trackBy: trackByTest" class="test-item" [ngClass]="'status-' + (test.status || 'unknown')">
+          <div class="test-row">
+            <span class="status-dot"></span>
+            <span class="test-name">{{ test.name }}</span>
+            <span class="test-duration" *ngIf="test.duration_ms != null">{{ test.duration_ms | number : '1.0-0' }} ms</span>
+            <button type="button" class="detail-toggle" *ngIf="test.message" (click)="toggleTestDetails(test)">
+              {{ isTestExpanded(test) ? 'Sakrij' : 'Zašto je pao' }}
+            </button>
+          </div>
+          <pre class="failure-detail" *ngIf="isTestExpanded(test) && test.message">{{ test.message }}</pre>
+        </li>
+      </ul>
+    </div>
+  </article>
+
+  <!-- ============ Validacioni scenariji (pun CRUD) ============ -->
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Referentni slučajevi</p>
+        <h2>Validacioni scenariji</h2>
+        <p class="panel-subtitle">
+          Scenario je <strong>opis podataka, ne kod</strong>: spisak transakcija, izvori (seed adrese) i procenti koji se
+          očekuju. Aplikacija ih propušta kroz <strong>pravi</strong> taint algoritam i uporedi rezultat — zato se mogu
+          slobodno kreirati, menjati i brisati, bez izvršavanja bilo kakvog unetog koda.
+        </p>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="ghost-button" (click)="startNewScenario()">Novi scenario</button>
+        <button type="button" class="primary-button" (click)="runAllScenarios()" [disabled]="isRunningScenarios || scenarios.length === 0">
+          {{ isRunningScenarios ? 'Pokretanje...' : 'Pokreni sve scenarije' }}
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="summary-bar"
+      *ngIf="scenarioSummary as summary"
+      [class.all-passed]="summary.failed === 0"
+      [class.has-failures]="summary.failed > 0"
+    >
+      <span class="summary-icon">{{ summary.failed === 0 ? '✓' : '✕' }}</span>
+      <strong>{{ summary.passed }} / {{ summary.total }} scenarija prošlo</strong>
+      <span *ngIf="summary.failed > 0">· {{ summary.failed }} nije</span>
+    </div>
+
+    <p class="status" *ngIf="statusMessage">{{ statusMessage }}</p>
+
+    <!-- Forma za kreiranje / izmenu -->
+    <div class="scenario-form" *ngIf="draft as form">
+      <h3>{{ form.id ? 'Izmena scenarija' : 'Novi scenario' }}</h3>
+
+      <label class="field">
+        Naziv
+        <input type="text" [(ngModel)]="form.name" placeholder="npr. Mikser razblažuje čistim prilivom" />
+      </label>
+      <label class="field">
+        Opis
+        <input type="text" [(ngModel)]="form.description" placeholder="Šta ovaj scenario dokazuje" />
+      </label>
+
+      <p class="field-label">Transakcije</p>
+      <div class="row-editor" *ngFor="let tx of form.transactions; let i = index">
+        <input type="text" [(ngModel)]="tx.sender" placeholder="pošiljalac" />
+        <span class="arrow">→</span>
+        <input type="text" [(ngModel)]="tx.recipient" placeholder="primalac" />
+        <input type="number" [(ngModel)]="tx.amount" placeholder="iznos" class="narrow" />
+        <input type="text" [(ngModel)]="tx.timestamp" placeholder="2026-03-01T00:00:00Z" />
+        <button type="button" class="remove-button" (click)="removeTransaction(i)" title="Ukloni">✕</button>
+      </div>
+      <button type="button" class="ghost-button small" (click)="addTransaction()">+ Dodaj transakciju</button>
+
+      <label class="field">
+        Izvori (seed adrese, odvojene zarezom)
+        <input type="text" [(ngModel)]="form.seedInput" placeholder="0xThief, 0xHacker2" />
+      </label>
+
+      <p class="field-label">Očekivani rezultati</p>
+      <div class="row-editor" *ngFor="let item of form.expectations; let i = index">
+        <input type="text" [(ngModel)]="item.address" placeholder="adresa" />
+        <span class="arrow">=</span>
+        <input type="number" [(ngModel)]="item.expected_percentage" placeholder="%" class="narrow" step="0.01" />
+        <span class="unit">%</span>
+        <button type="button" class="remove-button" (click)="removeExpectation(i)" title="Ukloni">✕</button>
+      </div>
+      <button type="button" class="ghost-button small" (click)="addExpectation()">+ Dodaj očekivanje</button>
+
+      <div class="form-actions">
+        <button type="button" class="primary-button" (click)="saveScenario()" [disabled]="isSaving">
+          {{ isSaving ? 'Čuvanje...' : 'Sačuvaj' }}
+        </button>
+        <button type="button" class="ghost-button" (click)="cancelEdit()">Odustani</button>
+      </div>
+    </div>
+
+    <!-- Lista scenarija -->
+    <div class="scenario-list" *ngIf="scenarios.length > 0; else noScenarios">
+      <div class="scenario-card" *ngFor="let scenario of scenarios; trackBy: trackByScenario">
+        <div class="scenario-head">
+          <div class="scenario-title">
+            <span
+              class="scenario-status"
+              *ngIf="resultFor(scenario) as result; else notRun"
+              [ngClass]="'status-' + result.status"
+            >
+              {{ result.status === 'passed' ? '✓ prošao' : result.status === 'error' ? '! greška' : '✕ pao' }}
+            </span>
+            <ng-template #notRun><span class="scenario-status status-unknown">nije pokrenut</span></ng-template>
+            <strong>{{ scenario.name }}</strong>
+          </div>
+          <div class="scenario-actions">
+            <button type="button" class="ghost-button small" (click)="runOneScenario(scenario)" [disabled]="runningScenarioId === scenario.id">
+              {{ runningScenarioId === scenario.id ? '...' : 'Pokreni' }}
+            </button>
+            <button type="button" class="ghost-button small" (click)="editScenario(scenario)">Izmeni</button>
+            <button type="button" class="ghost-button small danger" (click)="deleteScenario(scenario)">Obriši</button>
+          </div>
+        </div>
+
+        <p class="scenario-description" *ngIf="scenario.description">{{ scenario.description }}</p>
+
+        <div class="scenario-meta">
+          <span>{{ scenario.transactions.length }} transakcija</span>
+          <span>·</span>
+          <span>izvori: <code>{{ scenario.seed_addresses.join(', ') }}</code></span>
+        </div>
+
+        <div class="checks" *ngIf="resultFor(scenario) as result">
+          <p class="scenario-error" *ngIf="result.error">{{ result.error }}</p>
+          <table *ngIf="result.checks.length > 0">
+            <thead>
+              <tr>
+                <th>Adresa</th>
+                <th>Očekivano</th>
+                <th>Dobijeno</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let check of result.checks" [class.check-failed]="!check.passed">
+                <td class="mono">{{ check.address }}</td>
+                <td>{{ check.expected_percentage }}%</td>
+                <td>
+                  {{ check.actual_percentage != null ? check.actual_percentage + '%' : '—' }}
+                  <span class="check-message" *ngIf="check.message">{{ check.message }}</span>
+                </td>
+                <td class="check-mark">{{ check.passed ? '✓' : '✕' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <ng-template #noScenarios>
+      <p class="empty-state">Nema definisanih scenarija. Klikni "Novi scenario" da dodaš prvi.</p>
+    </ng-template>
+  </article>
+</section>

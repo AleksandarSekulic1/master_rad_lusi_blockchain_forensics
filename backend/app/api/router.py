@@ -9,6 +9,7 @@ from app.api.routes.cases import router as cases_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.onchain import router as onchain_router
+from app.api.routes.tests import router as tests_router
 from app.api.routes.upload import router as upload_router
 from app.api.routes.users import router as users_router
 
@@ -33,3 +34,6 @@ api_router.include_router(activity_log_router, dependencies=authenticated)
 
 # User administration is admin-only.
 api_router.include_router(users_router, dependencies=[Depends(require_admin)])
+# So is the correctness test suite - each route also declares require_admin itself, since
+# it needs the caller's identity for the audit log anyway.
+api_router.include_router(tests_router, dependencies=[Depends(require_admin)])
