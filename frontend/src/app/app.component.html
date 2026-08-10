@@ -11,6 +11,8 @@
       <a routerLink="/graph" routerLinkActive="active">Graf</a>
       <a routerLink="/taint" routerLinkActive="active">Taint analiza</a>
       <a routerLink="/reports" routerLinkActive="active">Izveštaji</a>
+      <a routerLink="/activity-log" routerLinkActive="active">Log</a>
+      <a routerLink="/tests" routerLinkActive="active" *ngIf="user.role === 'admin'">Testovi</a>
       <a routerLink="/admin/users" routerLinkActive="active" *ngIf="user.role === 'admin'">Administracija</a>
       <span class="user-chip">{{ user.username }}</span>
       <button type="button" class="logout-button" (click)="logout()">Odjava</button>

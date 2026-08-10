@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.analytics.graph_building import (
@@ -12,6 +12,8 @@ from app.analytics.graph_building import (
 )
 from app.analytics.ingestion import clean_transaction_csv
 from app.analytics.path_finding import find_transaction_paths
+from app.api.deps import get_current_user
+from app.evidence.audit_log import write_audit_log
 from app.paths import RAW_DIR
 
 
@@ -139,7 +141,10 @@ def get_graph(file_name: str | None = None) -> dict[str, object]:
 
 
 @router.post("/path-finding")
-def calculate_paths(request: PathFindingRequest) -> dict[str, object]:
+def calculate_paths(
+    request: PathFindingRequest,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
     csv_path = _resolve_csv_path(request.file_name)
     cleaned_frame = clean_transaction_csv(csv_path)
 
@@ -154,6 +159,22 @@ def calculate_paths(request: PathFindingRequest) -> dict[str, object]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # Path finding runs straight off a raw CSV rather than through the case system, so
+    # there is no case_id to attach here - the source file name is the only scope this
+    # particular feature actually has, and the log says so rather than inventing one.
+    write_audit_log(
+        action='path_finding',
+        user=str(current_user['username']),
+        file_name=csv_path.name,
+        details={
+            'source_address': request.source_address,
+            'target_address': request.target_address,
+            'strategy': request.strategy,
+            'cutoff': request.cutoff,
+            'paths_found': len(result.get('paths', [])) if isinstance(result.get('paths'), list) else None,
+        },
+    )
 
     result["source_file"] = csv_path.name
     result["rows"] = int(len(cleaned_frame))

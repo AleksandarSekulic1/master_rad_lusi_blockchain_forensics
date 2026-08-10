@@ -159,7 +159,7 @@ Ovo je i sam po sebi koristan forenzički nalaz za tezu: pokazuje kako se taint 
 
 ## 8. Napredne funkcije Taint analize
 
-Ove tri funkcije su dodate posle osnovne taint analize opisane u sekciji 6, da bi analiza bila detaljnija i transparentnija — svaka je testirana na `demo_taint_dilution.csv` (isti fajl iz 6.1), da brojevi budu proverljivi.
+Ove funkcije su dodate posle osnovne taint analize opisane u sekciji 6, da bi analiza bila detaljnija i transparentnija — svaka je testirana na `demo_taint_dilution.csv` (isti fajl iz 6.1), da brojevi budu proverljivi.
 
 ### 8.1 Filter po pojedinačnom izvoru
 
@@ -264,3 +264,49 @@ Pošto ova provera ne zove Etherscan (čist lokalni pretraga po heš-mapi), radi
 4. Pomeri na **transakciju 5/8** (`Hacker2 → LaunderingHub`): `0xLaunderingHub` treba SADA da pokaže **60%**, a ne 100% kao pre popravke — ovo je ključni trenutak koji direktno dokazuje da filter tokom trake sada ispravno računa istorijsku (as-of-poziciji), a ne konačnu raspodelu.
 5. Pomeri na **transakciju 6/8** (`LaunderingHub → FinalDestination`): `0xFinalDestination` treba da pokaže **60%**, a strelica između njih natpis **"60%"** (ne "60%+40%") — ovim se potvrđuje da su i čvorovi i grane usklađeni, i da se poklapaju sa konačnim rezultatom iz 8.1.
 6. Klikni **"Prikaži sve izvore"** i ponovo prođi kroz rangove 4-6 — svuda treba da piše **100%** — ovim se potvrđuje da puni (nefiltrirani) prikaz nije pokvaren popravkom.
+
+## 9. Log aktivnosti (chain of custody)
+
+Za razliku od sekcije 8, ovo nije funkcija taint analize nego cele aplikacije — beleži se **svaka** radnja analitičara, od otpremanja dokaza do pokretanja analize.
+
+### 9.1 Šta se beleži i zašto
+
+**Šta radi:** svaka značajna akcija u aplikaciji upisuje jedan zapis u append-only log (`logs/audit_log.jsonl`). Zapis sadrži vreme, korisnika, tip akcije, slučaj (ID **i naziv**) i parametre specifične za tu akciju:
+
+| Akcija | Kada nastaje | Šta se dodatno beleži |
+|---|---|---|
+| `csv_upload` | otpremanje CSV dokaza | naziv fajla, SHA-256, veličina |
+| `onchain_fetch_*` | povlačenje transakcija sa blockchain-a | mreža, režim, upit, broj transakcija, SHA-256 |
+| `analytics_run` | **pokretanje analize (uklj. taint)** | seed adrese, opseg evidencije, broj redova i čvorova |
+| `path_finding` | pretraga putanja na grafu | polazna/ciljna adresa, strategija, broj nađenih putanja |
+| `case_created` / `case_status_changed` / `case_deleted` | rad sa slučajevima | prethodni → novi status |
+
+**Zašto je ovo bitno:** ranije se beležilo samo *kako je dokaz stigao* (upload/fetch), ali ne i *šta je s njim rađeno*. To je bila stvarna rupa u lancu dokaza: dva analitičara koja pokrenu istu analizu nad različitim opsegom evidencije ili sa različitim seed adresama legitimno dobiju **različite procente** — bez ovog zapisa nije bilo načina da se naknadno rekonstruiše iz kog tačno pokretanja potiče sporni broj.
+
+**Ključni detalj — naziv slučaja se pamti u trenutku akcije**, a ne rezoluje kasnije iz ID-a. Ako se slučaj kasnije preimenuje ili obriše, log i dalje tačno kaže kako se zvao kad je akcija izvršena. Zbog istog principa se u logu i dalje vide korisnici kojih više nema u sistemu — istorija se ne prepisuje kad se nalog ukloni.
+
+### 9.2 Stranica "Log" — testiranje
+
+**Šta radi:** dugme **"Log"** u glavnom meniju (vidljivo svim ulogovanim korisnicima) otvara stranicu sa hronološkim pregledom akcija, najnovije prvo. Akcije su obojene po tipu (plavo = dokazi, žuto = analize, ljubičasto = slučajevi), a klik na "Prikaži" u redu otvara sve sirove parametre te akcije.
+
+**Ko šta vidi:** običan korisnik (analitičar) vidi **isključivo svoje** akcije; administrator vidi akcije **svih** naloga i može ih filtrirati po pojedinačnom korisniku. Ovo ograničenje je sprovedeno **na serveru** — nije stvar prikaza.
+
+**Testiranje kao analitičar (npr. nalog `aco`):**
+
+1. Prijavi se kao ne-admin nalog, pokreni bilo koju taint analizu, pa otvori **"Log"**. Na vrhu liste treba da bude zapis **"Pokrenuta analiza"** sa tvojim korisničkim imenom — ovim se potvrđuje da se pokretanje analize uopšte beleži (ranije se nije).
+2. U koloni **"Slučaj"** tog zapisa treba da stoje naziv slučaja i ispod njega ID — ovim se potvrđuje da se zna **za koji je slučaj** analiza pokrenuta, što je i bio glavni zahtev.
+3. Klikni **"Prikaži"** na tom redu — treba da se otvore seed adrese, opseg evidencije i broj čvorova — ovim se potvrđuje da se beleže i **parametri** analize, ne samo činjenica da je pokrenuta.
+4. Proveri da u listi **nema** akcija drugih korisnika — ovim se potvrđuje da analitičar ne vidi tuđi rad.
+5. Otpremi neki CSV ili povuci transakcije sa blockchain-a, pa se vrati na "Log" — nova akcija se pojavljuje sama u roku od ~20 sekundi (indikator **"Uživo"**), bez ručnog osvežavanja — ovim se potvrđuje automatsko osvežavanje. Klikom na "Uživo" se pauzira, klikom na "Osveži" se učitava ručno.
+
+**Testiranje kao administrator:**
+
+6. Prijavi se kao `admin` i otvori "Log" — treba da vidiš izmešane akcije svih naloga, a u zaglavlju da piše da su prikazane akcije **svih korisnika** — ovim se potvrđuje admin opseg.
+7. Iz padajućeg menija **"Korisnik"** izaberi jedan nalog — lista se sužava samo na njegove akcije; opcija "Svi korisnici" vraća pun prikaz — ovim se potvrđuje filtriranje po nalogu.
+8. Padajući meni sadrži naloge iz iste liste koja se vidi na strani "Administracija" — ovim se potvrđuje da je filter povezan sa stvarnim nalozima, a ne sa proizvoljnim imenima iz loga.
+
+**Provera bezbednosti (opciono, tehnički):** ulogovan kao analitičar, ručno pozovi `GET /api/v1/activity-log?user=admin` (npr. preko Swagger-a na `http://localhost:8000/docs`) — server i dalje vraća **samo tvoje** zapise, jer opseg određuje uloga iz tokena, a ne parametar iz upita. Ovim se potvrđuje da filtriranje nije samo kozmetičko na frontend-u.
+
+### 9.3 Veza sa izveštajem slučaja
+
+Postojeći backend izveštaj slučaja (`/api/v1/exports/cases/{id}/report.csv` i `.pdf`) već čita isti log za svoj "chain of custody" deo, pa se **pokrenute analize sada automatski pojavljuju i tamo** — ranije su u tom delu izveštaja postojali samo zapisi o otpremanju dokaza.

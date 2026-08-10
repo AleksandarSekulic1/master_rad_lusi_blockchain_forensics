@@ -4,6 +4,7 @@ import { Observable, of } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
+  ActivityLogResponse,
   AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
@@ -19,6 +20,11 @@ import {
   PathFindingRequest,
   PathFindingResponse,
   ResetLinkResponse,
+  ScenarioRequest,
+  ScenarioRunResponse,
+  SuiteListResponse,
+  SuiteRunResponse,
+  TestScenario,
   UploadCsvResponse,
   UserStatus,
 } from '../../models/blockchain-forensics.models';
@@ -125,5 +131,50 @@ export class ApiService {
 
   generateResetLink(userId: string): Observable<ResetLinkResponse> {
     return this.http.post<ResetLinkResponse>(`${this.apiUrl}/api/v1/users/${userId}/reset-link`, {});
+  }
+
+  // --- Correctness tests (admin only; the backend enforces that, not these methods) ---
+
+  listSuiteTests(): Observable<SuiteListResponse> {
+    return this.http.get<SuiteListResponse>(`${this.apiUrl}/api/v1/tests/suite`);
+  }
+
+  runSuite(): Observable<SuiteRunResponse> {
+    return this.http.post<SuiteRunResponse>(`${this.apiUrl}/api/v1/tests/suite/run`, {});
+  }
+
+  listScenarios(): Observable<{ scenarios: TestScenario[] }> {
+    return this.http.get<{ scenarios: TestScenario[] }>(`${this.apiUrl}/api/v1/tests/scenarios`);
+  }
+
+  createScenario(request: ScenarioRequest): Observable<TestScenario> {
+    return this.http.post<TestScenario>(`${this.apiUrl}/api/v1/tests/scenarios`, request);
+  }
+
+  updateScenario(scenarioId: string, request: ScenarioRequest): Observable<TestScenario> {
+    return this.http.put<TestScenario>(`${this.apiUrl}/api/v1/tests/scenarios/${scenarioId}`, request);
+  }
+
+  deleteScenario(scenarioId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/tests/scenarios/${scenarioId}`);
+  }
+
+  runScenarios(scenarioId?: string | null): Observable<ScenarioRunResponse> {
+    const params = scenarioId ? new HttpParams().set('scenario_id', scenarioId) : undefined;
+    return this.http.post<ScenarioRunResponse>(`${this.apiUrl}/api/v1/tests/scenarios/run`, {}, { params });
+  }
+
+  /** Recorded analyst actions, newest first. `user` is only honoured for admins - the
+   * backend narrows everyone else to their own entries regardless of what's passed, so
+   * this parameter is a convenience for the admin filter, not an access control. */
+  getActivityLog(options?: { user?: string | null; caseId?: string | null; limit?: number }): Observable<ActivityLogResponse> {
+    let params = new HttpParams().set('limit', String(options?.limit ?? 200));
+    if (options?.user) {
+      params = params.set('user', options.user);
+    }
+    if (options?.caseId) {
+      params = params.set('case_id', options.caseId);
+    }
+    return this.http.get<ActivityLogResponse>(`${this.apiUrl}/api/v1/activity-log`, { params });
   }
 }

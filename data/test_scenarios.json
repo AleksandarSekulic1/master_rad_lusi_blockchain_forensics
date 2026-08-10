@@ -1,0 +1,93 @@
+[
+  {
+    "id": "107d1ca1e77a",
+    "name": "Mikser razblazuje cistim prilivom",
+    "description": "Ukradenih 1000 se mesa sa 500 cistih - ocekuje se pad na 66.67% (scenario 6.1).",
+    "transactions": [
+      {
+        "sender": "0xThief",
+        "recipient": "0xMixer",
+        "amount": 1000.0,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xCleanUser",
+        "recipient": "0xMixer",
+        "amount": 500.0,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xMixer",
+        "recipient": "0xExitWallet",
+        "amount": 750.0,
+        "timestamp": "2026-03-01T00:10:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xThief"
+    ],
+    "expectations": [
+      {
+        "address": "0xThief",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xMixer",
+        "expected_percentage": 66.67
+      },
+      {
+        "address": "0xExitWallet",
+        "expected_percentage": 66.67
+      },
+      {
+        "address": "0xCleanUser",
+        "expected_percentage": 0.0
+      }
+    ],
+    "created_at": "2026-08-10T16:12:20.512561+00:00",
+    "updated_at": "2026-08-10T16:54:09.305462+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "6e12af1133fd",
+    "name": "Dva nezavisna izvora se spajaju (60/40)",
+    "description": "Dva hakera uplacuju 600 i 400 na isti hub - ukupno 100%, ali podeljeno 60/40.",
+    "transactions": [
+      {
+        "sender": "0xHacker1",
+        "recipient": "0xLaunderingHub",
+        "amount": 600,
+        "timestamp": "2026-04-01T00:00:00Z"
+      },
+      {
+        "sender": "0xHacker2",
+        "recipient": "0xLaunderingHub",
+        "amount": 400,
+        "timestamp": "2026-04-01T00:05:00Z"
+      },
+      {
+        "sender": "0xLaunderingHub",
+        "recipient": "0xFinalDestination",
+        "amount": 800,
+        "timestamp": "2026-04-01T00:10:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xHacker1",
+      "0xHacker2"
+    ],
+    "expectations": [
+      {
+        "address": "0xLaunderingHub",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xFinalDestination",
+        "expected_percentage": 100.0
+      }
+    ],
+    "created_at": "2026-08-10T16:12:20.512561+00:00",
+    "updated_at": "2026-08-10T16:12:20.512561+00:00",
+    "created_by": "system"
+  }
+]

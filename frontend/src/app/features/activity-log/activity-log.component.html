@@ -1,0 +1,159 @@
+<section class="activity-page">
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Chain of custody</p>
+        <h2>Log aktivnosti</h2>
+        <p class="panel-subtitle" *ngIf="scope === 'all'; else selfScope">
+          Prikazane su akcije <strong>svih korisnika</strong>: otpremanje dokaza, povlačenje transakcija, pokretanje analiza,
+          testovi i izmene slučajeva.
+        </p>
+        <ng-template #selfScope>
+          <p class="panel-subtitle">
+            Prikazane su <strong>vaše</strong> akcije: otpremanje dokaza, povlačenje transakcija, pokretanje analiza i izmene
+            slučajeva.
+          </p>
+        </ng-template>
+      </div>
+
+      <div class="toolbar">
+        <label class="user-filter" *ngIf="isAdmin && availableUsers.length > 0">
+          <span>Korisnik</span>
+          <select [(ngModel)]="selectedUser" (ngModelChange)="onUserFilterChange()">
+            <option value="">Svi korisnici</option>
+            <option *ngFor="let username of availableUsers" [value]="username">{{ username }}</option>
+          </select>
+        </label>
+
+        <button
+          type="button"
+          class="ghost-button auto-toggle"
+          [class.active]="autoRefreshEnabled"
+          (click)="toggleAutoRefresh()"
+          [title]="autoRefreshEnabled ? 'Automatsko osvežavanje je uključeno (svakih 20s)' : 'Automatsko osvežavanje je isključeno'"
+        >
+          <span class="pulse-dot" *ngIf="autoRefreshEnabled"></span>
+          {{ autoRefreshEnabled ? 'Uživo' : 'Pauzirano' }}
+        </button>
+
+        <button type="button" class="primary-button" (click)="loadEntries()" [disabled]="isLoading">
+          {{ isLoading ? 'Osvežavanje...' : 'Osveži' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="meta-row">
+      <span class="count-chip">{{ entries.length }} {{ entries.length === 1 ? 'zapis' : 'zapisa' }}</span>
+      <span class="muted" *ngIf="lastRefreshed">Poslednje osveženo: {{ lastRefreshed | date : 'HH:mm:ss' }}</span>
+      <span class="muted" *ngIf="scope === 'self'">Vidite isključivo sopstvene akcije.</span>
+    </div>
+
+    <p class="error-banner" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+    <div class="table-wrapper" *ngIf="entries.length > 0; else emptyLog">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-time">Vreme</th>
+            <th class="col-user">Korisnik</th>
+            <th class="col-action">Akcija</th>
+            <th class="col-case">Slučaj</th>
+            <th class="col-summary">Detalji</th>
+            <th class="col-toggle"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngFor="let entry of entries; trackBy: trackByEntry">
+            <tr class="log-row" [class.is-expanded]="isExpanded(entry)">
+              <td class="col-time">
+                <span class="time-main">{{ entry.timestamp | date : 'dd.MM.yyyy.' }}</span>
+                <span class="time-sub">{{ entry.timestamp | date : 'HH:mm:ss' }}</span>
+              </td>
+              <td class="col-user">
+                <span class="user-badge">{{ entry.user }}</span>
+              </td>
+              <td class="col-action">
+                <span class="action-tag" [ngClass]="'group-' + presentation(entry.action).group">
+                  <span class="action-icon">{{ presentation(entry.action).icon }}</span>
+                  {{ presentation(entry.action).label }}
+                </span>
+              </td>
+              <td class="col-case">
+                <ng-container [ngSwitch]="entryScope(entry).kind">
+                  <ng-container *ngSwitchCase="'case'">
+                    <span class="case-name" *ngIf="entry.case_name; else unrecordedName">{{ entry.case_name }}</span>
+                    <ng-template #unrecordedName>
+                      <span class="case-name unrecorded" title="Naziv slučaja se nije beležio u trenutku ove akcije">
+                        naziv nije zabeležen
+                      </span>
+                    </ng-template>
+                    <span class="case-id">{{ entry.case_id }}</span>
+                  </ng-container>
+
+                  <ng-container *ngSwitchCase="'scope'">
+                    <span class="scope-chip">{{ entryScope(entry).label }}</span>
+                    <span class="case-id" *ngIf="entryScope(entry).sub as sub">{{ sub }}</span>
+                  </ng-container>
+
+                  <span *ngSwitchDefault class="muted">—</span>
+                </ng-container>
+              </td>
+              <td class="col-summary">
+                <span class="summary-text">{{ summary(entry) }}</span>
+              </td>
+              <td class="col-toggle">
+                <button
+                  type="button"
+                  class="detail-toggle"
+                  *ngIf="hasDetails(entry) || entry.sha256"
+                  (click)="toggleDetails(entry)"
+                  [attr.aria-expanded]="isExpanded(entry)"
+                >
+                  {{ isExpanded(entry) ? 'Sakrij' : 'Prikaži' }}
+                </button>
+              </td>
+            </tr>
+            <tr class="detail-row" *ngIf="isExpanded(entry)">
+              <td colspan="6">
+                <div class="detail-panel">
+                  <dl>
+                    <div *ngIf="entry.case_id">
+                      <dt>Slučaj (ID)</dt>
+                      <dd class="mono">{{ entry.case_id }}</dd>
+                    </div>
+                    <div *ngIf="entry.case_name">
+                      <dt>Naziv slučaja u trenutku akcije</dt>
+                      <dd>{{ entry.case_name }}</dd>
+                    </div>
+                    <div *ngIf="entry.file_name">
+                      <dt>Fajl</dt>
+                      <dd class="mono">{{ entry.file_name }}</dd>
+                    </div>
+                    <div *ngIf="entry.sha256">
+                      <dt>SHA-256</dt>
+                      <dd class="mono hash">{{ entry.sha256 }}</dd>
+                    </div>
+                    <div *ngFor="let pair of detailPairs(entry)">
+                      <dt>{{ pair.key }}</dt>
+                      <dd class="mono">{{ pair.value }}</dd>
+                    </div>
+                    <div>
+                      <dt>Puna vremenska oznaka</dt>
+                      <dd class="mono">{{ entry.timestamp }}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </td>
+            </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
+
+    <ng-template #emptyLog>
+      <p class="empty-state" *ngIf="!isLoading">
+        Nema zabeleženih akcija{{ selectedUser ? ' za korisnika "' + selectedUser + '"' : '' }}.
+      </p>
+    </ng-template>
+  </article>
+</section>

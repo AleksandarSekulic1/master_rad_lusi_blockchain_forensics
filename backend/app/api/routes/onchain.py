@@ -104,6 +104,13 @@ def fetch_transactions(
         action=f'onchain_fetch_{request.network}_{action_suffix}',
         user=user,
         case_id=str(case['id']),
+        case_name=str(case.get('name') or ''),
+        details={
+            'network': request.network,
+            'mode': action_suffix,
+            'query': label,
+            'rows_fetched': int(len(dataframe)),
+        },
     )
 
     preview_frame = dataframe.head(5)
