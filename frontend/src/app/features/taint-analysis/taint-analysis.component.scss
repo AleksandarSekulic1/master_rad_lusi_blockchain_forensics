@@ -492,6 +492,33 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.entity-badge {
+  display: block;
+  margin: 0.25rem 0 0 0.5rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  width: fit-content;
+}
+
+.entity-badge.entity-exchange {
+  background: rgba(125, 211, 252, 0.14);
+  color: #7dd6ff;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+}
+
+.entity-badge.entity-mixer {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.entity-badge.entity-sanctioned {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
 .dilution-down {
   color: #86efac;
 }

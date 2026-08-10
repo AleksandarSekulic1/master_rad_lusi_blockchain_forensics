@@ -17,17 +17,20 @@ from app.services.case_management import append_evidence, get_case, require_open
 DEMO_CASE_ID = '46ae7f91db9b'
 FILE_NAME = 'demo_taint_dilution.csv'
 
-# Original dilution scenario (0xThief seeds 1000, 0xCleanUser adds 500 unrelated/clean,
-# 0xMixer forwards 750 onward - 66.67% at the mixer/exit wallet with 0xThief alone as
-# seed) PLUS a second, independent scenario appended below it: two DISTINCT dirty
-# sources (not one dirty + one clean) converging into the same hub. Seed 0xHacker1 +
-# 0xHacker2 together to see the proportional split show up on the graph - verified by
-# hand and by run_taint_analysis directly: 0xLaunderingHub ends up 100% tainted, split
-# exactly 60/40, and the 0xLaunderingHub -> 0xFinalDestination hop carries that same
-# 60/40 split, so the arrow between them reads "60%+40%" instead of one plain number.
-# The two scenarios don't share any address, so testing one never affects the other -
-# the original single-seed (0xThief) numbers documented in BLOCKCHAIN-UVOZ.md still hold
-# exactly as before.
+# Three independent scenarios in one file, none sharing an address, so testing any one of
+# them never affects the numbers already documented for the others in BLOCKCHAIN-UVOZ.md:
+#
+# 1. Dilution (0xThief seeds 1000, 0xCleanUser adds 500 unrelated/clean, 0xMixer forwards
+#    750 onward) - 66.67% at the mixer/exit wallet with 0xThief alone as seed.
+# 2. Multi-source (0xHacker1 600 + 0xHacker2 400 into the same hub) - proportional 60/40
+#    split shows up on 0xLaunderingHub and the arrow to 0xFinalDestination reads "60%+40%"
+#    instead of one plain number.
+# 3. Known-entity cash-out: 0xExchangeHacker -> 0xExchangeMule -> a REAL, well-known
+#    Binance deposit address (0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be, see
+#    known_entities.json) - single unbroken chain, so both hops stay 100% tainted, and the
+#    final address is both a cash-out candidate (no further outgoing transfer in this
+#    evidence) AND resolves to a real known exchange, demonstrating the two signals
+#    reinforcing each other instead of a synthetic placeholder name.
 CSV_CONTENT = (
     'sender_address,recipient_address,amount,timestamp\n'
     '0xThief,0xMixer,1000,2026-03-01T00:00:00Z\n'
@@ -36,6 +39,8 @@ CSV_CONTENT = (
     '0xHacker1,0xLaunderingHub,600,2026-04-01T00:00:00Z\n'
     '0xHacker2,0xLaunderingHub,400,2026-04-01T00:05:00Z\n'
     '0xLaunderingHub,0xFinalDestination,800,2026-04-01T00:10:00Z\n'
+    '0xExchangeHacker,0xExchangeMule,200,2026-06-01T00:00:00Z\n'
+    '0xExchangeMule,0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be,200,2026-06-01T00:05:00Z\n'
 )
 
 

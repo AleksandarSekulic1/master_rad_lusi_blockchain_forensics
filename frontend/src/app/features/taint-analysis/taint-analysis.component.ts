@@ -19,6 +19,7 @@ import {
   CaseSummary,
   EvidenceEntry,
   GraphNodeData,
+  KnownEntity,
   KnownEntityCategory,
   NodeLinkGraphResponse,
   TaintAnalysisResult,
@@ -106,6 +107,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * seed, it just excludes its share from what's drawn, so you can isolate one source's own
    * spread when several independent seeds happen to converge on the same addresses. */
   protected activeSeeds = new Set<string>();
+  /** Only holds CONFIRMED matches (address -> known entity) - see loadCashOutEntities. */
+  protected cashOutEntities = new Map<string, KnownEntity>();
 
   protected selectedEdgeDetails: {
     source: string;
@@ -246,6 +249,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.timelinePosition = 1;
     this.timelineMaxRank = 0;
     this.activeSeeds.clear();
+    this.cashOutEntities.clear();
   }
 
   startNewAnalysis(): void {
@@ -401,6 +405,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         // natural direction, rather than starting blank and having to press play first.
         this.timelinePosition = this.timelineMaxRank || 1;
         this.timelineEnabled = false;
+        this.cashOutEntities.clear();
+        this.loadCashOutEntities();
         this.renderGraph();
       },
       error: () => {
@@ -417,7 +423,11 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   /** Nodes that received tainted funds but never sent anything onward in this evidence -
    * the natural candidates for "where did the money leave the traceable network" (a real
    * cash-out, or simply outside this case's evidence window). Seeds are excluded even if
-   * they also never send anything, since they're the origin of the trail, not its end. */
+   * they also never send anything, since they're the origin of the trail, not its end.
+   * Whichever of these also resolve to a known exchange/mixer/sanctioned address (see
+   * cashOutEntities) are pulled to the top - "the money reached an address we can
+   * actually name and subpoena" is a stronger finding than "no further outflow recorded",
+   * even before comparing percentages. */
   get cashOutCandidates(): TaintNodeResult[] {
     if (!this.graph) {
       return [];
@@ -429,7 +439,37 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
     return this.nonZeroTaintedNodes
       .filter((item) => !item.is_taint_seed && (outDegree.get(item.address) ?? 0) === 0)
-      .sort((a, b) => b.taint_percentage - a.taint_percentage);
+      .sort((a, b) => {
+        const aKnown = this.cashOutEntities.has(a.address) ? 1 : 0;
+        const bKnown = this.cashOutEntities.has(b.address) ? 1 : 0;
+        return aKnown !== bKnown ? bKnown - aKnown : b.taint_percentage - a.taint_percentage;
+      });
+  }
+
+  /** Fires once per taint run (see runTaintAnalysis) rather than reactively off the
+   * cashOutCandidates getter, since that getter re-evaluates on every change-detection
+   * pass - without a one-shot trigger this would re-issue the same HTTP request
+   * continuously. Only matches are stored (not every checked-and-empty result), so
+   * "not in the map yet" and "checked, no match" both simply mean no badge is shown -
+   * this lookup is a nice-to-have, not something worth a loading spinner over. */
+  private loadCashOutEntities(): void {
+    const addresses = this.cashOutCandidates.map((item) => item.address);
+    if (addresses.length === 0) {
+      return;
+    }
+    this.api.getKnownEntities(addresses).subscribe({
+      next: (result) => {
+        for (const [address, entity] of Object.entries(result)) {
+          if (entity) {
+            this.cashOutEntities.set(address, entity);
+          }
+        }
+      },
+      error: () => {
+        // Silently skip - this only decorates the list with an extra badge, the
+        // underlying cash-out detection itself doesn't depend on it.
+      },
+    });
   }
 
   get topTaintedNodes(): TaintNodeResult[] {

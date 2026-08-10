@@ -206,6 +206,11 @@ export interface GraphSearchResult {
 export type AddressType = 'contract' | 'eoa' | 'unknown';
 export type KnownEntityCategory = 'exchange' | 'mixer' | 'sanctioned';
 
+export interface KnownEntity {
+  name: string;
+  category: KnownEntityCategory;
+}
+
 export interface AddressEnrichment {
   address: string;
   address_type: AddressType;

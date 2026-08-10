@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-07-16T16:48:06.761081+00:00",
-  "updated_at": "2026-08-02T18:30:01.710536+00:00",
+  "updated_at": "2026-08-10T10:25:59.235060+00:00",
   "evidence": [
     {
       "file_name": "demo_case.csv",
@@ -33,14 +33,14 @@
     },
     {
       "file_name": "demo_taint_dilution.csv",
-      "stored_name": "20260802_183001_689297_demo_taint_dilution.csv",
-      "imported_at": "2026-08-02T18:30:01.710536+00:00",
-      "size_bytes": 352,
-      "sha256": "d547083fa8d2065fafb5ad72374b5976419e3700f936a4f1579809b796721ebf",
+      "stored_name": "20260810_102559_203414_demo_taint_dilution.csv",
+      "imported_at": "2026-08-10T10:25:59.235060+00:00",
+      "size_bytes": 485,
+      "sha256": "1bedf221bd1bab3f73371c8fa40b070b33102df8cb47011a6acc84156a269e3d",
       "analyst": "admin"
     }
   ],
   "evidence_count": 4,
-  "total_size_bytes": 1357,
-  "last_imported_at": "2026-08-02T18:30:01.710536+00:00"
+  "total_size_bytes": 1490,
+  "last_imported_at": "2026-08-10T10:25:59.235060+00:00"
 }

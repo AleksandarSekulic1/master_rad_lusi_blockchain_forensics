@@ -514,6 +514,15 @@
             >
               <span class="mono-address">{{ item.address }}</span> — {{ item.taint_percentage }}%
             </button>
+            <span
+              *ngIf="cashOutEntities.get(item.address) as entity"
+              class="entity-badge"
+              [class.entity-exchange]="entity.category === 'exchange'"
+              [class.entity-mixer]="entity.category === 'mixer'"
+              [class.entity-sanctioned]="entity.category === 'sanctioned'"
+            >
+              {{ entity.category === 'sanctioned' ? '⚠ ' : '' }}{{ entityCategoryLabel(entity.category) }}{{ entity.name ? ': ' + entity.name : '' }}
+            </span>
           </li>
         </ol>
       </div>

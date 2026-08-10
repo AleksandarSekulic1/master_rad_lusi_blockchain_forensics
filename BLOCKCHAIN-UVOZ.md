@@ -200,3 +200,25 @@ Očekivana istorija za `0xMixer`, tačno tim redosledom:
 1. Prima 1000 od `0xThief` → **0% → 100%** (nema promene naniže, sav prvi priliv je prljav).
 2. Prima 500 od `0xCleanUser` → **100% → 66.67%** (`-33.33% — razblaženo ovim prilivom`) — ovo je tačan trenutak razblaživanja, sa istim brojem (66.67%) koji se već proverava u 6.1.
 3. Šalje 750 ka `0xExitWallet` → **66.67% → 66.67%** (delta 0%) — odliv ne menja procenat, samo srazmerno "iznosi" i prljavi i čisti deo napolje, što je i teorijski očekivano ponašanje proporcionalnog (haircut) modela.
+
+### 8.4 Povezivanje tačaka unovčavanja sa poznatim entitetima
+
+**Šta radi:** svaka adresa u listi "Verovatne tačke unovčavanja" se proveri protiv lokalne, offline baze poznatih adresa (`backend/app/services/known_entities.json` — preko 700 stvarnih Binance/Coinbase/Kraken/Huobi/OKX/Gemini adresa, Tornado.Cash mikser instanci i OFAC sankcionisanih adresa). Ako neka od njih pogodi poznat entitet, pored nje se pojavljuje obojena oznaka ("berza: Binance", "mikser: Tornado.Cash...", ili crveno "⚠ OFAC sankcionisano"), a ta adresa se automatski izdvaja na vrh liste, ispred onih bez poznatog entiteta.
+
+**Zašto je ovo korisno:** sama činjenica "primio je prljav novac i nikad ga dalje nije poslao" ne kaže ništa o TOME GDE je taj novac zapravo završio. Kad se ta ista adresa poklopi sa stvarnom, imenovanom berzom, to je znatno jači forenzički nalaz — "novac je stigao na Binance nalog" ima realnog operatera i jurisdikciju koju sud/organi mogu stvarno da kontaktiraju, za razliku od anonimne adrese bez daljeg traga.
+
+**Primer (na `demo_taint_dilution.csv`, treći, nezavisan scenario u istom fajlu):**
+
+```
+0xExchangeHacker,0xExchangeMule,200,2026-06-01T00:00:00Z
+0xExchangeMule,0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be,200,2026-06-01T00:05:00Z
+```
+
+Poslednja adresa (`0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be`) nije izmišljena — to je stvarna, poznata Binance adresa iz baze poznatih entiteta.
+
+1. Klikni `0xExchangeHacker` kao seed → pokreni analizu.
+2. Očekivano u "Verovatne tačke unovčavanja": `0xExchangeMule` i `0x3f5c...f0be` obe na **100%** (jednostavan lanac, bez razblaživanja) — ovim se potvrđuje da propagacija kroz više uzastopnih skokova i dalje radi ispravno.
+3. Pored `0x3f5c...f0be` treba da stoji plava oznaka **"berza: Binance"** — ovim se potvrđuje da je nova known-entity provera stvarno pogodila pravu adresu iz baze, a ne da samo prikazuje prazno polje.
+4. Ta adresa treba da bude **prva** na listi, iznad `0xExchangeMule` (koja nema poznat entitet) — ovim se potvrđuje da sortiranje po poznatom entitetu radi, ne samo prikaz oznake.
+
+Pošto ova provera ne zove Etherscan (čist lokalni pretraga po heš-mapi), radi trenutno i bez obzira na broj tačaka unovčavanja u listi.
