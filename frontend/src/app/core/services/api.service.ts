@@ -4,6 +4,7 @@ import { Observable, of } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
+  ActivityLogResponse,
   AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
@@ -125,5 +126,19 @@ export class ApiService {
 
   generateResetLink(userId: string): Observable<ResetLinkResponse> {
     return this.http.post<ResetLinkResponse>(`${this.apiUrl}/api/v1/users/${userId}/reset-link`, {});
+  }
+
+  /** Recorded analyst actions, newest first. `user` is only honoured for admins - the
+   * backend narrows everyone else to their own entries regardless of what's passed, so
+   * this parameter is a convenience for the admin filter, not an access control. */
+  getActivityLog(options?: { user?: string | null; caseId?: string | null; limit?: number }): Observable<ActivityLogResponse> {
+    let params = new HttpParams().set('limit', String(options?.limit ?? 200));
+    if (options?.user) {
+      params = params.set('user', options.user);
+    }
+    if (options?.caseId) {
+      params = params.set('case_id', options.caseId);
+    }
+    return this.http.get<ActivityLogResponse>(`${this.apiUrl}/api/v1/activity-log`, { params });
   }
 }
