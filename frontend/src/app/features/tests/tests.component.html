@@ -8,11 +8,11 @@
         <p class="panel-kicker">Ispravnost algoritma</p>
         <h2>Sistemski testovi</h2>
         <p class="panel-subtitle">
-          Fiksni testovi nad taint algoritmom — provera haircut matematike, raspodele po izvorima i podataka za vremensku traku.
+          Fiksni testovi nad taint algoritmom: haircut matematika, raspodela po izvorima i podaci za vremensku traku.
         </p>
         <p class="panel-subtitle">
-          <strong>Ne mogu se menjati kroz aplikaciju</strong>, jer kada bi dokaz ispravnosti mogao da se izmeni dok ne prođe,
-          prestao bi da bude dokaz. Nalaze se u verzionisanom kodu.
+          Nalaze se u verzionisanom kodu i <strong>ne mogu se menjati kroz aplikaciju</strong> — dokaz ispravnosti koji se može
+          izmeniti dok ne prođe više nije dokaz.
         </p>
       </div>
       <div class="toolbar">
@@ -70,9 +70,11 @@
         <p class="panel-kicker">Referentni slučajevi</p>
         <h2>Validacioni scenariji</h2>
         <p class="panel-subtitle">
-          Scenario je <strong>opis podataka, ne kod</strong>: spisak transakcija, izvori (seed adrese) i procenti koji se
-          očekuju. Aplikacija ih propušta kroz <strong>pravi</strong> taint algoritam i uporedi rezultat — zato se mogu
-          slobodno kreirati, menjati i brisati, bez izvršavanja bilo kakvog unetog koda.
+          Scenario je <strong>opis podataka, ne kod</strong>: transakcije, izvori (seed adrese) i očekivani procenti.
+        </p>
+        <p class="panel-subtitle">
+          Propuštaju se kroz <strong>pravi</strong> taint algoritam, pa se mogu slobodno kreirati, menjati i brisati — ništa
+          uneto se ne izvršava.
         </p>
       </div>
       <div class="toolbar">

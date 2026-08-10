@@ -21,6 +21,17 @@
   margin-bottom: 0.9rem;
 }
 
+/* Let the text column use the width it actually has (up to its reading measure) instead
+   of being squeezed by the controls next to it. */
+.panel-heading > div:first-child {
+  flex: 1 1 32rem;
+  min-width: 0;
+}
+
+.panel-heading .toolbar {
+  flex-shrink: 0;
+}
+
 .panel-kicker {
   margin: 0 0 0.15rem;
   font-size: 0.72rem;
@@ -36,10 +47,13 @@ h2 {
 
 .panel-subtitle {
   margin: 0.4rem 0 0;
-  max-width: 62ch;
+  /* Same reasoning as on the Testovi page: wide enough to avoid breaking a short intro
+     mid-phrase, short of the full panel width to keep the measure readable. */
+  max-width: 112ch;
   font-size: 0.85rem;
-  line-height: 1.5;
+  line-height: 1.6;
   color: #8ea6c7;
+  text-wrap: balance;
 }
 
 .panel-subtitle strong {
@@ -286,6 +300,12 @@ td {
   border-color: rgba(196, 181, 253, 0.24);
 }
 
+.action-tag.group-test {
+  color: #86efac;
+  background: rgba(134, 239, 172, 0.1);
+  border-color: rgba(134, 239, 172, 0.24);
+}
+
 .action-tag.group-other {
   color: #cbd5e1;
   background: rgba(203, 213, 225, 0.08);
@@ -299,6 +319,18 @@ td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Actions that legitimately have no case (tests, path finding) - a labelled chip rather
+   than an empty dash, so the column never reads as missing data. */
+.scope-chip {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.5rem;
+  font-size: 0.76rem;
+  color: #9fb6d8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 /* Historical entries written before case names were recorded - visually de-emphasised so

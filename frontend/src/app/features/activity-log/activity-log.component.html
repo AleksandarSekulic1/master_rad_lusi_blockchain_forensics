@@ -5,13 +5,13 @@
         <p class="panel-kicker">Chain of custody</p>
         <h2>Log aktivnosti</h2>
         <p class="panel-subtitle" *ngIf="scope === 'all'; else selfScope">
-          Prikazane su akcije <strong>svih korisnika</strong> — otpremanje dokaza, povlačenje transakcija sa blockchain-a,
-          pokretanje analiza i izmene slučajeva.
+          Prikazane su akcije <strong>svih korisnika</strong>: otpremanje dokaza, povlačenje transakcija, pokretanje analiza,
+          testovi i izmene slučajeva.
         </p>
         <ng-template #selfScope>
           <p class="panel-subtitle">
-            Prikazane su <strong>vaše</strong> akcije — otpremanje dokaza, povlačenje transakcija sa blockchain-a, pokretanje
-            analiza i izmene slučajeva.
+            Prikazane su <strong>vaše</strong> akcije: otpremanje dokaza, povlačenje transakcija, pokretanje analiza i izmene
+            slučajeva.
           </p>
         </ng-template>
       </div>
@@ -79,18 +79,24 @@
                 </span>
               </td>
               <td class="col-case">
-                <ng-container *ngIf="entry.case_id; else noCase">
-                  <span class="case-name" *ngIf="entry.case_name; else unrecordedName">{{ entry.case_name }}</span>
-                  <ng-template #unrecordedName>
-                    <span class="case-name unrecorded" title="Naziv slučaja se nije beležio u trenutku ove akcije">
-                      naziv nije zabeležen
-                    </span>
-                  </ng-template>
-                  <span class="case-id">{{ entry.case_id }}</span>
+                <ng-container [ngSwitch]="entryScope(entry).kind">
+                  <ng-container *ngSwitchCase="'case'">
+                    <span class="case-name" *ngIf="entry.case_name; else unrecordedName">{{ entry.case_name }}</span>
+                    <ng-template #unrecordedName>
+                      <span class="case-name unrecorded" title="Naziv slučaja se nije beležio u trenutku ove akcije">
+                        naziv nije zabeležen
+                      </span>
+                    </ng-template>
+                    <span class="case-id">{{ entry.case_id }}</span>
+                  </ng-container>
+
+                  <ng-container *ngSwitchCase="'scope'">
+                    <span class="scope-chip">{{ entryScope(entry).label }}</span>
+                    <span class="case-id" *ngIf="entryScope(entry).sub as sub">{{ sub }}</span>
+                  </ng-container>
+
+                  <span *ngSwitchDefault class="muted">—</span>
                 </ng-container>
-                <ng-template #noCase>
-                  <span class="muted">—</span>
-                </ng-template>
               </td>
               <td class="col-summary">
                 <span class="summary-text">{{ summary(entry) }}</span>

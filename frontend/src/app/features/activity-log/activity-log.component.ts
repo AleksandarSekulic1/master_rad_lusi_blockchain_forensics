@@ -12,8 +12,17 @@ import { ActivityLogEntry } from '../../models/blockchain-forensics.models';
  * be worse than useless in a forensic context. */
 interface ActionPresentation {
   label: string;
-  group: 'evidence' | 'analysis' | 'case' | 'other';
+  group: 'evidence' | 'analysis' | 'case' | 'test' | 'other';
   icon: string;
+}
+
+/** What an action was performed ON. Most actions belong to a case, but some (correctness
+ * tests, path finding on a raw CSV) genuinely have no case - those get their own scope
+ * label instead of an empty dash, so the column never looks like missing data. */
+interface ScopeInfo {
+  label: string;
+  sub: string | null;
+  kind: 'case' | 'scope' | 'none';
 }
 
 @Component({
@@ -47,6 +56,11 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     case_created: { label: 'Kreiran slučaj', group: 'case', icon: '＋' },
     case_status_changed: { label: 'Promenjen status slučaja', group: 'case', icon: '⇄' },
     case_deleted: { label: 'Obrisan slučaj', group: 'case', icon: '✕' },
+    test_suite_run: { label: 'Pokrenuti sistemski testovi', group: 'test', icon: '✓' },
+    test_scenarios_run: { label: 'Pokrenuti validacioni scenariji', group: 'test', icon: '✓' },
+    test_scenario_created: { label: 'Kreiran validacioni scenario', group: 'test', icon: '＋' },
+    test_scenario_updated: { label: 'Izmenjen validacioni scenario', group: 'test', icon: '✎' },
+    test_scenario_deleted: { label: 'Obrisan validacioni scenario', group: 'test', icon: '✕' },
   };
 
   constructor(
@@ -128,11 +142,45 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     return { label: action, group: 'other', icon: '•' };
   }
 
+  /** What the action was performed on. Test actions and path finding have no case by
+   * design, so they show their own scope rather than an empty cell. */
+  entryScope(entry: ActivityLogEntry): ScopeInfo {
+    if (entry.case_id) {
+      return { label: entry.case_name || '', sub: entry.case_id, kind: 'case' };
+    }
+    if (entry.action.startsWith('test_')) {
+      return { label: 'Testovi', sub: 'provera ispravnosti', kind: 'scope' };
+    }
+    if (entry.action === 'path_finding') {
+      return { label: 'Graf', sub: entry.file_name, kind: 'scope' };
+    }
+    return { label: '', sub: null, kind: 'none' };
+  }
+
   /** A one-line "what exactly happened" summary built from the action's own details, so
    * the common case is readable without expanding the raw JSON. */
   summary(entry: ActivityLogEntry): string {
     const details = entry.details ?? {};
     switch (entry.action) {
+      case 'test_suite_run': {
+        const total = Number(details['total'] ?? 0);
+        const passed = Number(details['passed'] ?? 0);
+        const failed = Number(details['failed'] ?? 0);
+        const outcome = failed > 0 ? `${failed} palo` : 'sve prošlo';
+        return `${passed}/${total} testova prošlo · ${outcome}`;
+      }
+      case 'test_scenarios_run': {
+        const total = Number(details['total'] ?? 0);
+        const passed = Number(details['passed'] ?? 0);
+        const errors = Number(details['errors'] ?? 0);
+        const single = details['scenario_id'] ? 'jedan scenario' : `${total} ${total === 1 ? 'scenario' : 'scenarija'}`;
+        const errorText = errors > 0 ? ` · ${errors} sa greškom` : '';
+        return `${single} · ${passed}/${total} prošlo${errorText}`;
+      }
+      case 'test_scenario_created':
+      case 'test_scenario_updated':
+      case 'test_scenario_deleted':
+        return String(details['name'] || details['scenario_id'] || '');
       case 'analytics_run': {
         const seedCount = Number(details['seed_count'] ?? 0);
         const scope = String(details['evidence_scope'] ?? 'combined');

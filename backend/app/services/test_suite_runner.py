@@ -35,13 +35,29 @@ def _split_docstring(docstring: str | None) -> tuple[str, str]:
     This is why the display name lives in the test's own docstring rather than in a
     translation table somewhere else: renaming a test or changing what it checks updates
     the UI automatically, so the two cannot drift apart.
+
+    The explanation is re-flowed into paragraphs: line breaks in the source exist only
+    because the file is wrapped at ~110 columns, and carrying them into the browser made
+    sentences break at arbitrary points. Blank lines are real paragraph breaks and are
+    kept as such.
     """
     if not docstring:
         return '', ''
     lines = [line.strip() for line in docstring.strip().splitlines()]
     title = lines[0] if lines else ''
-    body = '\n'.join(lines[1:]).strip()
-    return title, body
+
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in lines[1:]:
+        if line:
+            current.append(line)
+        elif current:
+            paragraphs.append(' '.join(current))
+            current = []
+    if current:
+        paragraphs.append(' '.join(current))
+
+    return title, '\n\n'.join(paragraphs)
 
 
 def _test_metadata() -> dict[str, dict[str, str]]:

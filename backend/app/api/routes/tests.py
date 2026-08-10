@@ -8,6 +8,7 @@ from app.evidence.audit_log import write_audit_log
 from app.services.test_scenarios import (
     create_scenario,
     delete_scenario,
+    get_scenario,
     load_scenarios,
     run_all_scenarios,
     update_scenario,
@@ -111,12 +112,15 @@ def put_scenario(
 
 @router.delete('/scenarios/{scenario_id}', status_code=204)
 def delete_scenario_route(scenario_id: str, current_user: dict[str, object] = Depends(require_admin)) -> None:
+    # Read the name BEFORE deleting - afterwards there is nothing left to resolve the id
+    # against, and "which scenario was removed" is the only useful part of this record.
+    existing = get_scenario(scenario_id)
     if not delete_scenario(scenario_id):
         raise HTTPException(status_code=404, detail='Scenario nije pronađen.')
     write_audit_log(
         action='test_scenario_deleted',
         user=str(current_user['username']),
-        details={'scenario_id': scenario_id},
+        details={'scenario_id': scenario_id, 'name': (existing or {}).get('name', '')},
     )
 
 
