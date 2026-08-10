@@ -95,6 +95,10 @@ export interface TaintTimelineEntry {
   amount: number;
   tainted_amount: number;
   timestamp: string;
+  /** Per-seed split of this node's balance right after this exact event - lets the
+   * per-seed filter apply correctly while the timeline is scrubbing, not just in the
+   * final/full view (see taint-analysis.component.ts's nodeFilteredPct/getNodeTaintAtRank). */
+  taint_by_source: Record<string, number>;
 }
 
 export interface TaintTimelineEvent {

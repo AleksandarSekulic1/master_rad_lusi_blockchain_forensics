@@ -119,9 +119,10 @@ class TaintAnalysisPlugin(BasePlugin):
                 new_source_tainted[seed] = new_source_tainted.get(seed, 0.0) - seed_amount
             tainted_balance[source] = new_source_tainted
             source_pct_after = taint_pct(source)
+            source_breakdown_after = breakdown_pct(source)
             peak_taint_pct[source] = max(peak_taint_pct.get(source, 0.0), source_pct_after)
             if balance[source] > 1e-12:
-                peak_breakdown[source] = breakdown_pct(source)
+                peak_breakdown[source] = source_breakdown_after
             node_taint_series.setdefault(source, []).append(
                 {
                     'rank': rank,
@@ -131,6 +132,12 @@ class TaintAnalysisPlugin(BasePlugin):
                     'amount': amount,
                     'tainted_amount': tainted_amount,
                     'timestamp': timestamp.isoformat(),
+                    # Per-seed split of this node's balance right after this event - lets the
+                    # frontend's "Filter po izvoru" apply correctly while scrubbing the
+                    # timeline, not just in the final/full view (previously only tainted_hops
+                    # had a historically-accurate per-source snapshot; node_taint_series only
+                    # had the aggregate).
+                    'taint_by_source': source_breakdown_after,
                 }
             )
 
@@ -145,9 +152,10 @@ class TaintAnalysisPlugin(BasePlugin):
                 new_target_tainted = {target: balance[target]}
             tainted_balance[target] = new_target_tainted
             target_pct_after = taint_pct(target)
+            target_breakdown_after = breakdown_pct(target)
             peak_taint_pct[target] = max(peak_taint_pct.get(target, 0.0), target_pct_after)
             if balance[target] > 1e-12:
-                peak_breakdown[target] = breakdown_pct(target)
+                peak_breakdown[target] = target_breakdown_after
             node_taint_series.setdefault(target, []).append(
                 {
                     'rank': rank,
@@ -157,6 +165,7 @@ class TaintAnalysisPlugin(BasePlugin):
                     'amount': amount,
                     'tainted_amount': tainted_amount,
                     'timestamp': timestamp.isoformat(),
+                    'taint_by_source': target_breakdown_after,
                 }
             )
 

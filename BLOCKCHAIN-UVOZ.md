@@ -247,3 +247,20 @@ Pošto ova provera ne zove Etherscan (čist lokalni pretraga po heš-mapi), radi
 4. Prvi red istorije treba da pokaže **0% → 100%** (prvi priliv, potpuno zaprljan), a naredni redovi mešavinu čistih priliva (kolona "Zaprljano" = 0.00, procenat opada — razblaživanje) i priliva od seed adresa (procenat raste) — ovim se potvrđuje da je matematika razblaživanja ista ona koja se proverava u 6.1 i 8.3, samo sad primenjena na pravu, veliku evidenciju umesto na skriptovani demo scenario.
 
 **Napomena o "Detalji izabrane transakcije":** klikni na bilo koju granu na grafu PRE nego što klikneš "Izvezi PDF" (npr. `0xThief → 0xMixer` iz 6.1 scenarija) — u PDF-u treba da se pojavi ta sekcija sa istim transakcijama koje se vide u panelu na ekranu. Ako izvezeš PDF bez selektovane grane, sekcija se uopšte ne pojavljuje u dokumentu — ovim se potvrđuje da je uslovno renderovanje ispravno (nema prazne/beskorisne sekcije kad nema šta da se prikaže).
+
+### 8.6 Filter po izvoru radi i tokom vremenske trake
+
+**Šta radi:** panel **"Filter po izvoru"** (8.1) je ranije bio dostupan samo dok je vremenska traka isključena — dok traka radi, procenti/boje/natpisi na granama su uvek prikazivali doprinos SVIH izvora, bez obzira šta je u filteru izabrano. Sada panel ostaje aktivan i tokom skrubovanja, a procenat čvora, boja i natpis na grani se ispravno preračunavaju da pokažu samo izabrani izvor, **baš na trenutnoj poziciji trake** — ne samo u konačnom/punom prikazu.
+
+**Zašto je ovo korisno:** ranije, ako si hteo da vidiš KAKO se tačno šire sredstva baš jednog izvora kroz vreme (a ne oba/sva odjednom), morao si da se osloniš na konačan rezultat — vremenska traka ti nije davala tu istu preciznost tokom same reprodukcije. Sad se ova dva alata (traka + filter) mogu koristiti zajedno — korak po korak posmatranje širenja jednog konkretnog izvora, transakciju po transakciju.
+
+**Šta je bio tehnički razlog za ograničenje i kako je uklonjeno:** grane (`tainted_hops`) su oduvek imale tačnu istorijsku raspodelu po izvoru za svaku pojedinačnu transakciju, pa je taj deo bilo moguće popraviti samo na frontend-u. Čvorovi (`node_taint_series`) su ranije čuvali samo zbirni procenat po događaju, bez raspodele po izvoru u tom trenutku — backend sad uz svaki događaj čuva i tu raspodelu (isti podatak koji se već računa tokom analize, samo sad i zapisan), što frontend-u omogućava da filter primeni tačno onako kako bi izgledalo da je pratio samo taj izvor.
+
+**Primer (na `demo_taint_dilution.csv`, isti scenario kao 8.1 — seed `0xHacker1` + `0xHacker2`):**
+
+1. Pokreni analizu SAMO sa `0xHacker1` i `0xHacker2` kao seed (ne svih 5 iz fajla) i uključi vremensku traku. Panel "Filter po izvoru" treba da ostane vidljiv i dalje — ovim se potvrđuje da panel više nije skriven čim se traka uključi.
+2. U filteru isključi `0xHacker2` (ostaje aktivan samo `0xHacker1`).
+3. Pomeri traku na **transakciju 4/8** (`Hacker1 → LaunderingHub`): `0xLaunderingHub` treba da pokaže **100%** — u tom trenutku je stiglo samo Hacker1-ovo, pa je filtrirano i nefiltrirano isto — ovim se potvrđuje da rani deo scenarija i dalje radi kao pre popravke.
+4. Pomeri na **transakciju 5/8** (`Hacker2 → LaunderingHub`): `0xLaunderingHub` treba SADA da pokaže **60%**, a ne 100% kao pre popravke — ovo je ključni trenutak koji direktno dokazuje da filter tokom trake sada ispravno računa istorijsku (as-of-poziciji), a ne konačnu raspodelu.
+5. Pomeri na **transakciju 6/8** (`LaunderingHub → FinalDestination`): `0xFinalDestination` treba da pokaže **60%**, a strelica između njih natpis **"60%"** (ne "60%+40%") — ovim se potvrđuje da su i čvorovi i grane usklađeni, i da se poklapaju sa konačnim rezultatom iz 8.1.
+6. Klikni **"Prikaži sve izvore"** i ponovo prođi kroz rangove 4-6 — svuda treba da piše **100%** — ovim se potvrđuje da puni (nefiltrirani) prikaz nije pokvaren popravkom.

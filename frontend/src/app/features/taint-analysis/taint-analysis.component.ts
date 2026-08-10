@@ -1137,25 +1137,34 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.isTimelinePlaying = false;
   }
 
-  /** Looks up what a node's taint % actually was right after the Nth chronological event
-   * that touched it - reconstructed purely from the backend's own per-node history
-   * (node_taint_series), never re-simulated in JS, so the replay can't drift from what
-   * the real algorithm computed. */
-  private getNodeTaintAtRank(nodeId: string, rank: number): number {
+  /** Looks up what a node's taint % (and per-seed breakdown) actually was right after the
+   * Nth chronological event that touched it - reconstructed purely from the backend's own
+   * per-node history (node_taint_series), never re-simulated in JS, so the replay can't
+   * drift from what the real algorithm computed. Each entry now carries its own
+   * taint_by_source snapshot (added alongside the aggregate percentage) specifically so
+   * the per-seed filter can apply correctly mid-scrub, not just in the final/full view. */
+  private getNodeStateAtRank(nodeId: string, rank: number): { pct: number; bySource: Record<string, number> } {
     const series: TaintTimelineEntry[] | undefined = this.taintResult?.node_taint_series?.[nodeId];
     if (!series || series.length === 0) {
       const isSeed = this.taintResult?.seed_addresses.includes(nodeId) ?? false;
       const firstRank = this.taintResult?.node_first_rank?.[nodeId];
-      return isSeed && firstRank != null && firstRank <= rank ? 100 : 0;
+      const isActive = isSeed && firstRank != null && firstRank <= rank;
+      return { pct: isActive ? 100 : 0, bySource: isActive ? { [nodeId]: 100 } : {} };
     }
     let pct = 0;
+    let bySource: Record<string, number> = {};
     for (const entry of series) {
       if (entry.rank > rank) {
         break;
       }
       pct = entry.taint_percentage;
+      bySource = entry.taint_by_source;
     }
-    return pct;
+    return { pct, bySource };
+  }
+
+  private getNodeTaintAtRank(nodeId: string, rank: number): number {
+    return this.getNodeStateAtRank(nodeId, rank).pct;
   }
 
   /** What % of THIS specific transfer (not the node's overall balance) was tainted -
@@ -1163,13 +1172,13 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * the final state if null). Returns '' when the pair never carried any tainted value,
    * so plain/clean edges stay unlabeled instead of cluttering the graph with "0%"
    * everywhere. tainted_hops is already chronologically ordered, so the last matching
-   * entry is simply the most recent one. */
-  /** The seed filter only applies in the full/final view (timeline off) - see the
-   * scoping note on applyTaintTimeline - so timeline playback always passes
-   * ignoreSeedFilter=true and shows every seed's contribution regardless of what's
-   * currently toggled, rather than mixing "as-of-position" with "as-of-filter" in a way
-   * that's hard to reason about while scrubbing. */
-  private getEdgeTaintLabel(source: string, target: string, maxRank: number | null, ignoreSeedFilter = false): string {
+   * entry is simply the most recent one.
+   *
+   * The per-seed filter applies here unconditionally (both with the timeline off AND
+   * while it's scrubbing) - unlike node percentages, each hop's own taint_by_source is
+   * already a historically-accurate snapshot as of that exact transaction, so there's no
+   * "as-of-position vs as-of-filter" ambiguity to worry about for edges. */
+  private getEdgeTaintLabel(source: string, target: string, maxRank: number | null): string {
     const hops = (this.taintResult?.tainted_hops ?? []).filter(
       (hop) => hop.source === source && hop.target === target && (maxRank == null || hop.rank <= maxRank),
     );
@@ -1177,7 +1186,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       return '';
     }
     const latest = hops[hops.length - 1];
-    if (ignoreSeedFilter || this.isAllSeedsActive) {
+    if (this.isAllSeedsActive) {
       // Capped at 2 shares (+ a "how many more" count) so the arrow label stays readable
       // even when a dozen+ seeds all feed the same edge - the uncapped, full breakdown is
       // available in the node inspector once you click either end of this edge.
@@ -1234,12 +1243,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * hiding a node here hides its connected edges too (cytoscape does this automatically
    * for any node with display:none), so untainted edges never need separate handling.
    *
-   * The per-seed source filter ("Filter po izvoru") only applies in this OFF branch. The
-   * backend only stores a per-node taint_by_source snapshot of the CURRENT/final state,
-   * not a full per-seed history at every past rank the way node_taint_series does for the
-   * aggregate - so there's no historically-accurate way to isolate one seed's share while
-   * scrubbing. Rather than show a filtered view that's silently wrong mid-scrub, the
-   * timeline branch below always ignores the filter and shows every seed's contribution. */
+   * The per-seed source filter ("Filter po izvoru") applies in BOTH branches below - each
+   * node_taint_series entry now carries its own taint_by_source snapshot (see
+   * getNodeStateAtRank), so isolating one seed's share mid-scrub is just as
+   * historically-accurate as it always was in the final/full view. There used to be a real
+   * gap here (the backend only stored the CURRENT/final per-node breakdown, not one per
+   * past rank) - that's what the added per-event snapshot closes. */
   private applyTaintTimeline(): void {
     if (!this.cy) {
       return;
@@ -1270,18 +1279,23 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.cy.nodes().forEach((node) => {
       const rank = node.data('chronoRank');
       const revealed = rank == null || rank <= position;
-      const pct = revealed ? this.getNodeTaintAtRank(node.id(), position) : 0;
+      const state = revealed ? this.getNodeStateAtRank(node.id(), position) : { pct: 0, bySource: {} };
+      const displayPct = this.nodeFilteredPct(state.pct, state.bySource);
       if (revealed) {
-        node.data('taint_percentage', pct);
-        node.data('displayLabel', `${this.nodeAddressLabel(node)}\n${pct}%`);
+        node.data('taint_percentage', displayPct);
+        node.data('displayLabel', `${this.nodeAddressLabel(node)}\n${displayPct}%`);
       }
-      const hiddenByFilter = this.hideNonTaintedNodes && pct <= this.taintHideThreshold;
-      node.style('display', revealed && !hiddenByFilter ? 'element' : 'none');
+      const hiddenByThreshold = this.hideNonTaintedNodes && displayPct <= this.taintHideThreshold;
+      const hiddenBySeedFilter = !this.isAllSeedsActive && displayPct <= 1e-9;
+      node.style('display', revealed && !hiddenByThreshold && !hiddenBySeedFilter ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {
       const rank = edge.data('chronoRank');
-      edge.data('edgeLabel', this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), position, true));
-      edge.style('display', rank != null && rank <= position ? 'element' : 'none');
+      const revealed = rank != null && rank <= position;
+      const label = revealed ? this.getEdgeTaintLabel(String(edge.data('source')), String(edge.data('target')), position) : '';
+      edge.data('edgeLabel', label);
+      const hiddenBySeedFilter = !this.isAllSeedsActive && revealed && label === '';
+      edge.style('display', revealed && !hiddenBySeedFilter ? 'element' : 'none');
     });
 
     this.applyPathHighlight(this.selectedNode ? String(this.selectedNode.id) : null);
