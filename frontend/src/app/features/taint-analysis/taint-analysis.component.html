@@ -345,6 +345,61 @@
           </li>
         </ul>
 
+        <div class="taint-chart-block" *ngIf="taintChartPoints.length > 0">
+          <p class="panel-kicker hops-title">Kretanje procenta kroz vreme</p>
+          <p class="muted top-tainted-hint">
+            Klikni na tačku da skočiš na tu transakciju na vremenskoj traci.
+          </p>
+          <div class="taint-chart-wrap">
+            <svg
+              [attr.viewBox]="'0 0 280 90'"
+              preserveAspectRatio="none"
+              class="taint-chart-svg"
+              (mouseleave)="hoverChartPoint(null)"
+            >
+              <line x1="10" y1="10" x2="270" y2="10" class="chart-gridline" />
+              <line x1="10" y1="45" x2="270" y2="45" class="chart-gridline" />
+              <line x1="10" y1="80" x2="270" y2="80" class="chart-gridline" />
+              <text x="2" y="13" class="chart-axis-label">100</text>
+              <text x="2" y="48" class="chart-axis-label">50</text>
+              <text x="2" y="83" class="chart-axis-label">0</text>
+
+              <line
+                *ngIf="taintChartPlayheadX !== null"
+                [attr.x1]="taintChartPlayheadX"
+                y1="6"
+                [attr.x2]="taintChartPlayheadX"
+                y2="84"
+                class="chart-playhead"
+              />
+
+              <path [attr.d]="taintChartPath" class="chart-line" />
+
+              <g
+                *ngFor="let point of taintChartPoints; let i = index"
+                (mouseenter)="hoverChartPoint(i)"
+                (click)="jumpTimelineToRank(point.rank)"
+              >
+                <circle [attr.cx]="point.x" [attr.cy]="point.y" r="8" class="chart-hit-area" />
+                <circle
+                  [attr.cx]="point.x"
+                  [attr.cy]="point.y"
+                  r="3"
+                  class="chart-dot"
+                  [class.chart-dot-active]="hoveredChartIndex === i"
+                />
+              </g>
+            </svg>
+            <div class="chart-tooltip" *ngIf="hoveredChartPoint as hp" [style.left.%]="(hp.x / 280) * 100" [style.top.%]="(hp.y / 90) * 100">
+              <strong>{{ hp.pctBefore }}% → {{ hp.pctAfter }}%</strong>
+              <br />
+              {{ hp.direction === 'in' ? '←' : '→' }} <span class="mono-address">{{ hp.counterparty }}</span>
+              <br />
+              {{ hp.amount | number : '1.2-6' }} · {{ hp.timestamp | date : 'short' }}
+            </div>
+          </div>
+        </div>
+
         <p class="panel-kicker hops-title">Objašnjenje procenta (kompletna istorija)</p>
         <p class="muted top-tainted-hint">
           Svaka transakcija koja je promenila balans ove adrese — uključujući čiste (ili manje zaprljane) prilive koji su

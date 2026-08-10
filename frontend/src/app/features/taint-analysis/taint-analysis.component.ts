@@ -83,6 +83,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected selectedNode: GraphNodeData | null = null;
   protected showAllTopTainted = false;
   protected showAllEventLog = false;
+  protected hoveredChartIndex: number | null = null;
   protected addressEnrichment: AddressEnrichment | null = null;
   protected isEnrichingAddress = false;
 
@@ -124,6 +125,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private static readonly TAINT_MID_THRESHOLD = 50;
   private static readonly TOP_TAINTED_PREVIEW_LIMIT = 15;
   private static readonly EVENT_LOG_PREVIEW_LIMIT = 10;
+  private static readonly CHART_WIDTH = 280;
+  private static readonly CHART_HEIGHT = 90;
+  private static readonly CHART_PAD_X = 10;
+  private static readonly CHART_PAD_Y = 10;
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -478,18 +483,19 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * paired with the % right before and right after it - the full "why is my percentage
    * what it is" audit trail. tainted_hops only records transfers that carried SOME tainted
    * value, so a clean inflow that diluted the balance (grew it without growing the tainted
-   * share) would otherwise never show up anywhere in the inspector at all. Respects the
-   * same "full vs as-of-now" rule as the hops list above. */
-  get selectedNodeEventLog(): NodeEventLogEntry[] {
+   * share) would otherwise never show up anywhere in the inspector at all. Always the
+   * COMPLETE history regardless of the timeline - the chart (which reads this directly)
+   * shows the full curve with a scrub-position marker rather than truncating, and the list
+   * getter below re-applies the usual "full vs as-of-now" rule on top of this. */
+  private get selectedNodeFullEventLog(): NodeEventLogEntry[] {
     if (!this.selectedNode || !this.taintResult) {
       return [];
     }
     const id = String(this.selectedNode.id);
     const series = this.taintResult.node_taint_series?.[id] ?? [];
-    const visible = this.timelineEnabled ? series.filter((entry) => entry.rank <= this.timelinePosition) : series;
 
     let previousPct = 0;
-    return visible.map((entry) => {
+    return series.map((entry) => {
       const row: NodeEventLogEntry = {
         rank: entry.rank,
         direction: entry.direction,
@@ -506,6 +512,11 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
   }
 
+  get selectedNodeEventLog(): NodeEventLogEntry[] {
+    const all = this.selectedNodeFullEventLog;
+    return this.timelineEnabled ? all.filter((entry) => entry.rank <= this.timelinePosition) : all;
+  }
+
   get selectedNodeEventLogPreview(): NodeEventLogEntry[] {
     const all = this.selectedNodeEventLog;
     return this.showAllEventLog ? all : all.slice(0, TaintAnalysisComponent.EVENT_LOG_PREVIEW_LIMIT);
@@ -517,6 +528,82 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
   toggleShowAllEventLog(): void {
     this.showAllEventLog = !this.showAllEventLog;
+  }
+
+  private chartY(pct: number): number {
+    const h = TaintAnalysisComponent.CHART_HEIGHT - 2 * TaintAnalysisComponent.CHART_PAD_Y;
+    return TaintAnalysisComponent.CHART_PAD_Y + (1 - pct / 100) * h;
+  }
+
+  /** One plotted vertex per event in the node's COMPLETE history (see
+   * selectedNodeFullEventLog) - evenly spaced left-to-right by event order, not by real
+   * elapsed time, since a couple of far-apart events would otherwise squeeze everything
+   * else into a sliver on a several-hundred-node graph with a wide date range. */
+  get taintChartPoints(): Array<NodeEventLogEntry & { x: number; y: number }> {
+    const log = this.selectedNodeFullEventLog;
+    const n = log.length;
+    if (n === 0) {
+      return [];
+    }
+    const w = TaintAnalysisComponent.CHART_WIDTH - 2 * TaintAnalysisComponent.CHART_PAD_X;
+    return log.map((entry, index) => ({
+      ...entry,
+      x: TaintAnalysisComponent.CHART_PAD_X + (n === 1 ? 0 : (index / (n - 1)) * w),
+      y: this.chartY(entry.pctAfter),
+    }));
+  }
+
+  /** A step-after path (flat at the OLD % right up to the moment of the next transaction,
+   * then an instant jump) - the percentage doesn't drift smoothly between transactions, it
+   * holds constant and jumps exactly once per event, so a plain diagonal line between
+   * points would misrepresent the model. The final value is extended to the right edge of
+   * the chart to show it held there for the rest of the (known) evidence window - this
+   * also covers the single-event case, which would otherwise be an invisible dot. */
+  get taintChartPath(): string {
+    const points = this.taintChartPoints;
+    if (points.length === 0) {
+      return '';
+    }
+    const rightEdge = TaintAnalysisComponent.CHART_WIDTH - TaintAnalysisComponent.CHART_PAD_X;
+    const segments: string[] = [`M ${points[0].x} ${this.chartY(0)}`, `L ${points[0].x} ${points[0].y}`];
+    for (let i = 1; i < points.length; i++) {
+      segments.push(`L ${points[i].x} ${points[i - 1].y}`);
+      segments.push(`L ${points[i].x} ${points[i].y}`);
+    }
+    segments.push(`L ${rightEdge} ${points[points.length - 1].y}`);
+    return segments.join(' ');
+  }
+
+  /** Where to draw the "you are here" marker while the timeline is scrubbing - null (no
+   * marker) when the timeline is off, since then the chart already shows the true final
+   * state end-to-end with nothing to point at. */
+  get taintChartPlayheadX(): number | null {
+    if (!this.timelineEnabled) {
+      return null;
+    }
+    const visible = this.taintChartPoints.filter((point) => point.rank <= this.timelinePosition);
+    return visible.length > 0 ? visible[visible.length - 1].x : null;
+  }
+
+  hoverChartPoint(index: number | null): void {
+    this.hoveredChartIndex = index;
+  }
+
+  get hoveredChartPoint(): (NodeEventLogEntry & { x: number; y: number }) | null {
+    if (this.hoveredChartIndex == null) {
+      return null;
+    }
+    return this.taintChartPoints[this.hoveredChartIndex] ?? null;
+  }
+
+  /** Clicking a point on the chart jumps the scrub position straight to that exact
+   * transaction (turning the timeline on first if it wasn't already) - a quick way to
+   * "go inspect what happened right there" without hunting for the same rank on the
+   * slider. */
+  jumpTimelineToRank(rank: number): void {
+    this.timelineEnabled = true;
+    this.timelinePosition = rank;
+    this.applyTaintTimeline();
   }
 
   /** Full (uncapped) per-seed breakdown of the selected node's own taint % - "" for a
@@ -647,6 +734,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private selectNode(node: GraphNodeData): void {
     this.selectedNode = node;
     this.showAllEventLog = false;
+    this.hoveredChartIndex = null;
     this.applyPathHighlight(String(node.id));
     this.loadAddressEnrichment();
   }
@@ -658,6 +746,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.selectedNode = null;
     this.addressEnrichment = null;
     this.showAllEventLog = false;
+    this.hoveredChartIndex = null;
     this.applyPathHighlight(null);
   }
 
