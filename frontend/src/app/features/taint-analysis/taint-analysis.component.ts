@@ -83,6 +83,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected taintResult: TaintAnalysisResult | null = null;
   protected selectedNode: GraphNodeData | null = null;
   protected showAllTopTainted = false;
+  protected showAllCashOut = false;
   protected showAllEventLog = false;
   protected hoveredChartIndex: number | null = null;
   protected addressEnrichment: AddressEnrichment | null = null;
@@ -128,6 +129,17 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private static readonly TAINT_MID_THRESHOLD = 50;
   private static readonly TOP_TAINTED_PREVIEW_LIMIT = 15;
   private static readonly EVENT_LOG_PREVIEW_LIMIT = 10;
+  /** Cash-out candidates have no upper bound in the underlying data (any leaf node with
+   * nonzero taint qualifies) - on a real case with hundreds of addresses this list can get
+   * long, so both the on-screen panel and the PDF only ever show the top few (known
+   * entities first, then highest %), same pattern as TOP_TAINTED_PREVIEW_LIMIT above. */
+  private static readonly CASHOUT_PREVIEW_LIMIT = 5;
+  /** Cap on how many ledger rows the PDF prints per address in the "Detaljna istorija
+   * razblazivanja" appendix - a busy exchange hot wallet can have hundreds of chronological
+   * events, and unlike the per-source breakdown (a handful of items, all equally load-
+   * bearing) this is a scale problem, not a completeness one: the full, uncapped ledger
+   * stays one click away on-screen (and in the CSV/GraphML export) regardless. */
+  private static readonly EVENT_HISTORY_PDF_LIMIT = 20;
   private static readonly CHART_WIDTH = 280;
   private static readonly CHART_HEIGHT = 90;
   private static readonly CHART_PAD_X = 10;
@@ -241,6 +253,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.selectedNode = null;
     this.addressEnrichment = null;
     this.showAllTopTainted = false;
+    this.showAllCashOut = false;
     this.lastClickedHopKey = null;
     this.selectedEdgeKey = null;
     this.selectedEdgeDetails = null;
@@ -472,6 +485,23 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Capped view of cashOutCandidates for both the on-screen panel and the PDF export -
+   * mirrors the topTaintedNodes/showAllTopTainted pattern below. Known-entity matches sort
+   * first (see cashOutCandidates), so raising the cap never bumps a named exchange out in
+   * favor of an anonymous address - it only ever trims from the anonymous, lower-% tail. */
+  get topCashOutCandidates(): TaintNodeResult[] {
+    const all = this.cashOutCandidates;
+    return this.showAllCashOut ? all : all.slice(0, TaintAnalysisComponent.CASHOUT_PREVIEW_LIMIT);
+  }
+
+  get hiddenCashOutCount(): number {
+    return Math.max(0, this.cashOutCandidates.length - TaintAnalysisComponent.CASHOUT_PREVIEW_LIMIT);
+  }
+
+  toggleShowAllCashOut(): void {
+    this.showAllCashOut = !this.showAllCashOut;
+  }
+
   get topTaintedNodes(): TaintNodeResult[] {
     const all = this.nonZeroTaintedNodes;
     return this.showAllTopTainted ? all : all.slice(0, TaintAnalysisComponent.TOP_TAINTED_PREVIEW_LIMIT);
@@ -528,11 +558,21 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * shows the full curve with a scrub-position marker rather than truncating, and the list
    * getter below re-applies the usual "full vs as-of-now" rule on top of this. */
   private get selectedNodeFullEventLog(): NodeEventLogEntry[] {
-    if (!this.selectedNode || !this.taintResult) {
+    if (!this.selectedNode) {
       return [];
     }
-    const id = String(this.selectedNode.id);
-    const series = this.taintResult.node_taint_series?.[id] ?? [];
+    return this.fullEventLogFor(String(this.selectedNode.id));
+  }
+
+  /** The actual ledger-building logic, factored out from selectedNodeFullEventLog so the
+   * PDF export can pull the same complete history for an arbitrary address (e.g. each
+   * cash-out candidate) without requiring that node to be the one currently clicked on
+   * the canvas. */
+  private fullEventLogFor(address: string): NodeEventLogEntry[] {
+    if (!this.taintResult) {
+      return [];
+    }
+    const series = this.taintResult.node_taint_series?.[address] ?? [];
 
     let previousPct = 0;
     return series.map((entry) => {
@@ -1578,6 +1618,13 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return (value ?? '').replace(/[čćšžđČĆŠŽĐ]/g, (match) => TaintAnalysisComponent.ASCII_MAP[match] ?? match);
   }
 
+  /** Plain-JS equivalent of the Angular "1.2-6" number pipe used on-screen (min 2, max 6
+   * decimals) - the PDF is built imperatively via jsPDF/autoTable, outside any Angular
+   * template, so pipes aren't available here. */
+  private static formatPdfAmount(value: number): string {
+    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+  }
+
   private static loadImageSize(dataUrl: string): Promise<{ width: number; height: number }> {
     return new Promise((resolve, reject) => {
       const image = new Image();
@@ -2028,13 +2075,187 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         startY: y,
         margin: { left: marginX, right: marginX },
         head: [['#', 'Adresa', 'Taint %']],
-        body: this.cashOutCandidates.map((item, index) => [String(index + 1), item.address, `${item.taint_percentage}%`]),
+        body: this.topCashOutCandidates.map((item, index) => [String(index + 1), item.address, `${item.taint_percentage}%`]),
         styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
         headStyles: { fillColor: TaintAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [253, 246, 227] },
         columnStyles: { 0: { cellWidth: 8, font: 'helvetica' } },
       });
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+
+      if (this.hiddenCashOutCount > 0) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...TEXT_GRAY);
+        const overflowLines = doc.splitTextToSize(
+          `+ ${this.hiddenCashOutCount} dodatnih tacaka unovcavanja detektovano (potpun spisak dostupan kroz CSV/GraphML izvoz slucaja).`,
+          usableWidth,
+        );
+        doc.text(overflowLines, marginX, y);
+        y += overflowLines.length * 4 + 2;
+        doc.setTextColor(...TEXT_DARK);
+      }
+
+      // Full dilution ledger for each of the (at most CASHOUT_PREVIEW_LIMIT) cash-out points
+      // shown above - the "how exactly did the money get here" audit trail that previously
+      // only existed on-screen behind a node click. Capped per-address (see
+      // EVENT_HISTORY_PDF_LIMIT) so a busy exchange hot wallet with hundreds of chronological
+      // events can't blow up the report the way an uncapped per-source breakdown would have.
+      y += 4;
+      if (y > pageHeight - 40) {
+        doc.addPage();
+        y = 16;
+      }
+      sectionTitle('Detaljna istorija razblazivanja - tacke unovcavanja');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...TEXT_GRAY);
+      const historyNote = doc.splitTextToSize(
+        'Kompletna hronologija transakcija koje su promenile balans gorenavedenih adresa, ukljucujuci i cist(ij)e ' +
+          'prilive koji su razblazili procenat, ne samo one koje su ga povecale.',
+        usableWidth,
+      );
+      doc.text(historyNote, marginX, y);
+      y += historyNote.length * 4 + 4;
+      doc.setTextColor(...TEXT_DARK);
+
+      for (const item of this.topCashOutCandidates) {
+        const fullLog = this.fullEventLogFor(item.address);
+        if (fullLog.length === 0) {
+          continue;
+        }
+        if (y > pageHeight - 35) {
+          doc.addPage();
+          y = 16;
+        }
+        const entity = this.cashOutEntities.get(item.address);
+        const entityTag = entity
+          ? `  [${this.entityCategoryLabel(entity.category)}${entity.name ? ': ' + this.asciiSafe(entity.name) : ''}]`
+          : '';
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...NAVY);
+        doc.text(
+          `${item.address}  -  ${item.taint_percentage}% (${TaintAnalysisComponent.riskLabel(item.taint_percentage)})${entityTag}`,
+          marginX,
+          y,
+        );
+        y += 5;
+        doc.setTextColor(...TEXT_DARK);
+
+        const shown = fullLog.slice(0, TaintAnalysisComponent.EVENT_HISTORY_PDF_LIMIT);
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [['#', 'Smer', 'Suprotna strana', 'Iznos', 'Zaprljano', 'Pre %', 'Posle %']],
+          body: shown.map((entry) => [
+            String(entry.rank),
+            entry.direction === 'in' ? 'Prijem' : 'Slanje',
+            entry.counterparty,
+            TaintAnalysisComponent.formatPdfAmount(entry.amount),
+            TaintAnalysisComponent.formatPdfAmount(entry.taintedAmount),
+            `${entry.pctBefore}%`,
+            `${entry.pctAfter}%`,
+          ]),
+          styles: { fontSize: 7.5, cellPadding: 1.3, font: 'courier', textColor: TEXT_DARK },
+          headStyles: { fillColor: TaintAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [253, 246, 227] },
+          columnStyles: {
+            0: { cellWidth: 8, font: 'helvetica' },
+            1: { cellWidth: 14, font: 'helvetica' },
+            3: { cellWidth: 22, font: 'helvetica' },
+            4: { cellWidth: 22, font: 'helvetica' },
+            5: { cellWidth: 14, font: 'helvetica' },
+            6: { cellWidth: 14, font: 'helvetica' },
+          },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
+
+        const hiddenCount = fullLog.length - shown.length;
+        if (hiddenCount > 0) {
+          const netDelta = Math.round((fullLog[fullLog.length - 1].pctAfter - shown[shown.length - 1].pctAfter) * 100) / 100;
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          doc.setTextColor(...TEXT_GRAY);
+          const hiddenLines = doc.splitTextToSize(
+            `+ ${hiddenCount} dodatnih transakcija (dalja neto promena procenta: ${netDelta > 0 ? '+' : ''}${netDelta} p.p.) - ` +
+              'kompletna istorija dostupna u aplikaciji, klikom na cvor.',
+            usableWidth,
+          );
+          doc.text(hiddenLines, marginX, y);
+          y += hiddenLines.length * 4 + 2;
+          doc.setTextColor(...TEXT_DARK);
+        }
+        y += 3;
+      }
+    }
+
+    // Detail of whichever single edge (if any) was selected on-canvas at export time - kept
+    // to exactly one edge's worth of transactions, so unlike the sections above this needs
+    // no top-N cap on WHICH edge to cover, only a row cap on how many of its own transactions
+    // print (same EVENT_HISTORY_PDF_LIMIT, for the same busy-pair reason).
+    if (this.selectedEdgeDetails) {
+      const edgeDetails = this.selectedEdgeDetails;
+      y += 4;
+      if (y > pageHeight - 40) {
+        doc.addPage();
+        y = 16;
+      }
+      sectionTitle('Detalji izabrane transakcije');
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...NAVY);
+      doc.text(`${edgeDetails.source}  ->  ${edgeDetails.target}`, marginX, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...TEXT_GRAY);
+      doc.text(
+        `Ukupno preneto (svih ${edgeDetails.transactions.length} transakcija): ${TaintAnalysisComponent.formatPdfAmount(edgeDetails.totalAmount)}`,
+        marginX,
+        y,
+      );
+      y += 5;
+      doc.setTextColor(...TEXT_DARK);
+
+      const shownTx = edgeDetails.transactions.slice(0, TaintAnalysisComponent.EVENT_HISTORY_PDF_LIMIT);
+      autoTable(doc, {
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [['#', 'Vreme', 'Iznos', 'Zaprljano', '%', 'ID transakcije']],
+        body: shownTx.map((tx, index) => [
+          String(index + 1),
+          new Date(tx.timestamp).toLocaleString(),
+          TaintAnalysisComponent.formatPdfAmount(tx.amount),
+          tx.taintedAmount != null ? TaintAnalysisComponent.formatPdfAmount(tx.taintedAmount) : '-',
+          tx.taintPctAtHop != null ? `${tx.taintPctAtHop}%` : '0%',
+          this.asciiSafe(tx.metadata ?? 'n/a'),
+        ]),
+        styles: { fontSize: 7.5, cellPadding: 1.3, font: 'courier', textColor: TEXT_DARK },
+        headStyles: { fillColor: ACCENT, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [240, 245, 250] },
+        columnStyles: {
+          0: { cellWidth: 8, font: 'helvetica' },
+          2: { cellWidth: 24, font: 'helvetica' },
+          3: { cellWidth: 24, font: 'helvetica' },
+          4: { cellWidth: 14, font: 'helvetica' },
+        },
+      });
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
+
+      const hiddenTxCount = edgeDetails.transactions.length - shownTx.length;
+      if (hiddenTxCount > 0) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.setTextColor(...TEXT_GRAY);
+        const hiddenTxLines = doc.splitTextToSize(
+          `+ ${hiddenTxCount} dodatnih transakcija na ovoj grani - kompletan spisak dostupan u aplikaciji, klikom na granu.`,
+          usableWidth,
+        );
+        doc.text(hiddenTxLines, marginX, y);
+        y += hiddenTxLines.length * 4 + 2;
+        doc.setTextColor(...TEXT_DARK);
+      }
     }
 
     y += 6;

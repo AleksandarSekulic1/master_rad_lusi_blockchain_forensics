@@ -222,3 +222,28 @@ Poslednja adresa (`0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be`) nije izmišljena
 4. Ta adresa treba da bude **prva** na listi, iznad `0xExchangeMule` (koja nema poznat entitet) — ovim se potvrđuje da sortiranje po poznatom entitetu radi, ne samo prikaz oznake.
 
 Pošto ova provera ne zove Etherscan (čist lokalni pretraga po heš-mapi), radi trenutno i bez obzira na broj tačaka unovčavanja u listi.
+
+### 8.5 Obogaćen PDF izveštaj (istorija razblaživanja i detalji transakcije)
+
+**Šta radi:** izvezeni PDF ("Izvezi PDF" dugme) sada, pored postojećih tabela, sadrži i podatke koji su ranije postojali samo na ekranu:
+
+- Lista "Verovatne tačke unovčavanja" (i na ekranu i u PDF-u) je ograničena na najviše **5** adresa (poznati entiteti prvo, pa po procentu) — ako ih ima više, ispod se ispisuje "+ X dodatnih tačaka unovčavanja detektovano...".
+- Nova sekcija **"Detaljna istorija razblaživanja — tačke unovčavanja"**: za svaku od (do 5) prikazanih adresa, kompletna hronologija transakcija (smer, suprotna strana, iznos, zaprljan iznos, procenat pre/posle), ograničena na prvih **20** po adresi — ako ih ima više, ispod tabele piše koliko je izostavljeno i kolika je neto promena procenta u tom periodu.
+- Nova sekcija **"Detalji izabrane transakcije"**: ako je neka grana bila selektovana na grafu u trenutku klika na "Izvezi PDF", njeni pojedinačni transferi (isto ograničeno na 20) se dodaju u izveštaj. Ako ništa nije selektovano, sekcija se uopšte ne pojavljuje.
+
+**Zašto je ovo korisno:** transakcijski detalji i istorija razblaživanja su ranije postojali SAMO u aplikaciji (klikom na čvor/granu) — izveštaj koji se šalje trećim licima (sudu, kolegama) ih nije sadržao. Bez ograničenja broja adresa/transakcija, ovo bi na realnom slučaju sa stotinama transakcija po adresi napravilo neupotrebljivo dugačak izveštaj — otud dva nivoa ograničenja (top 5 adresa, top 20 transakcija po adresi), sa transparentnom napomenom šta je izostavljeno i gde se kompletni podaci mogu naći (u aplikaciji ili u CSV/GraphML izvozu).
+
+**Primer 1 (na `demo_taint_dilution.csv`, isti scenario kao u 8.4 — mali slučaj):**
+
+1. Ponovi test iz 8.4 (seed `0xExchangeHacker`) i izvezi PDF.
+2. U tabeli "Verovatne tačke unovčavanja" treba da stoje tačno **2** reda, bez "+X dodatnih" napomene — ovim se potvrđuje da napomena ispravno izostaje kad je broj tačaka ispod granice od 5.
+3. U novoj sekciji "Detaljna istorija razblaživanja", pored `0x3f5c...f0be` treba da piše `[berza: Binance]` odmah u naslovu, sa tačno **1** redom istorije (Prijem od `0xExchangeMule`, iznos 200, zaprljano 200, 0% → 100%) — ovim se potvrđuje da known-entity oznaka i puna istorija sad ulaze i u PDF, ne samo u aplikaciju.
+
+**Primer 2 (na realnom slučaju "test 1", 620 čvorova, kombinovana evidencija):**
+
+1. Pokreni taint analizu na "test 1" evidenciji (svi seedovi) i izvezi PDF.
+2. U "Verovatne tačke unovčavanja" treba da stoji tačno **1** red (`0x28b1...2a183`, 52.72%) — ovaj slučaj ima samo jednu tačku unovčavanja, pa cap od 5 ovde ništa ne seče (potvrđuje da se cap ne aktivira lažno kad nije potreban).
+3. U "Detaljna istorija razblaživanja" za tu adresu treba da bude tačno **20** redova, a ispod njih napomena `+ 355 dodatnih transakcija (dalja neto promena procenta: +11.96 p.p.)` — ovim se potvrđuje da cap od 20 transakcija po adresi radi na stvarnoj evidenciji sa stotinama transfera, bez rušenja izveštaja.
+4. Prvi red istorije treba da pokaže **0% → 100%** (prvi priliv, potpuno zaprljan), a naredni redovi mešavinu čistih priliva (kolona "Zaprljano" = 0.00, procenat opada — razblaživanje) i priliva od seed adresa (procenat raste) — ovim se potvrđuje da je matematika razblaživanja ista ona koja se proverava u 6.1 i 8.3, samo sad primenjena na pravu, veliku evidenciju umesto na skriptovani demo scenario.
+
+**Napomena o "Detalji izabrane transakcije":** klikni na bilo koju granu na grafu PRE nego što klikneš "Izvezi PDF" (npr. `0xThief → 0xMixer` iz 6.1 scenarija) — u PDF-u treba da se pojavi ta sekcija sa istim transakcijama koje se vide u panelu na ekranu. Ako izvezeš PDF bez selektovane grane, sekcija se uopšte ne pojavljuje u dokumentu — ovim se potvrđuje da je uslovno renderovanje ispravno (nema prazne/beskorisne sekcije kad nema šta da se prikaže).

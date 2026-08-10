@@ -505,7 +505,7 @@
           napustio praćenu mrežu (stvarno unovčavanje, ili van dometa ove evidencije).
         </p>
         <ol>
-          <li *ngFor="let item of cashOutCandidates">
+          <li *ngFor="let item of topCashOutCandidates">
             <button
               type="button"
               class="ranked-address-button"
@@ -525,6 +525,9 @@
             </span>
           </li>
         </ol>
+        <button type="button" class="show-more-button" *ngIf="hiddenCashOutCount > 0" (click)="toggleShowAllCashOut()">
+          {{ showAllCashOut ? 'Prikaži manje' : 'Prikaži još ' + hiddenCashOutCount }}
+        </button>
       </div>
 
       <div class="top-tainted" *ngIf="topTaintedNodes.length > 0">
