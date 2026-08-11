@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.analytics.case_graph import build_case_graph, graph_summary
 from app.analytics.graph_building import transaction_graph_to_node_link_json
 from app.analytics.plugins.manager import run_plugin_pipeline
+from app.analytics.seed_suggestion import suggest_seeds
 from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
 from app.services.case_management import (
@@ -143,6 +144,25 @@ def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, objec
     payload['evidence'] = evidence
     payload['rows'] = int(len(combined_frame))
     payload['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return payload
+
+
+@router.get('/{case_id}/seed-suggestions')
+def get_seed_suggestions(case_id: str, evidence: str | None = None) -> dict[str, object]:
+    """Rule-based, explained suggestions for taint analysis (see analytics/seed_suggestion.py).
+
+    Runs the analytics pipeline first so the pattern plugins (peel chain, chain hopping)
+    have annotated the graph, then applies the suggestion rules on top.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+
+    combined_frame, graph = build_case_graph(evidence_paths)
+    run_plugin_pipeline(dataframe=combined_frame, graph=graph, seed_addresses=None)
+
+    payload = suggest_seeds(graph)
+    payload['case_id'] = case_id
+    payload['evidence'] = evidence
     return payload
 
 

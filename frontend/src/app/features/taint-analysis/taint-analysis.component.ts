@@ -22,6 +22,7 @@ import {
   KnownEntity,
   KnownEntityCategory,
   NodeLinkGraphResponse,
+  SeedSuggestionResponse,
   TaintAnalysisResult,
   TaintedHop,
   TaintNodeResult,
@@ -78,6 +79,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected manualSeedInput = '';
   protected isRunningTaint = false;
   protected isSuggestingSeeds = false;
+  protected seedSuggestions: SeedSuggestionResponse | null = null;
+  protected showAllChecks = false;
   protected taintError: string | null = null;
   protected hasRunTaint = false;
   protected taintResult: TaintAnalysisResult | null = null;
@@ -335,6 +338,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * doesn't run or change the taint analysis itself - it's just a shortcut so you don't
    * have to manually click through a few-hundred-node graph looking for the suspicious
    * ones; anything suggested can still be removed same as a manually picked seed. */
+  /** Fetches rule-based suggestions and SHOWS them instead of silently filling the seed
+   * list. Nothing is added automatically any more: the previous version poured every
+   * statistically-unusual address straight into the seed box, which on real data meant
+   * ~5% of the graph with no stated reason. */
   suggestSeeds(): void {
     const caseId = this.activeCase?.id;
     if (!caseId || !this.graph || this.isSuggestingSeeds) {
@@ -343,27 +350,46 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
     this.isSuggestingSeeds = true;
     this.taintError = null;
+    this.seedSuggestions = null;
 
-    this.api.runCaseAnalytics(caseId, this.selectedEvidence).subscribe({
+    this.api.getSeedSuggestions(caseId, this.selectedEvidence).subscribe({
       next: (response) => {
         this.isSuggestingSeeds = false;
-        const suggested = response.nodes.filter(
-          (node) =>
-            Boolean(node.blacklist_flag) ||
-            Boolean(node.peel_chain_flag) ||
-            Boolean(node.chain_hop_flag) ||
-            Boolean(node.anomaly_flag) ||
-            Number(node.risk_score ?? 0) >= 70,
-        );
-        for (const node of suggested) {
-          this.addSeedAddress(String(node.id));
-        }
+        this.seedSuggestions = response;
+        this.showAllChecks = false;
       },
       error: () => {
         this.isSuggestingSeeds = false;
         this.taintError = 'Neuspešno predlaganje čvorova.';
       },
     });
+  }
+
+  addSuggestedSeed(address: string): void {
+    this.addSeedAddress(address);
+  }
+
+  addAllOriginCandidates(): void {
+    for (const item of this.seedSuggestions?.origin_candidates ?? []) {
+      this.addSeedAddress(item.address);
+    }
+  }
+
+  isAlreadySeed(address: string): boolean {
+    return this.seedAddresses.includes(address);
+  }
+
+  dismissSuggestions(): void {
+    this.seedSuggestions = null;
+  }
+
+  toggleAllChecks(): void {
+    this.showAllChecks = !this.showAllChecks;
+  }
+
+  get hasAnySuggestion(): boolean {
+    const suggestions = this.seedSuggestions;
+    return !!suggestions && (suggestions.origin_candidates.length > 0 || suggestions.laundering_points.length > 0);
   }
 
   private addSeedAddress(address: string): void {

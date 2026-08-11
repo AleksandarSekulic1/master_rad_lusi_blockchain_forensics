@@ -703,15 +703,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       },
       // Fill-color rules are ordered least → most severe: cytoscape applies later
       // rules last, so a node matching several flags shows the most severe color
-      // while shape (hexagon/diamond) and border-style (dashed) still layer on
+      // while shape (hexagon/diamond) and the cluster outline still layer on
       // independently - nothing is hidden when multiple flags apply at once.
       {
+        // Solid, not dashed: a dashed outline is reserved for cluster membership below.
+        // While both were dashed, a gold anomaly ring was routinely read as a cluster
+        // marker - two different findings that must never be confused, since one is a
+        // statistical hint and the other claims two addresses share an owner.
         selector: 'node.anomaly-node',
         style: {
           'background-color': '#c98500',
           'border-color': '#ffd479',
-          'border-style': 'dashed',
-          'border-width': 3,
+          'border-style': 'solid',
+          'border-width': 4,
         },
       },
       {

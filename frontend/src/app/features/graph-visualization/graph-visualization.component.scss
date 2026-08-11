@@ -408,10 +408,13 @@ h3 {
   border-color: #9bd1ff;
 }
 
+/* Solid gold, matching the graph - dashed is reserved for the cluster ring so the two
+   cannot be mistaken for one another. */
 .legend-swatch.anomaly {
   background: #c98500;
   border-color: #ffd479;
-  border-style: dashed;
+  border-style: solid;
+  border-width: 3px;
 }
 
 .legend-swatch.chain-hop {

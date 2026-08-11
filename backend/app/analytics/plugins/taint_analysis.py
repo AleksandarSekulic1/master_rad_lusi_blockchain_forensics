@@ -101,8 +101,14 @@ class TaintAnalysisPlugin(BasePlugin):
             source_balance = balance.get(source, 0.0)
             source_tainted = tainted_balance.get(source, {})
             if source_balance > 1e-12:
+                # An address can legitimately send more than the evidence shows it ever
+                # received - it held funds from before the evidence window. Those funds are
+                # outside the closed world and therefore untracked, so at most the entire
+                # KNOWN tainted balance can leave; without the cap the proportional share
+                # would exceed 1 and create tainted value out of nothing.
+                share = min(1.0, amount / source_balance)
                 transferred_by_seed = {
-                    seed: amount * (seed_amount / source_balance) for seed, seed_amount in source_tainted.items()
+                    seed: seed_amount * share for seed, seed_amount in source_tainted.items()
                 }
             elif source in seeds:
                 # Untouched seed spending for the first time - the whole transfer is
@@ -113,7 +119,12 @@ class TaintAnalysisPlugin(BasePlugin):
 
             tainted_amount = sum(transferred_by_seed.values())
 
-            balance[source] = source_balance - amount
+            # Spending beyond what the evidence recorded means the address already held
+            # funds when the evidence window opened - unknown to us, not negative. Letting
+            # the balance go negative made the denominator smaller than the tainted amount
+            # once tainted funds arrived later, producing impossible percentages such as
+            # the 111.11% observed on a real case.
+            balance[source] = max(0.0, source_balance - amount)
             new_source_tainted = dict(source_tainted)
             for seed, seed_amount in transferred_by_seed.items():
                 new_source_tainted[seed] = new_source_tainted.get(seed, 0.0) - seed_amount

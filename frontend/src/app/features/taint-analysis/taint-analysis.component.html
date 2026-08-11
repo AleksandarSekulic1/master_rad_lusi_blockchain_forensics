@@ -106,10 +106,102 @@
       class="ghost-button"
       (click)="suggestSeeds()"
       [disabled]="!graph || isSuggestingSeeds"
-      title="Automatski doda čvorove koje su heuristike (crna lista, visok rizik, anomalija, peel lanac, skok lanca) već označile kao sumnjive"
+      title="Proverava adrese kroz imenovana forenzička pravila (crna lista, OFAC, mikser, brzi prolaz, peel chain, chain hopping, buđenje uspavane adrese, usitnjavanje) i za svaki predlog navodi razlog"
     >
-      {{ isSuggestingSeeds ? 'Tražim sumnjive čvorove...' : 'Predloži čvorove' }}
+      {{ isSuggestingSeeds ? 'Proveravam pravila...' : 'Predloži za pregled' }}
     </button>
+
+    <div class="suggestion-panel" *ngIf="seedSuggestions as suggestions">
+      <div class="suggestion-head">
+        <p class="panel-kicker">Rezultat provere — {{ suggestions.total_addresses }} adresa</p>
+        <button type="button" class="ghost-button small" (click)="dismissSuggestions()">Zatvori</button>
+      </div>
+
+      <!-- Kandidati za izvor -->
+      <div class="suggestion-group origin" *ngIf="suggestions.origin_candidates.length > 0">
+        <p class="group-heading">
+          Kandidati za izvor
+          <span class="group-count">{{ suggestions.origin_candidates.length }}</span>
+        </p>
+        <p class="group-note">Utvrđene činjenice o adresi (crna lista, OFAC) — jedina osnova za seed adresu.</p>
+        <div class="suggestion-item" *ngFor="let item of suggestions.origin_candidates">
+          <div class="suggestion-main">
+            <span class="mono-address">{{ item.address }}</span>
+            <ul class="reason-list">
+              <li *ngFor="let reason of item.reasons">{{ reason }}</li>
+            </ul>
+          </div>
+          <button
+            type="button"
+            class="ghost-button small"
+            (click)="addSuggestedSeed(item.address)"
+            [disabled]="isAlreadySeed(item.address)"
+          >
+            {{ isAlreadySeed(item.address) ? 'Dodato' : 'Dodaj kao izvor' }}
+          </button>
+        </div>
+        <button type="button" class="ghost-button small" (click)="addAllOriginCandidates()">Dodaj sve kandidate</button>
+      </div>
+
+      <!-- Tačke pranja -->
+      <div class="suggestion-group laundering" *ngIf="suggestions.laundering_points.length > 0">
+        <p class="group-heading">
+          Tačke pranja
+          <span class="group-count">{{ suggestions.laundering_points.length }}</span>
+        </p>
+        <p class="group-note">
+          ⚠ Ovo <strong>nisu</strong> izvori. Ako mikser ili relej postaviš kao izvor, označićeš i tuđa sredstva koja
+          sa slučajem nemaju veze.
+        </p>
+        <div class="suggestion-item" *ngFor="let item of suggestions.laundering_points">
+          <div class="suggestion-main">
+            <span class="mono-address">{{ item.address }}</span>
+            <ul class="reason-list">
+              <li *ngFor="let reason of item.reasons">{{ reason }}</li>
+            </ul>
+          </div>
+          <button
+            type="button"
+            class="ghost-button small"
+            (click)="addSuggestedSeed(item.address)"
+            [disabled]="isAlreadySeed(item.address)"
+          >
+            {{ isAlreadySeed(item.address) ? 'Dodato' : 'Ipak dodaj' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Prazan rezultat: razlikuje "cisto je" od "podaci ne mogu da odgovore" -->
+      <div class="suggestion-empty" *ngIf="!hasAnySuggestion" [class.structural]="suggestions.coverage_note">
+        <ng-container *ngIf="suggestions.coverage_note as note; else nothingMatched">
+          <p><strong>Nula nalaza — zbog oblika evidencije, ne zato što je čisto.</strong></p>
+          <p>{{ note }}</p>
+        </ng-container>
+        <ng-template #nothingMatched>
+          <p><strong>Nijedna adresa ne odgovara poznatim obrascima.</strong></p>
+          <p>
+            Izvore unesite iz predmeta — prijave oštećenog, sudskog naloga ili izveštaja berze. Poreklo sredstava nije
+            svojstvo transakcije i ne može se izvesti iz grafa.
+          </p>
+        </ng-template>
+      </div>
+
+      <!-- Izvršene provere -->
+      <div class="checks-block">
+        <button type="button" class="checks-toggle" (click)="toggleAllChecks()">
+          {{ showAllChecks ? 'Sakrij' : 'Prikaži' }} izvršene provere ({{ suggestions.checks_performed.length }})
+        </button>
+        <table class="checks-table" *ngIf="showAllChecks">
+          <tr *ngFor="let check of suggestions.checks_performed">
+            <td class="check-count" [class.zero]="check.matches === 0">{{ check.matches }}</td>
+            <td>
+              <strong>{{ check.label }}</strong>
+              <span class="check-desc">{{ check.description }}</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
     <div class="seed-input">
       <input
         type="text"

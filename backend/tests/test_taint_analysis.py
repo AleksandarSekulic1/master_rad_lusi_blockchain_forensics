@@ -64,6 +64,44 @@ class TestHaircutDilution:
         # Primalac nasleđuje mešavinu pošiljaoca, ne njegovo poreklo.
         assert percentage_by_address['0xExitWallet'] == pytest.approx(66.67, abs=0.01)
 
+    def test_percentage_never_exceeds_100(self, graph_from_rows):
+        """Procenat nikada ne prelazi 100%
+
+        Zaštita od povratka greške pronađene na pravom slučaju: adresa koja prvo pošalje
+        sredstva (koja je imala pre početka evidencije), pa tek onda primi zaprljana,
+        dobijala je negativan balans — pa je imenilac postao manji od zaprljanog iznosa i
+        izveštaj je prikazivao 111.11% zaprljanosti, što je nemoguće.
+        """
+        graph = graph_from_rows([
+            ('0xSpender', '0xSomeone', 5, '2026-03-01T00:00:00Z'),
+            ('0xSpender', '0xSomeone', 5, '2026-03-01T00:01:00Z'),
+            ('0xThief', '0xSpender', 50, '2026-03-01T00:02:00Z'),
+            ('0xThief', '0xSpender', 50, '2026-03-01T00:03:00Z'),
+        ])
+
+        result = run_taint_analysis(graph=graph, seed_addresses=['0xThief'], seed_from_blacklist=False)
+
+        assert all(item['taint_percentage'] <= 100.0 for item in result['results'])
+        assert percentages(result)['0xSpender'] == pytest.approx(100.0, abs=0.01)
+
+    def test_sending_more_than_received_cannot_create_taint(self, graph_from_rows):
+        """Slanje više nego što je primljeno ne stvara novi taint
+
+        Ako adresa pošalje više nego što je u evidenciji primila, višak potiče od sredstava
+        van evidencije. Prosleđeno zaprljano ne sme premašiti ono što na adresi stvarno
+        postoji — inače bi se zaprljani iznos umnožavao kroz lanac.
+        """
+        graph = graph_from_rows([
+            ('0xThief', '0xRelay', 100, '2026-03-01T00:00:00Z'),
+            ('0xRelay', '0xNext', 300, '2026-03-01T00:05:00Z'),
+        ])
+
+        result = run_taint_analysis(graph=graph, seed_addresses=['0xThief'], seed_from_blacklist=False)
+        hop = next(h for h in result['tainted_hops'] if h['source'] == '0xRelay')
+
+        assert hop['tainted_amount'] <= 100.0 + 1e-9
+        assert all(item['taint_percentage'] <= 100.0 for item in result['results'])
+
     def test_untouched_address_stays_clean(self, graph_from_rows):
         """Nedodirnuta adresa ostaje na 0%
 

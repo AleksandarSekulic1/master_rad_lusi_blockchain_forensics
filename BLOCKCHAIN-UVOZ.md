@@ -157,6 +157,8 @@ Ovo je i sam po sebi koristan forenzički nalaz za tezu: pokazuje kako se taint 
 - Ruta: `POST /api/v1/onchain/fetch` (`backend/app/api/routes/onchain.py`) — automatski prepoznaje da li je uneta adresa (42 karaktera) ili heš transakcije (66 karaktera) na osnovu regex-a, primenjuje izabrani `mode`, snima rezultat kao CSV u `data/raw/`, računa SHA-256, povezuje ga sa slučajem (isti mehanizam kao `/upload/csv`) i upisuje audit log zapis sa akcijom `onchain_fetch_<mreža>_<režim>`.
 - Frontend: `ApiService.fetchOnchainTransactions()` poziva tu rutu; rezultat se obrađuje potpuno isto kao odgovor na CSV upload (isti `loadDerivedViews()` poziv), tako da graf i analitika rade bez ikakvih izmena.
 
+> **Napomena:** sam algoritam taint analize (haircut model, algoritam za predlog čvorova, pronađene greške i njihove ispravke, klasteri) opisan je u zasebnom dokumentu **`TAINT-ANALIZA.md`**. Ovde su uputstva za korišćenje i testiranje funkcija u interfejsu.
+
 ## 8. Napredne funkcije Taint analize
 
 Ove funkcije su dodate posle osnovne taint analize opisane u sekciji 6, da bi analiza bila detaljnija i transparentnija — svaka je testirana na `demo_taint_dilution.csv` (isti fajl iz 6.1), da brojevi budu proverljivi.

@@ -22,6 +22,7 @@ import {
   PathFindingResponse,
   ResetLinkResponse,
   ScenarioRequest,
+  SeedSuggestionResponse,
   ScenarioRunResponse,
   SuiteListResponse,
   SuiteRunResponse,
@@ -104,6 +105,13 @@ export class ApiService {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
     const body = seedAddresses?.length ? { seed_addresses: seedAddresses } : {};
     return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, body, { params });
+  }
+
+  /** Rule-based, explained seed suggestions - replaces the old "run analytics and take
+   * everything the outlier detector flagged" approach. */
+  getSeedSuggestions(caseId: string, evidence?: string | null): Observable<SeedSuggestionResponse> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.get<SeedSuggestionResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/seed-suggestions`, { params });
   }
 
   enrichAddress(address: string, network: OnchainNetwork = 'mainnet'): Observable<AddressEnrichment> {
