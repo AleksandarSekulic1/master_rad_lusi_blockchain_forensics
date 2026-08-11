@@ -151,6 +151,30 @@ export class ApiService {
     return this.http.post<ResetLinkResponse>(`${this.apiUrl}/api/v1/users/${userId}/reset-link`, {});
   }
 
+  /** Registers a report before the PDF is built, returning the verification code that
+   * gets printed into it. The code has to exist first - it cannot be derived from a
+   * document it is itself part of. */
+  registerReport(request: {
+    case_id: string;
+    case_name: string;
+    declaration: string;
+    content: Record<string, unknown>;
+    summary: Record<string, unknown>;
+  }): Observable<{ verification_code: string; content_hash: string; registered_at: string; analyst: string }> {
+    return this.http.post<{ verification_code: string; content_hash: string; registered_at: string; analyst: string }>(
+      `${this.apiUrl}/api/v1/reports/register`,
+      request,
+    );
+  }
+
+  verifyReport(code: string, contentHash?: string | null): Observable<Record<string, unknown>> {
+    let params = new HttpParams().set('code', code);
+    if (contentHash) {
+      params = params.set('content_hash', contentHash);
+    }
+    return this.http.get<Record<string, unknown>>(`${this.apiUrl}/api/v1/reports/verify`, { params });
+  }
+
   // --- Correctness tests (admin only; the backend enforces that, not these methods) ---
 
   listSuiteTests(): Observable<SuiteListResponse> {

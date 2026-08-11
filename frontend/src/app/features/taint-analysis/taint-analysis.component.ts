@@ -3,6 +3,7 @@ import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, Vie
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import cytoscape, { Core, EdgeSingular, ElementDefinition, NodeSingular } from 'cytoscape';
@@ -106,6 +107,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * nothing sits at exactly 0% but plenty of nodes carry only a negligible sliver. */
   protected taintHideThreshold = 0;
   protected isExportingPdf = false;
+
+  // --- Signature + seal before export ---
+  @ViewChild('signaturePad')
+  protected signaturePad?: ElementRef<HTMLCanvasElement>;
+  protected isSignatureDialogOpen = false;
+  protected hasSignatureStrokes = false;
+  protected signatureDeclarationAccepted = false;
+  protected signatureError: string | null = null;
+  private isDrawingSignature = false;
   /** Which seed(s) currently count towards displayed %/color/labels - starts as "all seeds"
    * right after a run (the familiar combined view). Deselecting one doesn't remove it as a
    * seed, it just excludes its share from what's drawn, so you can isolate one source's own
@@ -1696,23 +1706,146 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
    * bounding box and never rendered into the PNG, so the exported picture automatically
    * matches whatever "Sakrij ispod praga" is currently set to, without any extra logic
    * here - same goes for the timeline's reveal state if it happens to be scrubbed mid-way. */
-  async exportPdfReport(): Promise<void> {
+  /** Opens the signing dialog. Export now always goes through it: the report leaves the
+   * application as a standalone document, so it should carry both who vouches for it and
+   * the means to check it later. */
+  openSignatureDialog(): void {
     if (!this.cy || !this.taintResult || !this.activeCase || this.isExportingPdf) {
+      return;
+    }
+    this.isSignatureDialogOpen = true;
+    this.hasSignatureStrokes = false;
+    this.signatureDeclarationAccepted = false;
+    this.signatureError = null;
+    setTimeout(() => this.clearSignature());
+  }
+
+  closeSignatureDialog(): void {
+    this.isSignatureDialogOpen = false;
+  }
+
+  private signatureContext(): CanvasRenderingContext2D | null {
+    const canvas = this.signaturePad?.nativeElement;
+    return canvas ? canvas.getContext('2d') : null;
+  }
+
+  /** Pointer events rather than separate mouse/touch handlers, so drawing works with a
+   * mouse, a trackpad and a stylus without three code paths. */
+  startSignatureStroke(event: PointerEvent): void {
+    const context = this.signatureContext();
+    if (!context) {
+      return;
+    }
+    this.isDrawingSignature = true;
+    const { x, y } = this.signaturePoint(event);
+    context.beginPath();
+    context.moveTo(x, y);
+    (event.target as HTMLCanvasElement).setPointerCapture(event.pointerId);
+  }
+
+  continueSignatureStroke(event: PointerEvent): void {
+    const context = this.signatureContext();
+    if (!this.isDrawingSignature || !context) {
+      return;
+    }
+    const { x, y } = this.signaturePoint(event);
+    context.lineTo(x, y);
+    context.stroke();
+    this.hasSignatureStrokes = true;
+  }
+
+  endSignatureStroke(): void {
+    this.isDrawingSignature = false;
+  }
+
+  private signaturePoint(event: PointerEvent): { x: number; y: number } {
+    const canvas = this.signaturePad!.nativeElement;
+    const rect = canvas.getBoundingClientRect();
+    // The canvas is drawn at a fixed internal resolution but laid out responsively, so
+    // pointer coordinates have to be scaled or the ink lands away from the cursor.
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  }
+
+  clearSignature(): void {
+    const canvas = this.signaturePad?.nativeElement;
+    const context = this.signatureContext();
+    if (!canvas || !context) {
+      return;
+    }
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.strokeStyle = '#0b1a33';
+    context.lineWidth = 2.5;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    this.hasSignatureStrokes = false;
+  }
+
+  get canSubmitSignature(): boolean {
+    return this.hasSignatureStrokes && this.signatureDeclarationAccepted && !this.isExportingPdf;
+  }
+
+  /** The exact data the verification hash is computed over. Kept to the figures a reader
+   * could dispute - percentages, seeds, evidence hashes - so that altering any of them in
+   * the exported document makes the check fail. */
+  private reportContentPayload(): Record<string, unknown> {
+    const result = this.taintResult!;
+    return {
+      case_id: this.activeCase!.id,
+      evidence: this.selectedEvidence ?? 'combined',
+      evidence_sha256: this.evidenceOptions.map((entry) => entry.sha256).sort(),
+      seeds: [...result.seed_addresses].sort(),
+      results: this.nonZeroTaintedNodes
+        .map((item) => ({ address: item.address, taint_percentage: item.taint_percentage }))
+        .sort((a, b) => a.address.localeCompare(b.address)),
+      cash_out: this.cashOutCandidates.map((item) => item.address).sort(),
+    };
+  }
+
+  async confirmSignatureAndExport(): Promise<void> {
+    if (!this.canSubmitSignature || !this.cy || !this.taintResult || !this.activeCase) {
       return;
     }
 
     this.isExportingPdf = true;
-    this.taintError = null;
+    this.signatureError = null;
     try {
+      const signatureImage = this.signaturePad!.nativeElement.toDataURL('image/png');
+      const declaration = TaintAnalysisComponent.SIGNATURE_DECLARATION;
+
+      // Registered BEFORE the document is built: the verification code has to be printed
+      // inside the very report it identifies.
+      const registration = await firstValueFrom(
+        this.api.registerReport({
+          case_id: this.activeCase.id,
+          case_name: this.activeCase.name ?? '',
+          declaration,
+          content: this.reportContentPayload(),
+          summary: {
+            tainted_addresses: this.nonZeroTaintedNodes.length,
+            cash_out_points: this.cashOutCandidates.length,
+            seeds: this.taintResult.seed_addresses.length,
+          },
+        }),
+      );
+
       const graphImage = this.cy.png({ full: true, scale: 2, bg: TaintAnalysisComponent.PDF_CANVAS_BG });
       const imageSize = await TaintAnalysisComponent.loadImageSize(graphImage);
-      this.buildTaintPdf(graphImage, imageSize);
+      this.buildTaintPdf(graphImage, imageSize, { signatureImage, declaration, registration });
+      this.isSignatureDialogOpen = false;
     } catch {
-      this.taintError = 'Neuspesno generisanje PDF izvestaja.';
+      this.signatureError = 'Neuspesno generisanje PDF izvestaja.';
     } finally {
       this.isExportingPdf = false;
     }
   }
+
+  protected static readonly SIGNATURE_DECLARATION =
+    'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi '
+    + 'kakve je aplikacija izračunala nad navedenom evidencijom.';
 
   /** "" for a single contributing source (the plain % column already covers that case) -
    * otherwise the top few sources by share, truncated, with a "+N drugih" tail. A real
@@ -1780,7 +1913,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return sentences.join(' ');
   }
 
-  private buildTaintPdf(graphImage: string, imageSize: { width: number; height: number }): void {
+  private buildTaintPdf(
+    graphImage: string,
+    imageSize: { width: number; height: number },
+    signing: {
+      signatureImage: string;
+      declaration: string;
+      registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
+    },
+  ): void {
     const result = this.taintResult!;
     const caseSummary = this.activeCase!;
     const NAVY = TaintAnalysisComponent.PDF_NAVY;
@@ -2487,6 +2628,110 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       'Oznake poznatih entiteta (berza, mikser, sankcionisana adresa) poticu iz lokalne baze poznatih adresa i pokazuju ' +
         'samo poklapanja koja u toj bazi postoje - izostanak oznake ne znaci da adresa nije berza ili mikser.',
     );
+
+    // --- Signature and seal ---------------------------------------------------------
+    // Two separate things, deliberately labelled as such: the drawn signature is the
+    // analyst's declaration, while the seal's code and hash are what actually allow
+    // anyone to check later whether the figures were altered. Presenting the signature
+    // itself as tamper protection would be false - it is an image, and it survives any
+    // edit made to the document around it.
+    doc.addPage();
+    y = 16;
+    sectionTitle('Potpis i overa');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...TEXT_DARK);
+    const declarationLines = doc.splitTextToSize(this.asciiSafe(signing.declaration), usableWidth);
+    doc.text(declarationLines, marginX, y);
+    y += declarationLines.length * 4.6 + 6;
+
+    const signatureBoxWidth = usableWidth * 0.52;
+    const signatureBoxHeight = 34;
+    doc.setDrawColor(...TEXT_GRAY);
+    doc.setLineWidth(0.3);
+    doc.rect(marginX, y, signatureBoxWidth, signatureBoxHeight);
+    doc.addImage(signing.signatureImage, 'PNG', marginX + 2, y + 2, signatureBoxWidth - 4, signatureBoxHeight - 4);
+
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_GRAY);
+    doc.text('Potpis analiticara', marginX, y + signatureBoxHeight + 4);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...TEXT_DARK);
+    doc.text(this.asciiSafe(signing.registration.analyst), marginX, y + signatureBoxHeight + 9);
+
+    // Round stamp, drawn as vectors rather than an image so it stays crisp at any zoom.
+    const sealCenterX = marginX + signatureBoxWidth + (usableWidth - signatureBoxWidth) / 2;
+    const sealCenterY = y + signatureBoxHeight / 2;
+    const sealRadius = 19;
+    doc.setDrawColor(...NAVY);
+    doc.setLineWidth(1.1);
+    doc.circle(sealCenterX, sealCenterY, sealRadius);
+    doc.setLineWidth(0.4);
+    doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+    doc.setTextColor(...NAVY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('LUSI', sealCenterX, sealCenterY - 5, { align: 'center' });
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY - 0.5, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('OVERENO', sealCenterX, sealCenterY + 4.5, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.text(new Date(signing.registration.registered_at).toLocaleDateString(), sealCenterX, sealCenterY + 9, {
+      align: 'center',
+    });
+
+    y += signatureBoxHeight + 16;
+
+    sectionTitle('Provera verodostojnosti');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...TEXT_GRAY);
+    doc.text('KONTROLNI BROJ', marginX, y);
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...NAVY);
+    doc.text(signing.registration.verification_code, marginX + 45, y + 0.5);
+    y += 8;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...TEXT_GRAY);
+    doc.text('OTISAK SADRZAJA', marginX, y);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...TEXT_DARK);
+    doc.text(doc.splitTextToSize(signing.registration.content_hash, usableWidth - 45), marginX + 45, y);
+    y += 9;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...TEXT_DARK);
+    const verifyLines = doc.splitTextToSize(
+      'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
+        + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
+        + 'posle izvoza.',
+      usableWidth,
+    );
+    doc.text(verifyLines, marginX, y);
+    y += verifyLines.length * 4.6 + 4;
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_GRAY);
+    const limitLines = doc.splitTextToSize(
+      'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
+        + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
+        + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
+        + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+      usableWidth,
+    );
+    doc.text(limitLines, marginX, y);
 
     const pageCount = doc.getNumberOfPages();
     for (let page = 1; page <= pageCount; page++) {
