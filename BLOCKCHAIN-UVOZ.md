@@ -265,6 +265,34 @@ Pošto ova provera ne zove Etherscan (čist lokalni pretraga po heš-mapi), radi
 5. Pomeri na **transakciju 6/8** (`LaunderingHub → FinalDestination`): `0xFinalDestination` treba da pokaže **60%**, a strelica između njih natpis **"60%"** (ne "60%+40%") — ovim se potvrđuje da su i čvorovi i grane usklađeni, i da se poklapaju sa konačnim rezultatom iz 8.1.
 6. Klikni **"Prikaži sve izvore"** i ponovo prođi kroz rangove 4-6 — svuda treba da piše **100%** — ovim se potvrđuje da puni (nefiltrirani) prikaz nije pokvaren popravkom.
 
+### 8.7 Metodologija i ograničenja u PDF izveštaju
+
+**Šta radi:** izvezeni PDF taint analize sada na dva mesta objašnjava **kako se tumače brojevi u njemu**:
+
+1. **Kratka napomena na prvoj strani** (uokvireni blok, odmah ispod podataka o slučaju, **pre svih rezultata**) — navodi primenjeni model, closed-world ograničenje i šta znači 0%.
+2. **Puna sekcija „Metodologija i ograničenja" na kraju** — sa četiri celine: primenjeni model (uz poređenje sa FIFO / LIFO / poison modelima i obrazloženje izbora), ograničenje zatvorenog sveta, tumačenje rezultata 0%, i šest ostalih ograničenja.
+
+**Zašto je ovo bitno:** izbor modela nije neutralan — **isti podaci daju različite procente pod različitim modelima**, pa nalaz iz ovog izveštaja nije uporediv sa nalazom dobijenim drugom metodom. Isto tako, `0%` ne znači „adresa je čista" nego „u ovoj evidenciji nema traga o prilivu sa navedenih izvora". Te rečenice su ranije postojale samo u komentarima u kodu, a čita ih neko ko kôd nikada neće videti.
+
+**Ključna ograničenja koja izveštaj sada eksplicitno navodi:**
+
+| Ograničenje | Zašto je navedeno |
+|---|---|
+| Proporcionalni (haircut) model | Rezultat nije uporediv sa FIFO/LIFO/poison metodom |
+| Closed-world | Procenat može biti **i viši i niži** od stvarnog: nedostajući čist priliv ga precenjuje, nedostajući zaprljan ga potcenjuje |
+| 0% ≠ čisto | Odsustvo dokaza nije dokaz odsustva |
+| Zavisnost od izbora seed adresa | Drugačiji izvori → drugačiji procenti |
+| Adresa ≠ identitet | Jedno lice može imati više adresa; jedna berzanska adresa pripada hiljadama korisnika |
+| Mešanje valuta / cross-chain / zaokruživanje | Granice u kojima brojevi uopšte imaju smisla |
+
+**Testiranje:**
+
+1. Izvezi PDF sa Taint analize (bilo koji slučaj). Na **prvoj strani**, ispod „GENERISANO", treba da stoji uokvirena napomena sa rečju „haircut" — ovim se potvrđuje da čitalac vidi upozorenje **pre** nego što vidi ijedan procenat.
+2. Na **poslednjim stranama** treba da postoji sekcija „Metodologija i ogranicenja" sa četiri podnaslova — ovim se potvrđuje da je puno objašnjenje deo dokumenta, a ne samo koda.
+3. Proveri da naslov sekcije nije ostao sam na dnu strane bez teksta ispod — ovim se potvrđuje da provera preloma strane radi.
+
+> Napomena: u ovom PDF-u se koriste slova bez kvačica („razblazuje" umesto „razblažuje"). Razlog je što se PDF taint analize generiše u browseru (jsPDF), čiji osnovni fontovi ne podržavaju č/ć/š/ž/đ, a ugrađivanje Unicode fonta bi znatno povećalo veličinu aplikacije. Izveštaj aktivnosti (sekcija 11) se generiše na serveru i **ima** ispravna slova.
+
 ## 9. Log aktivnosti (chain of custody)
 
 Za razliku od sekcije 8, ovo nije funkcija taint analize nego cele aplikacije — beleži se **svaka** radnja analitičara, od otpremanja dokaza do pokretanja analize.
@@ -310,3 +338,73 @@ Za razliku od sekcije 8, ovo nije funkcija taint analize nego cele aplikacije �
 ### 9.3 Veza sa izveštajem slučaja
 
 Postojeći backend izveštaj slučaja (`/api/v1/exports/cases/{id}/report.csv` i `.pdf`) već čita isti log za svoj "chain of custody" deo, pa se **pokrenute analize sada automatski pojavljuju i tamo** — ranije su u tom delu izveštaja postojali samo zapisi o otpremanju dokaza.
+
+## 10. Testovi ispravnosti (stranica „Testovi")
+
+Dugme **„Testovi"** u meniju (samo administrator) otvara stranicu sa dve vrste provera. Podela nije kozmetička nego suštinska, i objašnjena je u 10.1 i 10.2.
+
+### 10.1 Sistemski testovi — nepromenljivi
+
+**Šta radi:** fiksni skup testova nad taint algoritmom, u verzionisanom kodu (`backend/tests/`). Stranica ih prikazuje grupisano, pokreće na klik i prikazuje rezultat (prošlo / palo, trajanje). **Klikom na svaki test** otvara se objašnjenje na srpskom šta test dokazuje i **njegov stvarni izvorni kod**, a kod testa koji je pao i tačna poruka o grešci.
+
+**Zašto se ne mogu menjati kroz aplikaciju:** kada bi dokaz ispravnosti mogao da se izmeni dok ne prođe, prestao bi da bude dokaz. Zato stranica ove testove **samo čita i pokreće** — ne postoji način da se kroz interfejs izmene.
+
+**Kako nazivi ostaju sinhronizovani sa kodom:** naziv testa na stranici je **prva linija docstring-a same test funkcije**, a naslov grupe je docstring klase. Ne postoji odvojena tabela prevoda koja bi vremenom mogla da se raziđe od koda — izmena testa automatski menja i ono što piše u aplikaciji.
+
+**Šta je pokriveno (glavne grupe):** razblaživanje (haircut model), raspodela po izvorima, podaci za vremensku traku, hronologija, ponašanje seed adresa, zaprljani skokovi — plus grupe za izveštaj aktivnosti (sekcija 11).
+
+**Testiranje:**
+
+1. Otvori „Testovi" i klikni **„Pokreni sistemske testove"** — treba da se pojavi zelena traka sa brojem testova koji su prošli i trajanjem — ovim se potvrđuje da se testovi stvarno izvršavaju na serveru, a ne da je rezultat unapred upisan.
+2. Klikni na bilo koji test — otvara se objašnjenje na srpskom i blok **„Šta test tačno proverava"** sa pravim kodom — ovim se potvrđuje da se prikazani kod čita iz stvarnog test fajla.
+3. Kao ne-admin nalog pokušaj da otvoriš `/tests` — pristup mora biti odbijen — ovim se potvrđuje da je stranica zaista ograničena na administratora.
+
+> **Dokaz da testovi zaista hvataju greške:** test koji prolazi i na ispravnom i na pokvarenom kodu je bezvredan. Zato je algoritam namerno kvaren tri puta i provereno je da testovi to primete: uklanjanje haircut proporcije → 3 testa pala; uklanjanje hronološkog sortiranja → 4 testa pala; uklanjanje raspodele po izvorima po rangu (izmena iz 8.6) → 1 test pao. Nakon svake provere kôd je vraćen u prvobitno stanje.
+
+### 10.2 Validacioni scenariji — mogu se kreirati, menjati i brisati
+
+**Šta radi:** scenario je **opis podataka, ne kod** — spisak transakcija, izvori (seed adrese) i procenti koji se očekuju. Aplikacija ih propušta kroz **pravi** taint algoritam i uporedi rezultat. Kod pada se prikazuje tabela **očekivano vs. dobijeno** po adresi.
+
+**Zašto je ovo bezbedno za izmenu, a sistemski testovi nisu:** scenario ne sadrži kod koji se izvršava — samo podatke koji se propuštaju kroz postojeći algoritam. Zato admin može slobodno da ih kreira, menja i briše bez rizika da kroz interfejs pokrene proizvoljan kod na serveru.
+
+**Praktična vrednost:** vremenom nastaje **biblioteka referentnih slučajeva na kojima je alat validiran** — što je za rad iz digitalne forenzike jak argument.
+
+**Testiranje:**
+
+1. Klikni **„Novi scenario"**, unesi transakcije `0xThief → 0xMixer, 1000` i `0xCleanUser → 0xMixer, 500`, izvor `0xThief`, i očekivanje `0xMixer = 50%` (namerno pogrešno). Sačuvaj i pokreni — scenario mora **pasti**, uz prikaz `očekivano 50%, dobijeno 66.67%` — ovim se potvrđuje da poređenje stvarno radi, a ne da sve prolazi.
+2. Klikni „Izmeni" i postavi `66.67%` — sada mora **proći** — ovim se potvrđuje da izmena scenarija ima efekta.
+3. Unesi adresu koja ne postoji u transakcijama — mora se prikazati poruka *„Adresa se ne pojavljuje u rezultatu analize"* umesto tihog prolaza — ovim se potvrđuje da greška u kucanju ne može da prođe kao uspešan test.
+4. Obriši scenario — nestaje sa spiska; u „Log aktivnosti" ostaje zapis sa **nazivom** obrisanog scenarija.
+
+### 10.3 Testovi se automatski pojavljuju na stranici
+
+Pokretač testova skenira sve `test_*.py` fajlove u `backend/tests/`, pa **svaki novi test fajl automatski osvane na stranici**, grupisan po svom docstring-u — bez ikakve izmene u frontendu. Zahvaljujući tome, provere koje se pišu tokom razvoja ostaju trajno vidljive umesto da budu privremene skripte koje se obrišu.
+
+Ograničenje: ovako se mogu pokriti logika, matematika i pravila pristupa. Vizuelne provere (prelom teksta, raspored u PDF-u) i Docker build ostaju ručne — test koji tvrdi „izgleda lepo" ne bi ništa dokazivao.
+
+## 11. Izveštaj aktivnosti (izvoz iz loga)
+
+**Šta radi:** dugme **„Izveštaj"** na strani „Log aktivnosti" otvara panel za izvoz zapisa u **PDF** ili **CSV**.
+
+- **Period** — tri opcije: `Sve aktivnosti` (od početka korišćenja sistema), `Jedan dan`, `Od — do`
+- **Korisnici** — običan korisnik dobija isključivo svoje akcije; **administrator** bira jednog, više njih u bilo kojoj kombinaciji, ili sve
+- **Brojač uživo** — pre klika se prikazuje koliko zapisa period obuhvata; kada je **0**, dugmad su onemogućena uz poruku da se izveštaj ne može generisati
+
+**Zašto se generiše na serveru:** dokument tvrdi „ovo su sve akcije u periodu X", pa podaci moraju doći iz samog log fajla, a ne iz onoga što je browser slučajno učitao. Zbog toga ovaj izveštaj ima i **ispravna slova č/ć/š/ž/đ** (server ugrađuje Unicode font), za razliku od taint PDF-a iz sekcije 8.7.
+
+**Vremenska zona — najvažniji detalj:** log čuva vreme u UTC, a korisnik bira dane onako kako ih vidi na ekranu, u lokalnom vremenu. Da se filtrira po UTC danu, akcija u 00:30 po lokalnom vremenu (UTC+2) bi ispala iz izveštaja za taj dan, jer je u UTC-u zabeležena kao 22:30 prethodnog dana. Zato se filtrira po **lokalnom** danu, a izveštaj u zaglavlju navodi korišćenu zonu (npr. `UTC+02:00`).
+
+**Šta izveštaj sadrži:** zaglavlje (ko, kada, period + zona, obuhvaćeni korisnici, redosled), četiri kartice sa rezimeom (ukupno akcija / korisnika / dana sa aktivnošću / slučajeva), raspodelu po tipu akcije i po korisniku sa trakama, i hronologiju **grupisanu po danima** (svaki dan ima zaglavlje sa datumom, danom u nedelji i brojem akcija).
+
+**Testiranje:**
+
+1. Otvori „Log aktivnosti" → **„Izveštaj"** → ostavi `Sve aktivnosti`. Ispod se prikazuje ukupan broj zapisa — ovim se potvrđuje da brojač radi pre generisanja.
+2. Izaberi `Jedan dan` i datum na koji **ima** aktivnosti → preuzmi PDF. U zaglavlju mora pisati `Jedan dan: <datum>` i korišćena vremenska zona — ovim se potvrđuje da je period tačno onaj koji si izabrao.
+3. Izaberi datum na koji **nema** aktivnosti → brojač pokazuje `0 zapisa`, poruka objašnjava zašto, a dugmad su siva — ovim se potvrđuje da se prazan izveštaj sprečava **pre** klika, a ne greškom posle.
+4. Kao **admin**, izaberi dva konkretna korisnika → broj zapisa mora biti zbir njihovih pojedinačnih brojeva — ovim se potvrđuje da filter po korisnicima radi tačno.
+5. Preuzmi i **CSV** za isti period → mora imati isti broj redova (plus zaglavlje) i sadržati **i lokalno i UTC vreme** — ovim se potvrđuje da se izveštaj može proveriti nezavisno od vremenske zone.
+6. Vrati se na „Log aktivnosti" → na vrhu je novi zapis **„Izvezen izveštaj aktivnosti"** sa detaljima tipa `PDF · 42 zapisa · jedan dan: 10.08.2026.` — ovim se potvrđuje da se i sam izvoz beleži, sa tačnim vremenskim okvirom koji je biran.
+
+**Provera bezbednosti (tehnički):** ulogovan kao analitičar, ručno pozovi `GET /api/v1/activity-log/report.pdf?users=admin` — izveštaj i dalje sadrži **samo tvoje** akcije, jer opseg određuje uloga iz tokena, a ne parametar iz upita.
+
+> Napomena o starim zapisima: unosi napravljeni pre nego što su polja `case_name` i `details` uvedena prikazuju se sa „naziv nije zabeležen" i praznim detaljima. To je namerno — tada ti podaci nisu beleženi, pa bi bilo kakva dopuna bila izmišljena.
