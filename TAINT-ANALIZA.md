@@ -36,7 +36,7 @@ Proporcionalni je izabran jer ne širi sumnju na adrese čija je stvarna izlože
 4. **Raspodela po izvorima putuje sa novcem** — zna se ne samo „koliko je prljavo" nego i „čije je".
 5. **Procenat nikada ne prelazi 100%.**
 
-Svaka od ovih osobina je pokrivena testom (sekcija 5).
+Svaka od ovih osobina je pokrivena testom (sekcija 6).
 
 ---
 
@@ -193,7 +193,44 @@ Sumnjalo se da je peel chain detektor pokvaren jer na „test 1" vraća 0 lanaca
 
 ---
 
-## 4. Klasteri u taint analizi
+## 4. Valuta evidencije
+
+Haircut model **sabira i deli** iznose. To ima smisla samo ako su svi iznosi u istoj jedinici. Fajl koji meša 10 ETH i 500 USDT dao bi procenat koji izgleda precizno, a aritmetički je besmislen — jer model tretira `amount` vrednosti kao međusobno zamenjive.
+
+### Kako je rešeno
+
+**Opciona kolona u CSV-u.** Prepoznaju se nazivi `currency`, `valuta`, `token`, `symbol`, `asset`. Vrednosti se normalizuju (`eth`, `ETH `, `Eth` → `ETH`), pa razlika u pisanju ne pravi lažno mešanje.
+
+**Provera pri otpremanju:**
+
+| Stanje fajla | Ponašanje |
+|---|---|
+| Jedna valuta | prihvata se, valuta se beleži uz evidenciju |
+| **Više valuta** | **fajl se odbija** (HTTP 400) uz spisak pronađenih valuta |
+| Nema kolone | prihvata se, beleži se `nije navedena` |
+
+Odbijanje je namerno strože od upozorenja: greška se kasnije ne može ispraviti, jer bi **svaki** procenat u analizi i izveštaju bio pogrešan. Odbijeni fajl se briše sa diska, ne ostaje zaostao.
+
+**„Nije navedena" nije isto što i ETH.** Sve postojeće evidencije nemaju tu kolonu. Pretpostaviti da su ETH značilo bi upisati nedokazivu tvrdnju u forenzički zapis, pa se izričito piše da nije navedena.
+
+**On-chain povlačenje** uvek upisuje `ETH`, jer koristi Etherscan-ov `txlist` (samo native transferi), nikad `tokentx` — pa povučen fajl po definiciji ne može da sadrži tokene.
+
+### Upozorenje u kombinovanom prikazu
+
+Pojedinačni fajl više ne može da meša valute, ali **kombinovani prikaz** i dalje može da spoji ETH fajl i USDT fajl u jedan graf. Zato se iznad Taint analize pojavljuje žuta traka:
+
+> ⚠ Izabrani dokazi koriste različite valute (ETH, USDT). Taint procenat sabira sve iznose kao da su ista jedinica, pa rezultat nije smislen. Izaberi jednu evidenciju.
+
+U PDF izveštaju, uz `EVIDENCIJA`, stoji i polje **`VALUTA`** sa jednom od tri vrednosti: naziv valute, `Nije navedena u evidenciji`, ili upozorenje o pomešanim valutama.
+
+### Testiranje
+
+1. Napravi CSV sa dva reda i kolonom `currency`, jedan `ETH` i jedan `USDT`. Otpremi ga — mora biti **odbijen** uz poruku koja navodi obe valute. Ovim se potvrđuje da se nesmislena evidencija ne može ni uneti.
+2. Ispravi fajl da obe transakcije budu `ETH` i otpremi ponovo — mora **proći**, a uz evidenciju se beleži `ETH`.
+3. Otpremi fajl **bez** kolone za valutu — mora proći, a valuta ostaje `nije navedena` (ne „ETH").
+4. Izvezi PDF — u zaglavlju mora postojati red `VALUTA` sa odgovarajućom vrednošću.
+
+## 5. Klasteri u taint analizi
 
 **Konceptualno su bitni.** Ako jedno lice kontroliše pet adresa, prebacivanje novca između njih nije razblaživanje nego premeštanje u istom džepu. Bez klastera lopov može da razbije sredstva po sopstvenim adresama i svaki korak izgleda kao transfer trećem licu — procenat pada, a novac nije nigde otišao.
 
@@ -205,21 +242,22 @@ Napomena: na slučaju „test 1" detektor klastera vraća **0 klastera**.
 
 ---
 
-## 5. Provera ispravnosti (testovi)
+## 6. Provera ispravnosti (testovi)
 
 Svi testovi su vidljivi i pokretljivi iz aplikacije — dugme **„Testovi"** u meniju (samo administrator). Detaljno o samoj stranici: `BLOCKCHAIN-UVOZ.md`, sekcija 10.
 
-### 5.1 Šta je pokriveno
+### 6.1 Šta je pokriveno
 
 | Fajl | Testova | Pokriva |
 |---|---|---|
 | `test_taint_analysis.py` | 21 | haircut matematiku, raspodelu po izvorima, podatke za vremensku traku, hronologiju, ponašanje seed adresa, zaprljane skokove |
 | `test_seed_suggestion.py` | 17 | svako pravilo za predlog čvorova, razdvajanje izvor/pranje, prazan rezultat |
+| `test_currency_validation.py` | 8 | prepoznavanje valute, odbijanje pomešanih valuta, kompatibilnost sa starim fajlovima |
 | `test_activity_report.py` | 24 | izveštaj aktivnosti (vidi `BLOCKCHAIN-UVOZ.md` sekciju 11) |
 
-**Ukupno 62 testa.**
+**Ukupno 70 testova.**
 
-### 5.2 Zaštite od povratka ispravljenih grešaka
+### 6.2 Zaštite od povratka ispravljenih grešaka
 
 Za svaku grešku iz sekcije 3 postoji test koji je čuva:
 
@@ -231,7 +269,7 @@ Za svaku grešku iz sekcije 3 postoji test koji je čuva:
 | „Adresa koja pošalje više nego što je primila se ne označava" | nemoguć procenat „150% prosleđeno" |
 | „Svaki zapis istorije nosi svoju raspodelu po izvorima" | filter po izvoru tiho netačan tokom vremenske trake |
 
-### 5.3 Dokaz da testovi zaista hvataju greške
+### 6.3 Dokaz da testovi zaista hvataju greške
 
 Test koji prolazi i na ispravnom i na pokvarenom kodu je bezvredan. Algoritam je namerno pokvaren tri puta i provereno je da testovi to primete:
 
@@ -243,7 +281,7 @@ Test koji prolazi i na ispravnom i na pokvarenom kodu je bezvredan. Algoritam je
 
 Posle svake provere kôd je vraćen u prvobitno stanje i provereno da ponovo prolazi.
 
-### 5.4 Kako pokrenuti
+### 6.4 Kako pokrenuti
 
 **Iz aplikacije:** „Testovi" → **„Pokreni sistemske testove"**. Klik na test otvara objašnjenje na srpskom i njegov stvarni izvorni kod.
 
@@ -255,9 +293,9 @@ docker compose exec backend python -m pytest tests/ -v
 
 ---
 
-## 6. Ručno testiranje algoritma
+## 7. Ručno testiranje algoritma
 
-### 6.1 Predlog čvorova — očekivani rezultati
+### 7.1 Predlog čvorova — očekivani rezultati
 
 **Demo (`demo_taint_dilution.csv`, kombinovani prikaz):**
 
@@ -272,18 +310,18 @@ docker compose exec backend python -m pytest tests/ -v
 6. Izaberi pojedinačnu evidenciju `onchain_mainnet_address_...csv` i klikni „Predloži za pregled".
 7. Rezultat mora biti **0 predloga**, ali sa **žutim upozorenjem** da je razlog oblik evidencije, a ne čistoća — ovim se potvrđuje da se dva različita značenja praznog rezultata ne mešaju.
 
-### 6.2 Provera da procenat ne prelazi 100%
+### 7.2 Provera da procenat ne prelazi 100%
 
 8. Pokreni analizu na „test 1" sa kombinovanom evidencijom i seed adresama koje uključuju `0xbad000...`.
 9. U tabeli „Najviše zaprljane adrese" **nijedan** procenat ne sme biti veći od 100% — ovim se potvrđuje ispravka iz 3.1. (Pre ispravke je `0xNormalUser1` prikazivao 111.11%.)
 
-### 6.3 Provera legende grafa
+### 7.3 Provera legende grafa
 
 10. Otvori Graf, pronađi čvor sa zlatnom ivicom — ivica mora biti **puna**, a u legendi mora pisati „zlatna puna ivica". Isprekidan prsten (tirkizan) sme označavati isključivo klaster. Ovim se potvrđuje ispravka iz 3.3.
 
 ---
 
-## 7. Gde se šta nalazi u kodu
+## 8. Gde se šta nalazi u kodu
 
 | Šta | Fajl |
 |---|---|

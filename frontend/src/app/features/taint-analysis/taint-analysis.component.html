@@ -97,6 +97,20 @@
     nego i koliki procenat.
   </p>
 
+  <p class="currency-warning" *ngIf="hasRunTaint && taintResult?.single_hop_evidence">
+    ⚠ <strong>Evidencija prati novac samo jedan skok.</strong> Od {{ taintResult?.node_count }} adresa, samo
+    {{ taintResult?.relay_count }} i prima i prosleđuje sredstva. Zbog toga „tačke unovčavanja" nisu nalaz nego
+    <strong>ivica prikupljenih podataka</strong> — šta su te adrese radile dalje nije ni povučeno. Iz istog razloga skoro
+    sve stoji na 100%: ništa se nije mešalo, pa nema razblaživanja. Za smislen nalaz proširi evidenciju (režim „proširi
+    pošiljaoce") ili je dopuni istorijama tih adresa.
+  </p>
+
+  <p class="currency-warning" *ngIf="hasCurrencyConflict">
+    ⚠ Izabrani dokazi koriste <strong>različite valute ({{ mixedCurrencies.join(', ') }})</strong>. Taint procenat sabira
+    sve iznose kao da su ista jedinica, pa rezultat <strong>nije smislen</strong>. Izaberi jednu evidenciju iz padajućeg
+    menija iznad.
+  </p>
+
   <div class="seed-panel" *ngIf="!hasRunTaint">
     <p class="muted top-tainted-hint" *ngIf="seedAddresses.length > 0">
       Uređuješ postojeći izbor izvora — dodaj ili ukloni adrese, pa ponovo pokreni analizu.

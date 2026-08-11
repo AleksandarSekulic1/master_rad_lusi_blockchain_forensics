@@ -227,10 +227,23 @@ class TaintAnalysisPlugin(BasePlugin):
             key=lambda item: -item['taint_percentage'],
         )
 
+        # How much of the money's onward movement this evidence actually contains. In a
+        # single-address pull almost nobody both receives and forwards, and that distorts
+        # two headline findings at once: every leaf looks like a "cash-out point" (its
+        # onward transfers were simply never collected), and nothing can dilute anyone, so
+        # percentages sit at 100%. Both are artefacts of the collection method, not
+        # findings, so the frontend and the report must be able to say so.
+        relay_count = sum(1 for node in graph.nodes if graph.in_degree(node) > 0 and graph.out_degree(node) > 0)
+        node_count = graph.number_of_nodes()
+
         return {
             'plugin': self.name,
             'description': self.description,
             'seed_addresses': sorted(seeds),
+            'relay_count': relay_count,
+            'node_count': node_count,
+            # True when the evidence barely follows the money past its first hop.
+            'single_hop_evidence': node_count >= 20 and relay_count / node_count < 0.05,
             'tainted_node_count': sum(1 for item in results if item['taint_percentage'] > 0),
             'tainted_hops': tainted_hops,
             'results': results,

@@ -126,6 +126,14 @@ export interface TaintAnalysisResult {
   results: TaintNodeResult[];
   node_first_rank: Record<string, number>;
   edge_first_rank: Record<string, number>;
+  /** Addresses that both receive and forward - i.e. how far past the first hop the
+   * evidence actually follows the money. */
+  relay_count: number;
+  node_count: number;
+  /** True when the evidence barely goes past one hop. Then "cash-out point" findings are
+   * an artefact of the collection method (onward transfers were never pulled) and nothing
+   * can dilute anyone, so percentages sit at 100%. */
+  single_hop_evidence: boolean;
   node_taint_series: Record<string, TaintTimelineEntry[]>;
   timeline_max_rank: number;
   timeline_events: TaintTimelineEvent[];
@@ -241,6 +249,10 @@ export interface EvidenceEntry {
   size_bytes: number;
   sha256: string;
   analyst: string;
+  /** Currency the amounts are denominated in, or null when the file never declared one -
+   * which is not the same as ETH. Mixing currencies makes the taint percentage
+   * meaningless, so uploads containing more than one are rejected outright. */
+  currency?: string | null;
 }
 
 export type CaseStatus = 'open' | 'closed';

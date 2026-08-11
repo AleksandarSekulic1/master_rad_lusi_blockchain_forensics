@@ -23,6 +23,14 @@ COLUMN_ALIASES = {
     'metadata': 'metadata',
     'tx_hash': 'metadata',
     'hash': 'metadata',
+    # Optional. The taint model adds and divides `amount` values, which only means
+    # anything if they are all the same unit - mixing ETH and USDT rows in one file would
+    # produce percentages that look precise and are arithmetically meaningless.
+    'currency': 'currency',
+    'valuta': 'currency',
+    'token': 'currency',
+    'symbol': 'currency',
+    'asset': 'currency',
 }
 
 REQUIRED_COLUMNS = ['sender_address', 'recipient_address', 'amount', 'timestamp']
@@ -35,6 +43,9 @@ def _normalize_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     if 'metadata' not in normalized.columns:
         normalized['metadata'] = None
+
+    if 'currency' not in normalized.columns:
+        normalized['currency'] = None
 
     for column in REQUIRED_COLUMNS:
         if column not in normalized.columns:
@@ -63,3 +74,28 @@ def clean_transaction_csv(file_path: str | Path) -> pd.DataFrame:
 
     dataframe = dataframe.reset_index(drop=True)
     return dataframe
+
+
+def detect_currencies(file_path: str | Path) -> list[str]:
+    """Distinct currency labels declared in the file, uppercased.
+
+    Empty when the file has no currency column at all - which is not the same as "one
+    currency": it means the file never said, and the caller has to report that honestly
+    rather than assume ETH.
+    """
+    try:
+        dataframe = _normalize_columns(pd.read_csv(file_path))
+    except Exception:  # noqa: BLE001 - upload validation must not fail on a broken file
+        return []
+
+    if 'currency' not in dataframe.columns:
+        return []
+
+    values = (
+        dataframe['currency']
+        .dropna()
+        .astype('string')
+        .str.strip()
+        .str.upper()
+    )
+    return sorted({value for value in values if value})

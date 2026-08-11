@@ -1,28 +1,28 @@
 {
   "cases": [
     {
-      "id": "46ae7f91db9b",
-      "name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
-      "description": "Demonstracioni slucaj koji pokriva sve heuristike: crna lista, visok rizik, anomalija, peel lanac, skok lanca, i obogacivanje adrese realnom on-chain adresom (poslednja adresa u lancu je stvarna Ethereum adresa).",
-      "analyst": "admin",
-      "status": "open",
-      "created_at": "2026-07-16T16:48:06.761081+00:00",
-      "updated_at": "2026-08-10T10:25:59.235060+00:00",
-      "evidence_count": 4,
-      "total_size_bytes": 1490,
-      "last_imported_at": "2026-08-10T10:25:59.235060+00:00"
-    },
-    {
       "id": "c23db4afd0f3",
       "name": "Moj slucaj",
       "description": "neslsms",
       "analyst": "aco",
       "status": "open",
       "created_at": "2026-07-15T22:17:02.334858+00:00",
-      "updated_at": "2026-07-15T22:17:24.759213+00:00",
-      "evidence_count": 1,
-      "total_size_bytes": 2025,
-      "last_imported_at": "2026-07-15T22:17:24.759213+00:00"
+      "updated_at": "2026-08-11T17:19:07.373529+00:00",
+      "evidence_count": 2,
+      "total_size_bytes": 201635,
+      "last_imported_at": "2026-08-11T17:19:07.373529+00:00"
+    },
+    {
+      "id": "46ae7f91db9b",
+      "name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+      "description": "Demonstracioni slucaj koji pokriva sve heuristike: crna lista, visok rizik, anomalija, peel lanac, skok lanca, i obogacivanje adrese realnom on-chain adresom (poslednja adresa u lancu je stvarna Ethereum adresa).",
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-07-16T16:48:06.761081+00:00",
+      "updated_at": "2026-08-11T17:11:59.180101+00:00",
+      "evidence_count": 4,
+      "total_size_bytes": 1490,
+      "last_imported_at": "2026-08-10T10:25:59.235060+00:00"
     },
     {
       "id": "a858f96b8c07",

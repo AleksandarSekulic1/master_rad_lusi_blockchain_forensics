@@ -387,6 +387,22 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.showAllChecks = !this.showAllChecks;
   }
 
+  /** Currencies across the evidence actually in scope. A single file can never mix them
+   * (uploads with more than one are rejected), but the combined view can still put an ETH
+   * file and a USDT file into one graph - and the taint model adds those amounts together
+   * as if they were the same unit, which makes every percentage meaningless. */
+  get mixedCurrencies(): string[] {
+    const inScope = this.selectedEvidence
+      ? this.evidenceOptions.filter((entry) => entry.stored_name === this.selectedEvidence)
+      : this.evidenceOptions;
+    const declared = inScope.map((entry) => entry.currency).filter((value): value is string => !!value);
+    return [...new Set(declared)].sort();
+  }
+
+  get hasCurrencyConflict(): boolean {
+    return this.mixedCurrencies.length > 1;
+  }
+
   get hasAnySuggestion(): boolean {
     const suggestions = this.seedSuggestions;
     return !!suggestions && (suggestions.origin_candidates.length > 0 || suggestions.laundering_points.length > 0);
@@ -1807,6 +1823,17 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     kv('CASE ID', caseSummary.id);
     kv('IZVEZAO', this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
     kv('EVIDENCIJA', this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : 'Sve transakcije (kombinovano)');
+    // Stated explicitly because the percentages only mean anything if every amount is in
+    // the same unit - and "not declared" must read as exactly that, never as an assumed ETH.
+    const currencies = this.mixedCurrencies;
+    kv(
+      'VALUTA',
+      currencies.length === 0
+        ? 'Nije navedena u evidenciji'
+        : currencies.length === 1
+          ? currencies[0]
+          : `UPOZORENJE: pomesane valute (${currencies.join(', ')}) - procenti nisu smisleni`,
+    );
     kv('GENERISANO', new Date().toLocaleString());
     y += 2;
 
@@ -2132,6 +2159,30 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.text(note, marginX, y);
       y += note.length * 4 + 3;
       doc.setTextColor(...TEXT_DARK);
+
+      // Without this, a one-hop pull reports every leaf as a cash-out point and the
+      // reader has no way to know the figure is a property of the data collection rather
+      // than a finding.
+      if (result.single_hop_evidence) {
+        const shapeLines = doc.splitTextToSize(
+          `UPOZORENJE: ova evidencija prati novac samo jedan skok - od ${result.node_count} adresa samo ` +
+            `${result.relay_count} i prima i prosledjuje sredstva. Adrese navedene ovde nisu utvrdjene tacke ` +
+            'unovcavanja nego ivica prikupljenih podataka: sta su radile dalje nije ni povuceno u ovaj slucaj. ' +
+            'Iz istog razloga procenti stoje na 100% - nista se nije mesalo, pa nema razblazivanja.',
+          usableWidth - 8,
+        );
+        const warnHeight = shapeLines.length * 4.2 + 6;
+        doc.setFillColor(253, 250, 240);
+        doc.setDrawColor(...TaintAnalysisComponent.PDF_AMBER);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(marginX, y - 3.5, usableWidth, warnHeight, 2, 2, 'FD');
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...TEXT_DARK);
+        doc.text(shapeLines, marginX + 4, y + 1);
+        y += warnHeight + 3;
+        doc.setFont('helvetica', 'normal');
+      }
 
       autoTable(doc, {
         startY: y,

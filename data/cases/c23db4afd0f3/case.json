@@ -5,7 +5,7 @@
   "analyst": "aco",
   "status": "open",
   "created_at": "2026-07-15T22:17:02.334858+00:00",
-  "updated_at": "2026-07-15T22:17:24.759213+00:00",
+  "updated_at": "2026-08-11T17:19:07.373529+00:00",
   "evidence": [
     {
       "file_name": "onchain_mainnet_address_0xC41009a20768f69D72F8C1A0B2A551C8C7F957aF.csv",
@@ -14,9 +14,18 @@
       "size_bytes": 2025,
       "sha256": "f7cd7e4d66cee5d694f03fea551b273032661af52ff3102807f6d7156ed5351c",
       "analyst": "aco"
+    },
+    {
+      "file_name": "onchain_mainnet_tx_expand_sender_0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97.csv",
+      "stored_name": "20260811_171907_325763_onchain_mainnet_tx_expand_sender_0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97.csv",
+      "imported_at": "2026-08-11T17:19:07.373529+00:00",
+      "size_bytes": 199610,
+      "sha256": "10f67c0838e0a360af20576d94faec28f58e40356dd1caeba4e26b5d30d85ccc",
+      "analyst": "aco",
+      "currency": "ETH"
     }
   ],
-  "evidence_count": 1,
-  "total_size_bytes": 2025,
-  "last_imported_at": "2026-07-15T22:17:24.759213+00:00"
+  "evidence_count": 2,
+  "total_size_bytes": 201635,
+  "last_imported_at": "2026-08-11T17:19:07.373529+00:00"
 }

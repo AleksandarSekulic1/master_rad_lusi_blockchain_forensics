@@ -892,3 +892,20 @@ h3 {
 .suggestion-empty.structural strong {
   color: #fbbf24;
 }
+
+/* Mixing currencies makes every percentage below meaningless, so this sits above the
+   whole workflow rather than beside one control. */
+.currency-warning {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.9rem;
+  color: #fde3a7;
+  background: rgba(217, 119, 6, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  font-size: 0.87rem;
+  line-height: 1.55;
+}
+
+.currency-warning strong {
+  color: #fbbf24;
+}

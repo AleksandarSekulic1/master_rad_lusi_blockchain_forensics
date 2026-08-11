@@ -367,6 +367,59 @@ class TestSeedBehaviour:
         assert result['tainted_node_count'] == 0
 
 
+class TestEvidenceShape:
+    """Oblik evidencije
+
+    Koliko evidencija uopšte prati novac dalje od prvog skoka. U izvlačenju istorije jedne
+    adrese skoro niko ne prima i ne prosleđuje, pa svaki list izgleda kao tačka
+    unovčavanja iako su njegove dalje transakcije prosto neprikupljene.
+    """
+
+    def test_single_hop_pull_is_recognized(self, graph_from_rows):
+        """Jednoslojna evidencija se prepoznaje
+
+        Kada jedna adresa šalje na mnogo njih i niko ne prosleđuje dalje, rezultat se ne
+        sme čitati kao „pronađeno je mnogo tačaka unovčavanja" — to je ivica prikupljenih
+        podataka.
+        """
+        rows = [('0xHub', f'0xLeaf{i}', 1, f'2026-03-01T00:{i:02d}:00Z') for i in range(25)]
+
+        result = run_taint_analysis(graph=graph_from_rows(rows), seed_addresses=['0xHub'], seed_from_blacklist=False)
+
+        assert result['single_hop_evidence'] is True
+        assert result['relay_count'] == 0
+
+    def test_multi_hop_evidence_is_not_flagged(self, graph_from_rows):
+        """Višeslojna evidencija se ne označava
+
+        Kada sredstva stvarno prolaze kroz lance, nalazi o tačkama unovčavanja imaju
+        smisla i upozorenje ne sme da se pojavi.
+        """
+        rows = []
+        for i in range(25):
+            rows.append(('0xHub', f'0xRelay{i}', 10, f'2026-03-01T00:{i:02d}:00Z'))
+            rows.append((f'0xRelay{i}', f'0xEnd{i}', 9, f'2026-03-01T01:{i:02d}:00Z'))
+
+        result = run_taint_analysis(graph=graph_from_rows(rows), seed_addresses=['0xHub'], seed_from_blacklist=False)
+
+        assert result['single_hop_evidence'] is False
+        assert result['relay_count'] == 25
+
+    def test_tiny_graph_is_never_flagged(self, graph_from_rows):
+        """Vrlo mali graf se nikad ne označava
+
+        Na svega nekoliko adresa udeo relejnih čvorova ništa ne govori — upozorenje bi
+        bilo šum, pa se primenjuje tek od 20 adresa naviše.
+        """
+        result = run_taint_analysis(
+            graph=graph_from_rows([('0xA', '0xB', 10, '2026-03-01T00:00:00Z')]),
+            seed_addresses=['0xA'],
+            seed_from_blacklist=False,
+        )
+
+        assert result['single_hop_evidence'] is False
+
+
 class TestTaintedHops:
     """Zaprljani skokovi
 
