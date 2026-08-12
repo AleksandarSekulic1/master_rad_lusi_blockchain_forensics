@@ -89,5 +89,423 @@
     "created_at": "2026-08-10T16:12:20.512561+00:00",
     "updated_at": "2026-08-10T16:12:20.512561+00:00",
     "created_by": "system"
+  },
+  {
+    "id": "afd9473adb1c",
+    "name": "Odliv ne menja procenat posiljaoca",
+    "description": "Mikser posalje deo dalje - njegov sopstveni procenat ostaje 66.67%, jer odliv odnosi prljavo i cisto u istoj srazmeri (definisuca osobina haircut modela).",
+    "transactions": [
+      {
+        "sender": "0xThief",
+        "recipient": "0xMixer",
+        "amount": 1000,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xCleanUser",
+        "recipient": "0xMixer",
+        "amount": 500,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xMixer",
+        "recipient": "0xExit",
+        "amount": 750,
+        "timestamp": "2026-03-01T00:10:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xThief"
+    ],
+    "expectations": [
+      {
+        "address": "0xMixer",
+        "expected_percentage": 66.67
+      },
+      {
+        "address": "0xExit",
+        "expected_percentage": 66.67
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.570148+00:00",
+    "updated_at": "2026-08-12T14:25:26.570148+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "beb737119d28",
+    "name": "Visestruko razblazivanje kroz lanac",
+    "description": "Svaki sledeci cvor prima jednaku kolicinu cistog novca, pa procenat pada 100% -> 50% -> 25%. Provera da se razblazivanje slaze kroz vise koraka, a ne samo jednom.",
+    "transactions": [
+      {
+        "sender": "0xOrigin",
+        "recipient": "0xHop1",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xClean1",
+        "recipient": "0xHop1",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xHop1",
+        "recipient": "0xHop2",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:10:00Z"
+      },
+      {
+        "sender": "0xClean2",
+        "recipient": "0xHop2",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:15:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xOrigin"
+    ],
+    "expectations": [
+      {
+        "address": "0xHop1",
+        "expected_percentage": 50.0
+      },
+      {
+        "address": "0xHop2",
+        "expected_percentage": 25.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.577807+00:00",
+    "updated_at": "2026-08-12T14:25:26.577807+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "8ea328cd907c",
+    "name": "Hronologija: cist priliv PRE prljavog",
+    "description": "Cist novac stigne prvi, pa tek onda prljav. Rezultat mora biti isti 50% kao i u obrnutom redosledu - inace bi algoritam obradjivao granu-po-granu umesto po vremenu.",
+    "transactions": [
+      {
+        "sender": "0xCleanFirst",
+        "recipient": "0xTarget",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xDirty",
+        "recipient": "0xTarget",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:05:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xDirty"
+    ],
+    "expectations": [
+      {
+        "address": "0xTarget",
+        "expected_percentage": 50.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.597913+00:00",
+    "updated_at": "2026-08-12T14:25:26.597913+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "f0ed3b24f292",
+    "name": "Tri izvora se spajaju (50/30/20)",
+    "description": "Provera da raspodela po izvorima radi i sa vise od dva izvora - ukupno 100%, ali podeljeno na tri nejednaka udela.",
+    "transactions": [
+      {
+        "sender": "0xSrcA",
+        "recipient": "0xHub",
+        "amount": 500,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xSrcB",
+        "recipient": "0xHub",
+        "amount": 300,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xSrcC",
+        "recipient": "0xHub",
+        "amount": 200,
+        "timestamp": "2026-03-01T00:10:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xSrcA",
+      "0xSrcB",
+      "0xSrcC"
+    ],
+    "expectations": [
+      {
+        "address": "0xHub",
+        "expected_percentage": 100.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.620131+00:00",
+    "updated_at": "2026-08-12T14:25:26.620131+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "d215b27da945",
+    "name": "Samo jedan od tri izvora je oznacen",
+    "description": "Isti podaci kao prethodni scenario, ali samo 0xSrcB je izvor. Procenat mora pasti na tacno njegov udeo (300/1000 = 30%) - dokaz da rezultat zavisi od izbora izvora.",
+    "transactions": [
+      {
+        "sender": "0xSrcA",
+        "recipient": "0xHub",
+        "amount": 500,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xSrcB",
+        "recipient": "0xHub",
+        "amount": 300,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xSrcC",
+        "recipient": "0xHub",
+        "amount": 200,
+        "timestamp": "2026-03-01T00:10:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xSrcB"
+    ],
+    "expectations": [
+      {
+        "address": "0xHub",
+        "expected_percentage": 30.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.642373+00:00",
+    "updated_at": "2026-08-12T14:25:26.642373+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "7445b8347f1c",
+    "name": "Adresa koja salje pre nego sto primi (zastita od >100%)",
+    "description": "Adresa prvo potrosi sredstva koja je imala pre evidencije, pa tek onda primi zaprljana. Ranije je davala nemogucih 111.11% - sada mora biti tacno 100%.",
+    "transactions": [
+      {
+        "sender": "0xSpender",
+        "recipient": "0xSomeone",
+        "amount": 5,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xSpender",
+        "recipient": "0xSomeone",
+        "amount": 5,
+        "timestamp": "2026-03-01T00:01:00Z"
+      },
+      {
+        "sender": "0xThief2",
+        "recipient": "0xSpender",
+        "amount": 50,
+        "timestamp": "2026-03-01T00:02:00Z"
+      },
+      {
+        "sender": "0xThief2",
+        "recipient": "0xSpender",
+        "amount": 50,
+        "timestamp": "2026-03-01T00:03:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xThief2"
+    ],
+    "expectations": [
+      {
+        "address": "0xSpender",
+        "expected_percentage": 100.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.663907+00:00",
+    "updated_at": "2026-08-12T14:25:26.663907+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "1a44a6984bfe",
+    "name": "Peel chain - glavni tok ostaje skoro nerazblazen",
+    "description": "Pri svakom koraku se odvaja mali deo, a ostatak ide dalje. Za razliku od miksera, procenat ostaje 100% jer se nista cisto ne mesa - samo se iznos smanjuje.",
+    "transactions": [
+      {
+        "sender": "0xPeelOrigin",
+        "recipient": "0xPeel1",
+        "amount": 1000,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xPeel1",
+        "recipient": "0xSmall1",
+        "amount": 50,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xPeel1",
+        "recipient": "0xPeel2",
+        "amount": 950,
+        "timestamp": "2026-03-01T00:06:00Z"
+      },
+      {
+        "sender": "0xPeel2",
+        "recipient": "0xSmall2",
+        "amount": 50,
+        "timestamp": "2026-03-01T00:10:00Z"
+      },
+      {
+        "sender": "0xPeel2",
+        "recipient": "0xPeel3",
+        "amount": 900,
+        "timestamp": "2026-03-01T00:11:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xPeelOrigin"
+    ],
+    "expectations": [
+      {
+        "address": "0xPeel1",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xPeel2",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xPeel3",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xSmall1",
+        "expected_percentage": 100.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.688248+00:00",
+    "updated_at": "2026-08-12T14:25:26.688248+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "5765134f806b",
+    "name": "Nedodirnuta adresa ostaje na nuli",
+    "description": "Transakcije koje nemaju veze sa izvorom ne smeju da podignu procenat - zastita od modela koji bi \"prljao\" ceo graf.",
+    "transactions": [
+      {
+        "sender": "0xThief3",
+        "recipient": "0xMule",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xStranger",
+        "recipient": "0xOtherParty",
+        "amount": 400,
+        "timestamp": "2026-03-01T00:05:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xThief3"
+    ],
+    "expectations": [
+      {
+        "address": "0xMule",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xOtherParty",
+        "expected_percentage": 0.0
+      },
+      {
+        "address": "0xStranger",
+        "expected_percentage": 0.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.712462+00:00",
+    "updated_at": "2026-08-12T14:25:26.712462+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "3d85565a073e",
+    "name": "Kruzni tok - novac se vraca izvoru",
+    "description": "Sredstva prodju kroz lanac i vrate se na polaznu adresu. Provera da algoritam ne upadne u petlju i da izvor ostane 100%.",
+    "transactions": [
+      {
+        "sender": "0xLoopSeed",
+        "recipient": "0xA",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:00:00Z"
+      },
+      {
+        "sender": "0xA",
+        "recipient": "0xB",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:05:00Z"
+      },
+      {
+        "sender": "0xB",
+        "recipient": "0xLoopSeed",
+        "amount": 100,
+        "timestamp": "2026-03-01T00:10:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xLoopSeed"
+    ],
+    "expectations": [
+      {
+        "address": "0xLoopSeed",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xA",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0xB",
+        "expected_percentage": 100.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.735754+00:00",
+    "updated_at": "2026-08-12T14:25:26.735754+00:00",
+    "created_by": "system"
+  },
+  {
+    "id": "ffa4cc7d73aa",
+    "name": "Unovcavanje na poznatoj berzi (Binance)",
+    "description": "Lanac zavrsava na stvarnoj Binance adresi iz baze poznatih entiteta. Provera da propagacija kroz vise skokova radi i da adresa dobije 100%.",
+    "transactions": [
+      {
+        "sender": "0xExchHacker",
+        "recipient": "0xExchMule",
+        "amount": 200,
+        "timestamp": "2026-06-01T00:00:00Z"
+      },
+      {
+        "sender": "0xExchMule",
+        "recipient": "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be",
+        "amount": 200,
+        "timestamp": "2026-06-01T00:05:00Z"
+      }
+    ],
+    "seed_addresses": [
+      "0xExchHacker"
+    ],
+    "expectations": [
+      {
+        "address": "0xExchMule",
+        "expected_percentage": 100.0
+      },
+      {
+        "address": "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be",
+        "expected_percentage": 100.0
+      }
+    ],
+    "created_at": "2026-08-12T14:25:26.761135+00:00",
+    "updated_at": "2026-08-12T14:25:26.761135+00:00",
+    "created_by": "system"
   }
 ]

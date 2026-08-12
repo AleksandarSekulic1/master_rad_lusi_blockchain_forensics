@@ -18,7 +18,7 @@ Uputstva za uvoz podataka (Etherscan, CSV), log aktivnosti i stranicu „Testovi
 | [8. Oblik evidencije](#8-upozorenje-o-obliku-evidencije) | jednoslojni podaci |
 | [9. Klasteri](#9-klasteri) | zašto se ne koriste u obračunu |
 | [10. Ispravljene greške](#10-pronađene-i-ispravljene-greške) | šta je pucalo i kako je rešeno |
-| [11. Testovi](#11-provera-ispravnosti-testovi) | 60 automatskih testova |
+| [11. Testovi](#11-provera-ispravnosti-testovi) | 68 automatskih testova + 12 validacionih scenarija |
 | [12. Gde je šta u kodu](#12-gde-se-šta-nalazi-u-kodu) | putanje |
 
 ---
@@ -614,8 +614,9 @@ Svi testovi su vidljivi i pokretljivi iz aplikacije — dugme **„Testovi"** (s
 | `test_seed_suggestion.py` | 17 | svako pravilo za predlog čvorova, razdvajanje izvor/pranje, prazan rezultat |
 | `test_currency_validation.py` | 8 | prepoznavanje valute, odbijanje pomešanih, kompatibilnost sa starim fajlovima |
 | `test_report_registry.py` | 11 | otisak sadržaja, kontrolni broj, provera izmenjenog izveštaja |
+| `test_peel_chains.py` | 8 | prepoznavanje peel chain obrasca, granice (kratak lanac, sitni iznosi, vremenski razmak) |
 
-**Ukupno 60 testova za taint analizu** (uz 24 za izveštaj aktivnosti — vidi `BLOCKCHAIN-UVOZ.md`).
+**Ukupno 68 testova za taint analizu** (uz 24 za izveštaj aktivnosti — vidi `BLOCKCHAIN-UVOZ.md`).
 
 ### 11.2 Zaštite od povratka ispravljenih grešaka
 
@@ -628,7 +629,28 @@ Svi testovi su vidljivi i pokretljivi iz aplikacije — dugme **„Testovi"** (s
 | „Svaki zapis istorije nosi svoju raspodelu po izvorima" | filter po izvoru tiho netačan tokom trake |
 | „Izmenjen izveštaj pada na proveri" | neotkrivena izmena dokumenta |
 
-### 11.3 Dokaz da testovi zaista hvataju greške
+### 11.3 Validacioni scenariji (referentna biblioteka)
+
+Pored pytest testova, stranica „Testovi" sadrži **12 validacionih scenarija** — referentnih slučajeva sa unapred poznatim odgovorom, koji se propuštaju kroz pravi taint algoritam. Svaki pokriva **drugo svojstvo modela**, ne varijaciju istog:
+
+| Scenario | Šta dokazuje |
+|---|---|
+| Mikser razblažuje čistim prilivom | osnovno razblaživanje (66.67%) |
+| Dva nezavisna izvora se spajaju | raspodela 60/40 |
+| Odliv ne menja procenat pošiljaoca | definišuća osobina haircut modela |
+| Višestruko razblaživanje kroz lanac | 100% → 50% → 25% kroz više koraka |
+| Hronologija: čist priliv PRE prljavog | redosled po vremenu, ne po granama |
+| Tri izvora se spajaju (50/30/20) | raspodela sa više od dva izvora |
+| Samo jedan od tri izvora je označen | rezultat zavisi od izbora izvora (30%) |
+| Adresa koja šalje pre nego što primi | zaštita od procenta preko 100% |
+| Peel chain — glavni tok nerazblažen | odvajanje sitnih delova ne razblažuje |
+| Nedodirnuta adresa ostaje na nuli | model ne „prlja" ceo graf |
+| Kružni tok — novac se vraća izvoru | nema beskonačne petlje |
+| Unovčavanje na poznatoj berzi | propagacija kroz više skokova + poznat entitet |
+
+Za razliku od pytest testova, ovi se **mogu menjati i dopunjavati kroz aplikaciju** — vidi `BLOCKCHAIN-UVOZ.md`, sekcija 9.2.
+
+### 11.4 Dokaz da testovi zaista hvataju greške
 
 Test koji prolazi i na ispravnom i na pokvarenom kodu je bezvredan. Algoritam je namerno pokvaren tri puta:
 
@@ -640,7 +662,7 @@ Test koji prolazi i na ispravnom i na pokvarenom kodu je bezvredan. Algoritam je
 
 Posle svake provere kôd je vraćen u prvobitno stanje.
 
-### 11.4 Kako pokrenuti
+### 11.5 Kako pokrenuti
 
 **Iz aplikacije:** „Testovi" → **„Pokreni sistemske testove"**.
 

@@ -460,6 +460,27 @@ export interface SeedSuggestionResponse {
   coverage_note: string | null;
 }
 
+/** What was recorded when a report was signed and exported. */
+export interface ReportRegistryEntry {
+  verification_code: string;
+  content_hash: string;
+  case_id: string;
+  case_name: string;
+  analyst: string;
+  declaration: string;
+  summary: Record<string, number | string>;
+  registered_at: string;
+}
+
+export interface ReportVerificationResult {
+  /** Whether the verification code exists in the registry at all. */
+  found: boolean;
+  /** null when no hash was supplied - "not checked" is distinct from "does not match". */
+  matches: boolean | null;
+  message: string;
+  entry: ReportRegistryEntry | null;
+}
+
 export type ActivityPeriodMode = 'all' | 'day' | 'range';
 
 export interface ActivityReportPreview {
