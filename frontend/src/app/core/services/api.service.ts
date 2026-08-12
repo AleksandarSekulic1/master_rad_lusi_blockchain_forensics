@@ -20,6 +20,7 @@ import {
   OnchainNetwork,
   PathFindingRequest,
   PathFindingResponse,
+  ReportVerificationResult,
   ResetLinkResponse,
   ScenarioRequest,
   SeedSuggestionResponse,
@@ -167,12 +168,15 @@ export class ApiService {
     );
   }
 
-  verifyReport(code: string, contentHash?: string | null): Observable<Record<string, unknown>> {
+  /** Checks a report's verification code, and its content hash when one is supplied.
+   * Omitting the hash is a valid use: the caller then reads the registered hash off the
+   * response and compares it by eye with the one printed in the document. */
+  verifyReport(code: string, contentHash?: string | null): Observable<ReportVerificationResult> {
     let params = new HttpParams().set('code', code);
     if (contentHash) {
       params = params.set('content_hash', contentHash);
     }
-    return this.http.get<Record<string, unknown>>(`${this.apiUrl}/api/v1/reports/verify`, { params });
+    return this.http.get<ReportVerificationResult>(`${this.apiUrl}/api/v1/reports/verify`, { params });
   }
 
   // --- Correctness tests (admin only; the backend enforces that, not these methods) ---

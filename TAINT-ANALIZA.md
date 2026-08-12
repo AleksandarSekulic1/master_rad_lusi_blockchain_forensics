@@ -478,13 +478,42 @@ Potpis **ne** dokazuje nepromenjenost: to je slika u PDF-u i ostaje netaknut i k
 5. U PDF-u, na poslednjoj strani, mora biti tvoj potpis, okrugli Lusi pečat, kontrolni broj i otisak.
 6. Klikni „Obriši potpis" pa ponovo potpiši — potvrđuje da se površina čisti.
 
-**Testiranje provere (tehnički, preko Swagger-a na `http://localhost:8000/docs`):**
-
-7. `GET /api/v1/reports/verify?code=<kontrolni broj>&content_hash=<otisak iz PDF-a>` → `matches: true`.
-8. Isti poziv sa izmenjenim otiskom → `matches: false` uz poruku da je izveštaj izmenjen.
-9. Nepostojeći kontrolni broj → `found: false` — razlikuje se od pada provere sadržaja.
-
 Sam potpis se beleži i u logu aktivnosti (akcija `report_signed`) sa kontrolnim brojem.
+
+### 6.4 Strana „Provera izveštaja"
+
+**Šta radi:** dugme **„Provera izveštaja"** u meniju (dostupno svim ulogovanim korisnicima) otvara formu sa dva polja:
+
+- **Kontrolni broj** — obavezan, prepisuje se sa poslednje strane izveštaja
+- **Otisak sadržaja** — opcioni
+
+**Zašto je otisak opcioni:** to je 64 znaka, mučno za prepisivanje. Ako se ne unese, aplikacija ispiše **registrovani** otisak koji se onda vizuelno uporedi sa onim u izveštaju. Ko hoće automatsku proveru, nalepi otisak (copy-paste iz PDF-a radi, to je tekst).
+
+**Četiri ishoda, razdvojena bojom:**
+
+| Uneto | Boja | Poruka |
+|---|---|---|
+| Kod + **tačan** otisak | 🟢 zeleno | **Izveštaj je verodostojan** |
+| Kod + **pogrešan** otisak | 🔴 crveno | **IZVEŠTAJ JE IZMENJEN** (prikazuje oba otiska) |
+| Samo kod | ⚪ sivo | Izveštaj je pronađen u registru + svi podaci |
+| Nepoznat kod | ⚪ sivo | Kontrolni broj nije pronađen |
+
+Poslednja dva su namerno odvojena od crvenog: *„nije izvezen iz ove instalacije"* i *„izmenjen je"* su različiti zaključci, i ne smeju izgledati isto.
+
+**Šta se prikazuje uz rezultat:** ko je izvezao, kada, koji slučaj (naziv + ID), registrovani otisak, potpisana izjava, i **rezime zabeležen pri izvozu** kao čipovi (npr. `10 Zaprljanih adresa` · `3 Tačaka unovčavanja` · `6 Izvora`).
+
+Taj rezime je namerno tu: ako izveštaj u rukama tvrdi 40 zaprljanih adresa a registar kaže 10, razlika se vidi **odmah, bez ikakvog poređenja heševa**.
+
+**Testiranje:**
+
+1. Izvezi potpisan PDF i prepiši kontrolni broj sa poslednje strane.
+2. **Provera izveštaja** → unesi **samo kod** → **sivo**, sa tvojim imenom, slučajem, otiskom i rezimeom. Ovim se potvrđuje da je izveštaj u registru.
+3. Uporedi ispisani otisak sa onim u PDF-u — mora biti isti znak po znak.
+4. Nalepi otisak u drugo polje → **zeleno**, automatski potvrđeno.
+5. Promeni jedan znak u otisku → **crveno**, sa oba otiska prikazana. Ovim se potvrđuje da se izmena stvarno otkriva.
+6. Unesi izmišljen kod `LUSI-2026-XXXX-YYYY` → **sivo** sa drugačijom porukom. Ovim se potvrđuje da se „ne postoji" ne meša sa „izmenjen je".
+
+**Ograničenje:** provera zahteva nalog u aplikaciji. Sudski veštak bez pristupa ne može sam da proveri — morao bi da traži od nekoga ko ima. Prava verifikacija bila bi javna strana bez prijave, ali to znači izlaganje registra spolja, što je odluka o bezbednosti van okvira ovog rada.
 
 ---
 

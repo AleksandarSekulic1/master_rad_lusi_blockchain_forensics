@@ -1,0 +1,118 @@
+<section class="verify-page">
+  <article class="panel">
+    <p class="panel-kicker">Chain of custody</p>
+    <h2>Provera verodostojnosti izveštaja</h2>
+    <p class="panel-subtitle">
+      Unesite kontrolni broj sa poslednje strane izveštaja („Provera verodostojnosti"). Aplikacija proverava da li je taj
+      izveštaj izvezen odavde i da li mu se sadržaj poklapa sa onim što je zabeleženo u trenutku izvoza.
+    </p>
+
+    <div class="verify-form">
+      <label class="field">
+        <span>Kontrolni broj</span>
+        <input
+          type="text"
+          [(ngModel)]="code"
+          (keydown.enter)="verify()"
+          placeholder="LUSI-2026-XXXX-XXXX"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+
+      <label class="field">
+        <span>Otisak sadržaja <em>(opciono)</em></span>
+        <input
+          type="text"
+          [(ngModel)]="contentHash"
+          (keydown.enter)="verify()"
+          placeholder="Nalepite otisak iz izveštaja za automatsku proveru"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+
+      <p class="field-hint">
+        Ako ne unesete otisak, biće ispisan onaj registrovani — uporedite ga sa otiskom u izveštaju.
+      </p>
+
+      <div class="verify-actions">
+        <button type="button" class="primary-button" (click)="verify()" [disabled]="!canCheck">
+          {{ isChecking ? 'Provera...' : 'Proveri' }}
+        </button>
+        <button type="button" class="ghost-button" (click)="reset()" *ngIf="result || code">Očisti</button>
+      </div>
+    </div>
+
+    <p class="error-banner" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+    <!-- Rezultat -->
+    <div class="verify-result" *ngIf="result as check" [ngClass]="'outcome-' + outcome">
+      <div class="result-head">
+        <span class="result-icon">
+          {{ outcome === 'valid' ? '✓' : outcome === 'tampered' ? '✕' : outcome === 'unknown' ? '?' : 'ⓘ' }}
+        </span>
+        <strong>
+          <ng-container [ngSwitch]="outcome">
+            <span *ngSwitchCase="'valid'">Izveštaj je verodostojan</span>
+            <span *ngSwitchCase="'tampered'">IZVEŠTAJ JE IZMENJEN</span>
+            <span *ngSwitchCase="'unknown'">Kontrolni broj nije pronađen</span>
+            <span *ngSwitchDefault>Izveštaj je pronađen u registru</span>
+          </ng-container>
+        </strong>
+      </div>
+      <p class="result-message">{{ check.message }}</p>
+
+      <ng-container *ngIf="check.entry as entry">
+        <dl class="result-details">
+          <div>
+            <dt>Kontrolni broj</dt>
+            <dd class="mono">{{ entry.verification_code }}</dd>
+          </div>
+          <div>
+            <dt>Izvezao</dt>
+            <dd>{{ entry.analyst }}</dd>
+          </div>
+          <div>
+            <dt>Datum izvoza</dt>
+            <dd>{{ entry.registered_at | date : 'dd.MM.yyyy. HH:mm:ss' }}</dd>
+          </div>
+          <div>
+            <dt>Slučaj</dt>
+            <dd>{{ entry.case_name || '(bez naziva)' }} <span class="mono muted">{{ entry.case_id }}</span></dd>
+          </div>
+          <div class="full">
+            <dt>Registrovani otisak sadržaja</dt>
+            <dd class="mono hash">{{ entry.content_hash }}</dd>
+          </div>
+          <div class="full" *ngIf="outcome === 'tampered'">
+            <dt>Uneti otisak</dt>
+            <dd class="mono hash mismatch">{{ contentHash }}</dd>
+          </div>
+        </dl>
+
+        <div class="result-summary" *ngIf="summaryRows.length > 0">
+          <p class="summary-title">Rezime zabeležen pri izvozu</p>
+          <p class="summary-hint">
+            Uporedite ove brojeve sa onima u izveštaju — razlika je vidljiva i bez poređenja otiska.
+          </p>
+          <div class="summary-chips">
+            <span class="summary-chip" *ngFor="let row of summaryRows">
+              <strong>{{ row.value }}</strong> {{ row.label }}
+            </span>
+          </div>
+        </div>
+
+        <p class="result-declaration" *ngIf="entry.declaration">
+          <span class="declaration-label">Potpisana izjava:</span> „{{ entry.declaration }}"
+        </p>
+      </ng-container>
+    </div>
+
+    <p class="verify-limit">
+      <strong>Šta ova provera dokazuje:</strong> da se <em>podaci</em> u izveštaju poklapaju sa onim što je zabeleženo pri
+      izvozu. Ne dokazuje da je PDF fajl bajt-po-bajt isti — za to bi bio potreban kriptografski potpis dokumenta (npr.
+      PAdES). Nacrtani potpis u izveštaju je izjava analitičara, a ne dokaz o nepromenjenosti.
+    </p>
+  </article>
+</section>

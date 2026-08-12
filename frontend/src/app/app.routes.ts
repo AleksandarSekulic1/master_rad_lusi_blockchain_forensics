@@ -50,6 +50,12 @@ export const appRoutes: Routes = [
 			import('./features/report-export/report-export.component').then((module) => module.ReportExportComponent),
 	},
 	{
+		path: 'verify-report',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/report-verification/report-verification.component').then((module) => module.ReportVerificationComponent),
+	},
+	{
 		path: 'activity-log',
 		canActivate: [authGuard],
 		loadComponent: () =>
