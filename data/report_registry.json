@@ -1,15 +1,5 @@
 [
   {
-    "verification_code": "LUSI-2026-3VM6-SMK5",
-    "content_hash": "e12e3dac118efad81ca27b86c8e3b535acc8b3a1ebc078db86cd6e04dafaebf4",
-    "case_id": "46ae7f91db9b",
-    "case_name": "Demo",
-    "analyst": "admin",
-    "declaration": "test",
-    "summary": {},
-    "registered_at": "2026-08-11T17:46:34.222930+00:00"
-  },
-  {
     "verification_code": "LUSI-2026-86AB-Y7YB",
     "content_hash": "94d2a793299aeb581512097c458f3e5d0ef4e99d94a3de4b3beb5bd17a170ebf",
     "case_id": "c23db4afd0f3",
@@ -22,20 +12,6 @@
       "seeds": 1
     },
     "registered_at": "2026-08-11T17:48:21.777987+00:00"
-  },
-  {
-    "verification_code": "LUSI-2026-J2E4-5U4R",
-    "content_hash": "e12e3dac118efad81ca27b86c8e3b535acc8b3a1ebc078db86cd6e04dafaebf4",
-    "case_id": "46ae7f91db9b",
-    "case_name": "Demo: Sumnjiva laundering sema",
-    "analyst": "admin",
-    "declaration": "Potvrdjujem tacnost.",
-    "summary": {
-      "tainted_addresses": 3,
-      "cash_out_points": 1,
-      "seeds": 1
-    },
-    "registered_at": "2026-08-12T15:11:45.246892+00:00"
   },
   {
     "verification_code": "LUSI-2026-TTYF-9PFW",
