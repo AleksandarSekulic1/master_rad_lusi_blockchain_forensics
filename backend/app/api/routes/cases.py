@@ -290,12 +290,14 @@ def run_case_analytics(
 ) -> dict[str, object]:
     """Runs the full analytics pipeline over the case's evidence graph, optionally scoped to one evidence file.
 
-    This endpoint is called two different ways: passively, by pages that just want an
-    annotated graph (Dashboard, Graf) - no `custody` needed - and deliberately, by the
-    Taint Analysis page's "Pokreni taint analizu" button, which always supplies one. When
-    `request.custody` is present, running the analysis is treated as re-accessing every
-    transaction it processes, and that access is recorded in each transaction's own chain
-    of custody (see `_record_custody_access`) before the response is returned.
+    This endpoint is called two different ways: passively, by the Kontrolna tabla's
+    summary tiles and by the Graf page's automatic (uncoloured) preview on selection - no
+    `custody` needed there - and deliberately, by the Taint Analysis page's "Pokreni taint
+    analizu" button and the Graf page's own "Analiziraj graf" button, both of which always
+    supply one. When `request.custody` is present, running the analysis is treated as
+    re-accessing every transaction AND every evidence file it processes, and that access
+    is recorded in both chains of custody (see `_record_custody_access`) before the
+    response is returned.
     """
     case = _get_case_or_404(case_id)
     evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
@@ -313,6 +315,13 @@ def run_case_analytics(
     # analysts running the same case over a different evidence scope, or with a different
     # seed list, legitimately get different percentages - without this record there is no
     # way to reconstruct afterwards which run a disputed number actually came from.
+    #
+    # 'custody_recorded' and the two row counts answer, right here in the general activity
+    # log, the question "was this particular run also written into the lanac dokaza, and
+    # at which granularity" - without them, a reader would have to cross-reference the
+    # separate custody log files to tell a passive graph preview apart from a deliberate,
+    # signed access to the same evidence.
+    has_custody = bool(request and request.custody)
     write_audit_log(
         action='analytics_run',
         user=str(current_user['username']),
@@ -324,6 +333,9 @@ def run_case_analytics(
             'seed_count': len(seed_addresses or []),
             'rows': int(len(combined_frame)),
             'node_count': int(graph.number_of_nodes()),
+            'custody_recorded': has_custody,
+            'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
+            'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,
         },
     )
 

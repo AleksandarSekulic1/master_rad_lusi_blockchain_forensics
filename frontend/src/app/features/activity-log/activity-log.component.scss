@@ -439,6 +439,14 @@ td {
   border-color: rgba(165, 180, 252, 0.26);
 }
 
+/* Lanac dokaza gets its own colour too - taking a copy of a custody record out of the
+   application is a distinct kind of event from a routine report export. */
+.action-tag.group-custody {
+  color: #f0abd8;
+  background: rgba(240, 171, 216, 0.1);
+  border-color: rgba(240, 171, 216, 0.26);
+}
+
 .action-tag.group-other {
   color: #cbd5e1;
   background: rgba(203, 213, 225, 0.08);

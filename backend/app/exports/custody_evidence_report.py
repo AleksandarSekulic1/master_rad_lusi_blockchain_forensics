@@ -11,16 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fpdf.enums import XPos, YPos
-
 from app.exports.custody_pdf_common import (
     CustodyReportPDF,
-    HEADER_BG,
     TEXT_GRAY,
+    draw_context_banner,
     draw_entries_table,
     draw_kv_header_block,
     draw_obrazac_title,
-    fit,
 )
 from app.exports.pdf_fonts import register_unicode_font
 
@@ -45,11 +42,7 @@ def build_custody_evidence_pdf(header: dict[str, Any], entries: list[dict[str, A
     sha256 = header.get('evidence_sha256')
     if sha256:
         file_line += f'   |   SHA-256: {sha256}'
-
-    pdf.set_font(font, '', 9.5)
-    pdf.set_fill_color(*HEADER_BG)
-    pdf.cell(usable_width, 7, f' Dokazni fajl: {fit(pdf, file_line, usable_width - 30)}', fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(3)
+    draw_context_banner(pdf, font, f'Dokazni fajl: {file_line}')
 
     draw_kv_header_block(pdf, font, header)
 

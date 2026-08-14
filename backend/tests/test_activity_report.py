@@ -251,6 +251,29 @@ class TestReportContent:
 
         assert summarize_details(entry) == '2 izvora (seed) · sva evidencija (kombinovano)'
 
+    def test_analysis_summary_notes_custody_when_recorded(self):
+        """Rezime analize navodi lanac dokaza kad je zabeležen
+
+        Razlikuje na prvi pogled pasivno učitavanje grafa (Kontrolna tabla, Graf pri
+        izboru slučaja) od namernog pristupa (Taint analiza, "Analiziraj graf") - bez ovoga
+        bi se to moralo proveravati unakrsno sa posebnim fajlovima lanca dokaza.
+        """
+        entry = {
+            'action': 'analytics_run',
+            'details': {
+                'seed_count': 1, 'evidence_scope': 'combined',
+                'custody_recorded': True, 'custody_transaction_rows': 900, 'custody_evidence_files': 1,
+            },
+        }
+
+        assert summarize_details(entry) == '1 izvora (seed) · sva evidencija (kombinovano) · lanac dokaza: 900 transakcija, 1 fajl(ova)'
+
+    def test_analysis_summary_omits_custody_note_when_not_recorded(self):
+        """Rezime analize ne pominje lanac dokaza kod pasivnog učitavanja"""
+        entry = {'action': 'analytics_run', 'details': {'seed_count': 0, 'evidence_scope': 'combined', 'custody_recorded': False}}
+
+        assert 'lanac dokaza' not in summarize_details(entry)
+
 
 class TestPdfGeneration:
     """Generisanje PDF dokumenta

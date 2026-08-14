@@ -34,7 +34,11 @@ def append_evidence_custody_batch(entries: list[dict[str, Any]]) -> None:
     path = _evidence_custody_log_path()
     with path.open('a', encoding='utf-8') as log_file:
         for entry in entries:
-            record = {'id': uuid4().hex, **entry}
+            # 'scope' is stamped here rather than trusted from the caller, so every line
+            # in this file is unambiguously self-describing ("this row is about a WHOLE
+            # evidence file") even read in isolation, outside the app - e.g. straight from
+            # the .jsonl file, or once mixed into a combined export.
+            record = {'id': uuid4().hex, 'scope': 'evidence_file', **entry}
             log_file.write(json.dumps(record, ensure_ascii=False, default=str) + '\n')
 
 

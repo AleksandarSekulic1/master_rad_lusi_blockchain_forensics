@@ -30,6 +30,7 @@ _GROUP_ANALYSIS = (217, 119, 6)
 _GROUP_CASE = (124, 92, 200)
 _GROUP_TEST = (34, 150, 88)
 _GROUP_REPORT = (99, 110, 200)
+_GROUP_CUSTODY = (190, 60, 120)
 _GROUP_OTHER = (120, 130, 145)
 _CARD_BG = (243, 247, 252)
 
@@ -46,6 +47,7 @@ ACTION_LABELS: dict[str, str] = {
     'test_scenario_updated': 'Izmenjen validacioni scenario',
     'test_scenario_deleted': 'Obrisan validacioni scenario',
     'activity_report_exported': 'Izvezen izveštaj aktivnosti',
+    'custody_pdf_exported': 'Izvezen lanac dokaza (PDF)',
 }
 
 
@@ -76,6 +78,8 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_EVIDENCE
     if action == 'activity_report_exported':
         return _GROUP_REPORT
+    if action == 'custody_pdf_exported':
+        return _GROUP_CUSTODY
     return _GROUP_OTHER
 
 
@@ -146,7 +150,12 @@ def summarize_details(entry: dict[str, Any]) -> str:
         seed_count = details.get('seed_count', 0)
         scope = details.get('evidence_scope', 'combined')
         scope_text = 'sva evidencija (kombinovano)' if scope == 'combined' else str(scope)
-        return f'{seed_count} izvora (seed) · {scope_text}'
+        summary = f'{seed_count} izvora (seed) · {scope_text}'
+        if details.get('custody_recorded'):
+            tx_rows = details.get('custody_transaction_rows', 0)
+            evidence_files = details.get('custody_evidence_files', 0)
+            summary += f' · lanac dokaza: {tx_rows} transakcija, {evidence_files} fajl(ova)'
+        return summary
     if action == 'test_suite_run':
         return f'{details.get("passed", 0)}/{details.get("total", 0)} testova prošlo'
     if action == 'test_scenarios_run':
@@ -168,6 +177,11 @@ def summarize_details(entry: dict[str, Any]) -> str:
         users = details.get('users')
         users_text = f' · {", ".join(users)}' if isinstance(users, list) and users else ''
         return f'{str(details.get("format", "")).upper()} · {details.get("entry_count", 0)} zapisa · {period}{users_text}'
+    if action == 'custody_pdf_exported':
+        scope = details.get('scope')
+        target = details.get('tx_id') or details.get('evidence_stored_name') or '?'
+        scope_text = 'transakcija' if scope == 'transaction' else 'dokazni fajl'
+        return f'{scope_text}: {target} · {details.get("entry_count", 0)} zapisa'
     return str(entry.get('file_name') or '')
 
 

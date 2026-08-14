@@ -37,19 +37,6 @@ def dmy(value: Any) -> str:
     return parsed.strftime('%d.%m.%Y.')
 
 
-def fit(pdf: FPDF, text: Any, max_width: float) -> str:
-    """Truncates with an ellipsis so a long value never spills into the next column - the
-    full text stays available on the "Lanac dokaza" screen; only the printed cell is
-    length-capped, same technique as the activity report's `_fit`."""
-    text = str(text or '')
-    if pdf.get_string_width(text) <= max_width:
-        return text
-    ellipsis = '…'
-    while text and pdf.get_string_width(text + ellipsis) > max_width:
-        text = text[:-1]
-    return text + ellipsis
-
-
 def decode_signature(data_url: str | None) -> Image.Image | None:
     if not data_url or ',' not in data_url:
         return None
@@ -114,22 +101,54 @@ def draw_obrazac_title(pdf: FPDF, font: str) -> None:
     pdf.set_text_color(*TEXT_DARK)
 
 
+def draw_context_banner(pdf: FPDF, font: str, text: str) -> None:
+    """The shaded "what is this form FOR" line above the Идентификатор block (which
+    transaction, or which evidence file). Uses multi_cell rather than a fixed-height
+    single-line cell, so a long value (a full file name, a SHA-256 hash) wraps onto a
+    second line instead of being silently truncated - every piece of it stays visible."""
+    usable_width = pdf.w - pdf.l_margin - pdf.r_margin
+    pdf.set_font(font, '', 9.5)
+    pdf.set_fill_color(*HEADER_BG)
+    pdf.multi_cell(usable_width, 5.5, f' {text} ', fill=True)
+    pdf.ln(3)
+
+
 def draw_kv_header_block(pdf: FPDF, font: str, header: dict[str, Any]) -> None:
     """The Идентификатор предмета / доказног материјала / произвођач / модел / серијски
-    број block - identical field set for both forms, only the VALUES differ per case."""
+    број block - identical field set for both forms, only the VALUES differ per case.
 
-    def kv(label: str, value: Any) -> None:
+    The label column is sized to the WIDEST label ("Идентификатор доказног материјала:"
+    is much longer than the others) rather than a fixed guess - a fixed width that turns
+    out too narrow makes the label text overlap the value next to it, which is exactly
+    the bug this fixes. Values wrap with multi_cell instead of being confined to one line,
+    so a long evidence file name or a hash never gets silently clipped."""
+    rows: list[tuple[str, Any]] = [
+        ('Идентификатор предмета:', header.get('identifikator_predmeta')),
+        ('Идентификатор доказног материјала:', header.get('identifikator_dokaznog_materijala')),
+        ('Произвођач:', header.get('proizvodjac')),
+        ('Модел:', header.get('model')),
+        ('Серијски број:', header.get('serijski_broj')),
+    ]
+
+    pdf.set_font(font, 'B', 9.5)
+    label_width = max(pdf.get_string_width(label) for label, _ in rows) + 4
+    usable_width = pdf.w - pdf.l_margin - pdf.r_margin
+    value_width = usable_width - label_width
+    line_height = 5.4
+
+    for label, value in rows:
+        x0, y0 = pdf.l_margin, pdf.get_y()
         pdf.set_font(font, 'B', 9.5)
-        pdf.cell(68, 6.5, label, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.set_xy(x0, y0)
+        pdf.cell(label_width, line_height, label)
+        pdf.set_xy(x0 + label_width, y0)
         pdf.set_font(font, '', 9.5)
-        pdf.cell(0, 6.5, str(value or 'N/A'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(value_width, line_height, str(value or 'N/A'))
+        # The value may have wrapped to more than one line - the row's actual height is
+        # whichever is taller, the (single-line) label or the (possibly multi-line) value.
+        pdf.set_xy(x0, max(pdf.get_y(), y0 + line_height))
 
-    kv('Идентификатор предмета:', header.get('identifikator_predmeta'))
-    kv('Идентификатор доказног материјала:', header.get('identifikator_dokaznog_materijala'))
-    kv('Произвођач:', header.get('proizvodjac'))
-    kv('Модел:', header.get('model'))
-    kv('Серијски број:', header.get('serijski_broj'))
-    pdf.ln(4)
+    pdf.ln(3)
 
 
 def draw_entries_table(pdf: FPDF, font: str, entries: list[dict[str, Any]], *, usable_width: float, empty_message: str) -> None:
@@ -156,8 +175,22 @@ def draw_entries_table(pdf: FPDF, font: str, entries: list[dict[str, Any]], *, u
         pdf.cell(usable_width, 8, empty_message, border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         return
 
+    text_line_height = 4.6
+    text_pad = 1.5
+
     for entry in entries:
-        if pdf.get_y() + ROW_HEIGHT > pdf.h - 20:
+        ime = str(entry.get('ime_prezime') or '')
+        opis = str(entry.get('opis_radnje') or '')
+        pdf.set_font(font, '', 9)
+        # Row height grows with whichever of the two free-text columns needs the most
+        # lines - "Опис радње" in particular can be a full sentence, and truncating it
+        # with an ellipsis is exactly the "info you can't see" the paper form doesn't
+        # have this problem with (handwriting just uses more of the line).
+        ime_lines = pdf.multi_cell(widths[2] - 2 * text_pad, text_line_height, ime, dry_run=True, output='LINES') or ['']
+        opis_lines = pdf.multi_cell(widths[3] - 2 * text_pad, text_line_height, opis, dry_run=True, output='LINES') or ['']
+        row_height = max(ROW_HEIGHT, max(len(ime_lines), len(opis_lines)) * text_line_height + 2 * text_pad)
+
+        if pdf.get_y() + row_height > pdf.h - 20:
             pdf.add_page()
             draw_header_row()
 
@@ -165,16 +198,29 @@ def draw_entries_table(pdf: FPDF, font: str, entries: list[dict[str, Any]], *, u
         pdf.set_font(font, '', 9)
         pdf.set_text_color(*TEXT_DARK)
 
-        pdf.cell(widths[0], ROW_HEIGHT, str(entry.get('redni_broj', '')), border=1, align='C')
-        pdf.cell(widths[1], ROW_HEIGHT, dmy(entry.get('timestamp')), border=1, align='C')
-        pdf.cell(widths[2], ROW_HEIGHT, fit(pdf, entry.get('ime_prezime'), widths[2] - 2), border=1)
-        pdf.cell(widths[3], ROW_HEIGHT, ' ' + fit(pdf, entry.get('opis_radnje'), widths[3] - 4), border=1)
+        pdf.cell(widths[0], row_height, str(entry.get('redni_broj', '')), border=1, align='C')
+        pdf.cell(widths[1], row_height, dmy(entry.get('timestamp')), border=1, align='C')
 
-        sig_x, sig_y = pdf.get_x(), y0
-        pdf.cell(widths[4], ROW_HEIGHT, '', border=1)
+        # Border box drawn first (fixed row_height), text overlaid inside it afterwards -
+        # multi_cell's own border only wraps the text it actually drew, which would be
+        # shorter than row_height whenever the OTHER column needed more lines.
+        ime_x = pdf.get_x()
+        pdf.cell(widths[2], row_height, '', border=1)
+        pdf.set_xy(ime_x + text_pad, y0 + text_pad)
+        pdf.multi_cell(widths[2] - 2 * text_pad, text_line_height, ime)
+
+        opis_x = ime_x + widths[2]
+        pdf.set_xy(opis_x, y0)
+        pdf.cell(widths[3], row_height, '', border=1)
+        pdf.set_xy(opis_x + text_pad, y0 + text_pad)
+        pdf.multi_cell(widths[3] - 2 * text_pad, text_line_height, opis)
+
+        sig_x = opis_x + widths[3]
+        pdf.set_xy(sig_x, y0)
+        pdf.cell(widths[4], row_height, '', border=1)
         signature = decode_signature(entry.get('signature_image'))
         if signature is not None:
             pad = 1.5
-            draw_signature(pdf, signature, x=sig_x + pad, y=sig_y + pad, box_w=widths[4] - 2 * pad, box_h=ROW_HEIGHT - 2 * pad)
+            draw_signature(pdf, signature, x=sig_x + pad, y=y0 + pad, box_w=widths[4] - 2 * pad, box_h=row_height - 2 * pad)
 
-        pdf.set_xy(x0, y0 + ROW_HEIGHT)
+        pdf.set_xy(x0, y0 + row_height)

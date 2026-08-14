@@ -210,6 +210,19 @@ class TestRecordCustodyAccessFromAnalyticsRun:
         assert entry['proizvodjac'] == 'Seagate'
         assert entry['serijski_broj'] == 'BG-HDD-01'
 
+    def test_every_row_is_stamped_with_transaction_scope(self, tmp_path):
+        """Svaki red je označen kao 'scope': 'transaction' - samostalno čitljivo iz fajla"""
+        path = write_csv(tmp_path, '0xThief,0xMixer,1000,2026-03-01T00:00:00Z\n')
+        frame = clean_transaction_csv(path)
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        case = {'id': 'c1', 'name': 'Slučaj 1'}
+        custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
+
+        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+
+        entry = custody_log.load_custody_entries(case_id='c1')[0]
+        assert entry['scope'] == 'transaction'
+
     def test_also_writes_one_evidence_level_row_per_file(self, tmp_path):
         """Isto pokretanje upisuje i JEDAN red po dokaznom fajlu (ne po transakciji)"""
         path = write_csv(tmp_path, (

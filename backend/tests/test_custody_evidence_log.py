@@ -70,6 +70,14 @@ class TestEvidenceCustodyChain:
         assert chain['serijski_broj'] == 'BG-HDD-01'
         assert chain['evidence_row_count'] == 8
 
+    def test_every_row_is_stamped_with_evidence_file_scope(self):
+        """Svaki red je označen kao 'scope': 'evidence_file' - samostalno čitljivo iz fajla"""
+        custody_evidence_log.append_evidence_custody_batch([_entry()])
+
+        chain = custody_evidence_log.custody_chain_for_evidence('c1', 'evidence.csv')
+
+        assert chain['entries'][0]['scope'] == 'evidence_file'
+
     def test_unknown_evidence_file_returns_none(self):
         """Nepostojeći dokazni fajl nema lanac dokaza"""
         assert custody_evidence_log.custody_chain_for_evidence('c1', 'ne-postoji.csv') is None

@@ -137,6 +137,13 @@ Iz Taint analize, panel „Detalji transakcije" ima link **„Lanac dokaza za ov
 →"** (samo kad evidencija ima heš — bez njega se klijent ne može pouzdano poklopiti sa
 izvedenim identifikatorom).
 
+**Sam izvoz PDF-a se beleži** u opšti log aktivnosti (akcija `custody_pdf_exported`,
+uključena i u izveštaj aktivnosti) — inače bi taj log pokazivao svako pokretanje analize
+koje je dotaklo neki dokaz, ali ništa o tome ko je kasnije odštampao/izvezao SAM zapis tih
+pristupa. Svaki red u samim log fajlovima (`custody_log.jsonl` / `custody_evidence_log.jsonl`)
+je dodatno označen poljem `"scope": "transaction"` / `"scope": "evidence_file"`, pa je
+granularnost čitljiva direktno iz fajla, bez potrebe da se pogodi iz konteksta.
+
 ## 7. Testiranje
 
 **Iz terminala:**

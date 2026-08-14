@@ -12,7 +12,7 @@ import { ActivityLogEntry, ActivityPeriodMode } from '../../models/blockchain-fo
  * be worse than useless in a forensic context. */
 interface ActionPresentation {
   label: string;
-  group: 'evidence' | 'analysis' | 'case' | 'test' | 'report' | 'other';
+  group: 'evidence' | 'analysis' | 'case' | 'test' | 'report' | 'custody' | 'other';
   icon: string;
 }
 
@@ -76,6 +76,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     test_scenario_updated: { label: 'Izmenjen validacioni scenario', group: 'test', icon: '✎' },
     test_scenario_deleted: { label: 'Obrisan validacioni scenario', group: 'test', icon: '✕' },
     activity_report_exported: { label: 'Izvezen izveštaj aktivnosti', group: 'report', icon: '⭳' },
+    custody_pdf_exported: { label: 'Izvezen lanac dokaza (PDF)', group: 'custody', icon: '🖉' },
   };
 
   constructor(
@@ -234,7 +235,21 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         const scope = String(details['evidence_scope'] ?? 'combined');
         const scopeText = scope === 'combined' ? 'sva evidencija (kombinovano)' : scope;
         const seedText = seedCount === 1 ? '1 izvor (seed)' : `${seedCount} izvora (seed)`;
-        return `${seedText} · ${scopeText}`;
+        let summary = `${seedText} · ${scopeText}`;
+        // Only deliberate runs (Taint analiza / "Analiziraj graf") carry this - a passive
+        // preview load never writes into the lanac dokaza, so this line is exactly what
+        // distinguishes the two at a glance, without opening the raw detalji JSON.
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          summary += ` · lanac dokaza: ${txRows} transakcija, ${evidenceFiles} fajl(ova)`;
+        }
+        return summary;
+      }
+      case 'custody_pdf_exported': {
+        const scope = details['scope'] === 'transaction' ? 'transakcija' : 'dokazni fajl';
+        const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
+        return `${scope}: ${target} · ${Number(details['entry_count'] ?? 0)} zapisa`;
       }
       case 'path_finding':
         return `${String(details['source_address'] ?? '?')} → ${String(details['target_address'] ?? '?')}`;
