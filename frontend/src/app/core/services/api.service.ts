@@ -14,6 +14,11 @@ import {
   CaseSummary,
   CreateCaseRequest,
   CreateUserRequest,
+  CustodyChain,
+  CustodyEvidenceChain,
+  CustodyEvidenceSummary,
+  CustodyFieldSuggestions,
+  CustodyTransactionSummary,
   FetchOnchainRequest,
   KnownEntity,
   NodeLinkGraphResponse,
@@ -28,6 +33,7 @@ import {
   SuiteListResponse,
   SuiteRunResponse,
   TestScenario,
+  TransactionCustodyEntry,
   UploadCsvResponse,
   UserStatus,
 } from '../../models/blockchain-forensics.models';
@@ -102,9 +108,21 @@ export class ApiService {
     return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`, { params });
   }
 
-  runCaseAnalytics(caseId: string, evidence?: string | null, seedAddresses?: string[] | null): Observable<AnalyticsResponse> {
+  /** `custody` is omitted by passive callers (Dashboard, Graf) that just want an
+   * annotated graph. The Taint Analysis page's "Pokreni taint analizu" button always
+   * supplies one (see the custody-access-dialog, opened before this is ever called for
+   * that deliberate action) - see LANAC-DOKAZA.md for why the split exists. */
+  runCaseAnalytics(
+    caseId: string,
+    evidence?: string | null,
+    seedAddresses?: string[] | null,
+    custody?: TransactionCustodyEntry | null,
+  ): Observable<AnalyticsResponse> {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
-    const body = seedAddresses?.length ? { seed_addresses: seedAddresses } : {};
+    const body = {
+      seed_addresses: seedAddresses?.length ? seedAddresses : undefined,
+      custody: custody ?? undefined,
+    };
     return this.http.post<AnalyticsResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/analytics/run`, body, { params });
   }
 
@@ -254,5 +272,51 @@ export class ApiService {
       params = params.set('case_id', options.caseId);
     }
     return this.http.get<ActivityLogResponse>(`${this.apiUrl}/api/v1/activity-log`, { params });
+  }
+
+  // --- Lanac dokaza po transakciji (open to any authenticated user, admin included) ---
+
+  /** Every transaction accessed at least once in this case, most recently accessed first. */
+  getCustodyTransactions(caseId: string): Observable<{ case_id: string; transactions: CustodyTransactionSummary[] }> {
+    return this.http.get<{ case_id: string; transactions: CustodyTransactionSummary[] }>(
+      `${this.apiUrl}/api/v1/cases/${caseId}/custody/transactions`,
+    );
+  }
+
+  getCustodyChain(caseId: string, txId: string): Observable<CustodyChain> {
+    return this.http.get<CustodyChain>(`${this.apiUrl}/api/v1/cases/${caseId}/custody/transactions/${encodeURIComponent(txId)}`);
+  }
+
+  /** Prior values typed for this case's editable identification fields, so re-accessing
+   * the same evidence (or the same physical device) can be offered back instead of
+   * retyped identically. */
+  getCustodySuggestions(caseId: string): Observable<CustodyFieldSuggestions> {
+    return this.http.get<CustodyFieldSuggestions>(`${this.apiUrl}/api/v1/cases/${caseId}/custody/suggestions`);
+  }
+
+  exportCustodyPdf(caseId: string, txId: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/custody/transactions/${encodeURIComponent(txId)}/export.pdf`, {
+      responseType: 'blob',
+    });
+  }
+
+  // --- Lanac dokaza po dokaznom fajlu (coarser sibling - see LANAC-DOKAZA.md) ---
+
+  getCustodyEvidenceList(caseId: string): Observable<{ case_id: string; evidence: CustodyEvidenceSummary[] }> {
+    return this.http.get<{ case_id: string; evidence: CustodyEvidenceSummary[] }>(
+      `${this.apiUrl}/api/v1/cases/${caseId}/custody/evidence`,
+    );
+  }
+
+  getCustodyEvidenceChain(caseId: string, evidenceStoredName: string): Observable<CustodyEvidenceChain> {
+    return this.http.get<CustodyEvidenceChain>(
+      `${this.apiUrl}/api/v1/cases/${caseId}/custody/evidence/${encodeURIComponent(evidenceStoredName)}`,
+    );
+  }
+
+  exportCustodyEvidencePdf(caseId: string, evidenceStoredName: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/custody/evidence/${encodeURIComponent(evidenceStoredName)}/export.pdf`, {
+      responseType: 'blob',
+    });
   }
 }

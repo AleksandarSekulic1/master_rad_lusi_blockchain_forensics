@@ -415,6 +415,29 @@ h3 {
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
+.custody-deep-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+  text-decoration: none;
+}
+
+.custody-deep-link:hover {
+  text-decoration: underline;
+}
+
+.custody-deep-link-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #8ea6c7;
+}
+
+.custody-deep-link-hint a {
+  color: #7dd3fc;
+}
+
 .node-inspector .blacklist-warning {
   padding: 0.65rem 0.8rem;
   border-radius: 0.75rem;
@@ -953,41 +976,8 @@ h3 {
   color: #cdd9ef;
 }
 
-/* White drawing surface on purpose: the canvas is exported straight into the PDF, where
-   the page is white - a dark pad would put a black rectangle in the document. */
-.signature-pad-wrap {
-  position: relative;
-  border-radius: 0.9rem;
-  overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: #ffffff;
-}
-
-.signature-pad-wrap canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  cursor: crosshair;
-  touch-action: none;
-}
-
-.signature-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  color: #94a3b8;
-  font-size: 0.95rem;
-  letter-spacing: 0.04em;
-}
-
-.signature-tools {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.6rem;
-}
+/* The signature canvas itself now lives in the shared <app-signature-pad> component (see
+   core/components/signature-pad) - its styling moved there with it. */
 
 .signature-declaration {
   display: flex;

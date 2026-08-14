@@ -500,3 +500,102 @@ export interface ActivityLogResponse {
   /** Only populated for admins; the roster to offer in the per-user filter. */
   available_users: string[];
 }
+
+// --- Lanac dokaza po transakciji (Obrazac evidencije rukovanja dokaznim materijalom) ---
+
+/** What the analyst asserts when running an analysis - who they are, why, and their
+ * signature. Required on every run; the backend appends one row built from this into the
+ * custody log of every transaction the run touches. */
+export interface TransactionCustodyEntry {
+  ime_prezime: string;
+  opis_radnje: string;
+  signature_image: string;
+  identifikator_predmeta?: string | null;
+  identifikator_dokaznog_materijala?: string | null;
+  proizvodjac?: string | null;
+  model?: string | null;
+  serijski_broj?: string | null;
+}
+
+/** One row of the printed Образац table (Бр./Датум/Име и презиме/Опис радње/Потпис). */
+export interface CustodyLogRow extends TransactionCustodyEntry {
+  redni_broj: number;
+  timestamp: string;
+  user: string;
+}
+
+/** The full form for one transaction: header fields (which stay editable and reflect the
+ * MOST RECENT access) plus every access row, oldest first. */
+export interface CustodyChain {
+  case_id: string;
+  case_name: string | null;
+  tx_id: string;
+  tx_hash: string | null;
+  sender_address: string | null;
+  recipient_address: string | null;
+  amount: number | null;
+  currency: string | null;
+  tx_timestamp: string | null;
+  evidence_stored_name: string | null;
+  evidence_file_name: string | null;
+  identifikator_predmeta: string | null;
+  identifikator_dokaznog_materijala: string | null;
+  proizvodjac: string | null;
+  model: string | null;
+  serijski_broj: string | null;
+  entries: CustodyLogRow[];
+}
+
+/** One row of the "Lanac dokaza" browsing list - a transaction that has been accessed at
+ * least once, without loading its whole access history. */
+export interface CustodyTransactionSummary {
+  tx_id: string;
+  tx_hash: string | null;
+  sender_address: string | null;
+  recipient_address: string | null;
+  amount: number | null;
+  currency: string | null;
+  tx_timestamp: string | null;
+  evidence_file_name: string | null;
+  access_count: number;
+  last_accessed_at: string | null;
+}
+
+export interface CustodyFieldSuggestions {
+  identifikator_predmeta: string[];
+  identifikator_dokaznog_materijala: string[];
+  proizvodjac: string[];
+  model: string[];
+  serijski_broj: string[];
+}
+
+// --- Lanac dokaza po dokaznom fajlu (coarser sibling - see LANAC-DOKAZA.md) ---
+
+/** The full form for one EVIDENCE FILE (not one transaction): header fields plus every
+ * access row, oldest first. The evidence-level analogue of CustodyChain above. */
+export interface CustodyEvidenceChain {
+  case_id: string;
+  case_name: string | null;
+  evidence_stored_name: string;
+  evidence_file_name: string | null;
+  evidence_sha256: string | null;
+  evidence_currency: string | null;
+  evidence_row_count: number | null;
+  identifikator_predmeta: string | null;
+  identifikator_dokaznog_materijala: string | null;
+  proizvodjac: string | null;
+  model: string | null;
+  serijski_broj: string | null;
+  entries: CustodyLogRow[];
+}
+
+/** One row of the "Lanac dokaza" evidence-level browsing list. */
+export interface CustodyEvidenceSummary {
+  evidence_stored_name: string;
+  evidence_file_name: string | null;
+  evidence_sha256: string | null;
+  evidence_currency: string | null;
+  evidence_row_count: number | null;
+  access_count: number;
+  last_accessed_at: string | null;
+}

@@ -6,6 +6,7 @@ from app.api.routes.addresses import router as addresses_router
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.cases import router as cases_router
+from app.api.routes.custody import router as custody_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.onchain import router as onchain_router
@@ -26,6 +27,9 @@ api_router.include_router(analytics_router, dependencies=authenticated)
 api_router.include_router(graph_router, dependencies=authenticated)
 api_router.include_router(upload_router, dependencies=authenticated)
 api_router.include_router(cases_router, dependencies=authenticated)
+# Chain of custody per transaction - readable by any logged-in user (analyst or admin),
+# same as the case data it describes access to.
+api_router.include_router(custody_router, dependencies=authenticated)
 api_router.include_router(exports_router, dependencies=authenticated)
 api_router.include_router(onchain_router, dependencies=authenticated)
 api_router.include_router(addresses_router, dependencies=authenticated)

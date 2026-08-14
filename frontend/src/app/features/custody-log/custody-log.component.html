@@ -1,0 +1,261 @@
+<section class="custody-page">
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">Chain of custody</p>
+        <h2>Lanac dokaza</h2>
+        <p class="panel-subtitle">
+          Obrazac evidencije rukovanja dokaznim materijalom, primenjen na dva nivoa: po pojedinačnoj transakciji i po
+          celom dokaznom fajlu. Svako pokretanje analize (Taint analiza ili Graf) dodaje novi red - datum, ime i
+          prezime, razlog pristupa i potpis analitičara. Dostupno svim prijavljenim korisnicima, ne samo
+          administratoru.
+        </p>
+      </div>
+      <span class="pill" *ngIf="activeCaseId; else noCase">Slučaj: {{ activeCaseName || activeCaseId }}</span>
+      <ng-template #noCase>
+        <span class="pill muted">Slučaj nije izabran</span>
+      </ng-template>
+    </div>
+
+    <p class="empty-state" *ngIf="!activeCaseId">
+      Izaberite slučaj na stranici <a routerLink="/cases">Slučajevi</a> da biste videli njegov lanac dokaza.
+    </p>
+
+    <p class="notice-banner" *ngIf="caseMismatchNotice">{{ caseMismatchNotice }}</p>
+
+    <ng-container *ngIf="activeCaseId">
+      <div class="tab-bar">
+        <button type="button" class="tab-button" [class.active]="activeTab === 'transaction'" (click)="setTab('transaction')">
+          Po transakciji
+        </button>
+        <button type="button" class="tab-button" [class.active]="activeTab === 'evidence'" (click)="setTab('evidence')">
+          Po dokaznom fajlu
+        </button>
+      </div>
+
+      <!-- ============================= PO TRANSAKCIJI ============================= -->
+      <ng-container *ngIf="activeTab === 'transaction'">
+        <ng-container *ngIf="!selectedChain">
+          <p class="error-banner" *ngIf="listError">{{ listError }}</p>
+
+          <p class="empty-state" *ngIf="!isLoadingList && !listError && transactions.length === 0">
+            Nijedna transakcija u ovom slučaju još nije pristupljena kroz taint analizu - lanac dokaza se popunjava
+            pri svakom pokretanju analize.
+          </p>
+
+          <div class="table-wrapper" *ngIf="transactions.length > 0">
+            <table>
+              <thead>
+                <tr>
+                  <th>Transakcija</th>
+                  <th>Iznos</th>
+                  <th>Vreme transakcije</th>
+                  <th>Broj pristupa</th>
+                  <th>Poslednji pristup</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="tx-row" *ngFor="let item of transactions; trackBy: trackByTx" (click)="openTransaction(item.tx_id)">
+                  <td>
+                    <span class="mono">{{ item.sender_address || '?' }}</span>
+                    <span class="arrow">→</span>
+                    <span class="mono">{{ item.recipient_address || '?' }}</span>
+                  </td>
+                  <td>{{ formatAmount(item.amount, item.currency) }}</td>
+                  <td>{{ formatDateTime(item.tx_timestamp) }}</td>
+                  <td>{{ item.access_count }}</td>
+                  <td>{{ formatDateTime(item.last_accessed_at) }}</td>
+                  <td class="col-action"><button type="button" class="ghost-button small">Prikaži lanac dokaza</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="isLoadingChain">
+          <p class="empty-state">Učitavanje lanca dokaza...</p>
+        </ng-container>
+
+        <article class="custody-form" *ngIf="selectedChain">
+          <div class="custody-form-toolbar">
+            <button type="button" class="ghost-button" (click)="closeTransaction()">← Nazad na spisak</button>
+            <button type="button" class="primary-button" (click)="exportPdf()" [disabled]="isExportingPdf">
+              {{ isExportingPdf ? 'Generisanje...' : 'Izvezi PDF' }}
+            </button>
+          </div>
+
+          <p class="error-banner" *ngIf="exportError">{{ exportError }}</p>
+
+          <p class="form-title">ОБРАЗАЦ</p>
+          <p class="form-title">ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ</p>
+
+          <p class="tx-summary">
+            <span class="mono">{{ selectedChain.sender_address }}</span>
+            <span class="arrow">→</span>
+            <span class="mono">{{ selectedChain.recipient_address }}</span>
+            <span class="dot">·</span>
+            {{ formatAmount(selectedChain.amount, selectedChain.currency) }}
+            <ng-container *ngIf="selectedChain.tx_timestamp">
+              <span class="dot">·</span>
+              {{ formatDateTime(selectedChain.tx_timestamp) }}
+            </ng-container>
+          </p>
+
+          <dl class="form-header">
+            <dt>Идентификатор предмета</dt>
+            <dd>{{ selectedChain.identifikator_predmeta || 'N/A' }}</dd>
+            <dt>Идентификатор доказног материјала</dt>
+            <dd>{{ selectedChain.identifikator_dokaznog_materijala || 'N/A' }}</dd>
+            <dt>Произвођач</dt>
+            <dd>{{ selectedChain.proizvodjac || 'N/A' }}</dd>
+            <dt>Модел</dt>
+            <dd>{{ selectedChain.model || 'N/A' }}</dd>
+            <dt>Серијски број</dt>
+            <dd>{{ selectedChain.serijski_broj || 'N/A' }}</dd>
+          </dl>
+
+          <div class="table-wrapper">
+            <table class="form-table">
+              <thead>
+                <tr>
+                  <th>Бр.</th>
+                  <th>Датум</th>
+                  <th>Име и презиме</th>
+                  <th>Опис радње</th>
+                  <th>Потпис</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of selectedChain.entries">
+                  <td>{{ row.redni_broj }}</td>
+                  <td class="nowrap">{{ formatDateTime(row.timestamp) }}</td>
+                  <td>{{ row.ime_prezime }}</td>
+                  <td class="opis-cell">{{ row.opis_radnje }}</td>
+                  <td>
+                    <img class="signature-thumb" *ngIf="row.signature_image" [src]="row.signature_image" alt="Potpis" />
+                    <span *ngIf="!row.signature_image" class="muted">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <p class="error-banner" *ngIf="chainError">{{ chainError }}</p>
+      </ng-container>
+
+      <!-- ============================ PO DOKAZNOM FAJLU ============================ -->
+      <ng-container *ngIf="activeTab === 'evidence'">
+        <ng-container *ngIf="!selectedEvidenceChain">
+          <p class="error-banner" *ngIf="evidenceListError">{{ evidenceListError }}</p>
+
+          <p class="empty-state" *ngIf="!isLoadingEvidenceList && !evidenceListError && evidenceList.length === 0">
+            Nijedan dokazni fajl u ovom slučaju još nije pristupljen kroz analizu (Taint analiza ili Graf) - lanac
+            dokaza se popunjava pri svakom pokretanju.
+          </p>
+
+          <div class="table-wrapper" *ngIf="evidenceList.length > 0">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dokazni fajl</th>
+                  <th>Broj transakcija</th>
+                  <th>Valuta</th>
+                  <th>Broj pristupa</th>
+                  <th>Poslednji pristup</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="tx-row"
+                  *ngFor="let item of evidenceList; trackBy: trackByEvidence"
+                  (click)="openEvidence(item.evidence_stored_name)"
+                >
+                  <td>{{ item.evidence_file_name || item.evidence_stored_name }}</td>
+                  <td>{{ item.evidence_row_count ?? '—' }}</td>
+                  <td>{{ item.evidence_currency || 'nije navedena' }}</td>
+                  <td>{{ item.access_count }}</td>
+                  <td>{{ formatDateTime(item.last_accessed_at) }}</td>
+                  <td class="col-action"><button type="button" class="ghost-button small">Prikaži lanac dokaza</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="isLoadingEvidenceChain">
+          <p class="empty-state">Učitavanje lanca dokaza...</p>
+        </ng-container>
+
+        <article class="custody-form" *ngIf="selectedEvidenceChain">
+          <div class="custody-form-toolbar">
+            <button type="button" class="ghost-button" (click)="closeEvidence()">← Nazad na spisak</button>
+            <button type="button" class="primary-button" (click)="exportEvidencePdf()" [disabled]="isExportingEvidencePdf">
+              {{ isExportingEvidencePdf ? 'Generisanje...' : 'Izvezi PDF' }}
+            </button>
+          </div>
+
+          <p class="error-banner" *ngIf="evidenceExportError">{{ evidenceExportError }}</p>
+
+          <p class="form-title">ОБРАЗАЦ</p>
+          <p class="form-title">ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ</p>
+
+          <p class="tx-summary">
+            {{ selectedEvidenceChain.evidence_file_name || selectedEvidenceChain.evidence_stored_name }}
+            <span class="dot">·</span>
+            {{ selectedEvidenceChain.evidence_row_count ?? '—' }} transakcija
+            <span class="dot">·</span>
+            {{ selectedEvidenceChain.evidence_currency || 'valuta nije navedena' }}
+            <ng-container *ngIf="selectedEvidenceChain.evidence_sha256">
+              <span class="dot">·</span>
+              <span class="mono">SHA-256: {{ selectedEvidenceChain.evidence_sha256 }}</span>
+            </ng-container>
+          </p>
+
+          <dl class="form-header">
+            <dt>Идентификатор предмета</dt>
+            <dd>{{ selectedEvidenceChain.identifikator_predmeta || 'N/A' }}</dd>
+            <dt>Идентификатор доказног материјала</dt>
+            <dd>{{ selectedEvidenceChain.identifikator_dokaznog_materijala || 'N/A' }}</dd>
+            <dt>Произвођач</dt>
+            <dd>{{ selectedEvidenceChain.proizvodjac || 'N/A' }}</dd>
+            <dt>Модел</dt>
+            <dd>{{ selectedEvidenceChain.model || 'N/A' }}</dd>
+            <dt>Серијски број</dt>
+            <dd>{{ selectedEvidenceChain.serijski_broj || 'N/A' }}</dd>
+          </dl>
+
+          <div class="table-wrapper">
+            <table class="form-table">
+              <thead>
+                <tr>
+                  <th>Бр.</th>
+                  <th>Датум</th>
+                  <th>Име и презиме</th>
+                  <th>Опис радње</th>
+                  <th>Потпис</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of selectedEvidenceChain.entries">
+                  <td>{{ row.redni_broj }}</td>
+                  <td class="nowrap">{{ formatDateTime(row.timestamp) }}</td>
+                  <td>{{ row.ime_prezime }}</td>
+                  <td class="opis-cell">{{ row.opis_radnje }}</td>
+                  <td>
+                    <img class="signature-thumb" *ngIf="row.signature_image" [src]="row.signature_image" alt="Potpis" />
+                    <span *ngIf="!row.signature_image" class="muted">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <p class="error-banner" *ngIf="evidenceChainError">{{ evidenceChainError }}</p>
+      </ng-container>
+    </ng-container>
+  </article>
+</section>

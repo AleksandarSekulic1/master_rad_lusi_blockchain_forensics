@@ -62,6 +62,12 @@ export const appRoutes: Routes = [
 			import('./features/activity-log/activity-log.component').then((module) => module.ActivityLogComponent),
 	},
 	{
+		path: 'lanac-dokaza',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/custody-log/custody-log.component').then((module) => module.CustodyLogComponent),
+	},
+	{
 		path: 'tests',
 		canActivate: [adminGuard],
 		loadComponent: () =>

@@ -10,6 +10,7 @@ import cytoscape, { Core, EdgeSingular, ElementDefinition, NodeSingular } from '
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
@@ -29,7 +30,9 @@ import {
   TaintNodeResult,
   TaintTimelineEntry,
   TaintTimelineEvent,
+  TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
+import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 /** One individual transaction on a clicked edge, joined from the raw per-transaction data
  * cytoscape already carries (amount/timestamp/metadata) with whatever taint contribution
@@ -61,7 +64,7 @@ interface NodeEventLogEntry {
 @Component({
   selector: 'app-taint-analysis',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, SignaturePadComponent, CustodyAccessDialogComponent],
   templateUrl: './taint-analysis.component.html',
   styleUrl: './taint-analysis.component.scss',
 })
@@ -109,13 +112,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected isExportingPdf = false;
 
   // --- Signature + seal before export ---
-  @ViewChild('signaturePad')
-  protected signaturePad?: ElementRef<HTMLCanvasElement>;
+  @ViewChild(SignaturePadComponent)
+  protected signaturePad?: SignaturePadComponent;
   protected isSignatureDialogOpen = false;
-  protected hasSignatureStrokes = false;
   protected signatureDeclarationAccepted = false;
   protected signatureError: string | null = null;
-  private isDrawingSignature = false;
+
+  // --- Lanac dokaza: gate in front of every analysis run (see openCustodyDialog) ---
+  protected isCustodyDialogOpen = false;
+  protected custodyDialogError: string | null = null;
   /** Which seed(s) currently count towards displayed %/color/labels - starts as "all seeds"
    * right after a run (the familiar combined view). Deselecting one doesn't remove it as a
    * seed, it just excludes its share from what's drawn, so you can isolate one source's own
@@ -437,16 +442,40 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.scheduleCyResize();
   }
 
-  runTaintAnalysis(): void {
+  /** File name of the currently scoped evidence, for the custody dialog's default
+   * "identifikator dokaznog materijala" - null means the combined view (all evidence). */
+  protected get selectedEvidenceFileName(): string | null {
+    if (!this.selectedEvidence) {
+      return null;
+    }
+    return this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? null;
+  }
+
+  /** Opens the access-reason dialog. Running a taint analysis is treated as re-accessing
+   * every transaction it processes (see LANAC-DOKAZA.md), so the actual run only happens
+   * once the analyst has entered a reason and signed - see confirmCustodyAndRunAnalysis. */
+  openCustodyDialog(): void {
+    if (!this.activeCase?.id || !this.graph) {
+      return;
+    }
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  closeCustodyDialog(): void {
+    this.isCustodyDialogOpen = false;
+  }
+
+  confirmCustodyAndRunAnalysis(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
     if (!caseId || !this.graph) {
       return;
     }
 
     this.isRunningTaint = true;
-    this.taintError = null;
+    this.custodyDialogError = null;
 
-    this.api.runCaseAnalytics(caseId, this.selectedEvidence, this.seedAddresses).subscribe({
+    this.api.runCaseAnalytics(caseId, this.selectedEvidence, this.seedAddresses, custody).subscribe({
       next: (response) => {
         this.graph = response;
         this.taintResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
@@ -473,10 +502,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         this.cashOutEntities.clear();
         this.loadCashOutEntities();
         this.renderGraph();
+        this.isCustodyDialogOpen = false;
       },
       error: () => {
         this.isRunningTaint = false;
-        this.taintError = 'Neuspešno pokretanje taint analize.';
+        // Shown INSIDE the dialog (still open) rather than the outer taintError banner,
+        // which is behind the overlay and would not be visible - nothing typed/signed is
+        // lost, the analyst can just retry.
+        this.custodyDialogError = 'Neuspešno pokretanje taint analize.';
       },
     });
   }
@@ -1714,78 +1747,17 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       return;
     }
     this.isSignatureDialogOpen = true;
-    this.hasSignatureStrokes = false;
     this.signatureDeclarationAccepted = false;
     this.signatureError = null;
-    setTimeout(() => this.clearSignature());
+    setTimeout(() => this.signaturePad?.clear());
   }
 
   closeSignatureDialog(): void {
     this.isSignatureDialogOpen = false;
   }
 
-  private signatureContext(): CanvasRenderingContext2D | null {
-    const canvas = this.signaturePad?.nativeElement;
-    return canvas ? canvas.getContext('2d') : null;
-  }
-
-  /** Pointer events rather than separate mouse/touch handlers, so drawing works with a
-   * mouse, a trackpad and a stylus without three code paths. */
-  startSignatureStroke(event: PointerEvent): void {
-    const context = this.signatureContext();
-    if (!context) {
-      return;
-    }
-    this.isDrawingSignature = true;
-    const { x, y } = this.signaturePoint(event);
-    context.beginPath();
-    context.moveTo(x, y);
-    (event.target as HTMLCanvasElement).setPointerCapture(event.pointerId);
-  }
-
-  continueSignatureStroke(event: PointerEvent): void {
-    const context = this.signatureContext();
-    if (!this.isDrawingSignature || !context) {
-      return;
-    }
-    const { x, y } = this.signaturePoint(event);
-    context.lineTo(x, y);
-    context.stroke();
-    this.hasSignatureStrokes = true;
-  }
-
-  endSignatureStroke(): void {
-    this.isDrawingSignature = false;
-  }
-
-  private signaturePoint(event: PointerEvent): { x: number; y: number } {
-    const canvas = this.signaturePad!.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-    // The canvas is drawn at a fixed internal resolution but laid out responsively, so
-    // pointer coordinates have to be scaled or the ink lands away from the cursor.
-    return {
-      x: (event.clientX - rect.left) * (canvas.width / rect.width),
-      y: (event.clientY - rect.top) * (canvas.height / rect.height),
-    };
-  }
-
-  clearSignature(): void {
-    const canvas = this.signaturePad?.nativeElement;
-    const context = this.signatureContext();
-    if (!canvas || !context) {
-      return;
-    }
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.strokeStyle = '#0b1a33';
-    context.lineWidth = 2.5;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    this.hasSignatureStrokes = false;
-  }
-
   get canSubmitSignature(): boolean {
-    return this.hasSignatureStrokes && this.signatureDeclarationAccepted && !this.isExportingPdf;
+    return (this.signaturePad?.hasStrokes ?? false) && this.signatureDeclarationAccepted && !this.isExportingPdf;
   }
 
   /** The exact data the verification hash is computed over. Kept to the figures a reader
@@ -1813,7 +1785,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.isExportingPdf = true;
     this.signatureError = null;
     try {
-      const signatureImage = this.signaturePad!.nativeElement.toDataURL('image/png');
+      const signatureImage = this.signaturePad!.getDataUrl();
       const declaration = TaintAnalysisComponent.SIGNATURE_DECLARATION;
 
       // Registered BEFORE the document is built: the verification code has to be printed

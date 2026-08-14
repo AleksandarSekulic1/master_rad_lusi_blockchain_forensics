@@ -243,7 +243,7 @@
       Bez ručno izabranog izvora, analiza će automatski koristiti adrese koje su već na crnoj listi (ako ih ima).
     </p>
     <p class="taint-error" *ngIf="taintError">{{ taintError }}</p>
-    <button type="button" class="primary-button" (click)="runTaintAnalysis()" [disabled]="!graph || isRunningTaint">
+    <button type="button" class="primary-button" (click)="openCustodyDialog()" [disabled]="!graph || isRunningTaint">
       {{
         isRunningTaint
           ? 'Pokretanje...'
@@ -582,6 +582,26 @@
                 </dd>
               </div>
             </dl>
+
+            <!-- Lanac dokaza po transakciji - identifikator transakcije se poklapa sa
+                 tx_id samo kad evidencija ima heš (backend koristi baš tu vrednost kao
+                 tx_id); bez heša se ne može pouzdano pogoditi izvedeni id sa klijenta, pa
+                 se umesto direktnog linka nudi opšta stranica gde se transakcija može
+                 pronaći po pošiljaocu/primaocu. -->
+            <a
+              *ngIf="tx.metadata; else custodyLinkFallback"
+              class="custody-deep-link"
+              [routerLink]="['/lanac-dokaza']"
+              [queryParams]="{ caseId: activeCase?.id, tx: tx.metadata }"
+            >
+              Lanac dokaza za ovu transakciju →
+            </a>
+            <ng-template #custodyLinkFallback>
+              <p class="custody-deep-link-hint">
+                Evidencija nema heš ove transakcije, pa se ne može direktno povezati - potražite je po
+                pošiljaocu/primaocu na stranici <a [routerLink]="['/lanac-dokaza']">Lanac dokaza</a>.
+              </p>
+            </ng-template>
           </li>
         </ul>
       </div>
@@ -671,22 +691,7 @@
       i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.
     </p>
 
-    <div class="signature-pad-wrap">
-      <canvas
-        #signaturePad
-        width="640"
-        height="200"
-        (pointerdown)="startSignatureStroke($event)"
-        (pointermove)="continueSignatureStroke($event)"
-        (pointerup)="endSignatureStroke()"
-        (pointerleave)="endSignatureStroke()"
-      ></canvas>
-      <span class="signature-placeholder" *ngIf="!hasSignatureStrokes">Potpišite se ovde</span>
-    </div>
-
-    <div class="signature-tools">
-      <button type="button" class="ghost-button small" (click)="clearSignature()">Obriši potpis</button>
-    </div>
+    <app-signature-pad></app-signature-pad>
 
     <label class="signature-declaration">
       <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
@@ -711,3 +716,15 @@
     </div>
   </div>
 </div>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre SVAKOG pokretanja analize -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isRunningTaint"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndRunAnalysis($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>

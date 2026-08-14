@@ -3,7 +3,6 @@ import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, Vie
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { forkJoin } from 'rxjs';
 import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition } from 'cytoscape';
@@ -20,12 +19,14 @@ import {
   GraphLinkData,
   GraphNodeData,
   NodeLinkGraphResponse,
+  TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
+import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
@@ -41,6 +42,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected caseGraphError: string | null = null;
   protected evidenceOptions: EvidenceEntry[] = [];
   protected selectedEvidence: string | null = null;
+
+  // --- Analitika (risk/blacklist boje) - gated by the custody dialog, see LANAC-DOKAZA.md.
+  // The plain graph above loads automatically on selection (just a preview, not analysis);
+  // colouring it by risk requires a deliberate "Analiziraj graf" click. ---
+  protected hasAnalytics = false;
+  protected isCustodyDialogOpen = false;
+  protected isAnalyzing = false;
+  protected custodyDialogError: string | null = null;
   protected addressEnrichment: AddressEnrichment | null = null;
   protected isLayoutRunning = false;
   protected isEnrichingAddress = false;
@@ -102,10 +111,12 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Rendered from analytics$, not graph$: the plain /graph response has no
-    // blacklist/risk/anomaly/peel-chain data at all (that's only computed by the
-    // analytics pipeline), so coloring nodes from it would never show any warnings.
-    this.state.analytics$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((graph) => {
+    // Rendered from graph$: the plain /graph response has no blacklist/risk/anomaly/
+    // peel-chain data (that's only computed by the analytics pipeline), so it renders
+    // uncoloured by default - a deliberate "Analiziraj graf" click (see
+    // confirmCustodyAndAnalyze) swaps this.graph for the analytics-enriched response,
+    // which re-fires this same subscription with the risk/blacklist fields populated.
+    this.state.graph$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((graph) => {
       this.graph = graph;
       this.hasLoadedGraph = Boolean(graph);
       this.renderGraph();
@@ -152,14 +163,18 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.loadActiveCaseGraph();
   }
 
+  /** Loads the PLAIN graph only - automatic, ungated, no risk/blacklist coloring. This
+   * is just a preview of the evidence, not an analysis of it, so it does not go through
+   * the custody dialog (see confirmCustodyAndAnalyze for the gated, colored view). */
   loadActiveCaseGraph(): void {
     const caseId = this.activeCase?.id;
     if (!caseId) {
       return;
     }
+    this.hasAnalytics = false;
+    this.custodyDialogError = null;
 
     if (!this.activeCase?.evidence_count) {
-      this.graph = null;
       this.state.setGraph(null);
       this.state.setAnalytics(null);
       this.caseGraphError = null;
@@ -169,19 +184,69 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.isLoadingCaseGraph = true;
     this.caseGraphError = null;
 
-    forkJoin({
-      graph: this.api.getCaseGraph(caseId, this.selectedEvidence),
-      analytics: this.api.runCaseAnalytics(caseId, this.selectedEvidence),
-    }).subscribe({
-      next: ({ graph, analytics }) => {
+    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+      next: (graph) => {
         this.state.setGraph(graph);
-        this.state.setAnalytics(analytics);
-        this.state.ensureValidSelectedNode(analytics.nodes);
+        this.state.setAnalytics(null);
+        this.state.ensureValidSelectedNode(graph.nodes);
         this.isLoadingCaseGraph = false;
       },
       error: () => {
         this.isLoadingCaseGraph = false;
         this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
+      },
+    });
+  }
+
+  /** File name of the currently scoped evidence, for the custody dialog's default
+   * "identifikator dokaznog materijala" - null means the combined view (all evidence). */
+  protected get selectedEvidenceFileName(): string | null {
+    if (!this.selectedEvidence) {
+      return null;
+    }
+    return this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? null;
+  }
+
+  /** Opens the access-reason dialog. Colouring the graph by risk/blacklist means running
+   * the analytics pipeline over the evidence, which is treated as a deliberate access to
+   * it just like "Pokreni taint analizu" on the Taint Analysis page (see
+   * LANAC-DOKAZA.md) - the plain graph above is loaded freely, this is not. */
+  openCustodyDialog(): void {
+    if (!this.activeCase?.id || !this.graph) {
+      return;
+    }
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  closeCustodyDialog(): void {
+    this.isCustodyDialogOpen = false;
+  }
+
+  confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      return;
+    }
+
+    this.isAnalyzing = true;
+    this.custodyDialogError = null;
+
+    this.api.runCaseAnalytics(caseId, this.selectedEvidence, null, custody).subscribe({
+      next: (analytics) => {
+        this.state.setGraph(analytics);
+        this.state.setAnalytics(analytics);
+        this.state.ensureValidSelectedNode(analytics.nodes);
+        this.hasAnalytics = true;
+        this.isAnalyzing = false;
+        this.isCustodyDialogOpen = false;
+      },
+      error: () => {
+        this.isAnalyzing = false;
+        // Shown INSIDE the dialog (still open) rather than caseGraphError, which sits
+        // above the canvas and would not be visible behind the overlay - nothing typed/
+        // signed is lost, the analyst can just retry.
+        this.custodyDialogError = 'Neuspešno pokretanje analize.';
       },
     });
   }

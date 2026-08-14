@@ -10,11 +10,12 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
+
+from app.exports.pdf_fonts import register_unicode_font
 
 
 _NAVY = (13, 24, 40)
@@ -23,12 +24,6 @@ _LIGHT_ROW = (240, 245, 250)
 _TEXT_GRAY = (100, 112, 128)
 _TEXT_DARK = (24, 28, 36)
 _WHITE = (255, 255, 255)
-
-_UNICODE_FONT_CANDIDATES: tuple[tuple[Path, Path], ...] = (
-    (Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'), Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')),
-    (Path('/usr/share/fonts/dejavu/DejaVuSans.ttf'), Path('/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf')),
-    (Path('C:/Windows/Fonts/arial.ttf'), Path('C:/Windows/Fonts/arialbd.ttf')),
-)
 
 _GROUP_EVIDENCE = (43, 130, 191)
 _GROUP_ANALYSIS = (217, 119, 6)
@@ -252,18 +247,6 @@ class _ActivityReportPDF(FPDF):
         self.cell(0, 8, f'Lusi v1.0 forensic export | Strana {self.page_no()}', align='C')
 
 
-def _register_font(pdf: FPDF) -> str:
-    """Registers a Unicode TTF so č/ć/š/ž/đ render properly; falls back to an ASCII-only
-    core font only if no TTF is present on the host."""
-    for regular_path, bold_path in _UNICODE_FONT_CANDIDATES:
-        if not regular_path.exists():
-            continue
-        pdf.add_font('LusiSans', '', str(regular_path))
-        pdf.add_font('LusiSans', 'B', str(bold_path if bold_path.exists() else regular_path))
-        return 'LusiSans'
-    return 'helvetica'
-
-
 def _section_title(pdf: FPDF, font: str, title: str) -> None:
     pdf.ln(2)
     pdf.set_font(font, 'B', 12)
@@ -350,7 +333,7 @@ def build_activity_pdf(
     scope: str,
 ) -> bytes:
     pdf = _ActivityReportPDF(font_family='helvetica')
-    font = _register_font(pdf)
+    font = register_unicode_font(pdf)
     pdf._font_family = font  # noqa: SLF001 - header/footer need the resolved family
     pdf.add_page()
 

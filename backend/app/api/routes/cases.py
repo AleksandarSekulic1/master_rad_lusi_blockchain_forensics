@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.analytics.case_graph import build_case_graph, graph_summary
-from app.analytics.graph_building import transaction_graph_to_node_link_json
+from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
+from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.plugins.manager import run_plugin_pipeline
 from app.analytics.seed_suggestion import suggest_seeds
 from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
+from app.evidence.custody_evidence_log import append_evidence_custody_batch
+from app.evidence.custody_log import append_custody_batch
+from app.evidence.tx_identity import transaction_id
 from app.services.case_management import (
     create_case,
     delete_case,
@@ -40,10 +45,34 @@ class SetCaseStatusRequest(BaseModel):
     status: str = Field(pattern='^(open|closed)$')
 
 
+class TransactionCustodyEntry(BaseModel):
+    """What the analyst is asserting by deliberately running a taint analysis: who they
+    are and why they are accessing this evidence right now. When present, every field is
+    required - a caller cannot send a token "empty" custody object just to satisfy the
+    shape; it is either a real entry or omitted entirely (see RunAnalyticsRequest.custody).
+    """
+
+    ime_prezime: str = Field(min_length=1)
+    opis_radnje: str = Field(min_length=1)
+    signature_image: str = Field(min_length=1)
+    identifikator_predmeta: str | None = None
+    identifikator_dokaznog_materijala: str | None = None
+    proizvodjac: str | None = None
+    model: str | None = None
+    serijski_broj: str | None = None
+
+
 class RunAnalyticsRequest(BaseModel):
     # Extra taint-analysis seed addresses (e.g. a known theft address that isn't on any
     # blacklist) on top of whatever taint_analysis already auto-seeds from blacklist_flag.
     seed_addresses: list[str] | None = None
+    # Optional at the API level: this same endpoint is also called passively (Dashboard,
+    # Graf) just to color/annotate a graph the analyst never deliberately "ran" - only the
+    # Taint Analysis page's explicit "Pokreni taint analizu" button represents a genuine,
+    # purposeful access, and it is the one caller that always supplies this. When present,
+    # every one of ITS fields is required (see TransactionCustodyEntry) - the gate is
+    # "all or nothing" per call, never a half-filled entry.
+    custody: TransactionCustodyEntry | None = None
 
 
 @router.get('')
@@ -166,6 +195,92 @@ def get_seed_suggestions(case_id: str, evidence: str | None = None) -> dict[str,
     return payload
 
 
+def _clean_scalar(value: object) -> object | None:
+    """pandas leaves missing cells as NaN/pd.NA depending on column dtype - both need to
+    become a real None before going into the custody log, or a missing tx hash would be
+    stored as the literal string "<NA>" instead of being absent."""
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
+def _record_custody_access(
+    *,
+    case: dict[str, object],
+    per_evidence_frames: list[tuple[dict[str, object], pd.DataFrame]],
+    custody: TransactionCustodyEntry,
+    user: str,
+) -> None:
+    """One deliberate access is recorded at TWO granularities at once, both useful for a
+    different question a reader might have:
+
+    - per transaction (`custody_log`): was THIS specific transaction looked at, by whom,
+      why - one row per transaction row in scope, appended to that transaction's own chain.
+    - per evidence file (`custody_evidence_log`): was THIS evidence file (the exhibit
+      itself, like a seized hard drive) accessed, by whom, why - one row per evidence file
+      in scope, regardless of how many transactions it contains.
+
+    Both share the same run/date/analyst/reason/signature - they were genuinely accessed
+    together, by the same act of running the analysis (see LANAC-DOKAZA.md).
+    """
+    run_id = uuid4().hex
+    timestamp = datetime.now(timezone.utc).isoformat()
+    case_name = str(case.get('name') or '')
+    identifikator_predmeta = custody.identifikator_predmeta or case_name or str(case.get('id') or '')
+
+    transaction_batch: list[dict[str, object]] = []
+    evidence_batch: list[dict[str, object]] = []
+    for evidence_entry, frame in per_evidence_frames:
+        stored_name = str(evidence_entry.get('stored_name') or '')
+        file_name = str(evidence_entry.get('file_name') or stored_name)
+        identifikator_dokaznog_materijala = custody.identifikator_dokaznog_materijala or file_name
+
+        shared_fields = {
+            'run_id': run_id,
+            'timestamp': timestamp,
+            'case_id': case['id'],
+            'case_name': case_name,
+            'evidence_stored_name': stored_name,
+            'evidence_file_name': file_name,
+            'identifikator_predmeta': identifikator_predmeta,
+            'identifikator_dokaznog_materijala': identifikator_dokaznog_materijala,
+            'proizvodjac': custody.proizvodjac or 'N/A',
+            'model': custody.model or 'N/A',
+            'serijski_broj': custody.serijski_broj or 'N/A',
+            'ime_prezime': custody.ime_prezime,
+            'opis_radnje': custody.opis_radnje,
+            'user': user,
+            'signature_image': custody.signature_image,
+        }
+
+        evidence_batch.append({
+            **shared_fields,
+            'evidence_sha256': evidence_entry.get('sha256'),
+            'evidence_currency': evidence_entry.get('currency'),
+            'evidence_row_count': int(len(frame)),
+        })
+
+        for row in frame.to_dict('records'):
+            amount = row.get('amount')
+            tx_timestamp = row.get('timestamp')
+            transaction_batch.append({
+                **shared_fields,
+                'tx_id': transaction_id(row, stored_name),
+                'tx_hash': _clean_scalar(row.get('metadata')),
+                'sender_address': _clean_scalar(row.get('sender_address')),
+                'recipient_address': _clean_scalar(row.get('recipient_address')),
+                'amount': float(amount) if pd.notna(amount) else None,
+                'currency': _clean_scalar(row.get('currency')),
+                'tx_timestamp': tx_timestamp.isoformat() if pd.notna(tx_timestamp) else None,
+            })
+
+    append_custody_batch(transaction_batch)
+    append_evidence_custody_batch(evidence_batch)
+
+
 @router.post('/{case_id}/analytics/run')
 def run_case_analytics(
     case_id: str,
@@ -173,11 +288,24 @@ def run_case_analytics(
     request: RunAnalyticsRequest | None = None,
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> dict[str, object]:
-    """Runs the full analytics pipeline over the case's evidence graph, optionally scoped to one evidence file."""
+    """Runs the full analytics pipeline over the case's evidence graph, optionally scoped to one evidence file.
+
+    This endpoint is called two different ways: passively, by pages that just want an
+    annotated graph (Dashboard, Graf) - no `custody` needed - and deliberately, by the
+    Taint Analysis page's "Pokreni taint analizu" button, which always supplies one. When
+    `request.custody` is present, running the analysis is treated as re-accessing every
+    transaction it processes, and that access is recorded in each transaction's own chain
+    of custody (see `_record_custody_access`) before the response is returned.
+    """
     case = _get_case_or_404(case_id)
     evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
 
-    combined_frame, graph = build_case_graph(evidence_paths)
+    # Built from the per-evidence-file frames (rather than via build_case_graph) so each
+    # row can be tagged with the specific evidence file it came from for the custody log -
+    # build_case_graph itself only returns the already-concatenated frame.
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
+    graph = build_transaction_graph(combined_frame)
     seed_addresses = request.seed_addresses if request else None
     plugin_results = run_plugin_pipeline(dataframe=combined_frame, graph=graph, seed_addresses=seed_addresses)
 
@@ -198,6 +326,14 @@ def run_case_analytics(
             'node_count': int(graph.number_of_nodes()),
         },
     )
+
+    if request and request.custody:
+        _record_custody_access(
+            case=case,
+            per_evidence_frames=per_evidence_frames,
+            custody=request.custody,
+            user=str(current_user['username']),
+        )
 
     payload = transaction_graph_to_node_link_json(graph)
     payload['case_id'] = case_id
