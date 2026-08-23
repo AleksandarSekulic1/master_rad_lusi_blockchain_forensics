@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.analytics.behavioral_analysis import analyze_time_of_day
 from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
@@ -176,6 +177,37 @@ def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, objec
     payload['rows'] = int(len(combined_frame))
     payload['generated_at'] = datetime.now(timezone.utc).isoformat()
     return payload
+
+
+@router.get('/{case_id}/behavioral-analysis')
+def get_case_behavioral_analysis(
+    case_id: str,
+    address: str = Query(min_length=1),
+    evidence: str | None = None,
+) -> dict[str, object]:
+    """Behavioral / Time-of-Day Analysis: UTC hour-of-day and day-of-week transaction
+    pattern for one address, from the case's transaction graph (combined evidence, or one
+    file via ?evidence=). First version - UTC only, no timezone/continent inference.
+
+    Read-only, same as get_case_graph/get_seed_suggestions above: this only re-reads the
+    case's own already-built graph structure (no new analytics pipeline run), so there is
+    no custody dialog and no write_audit_log call here, unlike the deliberate-access
+    endpoints below (analytics/run, pathfinding).
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+
+    _, graph = build_case_graph(evidence_paths)
+
+    try:
+        result = analyze_time_of_day(graph, address.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
 
 
 @router.get('/{case_id}/seed-suggestions')
