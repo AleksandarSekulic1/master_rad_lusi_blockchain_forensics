@@ -74,6 +74,12 @@ export class ReportVerificationComponent {
       tainted_addresses: 'Zaprljanih adresa',
       cash_out_points: 'Tačaka unovčavanja',
       seeds: 'Izvora (seed)',
+      // Pathfinding Analysis izveštaji (POST /cases/{id}/pathfinding) koriste istu
+      // generičku registraciju/proveru izveštaja kao Taint analiza - samo dodaju svoje
+      // ključeve u summary, bez ikakve izmene ove (deljene, ne-taint) stranice.
+      hops: 'Broj skokova',
+      destination_mode: 'Način određivanja odredišta',
+      taint_trace: 'Taint provera puta',
     };
     return Object.entries(summary).map(([key, value]) => ({
       label: labels[key] ?? key,

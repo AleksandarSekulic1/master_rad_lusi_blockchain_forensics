@@ -10,6 +10,7 @@ import {
   AnalyticsResponse,
   AuthUser,
   Case,
+  CasePathfindingResult,
   CaseStatus,
   CaseSummary,
   CreateCaseRequest,
@@ -23,6 +24,7 @@ import {
   KnownEntity,
   NodeLinkGraphResponse,
   OnchainNetwork,
+  PathfindingDestinationMode,
   PathFindingRequest,
   PathFindingResponse,
   ReportVerificationResult,
@@ -152,6 +154,28 @@ export class ApiService {
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {
     return this.http.post<PathFindingResponse>(`${this.apiUrl}/api/v1/graph/path-finding`, request);
+  }
+
+  /** Pathfinding Analysis (case-scoped, first version - plain BFS). Separate from
+   * findPaths() above, which hits the older, unrelated standalone endpoint.
+   *
+   * `to` is required (and used) only for destinationMode 'specific_address' - for
+   * 'nearest_cex' the backend resolves the destination itself from the case's own graph,
+   * so `to` is simply omitted from the request body. */
+  findCasePath(
+    caseId: string,
+    from: string,
+    destinationMode: PathfindingDestinationMode,
+    to: string | null,
+    evidence?: string | null,
+    custody?: TransactionCustodyEntry | null,
+  ): Observable<CasePathfindingResult> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    const body: Record<string, unknown> = { from, destination_mode: destinationMode, custody: custody ?? undefined };
+    if (destinationMode === 'specific_address') {
+      body['to'] = to;
+    }
+    return this.http.post<CasePathfindingResult>(`${this.apiUrl}/api/v1/cases/${caseId}/pathfinding`, body, { params });
   }
 
   listUsers(): Observable<{ users: AuthUser[] }> {

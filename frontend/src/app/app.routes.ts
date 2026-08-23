@@ -44,6 +44,12 @@ export const appRoutes: Routes = [
 			import('./features/taint-analysis/taint-analysis.component').then((module) => module.TaintAnalysisComponent),
 	},
 	{
+		path: 'pathfinding',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/pathfinding/pathfinding.component').then((module) => module.PathfindingComponent),
+	},
+	{
 		path: 'reports',
 		canActivate: [authGuard],
 		loadComponent: () =>
