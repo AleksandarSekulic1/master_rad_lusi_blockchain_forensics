@@ -217,6 +217,56 @@ h3 {
   border-color: rgba(125, 211, 252, 0.55);
 }
 
+.address-field select {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.03);
+  color: #eef4ff;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.address-field select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.destination-hint {
+  margin: -0.1rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: #8ea6c7;
+}
+
+.destination-resolved {
+  margin: 0 0 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.75rem;
+  background: rgba(134, 239, 172, 0.08);
+  border: 1px solid rgba(134, 239, 172, 0.26);
+  font-size: 0.78rem;
+  color: #cdd9ef;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.destination-resolved .mono-address {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+}
+
+.destination-label {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(134, 239, 172, 0.16);
+  color: #86efac;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .find-path-button {
   margin-top: 0.2rem;
   text-align: center;

@@ -63,6 +63,15 @@
       </label>
 
       <label class="address-field">
+        Destination
+        <select [ngModel]="destinationMode" (ngModelChange)="onDestinationModeChange($event)" [disabled]="!activeCase">
+          <option value="specific_address">Specific address</option>
+          <option value="nearest_cex">Nearest known CEX</option>
+          <option value="cash_out_point" disabled>Cash-out point (uskoro)</option>
+        </select>
+      </label>
+
+      <label class="address-field" *ngIf="destinationMode === 'specific_address'">
         To
         <input
           type="text"
@@ -73,6 +82,11 @@
         />
       </label>
 
+      <p class="destination-hint" *ngIf="destinationMode === 'nearest_cex'">
+        Odredište se automatski određuje — najbliža adresa (po broju skokova) koju lokalni registar poznatih entiteta
+        prepoznaje kao berzu (CEX), među adresama koje se stvarno pojavljuju u ovoj evidenciji.
+      </p>
+
       <button type="button" class="primary-button find-path-button" (click)="findPath()" [disabled]="!canSearch">
         {{ isSearching ? 'Pretraga...' : 'FIND PATH' }}
       </button>
@@ -81,6 +95,11 @@
 
       <ng-container *ngIf="result">
         <div class="path-result" *ngIf="result.found; else notFound">
+          <p class="destination-resolved" *ngIf="result.destination_label">
+            Pronađeno odredište: <span class="mono-address">{{ result.destination_address }}</span>
+            <span class="destination-label">{{ result.destination_label }}</span>
+          </p>
+
           <ol class="path-list">
             <li *ngFor="let address of result.path; let last = last">
               <span class="mono-address">{{ address }}</span>
@@ -173,15 +192,18 @@
           </div>
         </div>
         <ng-template #notFound>
-          <p class="no-path-message">
-            Putanja nije pronađena — u izabranoj evidenciji ne postoji niz transakcija koji vodi od adrese <strong>From</strong>
-            do adrese <strong>To</strong>.
-          </p>
+          <p class="no-path-message" *ngIf="result.message as message; else genericNotFound">{{ message }}</p>
+          <ng-template #genericNotFound>
+            <p class="no-path-message">
+              Putanja nije pronađena — u izabranoj evidenciji ne postoji niz transakcija koji vodi od adrese
+              <strong>From</strong> do izabranog odredišta.
+            </p>
+          </ng-template>
         </ng-template>
       </ng-container>
 
       <p class="empty-hint" *ngIf="!result && !searchError">
-        Unesi obe adrese i klikni "FIND PATH" da vidiš najkraći put stvarnih transakcija između njih.
+        Unesi polaznu adresu, izaberi odredište i klikni "FIND PATH" da vidiš najkraći put stvarnih transakcija.
       </p>
     </aside>
   </div>

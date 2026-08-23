@@ -13,9 +13,10 @@ odgovara na drugo pitanje: „kako se zaprljana sredstva propagiraju kroz celu m
 | [3. API](#3-api) | ruta, telo zahteva, oblik odgovora |
 | [4. Frontend stranica](#4-frontend-stranica) | šta se prikazuje i kako |
 | [5. Path Analysis panel](#5-path-analysis-panel-drugi-korak) | forenzički detalji pronađenog puta, opciona taint provera |
-| [6. Testiranje korak po korak](#6-testiranje-korak-po-korak) | UI i automatski testovi |
-| [7. Ograničenja prve verzije](#7-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
-| [8. Gde je šta u kodu](#8-gde-je-šta-u-kodu) | putanje |
+| [6. Odredište: Nearest known CEX](#6-odredište-nearest-known-cex-treći-korak) | biranje cilja umesto ručnog unosa, samo iz postojećih podataka |
+| [7. Testiranje korak po korak](#7-testiranje-korak-po-korak) | UI i automatski testovi |
+| [8. Ograničenja prve verzije](#8-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
+| [9. Gde je šta u kodu](#9-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -50,12 +51,14 @@ sa odvojenim backend rutama i bez deljenog stanja.
 POST /api/v1/cases/{case_id}/pathfinding?evidence=<opciono>
 ```
 
-Telo zahteva:
+Telo zahteva (`destination_mode` je opciono, podrazumevano `"specific_address"` — vidi §6
+za `"nearest_cex"`):
 ```json
 { "from": "0x...", "to": "0x..." }
 ```
 
-Odgovor (uvek tačno ova tri polja, ništa više):
+Odgovor za `destination_mode: "specific_address"` (uvek tačno ova tri polja, ništa više —
+nepromenjeno od prve verzije):
 ```json
 { "found": true, "path": ["0x...", "0x...", "0x..."], "hops": 2 }
 ```
@@ -67,7 +70,7 @@ ili
 Graf se gradi isto kao za Graf/Taint stranicu (`build_case_graph` nad evidencijom
 slučaja — ceo obuhvaćen materijal, ili jedan fajl ako je `evidence` naveден). Svako
 pokretanje se beleži u log aktivnosti pod već postojećom akcijom `path_finding`, sad sa
-`case_id` (vidljivo na stranici „Log aktivnosti").
+`case_id` i `destination_mode` (vidljivo na stranici „Log aktivnosti").
 
 ## 4. Frontend stranica
 
@@ -77,11 +80,15 @@ Ruta `/pathfinding`, link „Pathfinding" u glavnom meniju.
   **automatski**, bez boja po riziku (samo pronalaženje puta ne pokreće analitički pipeline,
   pa tu nema potrebe za dijalogom za lanac dokaza; opciona taint provera ispod — §5 — ga
   ipak koristi, jer ona TO jeste pokretanje analize).
-- Polja **From** / **To** + dugme **FIND PATH**.
-- Kad je put pronađen: vertikalna lista adresa (`Address A ↓ Address B ↓ ...`), panel **„Path
-  Analysis"** (§5), i na grafu se boji **samo** ta putanja (cijan, isti vizuelni jezik kao
-  isticanje putanje u Taint analizi), dok se ostatak grafa zatamni.
-- Kad put nije pronađen: jasna poruka, graf ostaje u normalnom (nezatamnjenom) prikazu.
+- Polje **From** + padajući meni **Destination** (`Specific address` / `Nearest known CEX` /
+  `Cash-out point` — poslednje onemogućeno, vidi §6) + polje **To** (samo kad je izabrano
+  „Specific address") + dugme **FIND PATH**.
+- Kad je put pronađen: (za „Nearest known CEX") koja je adresa pronađena i njena oznaka,
+  vertikalna lista adresa (`Address A ↓ Address B ↓ ...`), panel **„Path Analysis"** (§5), i
+  na grafu se boji **samo** ta putanja (cijan, isti vizuelni jezik kao isticanje putanje u
+  Taint analizi), dok se ostatak grafa zatamni.
+- Kad put nije pronađen: jasna poruka (za „Nearest known CEX" razlikuje „nema CEX uopšte" od
+  „CEX postoji, nije dostiživ" — §6.3), graf ostaje u normalnom (nezatamnjenom) prikazu.
 
 ## 5. Path Analysis panel (drugi korak)
 
@@ -130,20 +137,84 @@ pripada crnoj listi, „Final taint" može uključivati i njen doprinos, ne samo
 `/taint` stranici (ne piše se u deljeno stanje), pa Pathfinding ne može da ga „vidi" a da ga
 ne pokrene iznova — što ovo dugme i radi, eksplicitno, na zahtev korisnika.
 
-## 6. Testiranje korak po korak
+## 6. Odredište: Nearest known CEX (treći korak)
 
-### 6.1 Automatski testovi
+Umesto da korisnik uvek ručno unese `To` adresu, polje **Destination** sad nudi izbor:
+
+- **Specific address** (podrazumevano) — ponaša se identično kao pre, ručni unos `To`.
+- **Nearest known CEX** — odredište se **automatski** određuje: najbliža (po broju
+  skokova) adresa u grafu koja je poznata berza.
+- **Cash-out point** — prikazano u padajućem meniju, ali onemogućeno („uskoro"); backend
+  eksplicitno odbija ovu vrednost (400) ako bi ipak stigla, umesto da je tiho prihvati i ne
+  uradi ništa korisno.
+
+### 6.1 Otkuda se zna da je adresa CEX — bez pogađanja
+
+Jedini izvor istine je **postojeći, lokalni registar poznatih entiteta**
+(`backend/app/services/known_entities.json`, 362 unosa: 264 berze, 26 miksera, 72
+sankcionisane adrese — isti fajl koji već koristi „Ko je zapravo iza ove adrese" panel u
+Taint analizi, §5.10 u TAINT-ANALIZA.md). Funkcija `get_known_entity(address)` je čist
+lokalni `dict` lookup, bez mrežnog poziva — adresa je CEX **isključivo** ako taj registar
+kaže `category == "exchange"`. Nikakvo pogađanje po imenu/izgledu adrese (za razliku od
+starog, neiskorišćenog `graph.py`-evog `enrich_node_metadata`, koji radi baš to i koji ova
+funkcija namerno ne koristi).
+
+Skup kandidata se pravi tako što se **svaki čvor trenutno učitanog grafa** (samo adrese
+koje se stvarno pojavljuju u ovoj evidenciji, ne ceo registar) proveri protiv registra —
+ako ih ima nula, to se i kaže, ne pretpostavlja se ništa.
+
+### 6.2 „Najbliži" — kriterijum i determinizam
+
+`find_path_to_nearest_of(graph, from_address, candidate_addresses)` — ista usmerena BFS
+logika kao osnovna pretraga (§2), samo umesto jednog fiksnog cilja ide nivo-po-nivo dok ne
+naiđe na **bilo koju** adresu iz skupa kandidata. Zato što BFS obilazi čvorove u
+neopadajućem redosledu udaljenosti, **prvi pronađeni kandidat je uvek i najbliži** — nema
+posebnog poređenja udaljenosti.
+
+Kad je više kandidata na **istom, najmanjem** broju skokova, bira se **alfabetski manja**
+adresa — determinističko pravilo, da rezultat ne zavisi tiho od redosleda grana u grafu.
+
+### 6.3 Odgovor i UI
+
+Kad je `destination_mode: "nearest_cex"`, odgovor dobija dva dodatna polja (osnovni oblik
+`{found, path, hops}` ostaje nepromenjen za `specific_address`):
+
+```json
+{
+  "found": true,
+  "path": ["0x...", "0x...", "0x..."],
+  "hops": 2,
+  "destination_address": "0x...",
+  "destination_label": "Binance"
+}
+```
+
+Kad ne postoji rezultat, poruka razlikuje dva različita razloga (`message` polje):
+„Nijedna poznata CEX adresa nije prisutna u ovoj evidenciji" (registar nema poklapanja ni
+sa jednim čvorom grafa) naspram „...nije dostupna (nema puta)..." (CEX adresa postoji u
+evidenciji, ali nije dostiživa iz polazne adrese) — čitalac ne treba da nagađa koje od to
+dvoje se desilo.
+
+Na UI-u, pronađeno odredište se ispisuje iznad liste adresa (`0x... [Binance]`), a ostatak
+(lista, Path Analysis panel, isticanje na grafu) je **potpuno isti kod** kao za
+`specific_address` — `result.path`/`result.hops` se ne razlikuju po poreklu.
+
+## 7. Testiranje korak po korak
+
+### 7.1 Automatski testovi
 
 ```bash
 python -m pytest backend/tests/test_path_finding_bfs.py -v
 ```
 
-9 testova: direktan put, put kroz više skokova, biranje kraćeg puta kad postoji i duži,
-poštovanje smera grane (BFS ne ide unazad), nepovezane adrese, adresa koja ne postoji u
-grafu, ista adresa sa oba kraja, i da sama ruta gradi graf od evidencije i vraća tačan oblik
-`{found, path, hops}`.
+21 test: 7 za osnovni BFS (nepromenjeno), 6 za `find_path_to_nearest_of` (bira bližeg
+kandidata, deterministički raspetljava izjednačenje, polazna adresa je i sama kandidat,
+nema kandidata, kandidat postoji ali nije dostiživ, polazna adresa ne postoji), i 8 na nivou
+rute (uključujući da `specific_address` odgovor ostaje `{found, path, hops}` bez izmene, da
+`to` nedostaje → 400, da `cash_out_point` → 400, i da se CEX kategorija nikad ne meša sa
+mikserom/sankcionisanom adresom).
 
-### 6.2 Ručna provera kroz UI (demo podaci sa poznatim odgovorom)
+### 7.2 Ručna provera kroz UI (demo podaci sa poznatim odgovorom)
 
 Isti demo slučaj koji koristi i Taint analiza (vidi `TAINT-ANALIZA.md`, §3.1) — **„Demo:
 Sumnjiva laundering sema"**, evidencija `demo_taint_dilution.csv`:
@@ -214,14 +285,30 @@ sender_address,recipient_address,amount,timestamp
 15. From i To: `0xMixer` → **FIND PATH**.
 16. Očekivano: **0 skokova**, putanja je samo `["0xMixer"]" — trivijalan slučaj, ne greška.
 
-## 7. Ograničenja prve verzije
+**Test H — Nearest known CEX (verifikovano direktno protiv pravog registra):**
+
+17. From: `0xExchangeHacker`, Destination: **„Nearest known CEX"** → **FIND PATH** (polje
+    „To" nestaje/nije potrebno u ovom režimu).
+18. Očekivano: **2 skoka**, `0xExchangeHacker → 0xExchangeMule → 0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be`,
+    sa natpisom „Pronađeno odredište: ... [Binance]" iznad liste — u ovom demo slučaju je
+    to **jedina** adresa koju lokalni registar prepoznaje kao berzu.
+19. From: `0xThief`, Destination: **„Nearest known CEX"** → **FIND PATH**.
+20. Očekivano: **„Nijedna poznata CEX adresa nije dostupna (nema puta) od izabrane polazne
+    adrese..."** — ta ista Binance adresa POSTOJI u evidenciji, ali `0xThief`-ova šema
+    (`0xThief → 0xMixer → 0xExitWallet`) nikad se ne spaja sa njom; poruka mora reći baš
+    „nije dostupna", ne „nije prisutna".
+
+## 8. Ograničenja prve verzije
 
 Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba):
 
-- **Nema prepoznavanja CEX/cash-out tačaka** — Pathfinding ne zna da je neka adresa berza.
+- **Nema prepoznavanja cash-out tačaka** (u smislu „poslednja adresa pre nego što sredstva
+  napuste praćenu mrežu na bilo koji način") — implementiran je samo užи, pouzdaniji slučaj:
+  poznata CEX adresa iz lokalnog registra (§6). Cash-out point ostaje prikazan ali
+  onemogućen u UI-u dok se ne definiše na čemu bi se pouzdano zasnivao.
 - **Nema weighted pathfinding-a** — ne bira „najverovatniji" put po iznosu, samo najkraći
   po broju skokova (za to postoji `find_transaction_paths` sa strategijom `most_likely`,
-  već u kodu ali nije povezano sa ovom stranicom — videti §8).
+  već u kodu ali nije povezano sa ovom stranicom — videti §9).
 - **Samo jedna putanja** — ne prikazuje alternativne/sve moguće puteve.
 - **Bez hronološke provere puta** — BFS ne proverava da li skokovi u putu stvarno mogu da
   predstavljaju JEDAN kontinuirani tok istog novca kroz vreme (videti §5.1).
@@ -229,16 +316,18 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
   custody gejtinga (nije analiza, samo pretraga strukture); dugme „Pokreni taint analizu za
   ovu putanju" JESTE gejtovano (§5.2), isto kao svako drugo pokretanje analize u aplikaciji.
 
-## 8. Gde je šta u kodu
+## 9. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
-| BFS algoritam | `backend/app/analytics/path_finding.py` (`bfs_shortest_path`) |
+| BFS ka tačno određenoj adresi | `backend/app/analytics/path_finding.py` (`bfs_shortest_path`) |
+| BFS ka najbližoj adresi iz skupa kandidata | `backend/app/analytics/path_finding.py` (`find_path_to_nearest_of`) |
+| Lokalni registar poznatih entiteta (CEX/mikser/sankcionisano) | `backend/app/services/address_enrichment.py` (`get_known_entity`), podaci u `known_entities.json` |
 | Ruta | `backend/app/api/routes/cases.py` (`run_case_pathfinding`, `CasePathfindingRequest`) |
 | Testovi | `backend/tests/test_path_finding_bfs.py` |
 | Frontend stranica | `frontend/src/app/features/pathfinding/` |
 | API poziv | `frontend/src/app/core/services/api.service.ts` (`findCasePath`) |
-| Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`CasePathfindingResult`) |
+| Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`CasePathfindingResult`, `PathfindingDestinationMode`) |
 
 **Ruta:**
 

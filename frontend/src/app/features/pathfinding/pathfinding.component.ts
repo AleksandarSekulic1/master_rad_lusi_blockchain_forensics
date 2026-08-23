@@ -15,6 +15,7 @@ import {
   CaseSummary,
   EvidenceEntry,
   NodeLinkGraphResponse,
+  PathfindingDestinationMode,
   TaintAnalysisResult,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
@@ -68,6 +69,8 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
   protected fromAddress = '';
   protected toAddress = '';
+  /** 'cash_out_point' is listed but disabled in the UI - not implemented yet. */
+  protected destinationMode: PathfindingDestinationMode = 'specific_address';
   protected isSearching = false;
   protected searchError: string | null = null;
   protected result: CasePathfindingResult | null = null;
@@ -140,6 +143,11 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.loadGraph();
   }
 
+  onDestinationModeChange(mode: PathfindingDestinationMode): void {
+    this.destinationMode = mode;
+    this.clearSearch();
+  }
+
   /** Plain, ungated graph - same as the Graf page's automatic preview. Pathfinding does
    * not run any analytics pipeline (no risk/blacklist coloring), so there is nothing here
    * that would call for the custody-access dialog the way "Pokreni taint analizu"/
@@ -174,7 +182,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   }
 
   get canSearch(): boolean {
-    return !!this.activeCase && !!this.graph && this.fromAddress.trim().length > 0 && this.toAddress.trim().length > 0 && !this.isSearching;
+    if (!this.activeCase || !this.graph || this.isSearching || this.fromAddress.trim().length === 0) {
+      return false;
+    }
+    // 'Destination' only needs manual input in 'specific_address' mode - 'nearest_cex' is
+    // resolved server-side from the graph itself, nothing to type.
+    return this.destinationMode !== 'specific_address' || this.toAddress.trim().length > 0;
   }
 
   findPath(): void {
@@ -192,7 +205,9 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.pathTaintResult = null;
     this.taintDialogError = null;
 
-    this.api.findCasePath(caseId, this.fromAddress.trim(), this.toAddress.trim(), this.selectedEvidence).subscribe({
+    const to = this.destinationMode === 'specific_address' ? this.toAddress.trim() : null;
+
+    this.api.findCasePath(caseId, this.fromAddress.trim(), this.destinationMode, to, this.selectedEvidence).subscribe({
       next: (result) => {
         this.result = result;
         this.isSearching = false;

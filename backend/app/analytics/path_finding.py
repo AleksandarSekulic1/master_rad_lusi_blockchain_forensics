@@ -122,3 +122,51 @@ def bfs_shortest_path(graph: nx.DiGraph, source_address: str, target_address: st
             queue.append(neighbor)
 
     return {'found': False, 'path': [], 'hops': 0}
+
+
+def find_path_to_nearest_of(graph: nx.DiGraph, source_address: str, target_addresses: set[str]) -> dict[str, Any]:
+    """Same directed BFS as bfs_shortest_path, but the destination isn't known in advance -
+    only a CANDIDATE SET is (e.g. "every known-CEX address actually present in this
+    graph"). Stops at the first of those candidates reached, which is guaranteed to be the
+    nearest one by hop count: BFS visits nodes in strictly non-decreasing distance order,
+    so the first candidate encountered can never be beaten by one found later.
+
+    Deliberately generic - this function has no idea what a "CEX" is, it just walks the
+    graph toward the nearest node in a set the caller supplies. That set is the caller's
+    job to build from real data (see run_case_pathfinding in api/routes/cases.py, which
+    checks every graph node against the local known_entities registry) - this function
+    never guesses at what a target address "looks like".
+
+    Ties (more than one candidate at the same, nearest distance) are broken by address,
+    ascending - otherwise "nearest" would silently depend on graph iteration order, which
+    is not something a forensic result should be allowed to hinge on.
+    """
+    if source_address not in graph:
+        return {'found': False, 'path': [], 'hops': 0, 'destination': None}
+
+    if source_address in target_addresses:
+        return {'found': True, 'path': [source_address], 'hops': 0, 'destination': source_address}
+
+    visited = {source_address}
+    parent: dict[str, str] = {}
+    frontier = [source_address]
+
+    while frontier:
+        next_frontier: list[str] = []
+        for current in frontier:
+            for neighbor in graph.successors(current):
+                if neighbor in visited:
+                    continue
+                visited.add(neighbor)
+                parent[neighbor] = current
+                next_frontier.append(neighbor)
+
+        matches = sorted(node for node in next_frontier if node in target_addresses)
+        if matches:
+            destination = matches[0]
+            path = _reconstruct_path(parent, source_address, destination)
+            return {'found': True, 'path': path, 'hops': len(path) - 1, 'destination': destination}
+
+        frontier = next_frontier
+
+    return {'found': False, 'path': [], 'hops': 0, 'destination': None}
