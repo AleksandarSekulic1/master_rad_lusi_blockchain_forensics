@@ -547,8 +547,9 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.cy.animate({ fit: { eles: this.cy.nodes().filter((node) => nodeIds.has(node.id())), padding: 120 } }, { duration: 350 });
   }
 
-  /** Full-length addresses as node labels are unreadable clutter once a graph has more
-   * than a handful of nodes - same truncation as the Graf page. */
+  /** Skraćuje adresu za usko postavljanje (PDF tabela sa 7 kolona - vidi
+   * buildPathfindingPdf) - NE koristi se za labele na samom grafu, tamo se na zahtev
+   * korisnika prikazuje puna adresa (vidi buildElements). */
   private truncateAddress(value: string): string {
     if (value.length <= 14) {
       return value;
@@ -557,10 +558,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   }
 
   private buildElements(graph: NodeLinkGraphResponse): ElementDefinition[] {
+    // Pun naziv/adresa kao labela na grafu (bez skraćivanja) - na zahtev korisnika, da se
+    // čvor odmah prepozna bez potrebe da se klikne/uveličava.
     const nodes: ElementDefinition[] = graph.nodes.map((node) => ({
       data: {
         ...node,
-        label: this.truncateAddress(String(node.label ?? node.address ?? node.id)),
+        label: String(node.label ?? node.address ?? node.id),
       },
     }));
 

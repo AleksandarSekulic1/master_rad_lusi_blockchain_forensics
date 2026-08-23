@@ -108,6 +108,15 @@
   flex-wrap: wrap;
 }
 
+.graph-header-text {
+  // Bez ovoga, tekstualni blok se u flex redu skupi na širinu koju sam bira ("fit-content"
+  // algoritam), pa je pasus ispod naslova prelamao daleko pre nego što je zaista ponestalo
+  // prostora (stao je na pola ekrana, a prazan prostor do .stats ostajao neiskorišćen).
+  // flex-grow ovde ga širi da zaista popuni sav raspoloživi prostor do statistike/dugmeta.
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .graph-header p {
   color: #9ab1d0;
 }
@@ -135,11 +144,11 @@ h3 {
 }
 
 .graph-header p {
-  // 56ch je bilo uže od dužine same rečenice, pa se lomilo u 3 neujednačene linije iako
-  // ima dosta praznog prostora do grafa/statistike; 68ch pušta rečenicu da stane u manje,
-  // ravnomernije redove (i dalje sa razumnim ograničenjem širine radi čitljivosti), a
-  // text-wrap: pretty sprečava da poslednja linija ostane kratak, usamljen "rep".
-  max-width: 68ch;
+  // Fiksni ch limit je prelamao rečenicu daleko pre kraja raspoloživog prostora (vidi
+  // .graph-header-text) - sad prati punu širinu tekstualnog bloka (koji se flex-growom širi
+  // do statistike/dugmeta), a text-wrap: pretty i dalje sprečava kratak, usamljen "rep" na
+  // poslednjem redu ako do preloma ipak dođe na uskom ekranu.
+  max-width: 100%;
   font-size: 0.85rem;
   line-height: 1.55;
   margin: 0.4rem 0 0;
