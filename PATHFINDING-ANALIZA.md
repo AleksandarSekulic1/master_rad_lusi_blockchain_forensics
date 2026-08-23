@@ -12,9 +12,10 @@ odgovara na drugo pitanje: „kako se zaprljana sredstva propagiraju kroz celu m
 | [2. Algoritam](#2-algoritam-bfs) | BFS, usmerenost, šta prva verzija namerno nema |
 | [3. API](#3-api) | ruta, telo zahteva, oblik odgovora |
 | [4. Frontend stranica](#4-frontend-stranica) | šta se prikazuje i kako |
-| [5. Testiranje korak po korak](#5-testiranje-korak-po-korak) | UI i automatski testovi |
-| [6. Ograničenja prve verzije](#6-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
-| [7. Gde je šta u kodu](#7-gde-je-šta-u-kodu) | putanje |
+| [5. Path Analysis panel](#5-path-analysis-panel-drugi-korak) | forenzički detalji pronađenog puta, opciona taint provera |
+| [6. Testiranje korak po korak](#6-testiranje-korak-po-korak) | UI i automatski testovi |
+| [7. Ograničenja prve verzije](#7-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
+| [8. Gde je šta u kodu](#8-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -73,18 +74,65 @@ pokretanje se beleži u log aktivnosti pod već postojećom akcijom `path_findin
 Ruta `/pathfinding`, link „Pathfinding" u glavnom meniju.
 
 - Aktivan slučaj + birač evidencije (isti obrazac kao Graf stranica) — graf se učitava
-  **automatski**, bez boja po riziku (Pathfinding ne pokreće analitički pipeline, pa nema
-  potrebe ni za dijalogom za lanac dokaza — to je rezervisano za Taint analizu i „Analiziraj
-  graf").
+  **automatski**, bez boja po riziku (samo pronalaženje puta ne pokreće analitički pipeline,
+  pa tu nema potrebe za dijalogom za lanac dokaza; opciona taint provera ispod — §5 — ga
+  ipak koristi, jer ona TO jeste pokretanje analize).
 - Polja **From** / **To** + dugme **FIND PATH**.
-- Kad je put pronađen: broj skokova, vertikalna lista adresa (`Address A ↓ Address B ↓ ...`),
-  i na grafu se boji **samo** ta putanja (cijan, isti vizuelni jezik kao isticanje putanje u
-  Taint analizi), dok se ostatak grafa zatamni.
+- Kad je put pronađen: vertikalna lista adresa (`Address A ↓ Address B ↓ ...`), panel **„Path
+  Analysis"** (§5), i na grafu se boji **samo** ta putanja (cijan, isti vizuelni jezik kao
+  isticanje putanje u Taint analizi), dok se ostatak grafa zatamni.
 - Kad put nije pronađen: jasna poruka, graf ostaje u normalnom (nezatamnjenom) prikazu.
 
-## 5. Testiranje korak po korak
+## 5. Path Analysis panel (drugi korak)
 
-### 5.1 Automatski testovi
+Kad je put pronađen, panel **„Path Analysis"** izvlači forenzičke podatke IZ TE putanje —
+bez novog algoritma za pronalaženje puta, bez ponovnog implementiranja Taint analize.
+
+### 5.1 Podaci po skoku — iz grafa koji je stranica već učitala
+
+Graf koji se iscrtava na platnu (`this.graph`, iz `GET /cases/{id}/graph`) već nosi, na
+svakoj grani, kompletnu listu pojedinačnih transakcija (`link.transactions[]`: `amount`,
+`timestamp`, `metadata` = tx heš). Za svaki skok `(path[i], path[i+1])` frontend samo
+pronađe odgovarajuću granu i pročita je — **nema dodatnog backend poziva**.
+
+Jedna grana ume da agregira više transakcija između iste dve adrese. Prikazuje se
+**hronološki najranija** kao predstavnik skoka (jedna linija po skoku, kao u mokapu), a
+ako ih ima više, ispod stoji napomena „+ N dodatnih transakcija na ovoj vezi" — ništa se ne
+sakriva ćutke.
+
+Iz ovih po-skok podataka se izvode: **Initial amount** / **Final amount** (iznos prve i
+poslednje odabrane transakcije) i **Duration** (razlika vremena poslednje i prve).
+
+**Poznato ograničenje:** BFS je čisto strukturni (§2) — moguće je da put topološki postoji
+a hronološki NIJE realan tok istog novca (npr. transakcija na skoku 2 desila se pre
+transakcije na skoku 1). Prva verzija to ne proverava; „Duration" opisuje odabrane
+transakcije, ne garantovano jedan kontinuirani tok.
+
+### 5.2 Taint provera puta — postojeći plugin, nov okidač
+
+Dugme **„Pokreni taint analizu za ovu putanju"** poziva **isti** `POST
+/cases/{id}/analytics/run` koji već koriste Taint analiza i Graf, sa jednom razlikom: seed
+je automatski **prva adresa na putu** (`path[0]`). Pošto seed adresa po definiciji modela
+uvek dobija 100%, to je tačno „Initial taint: 100%" iz mokapa — a „Final taint" je koliko
+je od TE konkretne, seed-ovane vrednosti stiglo do poslednje adrese, baš kroz ovaj put.
+„Taint dilution" = Initial − Final.
+
+Pošto je ovo namerno pokretanje analize (isto kao „Pokreni taint analizu"/„Analiziraj
+graf"), prolazi kroz **isti dijalog za lanac dokaza** (`CustodyAccessDialogComponent`) —
+razlog pristupa + potpis, i upisuje se u `custody_log`/`custody_evidence_log` i u
+„Log aktivnosti" isto kao svako drugo pokretanje.
+
+**Napomena:** `TaintAnalysisPlugin` podrazumevano DODATNO seeduje i svaku adresu sa crne
+liste (postojeće ponašanje, ne nešto uvedeno ovde) — ako neka adresa na putu slučajno
+pripada crnoj listi, „Final taint" može uključivati i njen doprinos, ne samo `path[0]`-ov.
+
+**Zašto rezultat ne dolazi iz Taint Analysis stranice:** taj rezultat živi samo lokalno na
+`/taint` stranici (ne piše se u deljeno stanje), pa Pathfinding ne može da ga „vidi" a da ga
+ne pokrene iznova — što ovo dugme i radi, eksplicitno, na zahtev korisnika.
+
+## 6. Testiranje korak po korak
+
+### 6.1 Automatski testovi
 
 ```bash
 python -m pytest backend/tests/test_path_finding_bfs.py -v
@@ -95,7 +143,7 @@ poštovanje smera grane (BFS ne ide unazad), nepovezane adrese, adresa koja ne p
 grafu, ista adresa sa oba kraja, i da sama ruta gradi graf od evidencije i vraća tačan oblik
 `{found, path, hops}`.
 
-### 5.2 Ručna provera kroz UI (demo podaci sa poznatim odgovorom)
+### 6.2 Ručna provera kroz UI (demo podaci sa poznatim odgovorom)
 
 Isti demo slučaj koji koristi i Taint analiza (vidi `TAINT-ANALIZA.md`, §3.1) — **„Demo:
 Sumnjiva laundering sema"**, evidencija `demo_taint_dilution.csv`:
@@ -120,6 +168,14 @@ sender_address,recipient_address,amount,timestamp
 3. From: `0xThief`, To: `0xExitWallet` → **FIND PATH**.
 4. Očekivano: **2 skoka**, putanja `0xThief → 0xMixer → 0xExitWallet`. Na grafu su ta tri
    čvora i dve grane obojeni cijan, ostatak zatamnjen.
+5. U panelu „Path Analysis": **Initial amount 1000**, **Final amount 750**, i lista
+   transakcija ispod pokazuje `0xThief → 0xMixer` (iznos 1000, 01.03.2026.) i
+   `0xMixer → 0xExitWallet` (iznos 750) — potvrđuje da se podaci po skoku ispravno čitaju
+   iz već učitanog grafa (uporedi sa demo CSV-om iznad).
+6. Klikni **„Pokreni taint analizu za ovu putanju"** → potpiši se u dijalogu → potvrdi.
+   Očekivano: **Initial taint 100%** (jer je `0xThief` upravo seed), **Final taint 66.67%**
+   (isti broj koji TAINT-ANALIZA.md §3.1 Test A navodi za `0xMixer`/`0xExitWallet` sa
+   seed-om `0xThief`), **Taint dilution 33.33%**.
 
 **Test B — dve različite adrese vode do istog posrednika:**
 
@@ -158,21 +214,22 @@ sender_address,recipient_address,amount,timestamp
 15. From i To: `0xMixer` → **FIND PATH**.
 16. Očekivano: **0 skokova**, putanja je samo `["0xMixer"]" — trivijalan slučaj, ne greška.
 
-## 6. Ograničenja prve verzije
+## 7. Ograničenja prve verzije
 
 Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba):
 
 - **Nema prepoznavanja CEX/cash-out tačaka** — Pathfinding ne zna da je neka adresa berza.
 - **Nema weighted pathfinding-a** — ne bira „najverovatniji" put po iznosu, samo najkraći
   po broju skokova (za to postoji `find_transaction_paths` sa strategijom `most_likely`,
-  već u kodu ali nije povezano sa ovom stranicom — videti §7).
+  već u kodu ali nije povezano sa ovom stranicom — videti §8).
 - **Samo jedna putanja** — ne prikazuje alternativne/sve moguće puteve.
-- **Bez custody/lanac dokaza gejtinga** — Pathfinding ne pokreće analitički pipeline, pa
-  ne postoji zaprljanost/rizik koji bi trebalo potpisivati; ako se to promeni, dijalog za
-  lanac dokaza (`CustodyAccessDialogComponent`) je već generički i spreman za ponovnu
-  upotrebu.
+- **Bez hronološke provere puta** — BFS ne proverava da li skokovi u putu stvarno mogu da
+  predstavljaju JEDAN kontinuirani tok istog novca kroz vreme (videti §5.1).
+- **Taint provera je opciona i posebno pokretanje** — sâmo pronalaženje puta ostaje bez
+  custody gejtinga (nije analiza, samo pretraga strukture); dugme „Pokreni taint analizu za
+  ovu putanju" JESTE gejtovano (§5.2), isto kao svako drugo pokretanje analize u aplikaciji.
 
-## 7. Gde je šta u kodu
+## 8. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|

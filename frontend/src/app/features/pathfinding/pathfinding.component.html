@@ -81,13 +81,96 @@
 
       <ng-container *ngIf="result">
         <div class="path-result" *ngIf="result.found; else notFound">
-          <p class="hop-count">{{ result.hops }} {{ result.hops === 1 ? 'skok' : 'skoka' }} između adresa</p>
           <ol class="path-list">
             <li *ngFor="let address of result.path; let last = last">
               <span class="mono-address">{{ address }}</span>
               <span class="path-arrow" *ngIf="!last">↓</span>
             </li>
           </ol>
+
+          <div class="path-analysis-card">
+            <p class="panel-kicker">Path Analysis</p>
+            <dl>
+              <div>
+                <dt>Path length</dt>
+                <dd>{{ result.hops }} {{ result.hops === 1 ? 'hop' : 'hops' }}</dd>
+              </div>
+              <div *ngIf="initialAmount !== null">
+                <dt>Initial amount</dt>
+                <dd>{{ initialAmount | number : '1.2-6' }}</dd>
+              </div>
+              <div *ngIf="finalAmount !== null">
+                <dt>Final amount</dt>
+                <dd>{{ finalAmount | number : '1.2-6' }}</dd>
+              </div>
+              <div *ngIf="pathDurationLabel">
+                <dt>Duration</dt>
+                <dd>{{ pathDurationLabel }}</dd>
+              </div>
+              <ng-container *ngIf="pathTaintResult">
+                <div>
+                  <dt>Initial taint</dt>
+                  <dd>{{ initialTaint | number : '1.0-2' }}%</dd>
+                </div>
+                <div>
+                  <dt>Final taint</dt>
+                  <dd>{{ finalTaint | number : '1.0-2' }}%</dd>
+                </div>
+                <div>
+                  <dt>Taint dilution</dt>
+                  <dd>{{ taintDilution | number : '1.0-2' }}%</dd>
+                </div>
+              </ng-container>
+            </dl>
+
+            <ng-container *ngIf="!pathTaintResult">
+              <button
+                type="button"
+                class="ghost-button taint-trace-button"
+                (click)="openTaintDialog()"
+                [disabled]="isRunningTaint"
+              >
+                Pokreni taint analizu za ovu putanju
+              </button>
+              <p class="taint-hint">
+                Opciono: prati koliko zaprljanosti sa polazne adrese (uvek 100% kao izvor) stigne do krajnje adrese,
+                baš kroz ovu putanju.
+              </p>
+            </ng-container>
+          </div>
+
+          <div class="hop-list">
+            <p class="panel-kicker">Transakcije na putu</p>
+            <ol>
+              <li *ngFor="let hop of pathHops; let i = index" class="hop-item">
+                <p class="hop-title">
+                  {{ i + 1 }}. <span class="mono-address">{{ hop.source }}</span> →
+                  <span class="mono-address">{{ hop.target }}</span>
+                </p>
+                <dl>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{{ hop.amount !== null ? (hop.amount | number : '1.2-6') : 'n/a' }}</dd>
+                  </div>
+                  <div *ngIf="hop.taintPercentage !== null">
+                    <dt>Taint</dt>
+                    <dd>{{ hop.taintPercentage | number : '1.0-2' }}%</dd>
+                  </div>
+                  <div>
+                    <dt>Time</dt>
+                    <dd>{{ hop.timestamp ? (hop.timestamp | date : 'medium') : 'n/a' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Transaction hash</dt>
+                    <dd class="mono-address">{{ hop.txHash ?? 'n/a — evidencija nema heš' }}</dd>
+                  </div>
+                </dl>
+                <p class="hop-extra" *ngIf="hop.extraTransactionCount > 0">
+                  + {{ hop.extraTransactionCount }} dodatnih transakcija na ovoj vezi (prikazana je najranija)
+                </p>
+              </li>
+            </ol>
+          </div>
         </div>
         <ng-template #notFound>
           <p class="no-path-message">
@@ -102,4 +185,16 @@
       </p>
     </aside>
   </div>
+
+  <!-- Lanac dokaza: razlog pristupa i potpis pre pokretanja taint analize za ovu putanju -->
+  <app-custody-access-dialog
+    *ngIf="isTaintDialogOpen && activeCase"
+    [caseId]="activeCase.id"
+    [caseName]="activeCase.name"
+    [evidenceFileName]="selectedEvidenceFileName"
+    [isSubmitting]="isRunningTaint"
+    [submitError]="taintDialogError"
+    (confirmed)="confirmCustodyAndRunTaint($event)"
+    (cancelled)="closeTaintDialog()"
+  ></app-custody-access-dialog>
 </div>

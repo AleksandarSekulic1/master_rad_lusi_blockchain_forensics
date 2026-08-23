@@ -10,7 +10,31 @@ import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { CasePathfindingResult, CaseSummary, EvidenceEntry, NodeLinkGraphResponse } from '../../models/blockchain-forensics.models';
+import {
+  CasePathfindingResult,
+  CaseSummary,
+  EvidenceEntry,
+  NodeLinkGraphResponse,
+  TaintAnalysisResult,
+  TransactionCustodyEntry,
+} from '../../models/blockchain-forensics.models';
+import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
+
+/** One row of the "list of transactions along the path" panel - derived entirely from
+ * data the page already has loaded (this.graph.links), not fetched separately. When an
+ * edge aggregates more than one individual transaction, the EARLIEST one is shown as the
+ * hop's representative (deterministic, matches the "one line per hop" mockup) and
+ * `extraTransactionCount` says how many more exist on that same edge - nothing is hidden
+ * silently. */
+interface PathHopDetail {
+  source: string;
+  target: string;
+  amount: number | null;
+  timestamp: string | null;
+  txHash: string | null;
+  extraTransactionCount: number;
+  taintPercentage: number | null;
+}
 
 /** Pathfinding Analysis - "kojim putem se sredstva kreću između dve adrese", a
  * deliberately separate question (and page) from Taint Analysis's "kako se zaprljana
@@ -26,7 +50,7 @@ import { CasePathfindingResult, CaseSummary, EvidenceEntry, NodeLinkGraphRespons
 @Component({
   selector: 'app-pathfinding',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent],
   templateUrl: './pathfinding.component.html',
   styleUrl: './pathfinding.component.scss',
 })
@@ -47,6 +71,14 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   protected isSearching = false;
   protected searchError: string | null = null;
   protected result: CasePathfindingResult | null = null;
+
+  // --- Path Analysis: taint trace for the found path, run on demand (see LANAC-DOKAZA.md
+  // for why this goes through the same custody dialog as "Pokreni taint analizu"/
+  // "Analiziraj graf" - it is the same kind of deliberate access to the evidence). ---
+  protected isTaintDialogOpen = false;
+  protected isRunningTaint = false;
+  protected taintDialogError: string | null = null;
+  protected pathTaintResult: TaintAnalysisResult | null = null;
 
   private cy: Core | null = null;
 
@@ -154,6 +186,11 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.isSearching = true;
     this.searchError = null;
     this.result = null;
+    // A fresh path invalidates any taint trace computed for the PREVIOUS path - otherwise
+    // the "Path Analysis" panel could keep showing stale percentages that no longer
+    // describe what's on screen.
+    this.pathTaintResult = null;
+    this.taintDialogError = null;
 
     this.api.findCasePath(caseId, this.fromAddress.trim(), this.toAddress.trim(), this.selectedEvidence).subscribe({
       next: (result) => {
@@ -172,7 +209,176 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   private clearSearch(): void {
     this.result = null;
     this.searchError = null;
+    this.pathTaintResult = null;
+    this.taintDialogError = null;
     this.applyPathHighlight(null);
+  }
+
+  // --- Path Analysis: forensic details for the found path -------------------------------
+
+  /** File name of the currently scoped evidence, for the custody dialog's default
+   * "identifikator dokaznog materijala" - null means the combined view (all evidence). */
+  protected get selectedEvidenceFileName(): string | null {
+    if (!this.selectedEvidence) {
+      return null;
+    }
+    return this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? null;
+  }
+
+  /** Opens the access-reason dialog. Tracing HOW TAINTED the money on this specific path
+   * is means running the taint_analysis plugin (seeded from the path's own origin
+   * address), which is exactly the kind of deliberate access to the evidence "Pokreni
+   * taint analizu"/"Analiziraj graf" already gate the same way (see LANAC-DOKAZA.md). */
+  openTaintDialog(): void {
+    if (!this.activeCase?.id || !this.result?.found) {
+      return;
+    }
+    this.taintDialogError = null;
+    this.isTaintDialogOpen = true;
+  }
+
+  closeTaintDialog(): void {
+    this.isTaintDialogOpen = false;
+  }
+
+  /** Seeds the EXISTING taint_analysis plugin with just this path's origin address
+   * (path[0]) - a seed always starts at 100% by definition of the haircut model, so
+   * "Initial taint" below is exactly that, and "Final taint" is however much of THAT
+   * specific money the model says survived by the time it reached the path's last
+   * address, via this exact chain of hops. Nothing about taint_analysis itself changes -
+   * this only ever calls the same POST /cases/{id}/analytics/run every other page uses. */
+  confirmCustodyAndRunTaint(custody: TransactionCustodyEntry): void {
+    const caseId = this.activeCase?.id;
+    const seedAddress = this.result?.path[0];
+    if (!caseId || !seedAddress) {
+      return;
+    }
+
+    this.isRunningTaint = true;
+    this.taintDialogError = null;
+
+    this.api.runCaseAnalytics(caseId, this.selectedEvidence, [seedAddress], custody).subscribe({
+      next: (response) => {
+        this.pathTaintResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+        this.isRunningTaint = false;
+        this.isTaintDialogOpen = false;
+      },
+      error: () => {
+        this.isRunningTaint = false;
+        this.taintDialogError = 'Neuspešno pokretanje taint analize.';
+      },
+    });
+  }
+
+  private get taintByAddress(): Map<string, number> {
+    return new Map((this.pathTaintResult?.results ?? []).map((entry) => [entry.address, entry.taint_percentage]));
+  }
+
+  /** One row per hop, built entirely from data already on the page (this.graph.links) -
+   * no extra request. See PathHopDetail for why the EARLIEST transaction on an edge is
+   * the one shown when a hop aggregates more than one. */
+  get pathHops(): PathHopDetail[] {
+    const path = this.result?.found ? this.result.path : null;
+    if (!path || !this.graph) {
+      return [];
+    }
+
+    const taint = this.taintByAddress;
+    const hops: PathHopDetail[] = [];
+
+    for (let index = 0; index < path.length - 1; index++) {
+      const source = path[index];
+      const target = path[index + 1];
+      const link = this.graph.links.find((candidate) => String(candidate.source) === source && String(candidate.target) === target);
+      const transactions = ((link?.transactions ?? []) as Array<{ amount?: number; timestamp?: string; metadata?: string | null }>)
+        .slice()
+        .sort((a, b) => String(a.timestamp ?? '').localeCompare(String(b.timestamp ?? '')));
+      const earliest = transactions[0];
+
+      hops.push({
+        source,
+        target,
+        amount: earliest?.amount ?? null,
+        timestamp: earliest?.timestamp ?? null,
+        txHash: earliest?.metadata ?? null,
+        extraTransactionCount: Math.max(0, transactions.length - 1),
+        taintPercentage: taint.get(target) ?? null,
+      });
+    }
+
+    return hops;
+  }
+
+  get initialAmount(): number | null {
+    return this.pathHops[0]?.amount ?? null;
+  }
+
+  get finalAmount(): number | null {
+    const hops = this.pathHops;
+    return hops.length ? hops[hops.length - 1].amount : null;
+  }
+
+  /** Taint % of the path's OWN origin address - always 100% once a trace has been run,
+   * since that address is exactly what was seeded (see confirmCustodyAndRunTaint). Null
+   * (not 0) when no trace has been run yet, so the template can tell "not computed" apart
+   * from "computed and genuinely zero". */
+  get initialTaint(): number | null {
+    if (!this.pathTaintResult) {
+      return null;
+    }
+    const address = this.result?.path[0];
+    return address ? this.taintByAddress.get(address) ?? 0 : null;
+  }
+
+  get finalTaint(): number | null {
+    if (!this.pathTaintResult || !this.result?.found) {
+      return null;
+    }
+    const path = this.result.path;
+    const address = path[path.length - 1];
+    return address ? this.taintByAddress.get(address) ?? 0 : null;
+  }
+
+  get taintDilution(): number | null {
+    return this.initialTaint != null && this.finalTaint != null ? this.initialTaint - this.finalTaint : null;
+  }
+
+  /** "2 dana 6 sati" from the first to the last hop's own (earliest-transaction) timestamp
+   * - null when either end is missing (e.g. an edge with no timestamped transaction data)
+   * rather than a misleading "0 min". BFS itself does not consider time, so this duration
+   * describes the hops AS PICKED here, not a chronologically verified single fund flow -
+   * see PATHFINDING-ANALIZA.md for that caveat. */
+  get pathDurationLabel(): string | null {
+    const hops = this.pathHops;
+    const first = hops[0]?.timestamp;
+    const last = hops[hops.length - 1]?.timestamp;
+    if (!first || !last) {
+      return null;
+    }
+    const ms = new Date(last).getTime() - new Date(first).getTime();
+    if (Number.isNaN(ms) || ms < 0) {
+      return null;
+    }
+    return this.formatDuration(ms);
+  }
+
+  private formatDuration(ms: number): string {
+    const totalMinutes = Math.round(ms / 60_000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+
+    const parts: string[] = [];
+    if (days > 0) {
+      parts.push(`${days} ${days === 1 ? 'dan' : 'dana'}`);
+    }
+    if (hours > 0) {
+      parts.push(`${hours} ${hours === 1 ? 'sat' : 'sati'}`);
+    }
+    if (days === 0 && hours === 0) {
+      parts.push(`${minutes} min`);
+    }
+    return parts.join(' ');
   }
 
   /** Highlights exactly the found path (nodes + the edges connecting consecutive hops)

@@ -229,13 +229,6 @@ h3 {
   color: #fca5a5;
 }
 
-.hop-count {
-  margin: 0.4rem 0 0.7rem;
-  font-size: 0.85rem;
-  color: #86efac;
-  font-weight: 600;
-}
-
 .path-list {
   list-style: none;
   margin: 0;
@@ -286,5 +279,101 @@ h3 {
   margin: 0.4rem 0 0;
   font-size: 0.8rem;
   line-height: 1.55;
+  color: #8ea6c7;
+}
+
+/* --- Path Analysis card + per-hop transaction list --- */
+
+.path-analysis-card {
+  margin-top: 0.9rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(125, 211, 252, 0.05);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+.path-analysis-card dl,
+.hop-item dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.6rem;
+}
+
+.path-analysis-card dl > div,
+.hop-item dl > div {
+  display: contents;
+}
+
+.path-analysis-card dt,
+.hop-item dt {
+  color: #8ea6c7;
+  font-size: 0.76rem;
+}
+
+.path-analysis-card dd,
+.hop-item dd {
+  margin: 0;
+  color: #eef4ff;
+  font-size: 0.8rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.taint-trace-button {
+  width: 100%;
+  margin-top: 0.7rem;
+  text-align: center;
+}
+
+.taint-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: #8ea6c7;
+}
+
+.hop-list {
+  margin-top: 0.9rem;
+}
+
+.hop-list > .panel-kicker {
+  margin-bottom: 0.5rem;
+}
+
+.hop-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.hop-item {
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.hop-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: #d9e6ff;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.hop-title .mono-address {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+}
+
+.hop-extra {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
   color: #8ea6c7;
 }
