@@ -83,7 +83,151 @@ def _default_scenarios() -> list[dict[str, Any]]:
             'updated_at': now,
             'created_by': 'system',
         },
+    ] + [
+        {**scenario, 'id': uuid4().hex[:12], 'created_at': now, 'updated_at': now, 'created_by': 'system'}
+        for scenario in EXTRA_DEFAULT_SCENARIOS
     ]
+
+
+def _tx(sender: str, recipient: str, amount: float, timestamp: str) -> dict[str, Any]:
+    return {'sender': sender, 'recipient': recipient, 'amount': amount, 'timestamp': timestamp}
+
+
+def _expect(address: str, percentage: float) -> dict[str, Any]:
+    return {'address': address, 'expected_percentage': percentage}
+
+
+# Each scenario pins down a DIFFERENT property of the model, not a variation of the same
+# one - a library of near-identical cases would inflate the count without proving more.
+EXTRA_DEFAULT_SCENARIOS: list[dict[str, Any]] = [
+    {
+        'name': 'Odliv ne menja procenat posiljaoca',
+        'description': 'Mikser posalje deo dalje - njegov sopstveni procenat ostaje 66.67%, jer odliv odnosi '
+                       'prljavo i cisto u istoj srazmeri (definisuca osobina haircut modela).',
+        'transactions': [
+            _tx('0xThief', '0xMixer', 1000, '2026-03-01T00:00:00Z'),
+            _tx('0xCleanUser', '0xMixer', 500, '2026-03-01T00:05:00Z'),
+            _tx('0xMixer', '0xExit', 750, '2026-03-01T00:10:00Z'),
+        ],
+        'seed_addresses': ['0xThief'],
+        'expectations': [_expect('0xMixer', 66.67), _expect('0xExit', 66.67)],
+    },
+    {
+        'name': 'Visestruko razblazivanje kroz lanac',
+        'description': 'Svaki sledeci cvor prima jednaku kolicinu cistog novca, pa procenat pada 100% -> 50% -> 25%. '
+                       'Provera da se razblazivanje slaze kroz vise koraka, a ne samo jednom.',
+        'transactions': [
+            _tx('0xOrigin', '0xHop1', 100, '2026-03-01T00:00:00Z'),
+            _tx('0xClean1', '0xHop1', 100, '2026-03-01T00:05:00Z'),
+            _tx('0xHop1', '0xHop2', 100, '2026-03-01T00:10:00Z'),
+            _tx('0xClean2', '0xHop2', 100, '2026-03-01T00:15:00Z'),
+        ],
+        'seed_addresses': ['0xOrigin'],
+        'expectations': [_expect('0xHop1', 50.0), _expect('0xHop2', 25.0)],
+    },
+    {
+        'name': 'Hronologija: cist priliv PRE prljavog',
+        'description': 'Cist novac stigne prvi, pa tek onda prljav. Rezultat mora biti isti 50% kao i u obrnutom '
+                       'redosledu - inace bi algoritam obradjivao granu-po-granu umesto po vremenu.',
+        'transactions': [
+            _tx('0xCleanFirst', '0xTarget', 100, '2026-03-01T00:00:00Z'),
+            _tx('0xDirty', '0xTarget', 100, '2026-03-01T00:05:00Z'),
+        ],
+        'seed_addresses': ['0xDirty'],
+        'expectations': [_expect('0xTarget', 50.0)],
+    },
+    {
+        'name': 'Tri izvora se spajaju (50/30/20)',
+        'description': 'Provera da raspodela po izvorima radi i sa vise od dva izvora - ukupno 100%, ali podeljeno '
+                       'na tri nejednaka udela.',
+        'transactions': [
+            _tx('0xSrcA', '0xHub', 500, '2026-03-01T00:00:00Z'),
+            _tx('0xSrcB', '0xHub', 300, '2026-03-01T00:05:00Z'),
+            _tx('0xSrcC', '0xHub', 200, '2026-03-01T00:10:00Z'),
+        ],
+        'seed_addresses': ['0xSrcA', '0xSrcB', '0xSrcC'],
+        'expectations': [_expect('0xHub', 100.0)],
+    },
+    {
+        'name': 'Samo jedan od tri izvora je oznacen',
+        'description': 'Isti podaci kao prethodni scenario, ali samo 0xSrcB je izvor. Procenat mora pasti na tacno '
+                       'njegov udeo (300/1000 = 30%) - dokaz da rezultat zavisi od izbora izvora.',
+        'transactions': [
+            _tx('0xSrcA', '0xHub', 500, '2026-03-01T00:00:00Z'),
+            _tx('0xSrcB', '0xHub', 300, '2026-03-01T00:05:00Z'),
+            _tx('0xSrcC', '0xHub', 200, '2026-03-01T00:10:00Z'),
+        ],
+        'seed_addresses': ['0xSrcB'],
+        'expectations': [_expect('0xHub', 30.0)],
+    },
+    {
+        'name': 'Adresa koja salje pre nego sto primi (zastita od >100%)',
+        'description': 'Adresa prvo potrosi sredstva koja je imala pre evidencije, pa tek onda primi zaprljana. '
+                       'Ranije je davala nemogucih 111.11% - sada mora biti tacno 100%.',
+        'transactions': [
+            _tx('0xSpender', '0xSomeone', 5, '2026-03-01T00:00:00Z'),
+            _tx('0xSpender', '0xSomeone', 5, '2026-03-01T00:01:00Z'),
+            _tx('0xThief2', '0xSpender', 50, '2026-03-01T00:02:00Z'),
+            _tx('0xThief2', '0xSpender', 50, '2026-03-01T00:03:00Z'),
+        ],
+        'seed_addresses': ['0xThief2'],
+        'expectations': [_expect('0xSpender', 100.0)],
+    },
+    {
+        'name': 'Peel chain - glavni tok ostaje skoro nerazblazen',
+        'description': 'Pri svakom koraku se odvaja mali deo, a ostatak ide dalje. Za razliku od miksera, procenat '
+                       'ostaje 100% jer se nista cisto ne mesa - samo se iznos smanjuje.',
+        'transactions': [
+            _tx('0xPeelOrigin', '0xPeel1', 1000, '2026-03-01T00:00:00Z'),
+            _tx('0xPeel1', '0xSmall1', 50, '2026-03-01T00:05:00Z'),
+            _tx('0xPeel1', '0xPeel2', 950, '2026-03-01T00:06:00Z'),
+            _tx('0xPeel2', '0xSmall2', 50, '2026-03-01T00:10:00Z'),
+            _tx('0xPeel2', '0xPeel3', 900, '2026-03-01T00:11:00Z'),
+        ],
+        'seed_addresses': ['0xPeelOrigin'],
+        'expectations': [
+            _expect('0xPeel1', 100.0), _expect('0xPeel2', 100.0), _expect('0xPeel3', 100.0),
+            _expect('0xSmall1', 100.0),
+        ],
+    },
+    {
+        'name': 'Nedodirnuta adresa ostaje na nuli',
+        'description': 'Transakcije koje nemaju veze sa izvorom ne smeju da podignu procenat - zastita od modela '
+                       'koji bi "prljao" ceo graf.',
+        'transactions': [
+            _tx('0xThief3', '0xMule', 100, '2026-03-01T00:00:00Z'),
+            _tx('0xStranger', '0xOtherParty', 400, '2026-03-01T00:05:00Z'),
+        ],
+        'seed_addresses': ['0xThief3'],
+        'expectations': [_expect('0xMule', 100.0), _expect('0xOtherParty', 0.0), _expect('0xStranger', 0.0)],
+    },
+    {
+        'name': 'Kruzni tok - novac se vraca izvoru',
+        'description': 'Sredstva prodju kroz lanac i vrate se na polaznu adresu. Provera da algoritam ne upadne u '
+                       'petlju i da izvor ostane 100%.',
+        'transactions': [
+            _tx('0xLoopSeed', '0xA', 100, '2026-03-01T00:00:00Z'),
+            _tx('0xA', '0xB', 100, '2026-03-01T00:05:00Z'),
+            _tx('0xB', '0xLoopSeed', 100, '2026-03-01T00:10:00Z'),
+        ],
+        'seed_addresses': ['0xLoopSeed'],
+        'expectations': [_expect('0xLoopSeed', 100.0), _expect('0xA', 100.0), _expect('0xB', 100.0)],
+    },
+    {
+        'name': 'Unovcavanje na poznatoj berzi (Binance)',
+        'description': 'Lanac zavrsava na stvarnoj Binance adresi iz baze poznatih entiteta. Provera da propagacija '
+                       'kroz vise skokova radi i da adresa dobije 100%.',
+        'transactions': [
+            _tx('0xExchHacker', '0xExchMule', 200, '2026-06-01T00:00:00Z'),
+            _tx('0xExchMule', '0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be', 200, '2026-06-01T00:05:00Z'),
+        ],
+        'seed_addresses': ['0xExchHacker'],
+        'expectations': [
+            _expect('0xExchMule', 100.0),
+            _expect('0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be', 100.0),
+        ],
+    },
+]
 
 
 def load_scenarios() -> list[dict[str, Any]]:

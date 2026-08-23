@@ -64,6 +64,44 @@ class TestHaircutDilution:
         # Primalac nasleđuje mešavinu pošiljaoca, ne njegovo poreklo.
         assert percentage_by_address['0xExitWallet'] == pytest.approx(66.67, abs=0.01)
 
+    def test_percentage_never_exceeds_100(self, graph_from_rows):
+        """Procenat nikada ne prelazi 100%
+
+        Zaštita od povratka greške pronađene na pravom slučaju: adresa koja prvo pošalje
+        sredstva (koja je imala pre početka evidencije), pa tek onda primi zaprljana,
+        dobijala je negativan balans — pa je imenilac postao manji od zaprljanog iznosa i
+        izveštaj je prikazivao 111.11% zaprljanosti, što je nemoguće.
+        """
+        graph = graph_from_rows([
+            ('0xSpender', '0xSomeone', 5, '2026-03-01T00:00:00Z'),
+            ('0xSpender', '0xSomeone', 5, '2026-03-01T00:01:00Z'),
+            ('0xThief', '0xSpender', 50, '2026-03-01T00:02:00Z'),
+            ('0xThief', '0xSpender', 50, '2026-03-01T00:03:00Z'),
+        ])
+
+        result = run_taint_analysis(graph=graph, seed_addresses=['0xThief'], seed_from_blacklist=False)
+
+        assert all(item['taint_percentage'] <= 100.0 for item in result['results'])
+        assert percentages(result)['0xSpender'] == pytest.approx(100.0, abs=0.01)
+
+    def test_sending_more_than_received_cannot_create_taint(self, graph_from_rows):
+        """Slanje više nego što je primljeno ne stvara novi taint
+
+        Ako adresa pošalje više nego što je u evidenciji primila, višak potiče od sredstava
+        van evidencije. Prosleđeno zaprljano ne sme premašiti ono što na adresi stvarno
+        postoji — inače bi se zaprljani iznos umnožavao kroz lanac.
+        """
+        graph = graph_from_rows([
+            ('0xThief', '0xRelay', 100, '2026-03-01T00:00:00Z'),
+            ('0xRelay', '0xNext', 300, '2026-03-01T00:05:00Z'),
+        ])
+
+        result = run_taint_analysis(graph=graph, seed_addresses=['0xThief'], seed_from_blacklist=False)
+        hop = next(h for h in result['tainted_hops'] if h['source'] == '0xRelay')
+
+        assert hop['tainted_amount'] <= 100.0 + 1e-9
+        assert all(item['taint_percentage'] <= 100.0 for item in result['results'])
+
     def test_untouched_address_stays_clean(self, graph_from_rows):
         """Nedodirnuta adresa ostaje na 0%
 
@@ -327,6 +365,59 @@ class TestSeedBehaviour:
         result = run_taint_analysis(graph=graph, seed_addresses=[], seed_from_blacklist=False)
 
         assert result['tainted_node_count'] == 0
+
+
+class TestEvidenceShape:
+    """Oblik evidencije
+
+    Koliko evidencija uopšte prati novac dalje od prvog skoka. U izvlačenju istorije jedne
+    adrese skoro niko ne prima i ne prosleđuje, pa svaki list izgleda kao tačka
+    unovčavanja iako su njegove dalje transakcije prosto neprikupljene.
+    """
+
+    def test_single_hop_pull_is_recognized(self, graph_from_rows):
+        """Jednoslojna evidencija se prepoznaje
+
+        Kada jedna adresa šalje na mnogo njih i niko ne prosleđuje dalje, rezultat se ne
+        sme čitati kao „pronađeno je mnogo tačaka unovčavanja" — to je ivica prikupljenih
+        podataka.
+        """
+        rows = [('0xHub', f'0xLeaf{i}', 1, f'2026-03-01T00:{i:02d}:00Z') for i in range(25)]
+
+        result = run_taint_analysis(graph=graph_from_rows(rows), seed_addresses=['0xHub'], seed_from_blacklist=False)
+
+        assert result['single_hop_evidence'] is True
+        assert result['relay_count'] == 0
+
+    def test_multi_hop_evidence_is_not_flagged(self, graph_from_rows):
+        """Višeslojna evidencija se ne označava
+
+        Kada sredstva stvarno prolaze kroz lance, nalazi o tačkama unovčavanja imaju
+        smisla i upozorenje ne sme da se pojavi.
+        """
+        rows = []
+        for i in range(25):
+            rows.append(('0xHub', f'0xRelay{i}', 10, f'2026-03-01T00:{i:02d}:00Z'))
+            rows.append((f'0xRelay{i}', f'0xEnd{i}', 9, f'2026-03-01T01:{i:02d}:00Z'))
+
+        result = run_taint_analysis(graph=graph_from_rows(rows), seed_addresses=['0xHub'], seed_from_blacklist=False)
+
+        assert result['single_hop_evidence'] is False
+        assert result['relay_count'] == 25
+
+    def test_tiny_graph_is_never_flagged(self, graph_from_rows):
+        """Vrlo mali graf se nikad ne označava
+
+        Na svega nekoliko adresa udeo relejnih čvorova ništa ne govori — upozorenje bi
+        bilo šum, pa se primenjuje tek od 20 adresa naviše.
+        """
+        result = run_taint_analysis(
+            graph=graph_from_rows([('0xA', '0xB', 10, '2026-03-01T00:00:00Z')]),
+            seed_addresses=['0xA'],
+            seed_from_blacklist=False,
+        )
+
+        assert result['single_hop_evidence'] is False
 
 
 class TestTaintedHops:

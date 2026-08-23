@@ -79,74 +79,14 @@ Ako želiš da sam kreiraš kontrolisan set transakcija (npr. da simuliraš tok 
 
 Ove transakcije su podjednako "prave" (potvrđene na blockchain-u, sa pravim hešom) kao i mainnet transakcije — razlika je samo što je novac na testnet-u bezvredan.
 
-## 6. Testiranje Taint analize
+## 6. Taint analiza
 
-Taint analiza (stranica **Taint analiza** u navigaciji) prati kako se "prljava" sredstva proporcionalno šire kroz graf, počevši od jednog ili više ručno izabranih ("seed") čvorova, ili automatski od svake adrese koja je već na crnoj listi. Postoje dva načina da je testiraš — kontrolisan sintetički scenario (da proveriš tačne brojeve) i test na pravim, već uvezenim podacima.
+Taint analiza (stranica **Taint analiza** u navigaciji) prati kako se „prljava" sredstva proporcionalno šire kroz
+graf, počevši od jednog ili više izabranih („seed") čvorova.
 
-### Zašto je ovo uopšte bitno u digitalnoj forenzici
-
-Zamisli da neko ukrade novac i onda ga počne da prosleđuje kroz gomilu različitih novčanika, mešajući ga usput sa tuđim, čistim parama — baš da zamrsi trag ko je šta poslao kome.
-
-**Taint %** je odgovor na jedno prosto pitanje: *"Od svega što se sad nalazi na ovoj adresi, koliki deo je zapravo taj ukradeni novac?"* — npr. "40% para na ovoj adresi potiče od te krađe, ostalih 60% je tuđ, čist novac koji se slučajno našao u istom loncu."
-
-Zašto nam je to korisno u istrazi:
-
-1. **Ne moramo ručno da proveravamo stotine adresa.** Kad imamo veliki graf, program nam odmah pokaže koje adrese su najviše "umešane" — tu prvo gledamo, ne gubimo vreme na sve ostale.
-2. **Pomaže da nađemo gde novac izlazi napolje.** Lopova obično već znamo. Ono što nas zanima je gde se taj ukradeni novac na kraju pretvara nazad u pravi novac (npr. na nekoj berzi) — jer tačno tu ga vlasti mogu da zaustave/zamrznu. Taint analiza nam crta tu putanju do te tačke.
-3. **Dajemo broj, ne samo "da ili ne".** Umesto da kažemo "ova adresa je umešana" (crno-belo), možemo da kažemo TAČNO koliko — "31% je prljavo". To je jači dokaz na sudu, jer se vidi razlika između nekoga ko je skoro sigurno umešan i nekoga ko je samo malo dotaknut velikim, uglavnom čistim tokom novca.
-4. **Zašto ne kažemo prosto "ako je iole dodirnuo prljav novac, cela adresa je 100% kriva"?** Zato što bi to bilo nepravedno — zamisli da si ti potpuno nevin, samo si slučajno koristio isti servis (npr. isti mikser/berzu) gde je i lopov prao svoj novac. Ne bi bilo fer da te sad svi tretiraju kao lopova. Zato računamo pravi, realan udeo, a ne bacamo svakoga u isti koš.
-
-### 6.1 Kontrolisan scenario (tačni brojevi, za proveru algoritma)
-
-**Šta ovim testom dokazujemo:** ovo nije test da li aplikacija "radi" u smislu da nešto iscrta na ekranu — cilj je da se na skupu podataka sa unapred ručno izračunatim, poznatim odgovorom potvrdi da je **matematika proporcionalnog (haircut) modela zaprljanosti tačna**, i to na tri konkretne tvrdnje:
-
-- **Zaprljanost se ispravno razblažuje kad se pomeša sa čistim sredstvima** — kad 1000 "prljavih" i 500 čistih sredstava uđu u isti novčanik (mikser), izlaz ne bi trebalo da bude ni 100% prljav (to bi bio pogrešan, "poison" model), ni 0% (to bi značilo da se zaprljanost uopšte ne prati) — nego tačno proporcionalan udeo, **1000/1500 = 66.67%**.
-- **Zaprljanost dalje putuje istim procentom kroz sledeći prenos** — novac koji mikser prosledi dalje (`0xExitWallet`) treba da ponese *isti* procenat koji je mikser imao u trenutku slanja, ne neki nov/proizvoljan broj.
-- **Model ne zavisi od toga koji je čvor proizvoljno izabran kao izvor** — ako je algoritam ispravan, zamena izvora treba predvidljivo da promeni koji je čvor 100%, a procenti kod ostalih da se preračunaju u skladu s tim (videti korak niže sa `0xCleanUser`), a ne da ostanu isti ili se slome.
-
-Ako sve tri tvrdnje važe (a dole su i tačno izmerene), to je čvrst dokaz da implementacija algoritma odgovara teorijskom modelu opisanom u radu, a ne da su brojevi slučajno "ispali dobro" na jednom prikazu.
-
-U slučaju **"Demo: Sumnjiva laundering sema (hakovan novcanik)"** već postoji poseban dokaz **`demo_taint_dilution.csv`** napravljen baš za ovo (dodat/proširen skriptom `backend/scripts/seed_demo_taint_evidence.py`) — sadrži dva nezavisna scenarija u istom fajlu, na potpuno različitim adresama, tako da testiranje jednog ne utiče na drugi:
-
-```
-sender_address,recipient_address,amount,timestamp
-0xThief,0xMixer,1000,2026-03-01T00:00:00Z
-0xCleanUser,0xMixer,500,2026-03-01T00:05:00Z
-0xMixer,0xExitWallet,750,2026-03-01T00:10:00Z
-0xHacker1,0xLaunderingHub,600,2026-04-01T00:00:00Z
-0xHacker2,0xLaunderingHub,400,2026-04-01T00:05:00Z
-0xLaunderingHub,0xFinalDestination,800,2026-04-01T00:10:00Z
-```
-
-**Prve tri linije — razblaživanje jednim izvorom:**
-
-1. Idi na **Slučajevi** → izaberi "Demo: Sumnjiva laundering sema".
-2. Idi na **Taint analiza** → u "Prikaz transakcija" izaberi `demo_taint_dilution.csv`.
-3. Klikni na čvor `0xThief` (postaje seed) → **"Pokreni taint analizu (1)"**.
-4. Očekivano: `0xThief` = 100%, `0xMixer` i `0xExitWallet` = tačno **66.67%** (1000 prljavo / 1500 ukupno u mikseru), `0xCleanUser` = 0%.
-
-Pošto je model proporcionalan (ne zavisi od toga koji je čvor izabran), možeš probati i suprotno — izaberi `0xCleanUser` kao seed umesto `0xThief` i pokreni ponovo: sad će `0xCleanUser` biti 100%, a `0xMixer`/`0xExitWallet` će pasti na **33.33%** (500/1500), dok će `0xThief` ostati na 0%. Ovo je dobar način da se u odbrani rada pokaže da algoritam ispravno reaguje na izbor izvora, a ne da su brojevi "zakucani".
-
-**Poslednje tri linije — raspodela po pojedinačnom izvoru (kad ima više seed-ova odjednom):**
-
-1. U istom `demo_taint_dilution.csv`, izaberi **oba** čvora `0xHacker1` i `0xHacker2` kao seed (2 klika) → **"Pokreni taint analizu (2)"**.
-2. Očekivano: `0xLaunderingHub` = 100%, sa panelom "Poreklo po izvoru" koji pokazuje tačno **60% od `0xHacker1`, 40% od `0xHacker2`** (600/1000 i 400/1000). Na grani `0xLaunderingHub → 0xFinalDestination` piše direktno **"60%+40%"** umesto jednog zbirnog broja, jer `0xFinalDestination` nasleđuje identičnu raspodelu.
-
-Ovo dokazuje da algoritam ne samo da tačno računa *koliko* je nešto zaprljano, nego i da ispravno prati *od koga* — bitno kad istraga ima više poznatih sumnjivih adresa istovremeno, ne samo jednu.
-
-### 6.2 Test na realnim podacima (slučaj "test 1")
-
-Slučaj **"test 1"** sadrži prave, sa Etherscan-a povučene transakcije za adresu `0x28b1Dc1a5E3699A428BC51d234DFab7C9CB2a183` (~620 čvorova, ~900 transakcija). Bitna specifičnost ovog konkretnog skupa podataka: **sve transakcije su uplate KA toj adresi** — nijedna nije isplata iz nje (provereno direktno na CSV-u). To znači da je ovo tzv. "fan-in" graf: svaka od ~600 drugih adresa se pojavljuje samo kao jednosmerni pošiljalac.
-
-Šta to znači za taint analizu i šta realno očekivati kad testiraš:
-
-1. Idi na **Taint analiza** → izaberi slučaj "test 1".
-2. Klikni na **bilo koji čvor osim same adrese 0x28b1...** (npr. jedan od "listova" na obodu grafa) da ga označiš kao seed.
-3. Pokreni analizu.
-4. Očekivano: taj čvor = 100% (seed), a centralna adresa `0x28b1...` će pokazati **mali, ali nenulti procenat** — tačno onoliko koliko taj jedan pošiljalac čini od *ukupnog* priliva na tu adresu (npr. ako je taj pošiljalac poslao 2 ETH od ukupno 300 ETH primljenih u ovoj evidenciji, centralna adresa će pokazati ~0.67%). Svi ostali čvorovi ostaju na 0%, jer centralna adresa u ovoj evidenciji nikad ništa dalje ne šalje — taint nema kuda dalje da se širi.
-5. Za realističniji scenario "da li su sredstva sa nekoliko poznatih sumnjivih adresa završila na ovoj adresi" — izaberi **više** čvorova kao seed odjednom (klikni na 2-3 različita "lista") i pokreni ponovo; procenat na `0x28b1...` će se sabrati proporcionalno doprinosu svih izabranih pošiljalaca.
-
-Ovo je i sam po sebi koristan forenzički nalaz za tezu: pokazuje kako se taint drastično razblažuje kad sredstva uđu u adresu koja prima od stotina različitih izvora (tipično za berzu/menjačnicu), za razliku od uskog "peel chain" toka gde ostaje skoro nerazblaženo (vidi 6.1 iznad, ili peel-chain scenario u demo slučaju).
+> Kompletna dokumentacija — forenzički smisao, haircut model, predlog čvorova, sve funkcije prikaza, PDF izveštaj sa
+> potpisom i pečatom, provera valute, pronađene greške i **svi koraci testiranja** — nalazi se u zasebnom dokumentu
+> **[`TAINT-ANALIZA.md`](TAINT-ANALIZA.md)**.
 
 ## 7. Šta se dešava u pozadini (za tehnički deo rada)
 
@@ -157,119 +97,12 @@ Ovo je i sam po sebi koristan forenzički nalaz za tezu: pokazuje kako se taint 
 - Ruta: `POST /api/v1/onchain/fetch` (`backend/app/api/routes/onchain.py`) — automatski prepoznaje da li je uneta adresa (42 karaktera) ili heš transakcije (66 karaktera) na osnovu regex-a, primenjuje izabrani `mode`, snima rezultat kao CSV u `data/raw/`, računa SHA-256, povezuje ga sa slučajem (isti mehanizam kao `/upload/csv`) i upisuje audit log zapis sa akcijom `onchain_fetch_<mreža>_<režim>`.
 - Frontend: `ApiService.fetchOnchainTransactions()` poziva tu rutu; rezultat se obrađuje potpuno isto kao odgovor na CSV upload (isti `loadDerivedViews()` poziv), tako da graf i analitika rade bez ikakvih izmena.
 
-## 8. Napredne funkcije Taint analize
 
-Ove funkcije su dodate posle osnovne taint analize opisane u sekciji 6, da bi analiza bila detaljnija i transparentnija — svaka je testirana na `demo_taint_dilution.csv` (isti fajl iz 6.1), da brojevi budu proverljivi.
+## 8. Log aktivnosti (chain of custody)
 
-### 8.1 Filter po pojedinačnom izvoru
+Ovo nije funkcija taint analize nego cele aplikacije — beleži se **svaka** radnja analitičara, od otpremanja dokaza do pokretanja analize.
 
-**Šta radi:** kad je u analizu uključeno više seed adresa odjednom, panel **"Filter po izvoru"** (pojavljuje se iznad grafa, samo kad ima više od jednog seed-a i vremenska traka je isključena) omogućava da privremeno "isključiš" jedan ili više izvora iz prikaza — bez ponovnog pokretanja cele analize. Procenti, boje čvorova, natpisi na granama i isticanje putanje se momentalno preračunaju da pokažu **samo** doprinos onih izvora koji su ostali uključeni.
-
-**Zašto je ovo korisno:** kad se u istrazi sretnu dve nezavisne kriminalne aktivnosti čiji se novac spoji na istoj adresi (npr. dva različita hakovana novčanika), ukupan procenat ti kaže "koliko je ukupno prljavo", ali ne i "šta bi se videlo da pratim SAMO prvi upad, a ne i drugi". Filter po izvoru ti daje tačno to — izolovan pogled na širenje jednog konkretnog izvora, korak po korak, kao da je jedini.
-
-**Primer (na `demo_taint_dilution.csv`):**
-
-1. Izaberi **oba** `0xHacker1` i `0xHacker2` kao seed → pokreni analizu. Kao u 6.1: `0xLaunderingHub` i `0xFinalDestination` = 100%, raspodela 60%/40%.
-2. U panelu "Filter po izvoru", klikni na `0xHacker2` da ga isključiš (ostaje samo `0xHacker1` aktivan).
-3. Očekivano: `0xLaunderingHub` i `0xFinalDestination` sada pokazuju tačno **60%** (samo Hacker1-ov deo), a `0xHacker2` sam po sebi pada na 0% i nestaje sa grafa (ako je "Sakrij ispod praga" uključeno).
-4. Isključi i `0xHacker1` (nijedan izvor aktivan) → svi procenti padaju na 0%, ceo "prljavi" deo grafa nestaje.
-5. Klikni **"Prikaži sve izvore"** da se vratiš na kombinovani prikaz (60%+40%).
-
-### 8.2 Detalji transakcije (klik na granu)
-
-**Šta radi:** klik na strelicu (granu) između dve adrese otvara panel **"Detalji transakcije"** sa spiskom **svake pojedinačne transakcije** koja je ikad prošla između te dve adrese — ne samo zbirni iznos koji se vidi na strelici. Za svaku transakciju se prikazuje: tačan iznos, vremenska oznaka, identifikator transakcije (tx heš — ako ga evidencija ima; u suprotnom piše "n/a"), koliki procenat baš te transakcije je bio zaprljan, i raspodela po izvorima ako ih ima više.
-
-**Zašto je ovo korisno:** natpis na strelici (npr. "60%+40%") je nužno sažet — ako je između dve adrese bilo više odvojenih transakcija u različito vreme, strelica pokazuje samo poslednju. Ovaj panel daje kompletnu, revizijski preciznu evidenciju svake pojedinačne transakcije, uključujući i tx heš kad postoji (bitno ako se izveštaj mora povezati sa stvarnim blockchain zapisom).
-
-**Primer (na `demo_taint_dilution.csv`, seed = `0xThief`):**
-
-1. Pokreni analizu sa `0xThief` kao seed (scenario iz 6.1).
-2. Klikni na strelicu `0xThief → 0xMixer`.
-3. Očekivano: panel pokaže tačno **1 transakciju** — iznos 1000, vreme `2026-03-01T00:00:00Z`, procenat zaprljanosti **100%** (celih 1000 je prljavo, jer u tom trenutku `0xThief` šalje ceo svoj "prljavi" balans), identifikator transakcije **"n/a"** (ovaj demo CSV nema kolonu sa tx hešom — kod pravih on-chain podataka povučenih preko Etherscan-a, ovde bi stajao stvarni heš).
-
-### 8.3 Objašnjenje procenta (kompletna istorija razblaživanja)
-
-**Šta radi:** kad izabereš čvor, ispod liste "Zaprljane transakcije ovog čvora" nalazi se nova sekcija **"Objašnjenje procenta (kompletna istorija)"** — spisak **baš svake** transakcije koja je ikad promenila balans te adrese (i zaprljane i potpuno čiste), sa procentom **pre** i **posle** svake od njih. Kad neka transakcija spusti procenat, to je jasno obeleženo ("razblaženo ovim prilivom").
-
-**Zašto je ovo korisno:** dosadašnja lista "Zaprljane transakcije" pokazuje samo transakcije koje su DONELE prljav novac — ali ne objašnjava zašto je procenat nekad i OPAO. Pad se dešava kad adresa primi čist (ili manje prljav) novac, što se ranije nigde nije eksplicitno videlo. Ova sekcija čini ceo račun proverljivim korak po korak, umesto da se konačni procenat "pojavi" bez objašnjenja.
-
-**Primer (na `demo_taint_dilution.csv`, seed = `0xThief`, izabran čvor `0xMixer`):**
-
-Očekivana istorija za `0xMixer`, tačno tim redosledom:
-
-1. Prima 1000 od `0xThief` → **0% → 100%** (nema promene naniže, sav prvi priliv je prljav).
-2. Prima 500 od `0xCleanUser` → **100% → 66.67%** (`-33.33% — razblaženo ovim prilivom`) — ovo je tačan trenutak razblaživanja, sa istim brojem (66.67%) koji se već proverava u 6.1.
-3. Šalje 750 ka `0xExitWallet` → **66.67% → 66.67%** (delta 0%) — odliv ne menja procenat, samo srazmerno "iznosi" i prljavi i čisti deo napolje, što je i teorijski očekivano ponašanje proporcionalnog (haircut) modela.
-
-### 8.4 Povezivanje tačaka unovčavanja sa poznatim entitetima
-
-**Šta radi:** svaka adresa u listi "Verovatne tačke unovčavanja" se proveri protiv lokalne, offline baze poznatih adresa (`backend/app/services/known_entities.json` — preko 700 stvarnih Binance/Coinbase/Kraken/Huobi/OKX/Gemini adresa, Tornado.Cash mikser instanci i OFAC sankcionisanih adresa). Ako neka od njih pogodi poznat entitet, pored nje se pojavljuje obojena oznaka ("berza: Binance", "mikser: Tornado.Cash...", ili crveno "⚠ OFAC sankcionisano"), a ta adresa se automatski izdvaja na vrh liste, ispred onih bez poznatog entiteta.
-
-**Zašto je ovo korisno:** sama činjenica "primio je prljav novac i nikad ga dalje nije poslao" ne kaže ništa o TOME GDE je taj novac zapravo završio. Kad se ta ista adresa poklopi sa stvarnom, imenovanom berzom, to je znatno jači forenzički nalaz — "novac je stigao na Binance nalog" ima realnog operatera i jurisdikciju koju sud/organi mogu stvarno da kontaktiraju, za razliku od anonimne adrese bez daljeg traga.
-
-**Primer (na `demo_taint_dilution.csv`, treći, nezavisan scenario u istom fajlu):**
-
-```
-0xExchangeHacker,0xExchangeMule,200,2026-06-01T00:00:00Z
-0xExchangeMule,0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be,200,2026-06-01T00:05:00Z
-```
-
-Poslednja adresa (`0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be`) nije izmišljena — to je stvarna, poznata Binance adresa iz baze poznatih entiteta.
-
-1. Klikni `0xExchangeHacker` kao seed → pokreni analizu.
-2. Očekivano u "Verovatne tačke unovčavanja": `0xExchangeMule` i `0x3f5c...f0be` obe na **100%** (jednostavan lanac, bez razblaživanja) — ovim se potvrđuje da propagacija kroz više uzastopnih skokova i dalje radi ispravno.
-3. Pored `0x3f5c...f0be` treba da stoji plava oznaka **"berza: Binance"** — ovim se potvrđuje da je nova known-entity provera stvarno pogodila pravu adresu iz baze, a ne da samo prikazuje prazno polje.
-4. Ta adresa treba da bude **prva** na listi, iznad `0xExchangeMule` (koja nema poznat entitet) — ovim se potvrđuje da sortiranje po poznatom entitetu radi, ne samo prikaz oznake.
-
-Pošto ova provera ne zove Etherscan (čist lokalni pretraga po heš-mapi), radi trenutno i bez obzira na broj tačaka unovčavanja u listi.
-
-### 8.5 Obogaćen PDF izveštaj (istorija razblaživanja i detalji transakcije)
-
-**Šta radi:** izvezeni PDF ("Izvezi PDF" dugme) sada, pored postojećih tabela, sadrži i podatke koji su ranije postojali samo na ekranu:
-
-- Lista "Verovatne tačke unovčavanja" (i na ekranu i u PDF-u) je ograničena na najviše **5** adresa (poznati entiteti prvo, pa po procentu) — ako ih ima više, ispod se ispisuje "+ X dodatnih tačaka unovčavanja detektovano...".
-- Nova sekcija **"Detaljna istorija razblaživanja — tačke unovčavanja"**: za svaku od (do 5) prikazanih adresa, kompletna hronologija transakcija (smer, suprotna strana, iznos, zaprljan iznos, procenat pre/posle), ograničena na prvih **20** po adresi — ako ih ima više, ispod tabele piše koliko je izostavljeno i kolika je neto promena procenta u tom periodu.
-- Nova sekcija **"Detalji izabrane transakcije"**: ako je neka grana bila selektovana na grafu u trenutku klika na "Izvezi PDF", njeni pojedinačni transferi (isto ograničeno na 20) se dodaju u izveštaj. Ako ništa nije selektovano, sekcija se uopšte ne pojavljuje.
-
-**Zašto je ovo korisno:** transakcijski detalji i istorija razblaživanja su ranije postojali SAMO u aplikaciji (klikom na čvor/granu) — izveštaj koji se šalje trećim licima (sudu, kolegama) ih nije sadržao. Bez ograničenja broja adresa/transakcija, ovo bi na realnom slučaju sa stotinama transakcija po adresi napravilo neupotrebljivo dugačak izveštaj — otud dva nivoa ograničenja (top 5 adresa, top 20 transakcija po adresi), sa transparentnom napomenom šta je izostavljeno i gde se kompletni podaci mogu naći (u aplikaciji ili u CSV/GraphML izvozu).
-
-**Primer 1 (na `demo_taint_dilution.csv`, isti scenario kao u 8.4 — mali slučaj):**
-
-1. Ponovi test iz 8.4 (seed `0xExchangeHacker`) i izvezi PDF.
-2. U tabeli "Verovatne tačke unovčavanja" treba da stoje tačno **2** reda, bez "+X dodatnih" napomene — ovim se potvrđuje da napomena ispravno izostaje kad je broj tačaka ispod granice od 5.
-3. U novoj sekciji "Detaljna istorija razblaživanja", pored `0x3f5c...f0be` treba da piše `[berza: Binance]` odmah u naslovu, sa tačno **1** redom istorije (Prijem od `0xExchangeMule`, iznos 200, zaprljano 200, 0% → 100%) — ovim se potvrđuje da known-entity oznaka i puna istorija sad ulaze i u PDF, ne samo u aplikaciju.
-
-**Primer 2 (na realnom slučaju "test 1", 620 čvorova, kombinovana evidencija):**
-
-1. Pokreni taint analizu na "test 1" evidenciji (svi seedovi) i izvezi PDF.
-2. U "Verovatne tačke unovčavanja" treba da stoji tačno **1** red (`0x28b1...2a183`, 52.72%) — ovaj slučaj ima samo jednu tačku unovčavanja, pa cap od 5 ovde ništa ne seče (potvrđuje da se cap ne aktivira lažno kad nije potreban).
-3. U "Detaljna istorija razblaživanja" za tu adresu treba da bude tačno **20** redova, a ispod njih napomena `+ 355 dodatnih transakcija (dalja neto promena procenta: +11.96 p.p.)` — ovim se potvrđuje da cap od 20 transakcija po adresi radi na stvarnoj evidenciji sa stotinama transfera, bez rušenja izveštaja.
-4. Prvi red istorije treba da pokaže **0% → 100%** (prvi priliv, potpuno zaprljan), a naredni redovi mešavinu čistih priliva (kolona "Zaprljano" = 0.00, procenat opada — razblaživanje) i priliva od seed adresa (procenat raste) — ovim se potvrđuje da je matematika razblaživanja ista ona koja se proverava u 6.1 i 8.3, samo sad primenjena na pravu, veliku evidenciju umesto na skriptovani demo scenario.
-
-**Napomena o "Detalji izabrane transakcije":** klikni na bilo koju granu na grafu PRE nego što klikneš "Izvezi PDF" (npr. `0xThief → 0xMixer` iz 6.1 scenarija) — u PDF-u treba da se pojavi ta sekcija sa istim transakcijama koje se vide u panelu na ekranu. Ako izvezeš PDF bez selektovane grane, sekcija se uopšte ne pojavljuje u dokumentu — ovim se potvrđuje da je uslovno renderovanje ispravno (nema prazne/beskorisne sekcije kad nema šta da se prikaže).
-
-### 8.6 Filter po izvoru radi i tokom vremenske trake
-
-**Šta radi:** panel **"Filter po izvoru"** (8.1) je ranije bio dostupan samo dok je vremenska traka isključena — dok traka radi, procenti/boje/natpisi na granama su uvek prikazivali doprinos SVIH izvora, bez obzira šta je u filteru izabrano. Sada panel ostaje aktivan i tokom skrubovanja, a procenat čvora, boja i natpis na grani se ispravno preračunavaju da pokažu samo izabrani izvor, **baš na trenutnoj poziciji trake** — ne samo u konačnom/punom prikazu.
-
-**Zašto je ovo korisno:** ranije, ako si hteo da vidiš KAKO se tačno šire sredstva baš jednog izvora kroz vreme (a ne oba/sva odjednom), morao si da se osloniš na konačan rezultat — vremenska traka ti nije davala tu istu preciznost tokom same reprodukcije. Sad se ova dva alata (traka + filter) mogu koristiti zajedno — korak po korak posmatranje širenja jednog konkretnog izvora, transakciju po transakciju.
-
-**Šta je bio tehnički razlog za ograničenje i kako je uklonjeno:** grane (`tainted_hops`) su oduvek imale tačnu istorijsku raspodelu po izvoru za svaku pojedinačnu transakciju, pa je taj deo bilo moguće popraviti samo na frontend-u. Čvorovi (`node_taint_series`) su ranije čuvali samo zbirni procenat po događaju, bez raspodele po izvoru u tom trenutku — backend sad uz svaki događaj čuva i tu raspodelu (isti podatak koji se već računa tokom analize, samo sad i zapisan), što frontend-u omogućava da filter primeni tačno onako kako bi izgledalo da je pratio samo taj izvor.
-
-**Primer (na `demo_taint_dilution.csv`, isti scenario kao 8.1 — seed `0xHacker1` + `0xHacker2`):**
-
-1. Pokreni analizu SAMO sa `0xHacker1` i `0xHacker2` kao seed (ne svih 5 iz fajla) i uključi vremensku traku. Panel "Filter po izvoru" treba da ostane vidljiv i dalje — ovim se potvrđuje da panel više nije skriven čim se traka uključi.
-2. U filteru isključi `0xHacker2` (ostaje aktivan samo `0xHacker1`).
-3. Pomeri traku na **transakciju 4/8** (`Hacker1 → LaunderingHub`): `0xLaunderingHub` treba da pokaže **100%** — u tom trenutku je stiglo samo Hacker1-ovo, pa je filtrirano i nefiltrirano isto — ovim se potvrđuje da rani deo scenarija i dalje radi kao pre popravke.
-4. Pomeri na **transakciju 5/8** (`Hacker2 → LaunderingHub`): `0xLaunderingHub` treba SADA da pokaže **60%**, a ne 100% kao pre popravke — ovo je ključni trenutak koji direktno dokazuje da filter tokom trake sada ispravno računa istorijsku (as-of-poziciji), a ne konačnu raspodelu.
-5. Pomeri na **transakciju 6/8** (`LaunderingHub → FinalDestination`): `0xFinalDestination` treba da pokaže **60%**, a strelica između njih natpis **"60%"** (ne "60%+40%") — ovim se potvrđuje da su i čvorovi i grane usklađeni, i da se poklapaju sa konačnim rezultatom iz 8.1.
-6. Klikni **"Prikaži sve izvore"** i ponovo prođi kroz rangove 4-6 — svuda treba da piše **100%** — ovim se potvrđuje da puni (nefiltrirani) prikaz nije pokvaren popravkom.
-
-## 9. Log aktivnosti (chain of custody)
-
-Za razliku od sekcije 8, ovo nije funkcija taint analize nego cele aplikacije — beleži se **svaka** radnja analitičara, od otpremanja dokaza do pokretanja analize.
-
-### 9.1 Šta se beleži i zašto
+### 8.1 Šta se beleži i zašto
 
 **Šta radi:** svaka značajna akcija u aplikaciji upisuje jedan zapis u append-only log (`logs/audit_log.jsonl`). Zapis sadrži vreme, korisnika, tip akcije, slučaj (ID **i naziv**) i parametre specifične za tu akciju:
 
@@ -285,7 +118,7 @@ Za razliku od sekcije 8, ovo nije funkcija taint analize nego cele aplikacije �
 
 **Ključni detalj — naziv slučaja se pamti u trenutku akcije**, a ne rezoluje kasnije iz ID-a. Ako se slučaj kasnije preimenuje ili obriše, log i dalje tačno kaže kako se zvao kad je akcija izvršena. Zbog istog principa se u logu i dalje vide korisnici kojih više nema u sistemu — istorija se ne prepisuje kad se nalog ukloni.
 
-### 9.2 Stranica "Log" — testiranje
+### 8.2 Stranica "Log" — testiranje
 
 **Šta radi:** dugme **"Log"** u glavnom meniju (vidljivo svim ulogovanim korisnicima) otvara stranicu sa hronološkim pregledom akcija, najnovije prvo. Akcije su obojene po tipu (plavo = dokazi, žuto = analize, ljubičasto = slučajevi), a klik na "Prikaži" u redu otvara sve sirove parametre te akcije.
 
@@ -307,6 +140,76 @@ Za razliku od sekcije 8, ovo nije funkcija taint analize nego cele aplikacije �
 
 **Provera bezbednosti (opciono, tehnički):** ulogovan kao analitičar, ručno pozovi `GET /api/v1/activity-log?user=admin` (npr. preko Swagger-a na `http://localhost:8000/docs`) — server i dalje vraća **samo tvoje** zapise, jer opseg određuje uloga iz tokena, a ne parametar iz upita. Ovim se potvrđuje da filtriranje nije samo kozmetičko na frontend-u.
 
-### 9.3 Veza sa izveštajem slučaja
+### 8.3 Veza sa izveštajem slučaja
 
 Postojeći backend izveštaj slučaja (`/api/v1/exports/cases/{id}/report.csv` i `.pdf`) već čita isti log za svoj "chain of custody" deo, pa se **pokrenute analize sada automatski pojavljuju i tamo** — ranije su u tom delu izveštaja postojali samo zapisi o otpremanju dokaza.
+
+## 9. Testovi ispravnosti (stranica „Testovi")
+
+Dugme **„Testovi"** u meniju (samo administrator) otvara stranicu sa dve vrste provera. Podela nije kozmetička nego suštinska, i objašnjena je u 10.1 i 10.2.
+
+### 9.1 Sistemski testovi — nepromenljivi
+
+**Šta radi:** fiksni skup testova nad taint algoritmom, u verzionisanom kodu (`backend/tests/`). Stranica ih prikazuje grupisano, pokreće na klik i prikazuje rezultat (prošlo / palo, trajanje). **Klikom na svaki test** otvara se objašnjenje na srpskom šta test dokazuje i **njegov stvarni izvorni kod**, a kod testa koji je pao i tačna poruka o grešci.
+
+**Zašto se ne mogu menjati kroz aplikaciju:** kada bi dokaz ispravnosti mogao da se izmeni dok ne prođe, prestao bi da bude dokaz. Zato stranica ove testove **samo čita i pokreće** — ne postoji način da se kroz interfejs izmene.
+
+**Kako nazivi ostaju sinhronizovani sa kodom:** naziv testa na stranici je **prva linija docstring-a same test funkcije**, a naslov grupe je docstring klase. Ne postoji odvojena tabela prevoda koja bi vremenom mogla da se raziđe od koda — izmena testa automatski menja i ono što piše u aplikaciji.
+
+**Šta je pokriveno (glavne grupe):** razblaživanje (haircut model), raspodela po izvorima, podaci za vremensku traku, hronologija, ponašanje seed adresa, zaprljani skokovi — plus grupe za izveštaj aktivnosti (sekcija 11).
+
+**Testiranje:**
+
+1. Otvori „Testovi" i klikni **„Pokreni sistemske testove"** — treba da se pojavi zelena traka sa brojem testova koji su prošli i trajanjem — ovim se potvrđuje da se testovi stvarno izvršavaju na serveru, a ne da je rezultat unapred upisan.
+2. Klikni na bilo koji test — otvara se objašnjenje na srpskom i blok **„Šta test tačno proverava"** sa pravim kodom — ovim se potvrđuje da se prikazani kod čita iz stvarnog test fajla.
+3. Kao ne-admin nalog pokušaj da otvoriš `/tests` — pristup mora biti odbijen — ovim se potvrđuje da je stranica zaista ograničena na administratora.
+
+> **Dokaz da testovi zaista hvataju greške:** test koji prolazi i na ispravnom i na pokvarenom kodu je bezvredan. Zato je algoritam namerno kvaren tri puta i provereno je da testovi to primete: uklanjanje haircut proporcije → 3 testa pala; uklanjanje hronološkog sortiranja → 4 testa pala; uklanjanje raspodele po izvorima po rangu (izmena iz 8.6) → 1 test pao. Nakon svake provere kôd je vraćen u prvobitno stanje.
+
+### 9.2 Validacioni scenariji — mogu se kreirati, menjati i brisati
+
+**Šta radi:** scenario je **opis podataka, ne kod** — spisak transakcija, izvori (seed adrese) i procenti koji se očekuju. Aplikacija ih propušta kroz **pravi** taint algoritam i uporedi rezultat. Kod pada se prikazuje tabela **očekivano vs. dobijeno** po adresi.
+
+**Zašto je ovo bezbedno za izmenu, a sistemski testovi nisu:** scenario ne sadrži kod koji se izvršava — samo podatke koji se propuštaju kroz postojeći algoritam. Zato admin može slobodno da ih kreira, menja i briše bez rizika da kroz interfejs pokrene proizvoljan kod na serveru.
+
+**Praktična vrednost:** vremenom nastaje **biblioteka referentnih slučajeva na kojima je alat validiran** — što je za rad iz digitalne forenzike jak argument.
+
+**Testiranje:**
+
+1. Klikni **„Novi scenario"**, unesi transakcije `0xThief → 0xMixer, 1000` i `0xCleanUser → 0xMixer, 500`, izvor `0xThief`, i očekivanje `0xMixer = 50%` (namerno pogrešno). Sačuvaj i pokreni — scenario mora **pasti**, uz prikaz `očekivano 50%, dobijeno 66.67%` — ovim se potvrđuje da poređenje stvarno radi, a ne da sve prolazi.
+2. Klikni „Izmeni" i postavi `66.67%` — sada mora **proći** — ovim se potvrđuje da izmena scenarija ima efekta.
+3. Unesi adresu koja ne postoji u transakcijama — mora se prikazati poruka *„Adresa se ne pojavljuje u rezultatu analize"* umesto tihog prolaza — ovim se potvrđuje da greška u kucanju ne može da prođe kao uspešan test.
+4. Obriši scenario — nestaje sa spiska; u „Log aktivnosti" ostaje zapis sa **nazivom** obrisanog scenarija.
+
+### 9.3 Testovi se automatski pojavljuju na stranici
+
+Pokretač testova skenira sve `test_*.py` fajlove u `backend/tests/`, pa **svaki novi test fajl automatski osvane na stranici**, grupisan po svom docstring-u — bez ikakve izmene u frontendu. Zahvaljujući tome, provere koje se pišu tokom razvoja ostaju trajno vidljive umesto da budu privremene skripte koje se obrišu.
+
+Ograničenje: ovako se mogu pokriti logika, matematika i pravila pristupa. Vizuelne provere (prelom teksta, raspored u PDF-u) i Docker build ostaju ručne — test koji tvrdi „izgleda lepo" ne bi ništa dokazivao.
+
+## 10. Izveštaj aktivnosti (izvoz iz loga)
+
+**Šta radi:** dugme **„Izveštaj"** na strani „Log aktivnosti" otvara panel za izvoz zapisa u **PDF** ili **CSV**.
+
+- **Period** — tri opcije: `Sve aktivnosti` (od početka korišćenja sistema), `Jedan dan`, `Od — do`
+- **Korisnici** — običan korisnik dobija isključivo svoje akcije; **administrator** bira jednog, više njih u bilo kojoj kombinaciji, ili sve
+- **Brojač uživo** — pre klika se prikazuje koliko zapisa period obuhvata; kada je **0**, dugmad su onemogućena uz poruku da se izveštaj ne može generisati
+
+**Zašto se generiše na serveru:** dokument tvrdi „ovo su sve akcije u periodu X", pa podaci moraju doći iz samog log fajla, a ne iz onoga što je browser slučajno učitao. Zbog toga ovaj izveštaj ima i **ispravna slova č/ć/š/ž/đ** (server ugrađuje Unicode font), za razliku od taint PDF-a iz sekcije 8.7.
+
+**Vremenska zona — najvažniji detalj:** log čuva vreme u UTC, a korisnik bira dane onako kako ih vidi na ekranu, u lokalnom vremenu. Da se filtrira po UTC danu, akcija u 00:30 po lokalnom vremenu (UTC+2) bi ispala iz izveštaja za taj dan, jer je u UTC-u zabeležena kao 22:30 prethodnog dana. Zato se filtrira po **lokalnom** danu, a izveštaj u zaglavlju navodi korišćenu zonu (npr. `UTC+02:00`).
+
+**Šta izveštaj sadrži:** zaglavlje (ko, kada, period + zona, obuhvaćeni korisnici, redosled), četiri kartice sa rezimeom (ukupno akcija / korisnika / dana sa aktivnošću / slučajeva), raspodelu po tipu akcije i po korisniku sa trakama, i hronologiju **grupisanu po danima** (svaki dan ima zaglavlje sa datumom, danom u nedelji i brojem akcija).
+
+**Testiranje:**
+
+1. Otvori „Log aktivnosti" → **„Izveštaj"** → ostavi `Sve aktivnosti`. Ispod se prikazuje ukupan broj zapisa — ovim se potvrđuje da brojač radi pre generisanja.
+2. Izaberi `Jedan dan` i datum na koji **ima** aktivnosti → preuzmi PDF. U zaglavlju mora pisati `Jedan dan: <datum>` i korišćena vremenska zona — ovim se potvrđuje da je period tačno onaj koji si izabrao.
+3. Izaberi datum na koji **nema** aktivnosti → brojač pokazuje `0 zapisa`, poruka objašnjava zašto, a dugmad su siva — ovim se potvrđuje da se prazan izveštaj sprečava **pre** klika, a ne greškom posle.
+4. Kao **admin**, izaberi dva konkretna korisnika → broj zapisa mora biti zbir njihovih pojedinačnih brojeva — ovim se potvrđuje da filter po korisnicima radi tačno.
+5. Preuzmi i **CSV** za isti period → mora imati isti broj redova (plus zaglavlje) i sadržati **i lokalno i UTC vreme** — ovim se potvrđuje da se izveštaj može proveriti nezavisno od vremenske zone.
+6. Vrati se na „Log aktivnosti" → na vrhu je novi zapis **„Izvezen izveštaj aktivnosti"** sa detaljima tipa `PDF · 42 zapisa · jedan dan: 10.08.2026.` — ovim se potvrđuje da se i sam izvoz beleži, sa tačnim vremenskim okvirom koji je biran.
+
+**Provera bezbednosti (tehnički):** ulogovan kao analitičar, ručno pozovi `GET /api/v1/activity-log/report.pdf?users=admin` — izveštaj i dalje sadrži **samo tvoje** akcije, jer opseg određuje uloga iz tokena, a ne parametar iz upita.
+
+> Napomena o starim zapisima: unosi napravljeni pre nego što su polja `case_name` i `details` uvedena prikazuju se sa „naziv nije zabeležen" i praznim detaljima. To je namerno — tada ti podaci nisu beleženi, pa bi bilo kakva dopuna bila izmišljena.

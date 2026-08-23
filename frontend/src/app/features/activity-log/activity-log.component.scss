@@ -152,6 +152,131 @@ h2 {
   }
 }
 
+/* ---------- Izvoz izveštaja ---------- */
+
+.report-panel {
+  margin: 0.2rem 0 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  background: rgba(96, 165, 250, 0.06);
+  border: 1px solid rgba(123, 214, 255, 0.22);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.report-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #eef4ff;
+}
+
+.report-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.report-label {
+  min-width: 5.5rem;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8ea6c7;
+}
+
+.mode-chips,
+.user-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #cdd9ef;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.mode-chip:hover {
+  color: #ffffff;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.mode-chip.active {
+  color: #04111f;
+  border-color: transparent;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+}
+
+.historical-mark {
+  font-size: 0.66rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  background: rgba(148, 163, 184, 0.25);
+  color: inherit;
+  opacity: 0.85;
+}
+
+.report-panel input[type='date'] {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.85rem;
+  color-scheme: dark;
+}
+
+.dash {
+  color: #8ea6c7;
+}
+
+.report-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+}
+
+.report-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  font-size: 0.82rem;
+}
+
+.count-chip.empty {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.25);
+}
+
+.report-warning {
+  color: #fbbf24;
+}
+
+.report-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.ghost-button.active {
+  color: #7bd6ff;
+  border-color: rgba(123, 214, 255, 0.4);
+  background: rgba(123, 214, 255, 0.1);
+}
+
 .meta-row {
   display: flex;
   align-items: center;
@@ -304,6 +429,22 @@ td {
   color: #86efac;
   background: rgba(134, 239, 172, 0.1);
   border-color: rgba(134, 239, 172, 0.24);
+}
+
+/* Export is the one action that is about the log itself rather than about the
+   investigation, so it gets its own colour instead of sharing with evidence. */
+.action-tag.group-report {
+  color: #a5b4fc;
+  background: rgba(165, 180, 252, 0.1);
+  border-color: rgba(165, 180, 252, 0.26);
+}
+
+/* Lanac dokaza gets its own colour too - taking a copy of a custody record out of the
+   application is a distinct kind of event from a routine report export. */
+.action-tag.group-custody {
+  color: #f0abd8;
+  background: rgba(240, 171, 216, 0.1);
+  border-color: rgba(240, 171, 216, 0.26);
 }
 
 .action-tag.group-other {

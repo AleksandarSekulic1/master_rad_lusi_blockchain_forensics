@@ -21,8 +21,27 @@
         </option>
       </select>
     </label>
+
+    <span class="analysis-status" [class.done]="hasAnalytics">
+      {{ hasAnalytics ? '✓ Analizirano (boje po riziku)' : 'Sirov prikaz — bez analize' }}
+    </span>
+    <button type="button" class="primary-button" (click)="openCustodyDialog()" [disabled]="!hasLoadedGraph || isAnalyzing">
+      {{ isAnalyzing ? 'Analiziranje...' : hasAnalytics ? 'Ponovo analiziraj graf' : 'Analiziraj graf' }}
+    </button>
   </div>
   <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
+
+  <!-- Lanac dokaza: razlog pristupa i potpis pre SVAKOG pokretanja analize -->
+  <app-custody-access-dialog
+    *ngIf="isCustodyDialogOpen && activeCase"
+    [caseId]="activeCase.id"
+    [caseName]="activeCase.name"
+    [evidenceFileName]="selectedEvidenceFileName"
+    [isSubmitting]="isAnalyzing"
+    [submitError]="custodyDialogError"
+    (confirmed)="confirmCustodyAndAnalyze($event)"
+    (cancelled)="closeCustodyDialog()"
+  ></app-custody-access-dialog>
 
   <div class="graph-header">
     <div>
@@ -282,7 +301,7 @@
       </div>
       <div class="legend-item">
         <span class="legend-swatch anomaly"></span>
-        Anomalija (isprekidana ivica) — neuobičajen obrazac transakcija
+        Anomalija — <strong>zlatna puna ivica</strong>; neuobičajen obrazac transakcija
       </div>
       <div class="legend-item">
         <span class="legend-swatch chain-hop"></span>
@@ -302,7 +321,8 @@
       </div>
       <div class="legend-item">
         <span class="legend-swatch clustered"></span>
-        Deo klastera (isprekidan prsten) — verovatno ista osoba/grupa iza više adresa
+        Deo klastera — <strong>tirkizan isprekidan prsten</strong> odvojen od čvora; verovatno ista osoba/grupa iza više
+        adresa
       </div>
       <div class="legend-item">
         <span class="legend-line first-transaction"></span>

@@ -126,6 +126,14 @@ export interface TaintAnalysisResult {
   results: TaintNodeResult[];
   node_first_rank: Record<string, number>;
   edge_first_rank: Record<string, number>;
+  /** Addresses that both receive and forward - i.e. how far past the first hop the
+   * evidence actually follows the money. */
+  relay_count: number;
+  node_count: number;
+  /** True when the evidence barely goes past one hop. Then "cash-out point" findings are
+   * an artefact of the collection method (onward transfers were never pulled) and nothing
+   * can dilute anyone, so percentages sit at 100%. */
+  single_hop_evidence: boolean;
   node_taint_series: Record<string, TaintTimelineEntry[]>;
   timeline_max_rank: number;
   timeline_events: TaintTimelineEvent[];
@@ -241,6 +249,10 @@ export interface EvidenceEntry {
   size_bytes: number;
   sha256: string;
   analyst: string;
+  /** Currency the amounts are denominated in, or null when the file never declared one -
+   * which is not the same as ETH. Mixing currencies makes the taint percentage
+   * meaningless, so uploads containing more than one are rejected outright. */
+  currency?: string | null;
 }
 
 export type CaseStatus = 'open' | 'closed';
@@ -420,6 +432,66 @@ export interface ScenarioRunResponse {
   ran_at: string;
 }
 
+export interface SeedSuggestionItem {
+  address: string;
+  /** Plain-language reasons; a suggestion never appears without at least one. */
+  reasons: string[];
+}
+
+export interface SeedSuggestionCheck {
+  id: string;
+  label: string;
+  description: string;
+  category: 'origin' | 'laundering';
+  matches: number;
+}
+
+export interface SeedSuggestionResponse {
+  /** Defensible starting points for taint analysis (blacklist, OFAC). */
+  origin_candidates: SeedSuggestionItem[];
+  /** Mixers, relays, pass-through wallets - findings, but wrong to use as seeds. */
+  laundering_points: SeedSuggestionItem[];
+  /** Every rule that ran, including those that matched nothing, so "clean" can be told
+   * apart from "not checked". */
+  checks_performed: SeedSuggestionCheck[];
+  total_addresses: number;
+  /** Set when an empty result is caused by the shape of the evidence (a single-address
+   * history pull) rather than by the data being clean - the two must not be confused. */
+  coverage_note: string | null;
+}
+
+/** What was recorded when a report was signed and exported. */
+export interface ReportRegistryEntry {
+  verification_code: string;
+  content_hash: string;
+  case_id: string;
+  case_name: string;
+  analyst: string;
+  declaration: string;
+  summary: Record<string, number | string>;
+  registered_at: string;
+}
+
+export interface ReportVerificationResult {
+  /** Whether the verification code exists in the registry at all. */
+  found: boolean;
+  /** null when no hash was supplied - "not checked" is distinct from "does not match". */
+  matches: boolean | null;
+  message: string;
+  entry: ReportRegistryEntry | null;
+}
+
+export type ActivityPeriodMode = 'all' | 'day' | 'range';
+
+export interface ActivityReportPreview {
+  count: number;
+  period: string;
+  scope: 'all' | 'self';
+  available_users: string[];
+  /** Subset of available_users that still exist as accounts; the rest are historical. */
+  active_users: string[];
+}
+
 export interface ActivityLogResponse {
   entries: ActivityLogEntry[];
   /** "all" for an admin (every account), "self" for everyone else - decided server-side. */
@@ -427,4 +499,103 @@ export interface ActivityLogResponse {
   filtered_user: string | null;
   /** Only populated for admins; the roster to offer in the per-user filter. */
   available_users: string[];
+}
+
+// --- Lanac dokaza po transakciji (Obrazac evidencije rukovanja dokaznim materijalom) ---
+
+/** What the analyst asserts when running an analysis - who they are, why, and their
+ * signature. Required on every run; the backend appends one row built from this into the
+ * custody log of every transaction the run touches. */
+export interface TransactionCustodyEntry {
+  ime_prezime: string;
+  opis_radnje: string;
+  signature_image: string;
+  identifikator_predmeta?: string | null;
+  identifikator_dokaznog_materijala?: string | null;
+  proizvodjac?: string | null;
+  model?: string | null;
+  serijski_broj?: string | null;
+}
+
+/** One row of the printed Образац table (Бр./Датум/Име и презиме/Опис радње/Потпис). */
+export interface CustodyLogRow extends TransactionCustodyEntry {
+  redni_broj: number;
+  timestamp: string;
+  user: string;
+}
+
+/** The full form for one transaction: header fields (which stay editable and reflect the
+ * MOST RECENT access) plus every access row, oldest first. */
+export interface CustodyChain {
+  case_id: string;
+  case_name: string | null;
+  tx_id: string;
+  tx_hash: string | null;
+  sender_address: string | null;
+  recipient_address: string | null;
+  amount: number | null;
+  currency: string | null;
+  tx_timestamp: string | null;
+  evidence_stored_name: string | null;
+  evidence_file_name: string | null;
+  identifikator_predmeta: string | null;
+  identifikator_dokaznog_materijala: string | null;
+  proizvodjac: string | null;
+  model: string | null;
+  serijski_broj: string | null;
+  entries: CustodyLogRow[];
+}
+
+/** One row of the "Lanac dokaza" browsing list - a transaction that has been accessed at
+ * least once, without loading its whole access history. */
+export interface CustodyTransactionSummary {
+  tx_id: string;
+  tx_hash: string | null;
+  sender_address: string | null;
+  recipient_address: string | null;
+  amount: number | null;
+  currency: string | null;
+  tx_timestamp: string | null;
+  evidence_file_name: string | null;
+  access_count: number;
+  last_accessed_at: string | null;
+}
+
+export interface CustodyFieldSuggestions {
+  identifikator_predmeta: string[];
+  identifikator_dokaznog_materijala: string[];
+  proizvodjac: string[];
+  model: string[];
+  serijski_broj: string[];
+}
+
+// --- Lanac dokaza po dokaznom fajlu (coarser sibling - see LANAC-DOKAZA.md) ---
+
+/** The full form for one EVIDENCE FILE (not one transaction): header fields plus every
+ * access row, oldest first. The evidence-level analogue of CustodyChain above. */
+export interface CustodyEvidenceChain {
+  case_id: string;
+  case_name: string | null;
+  evidence_stored_name: string;
+  evidence_file_name: string | null;
+  evidence_sha256: string | null;
+  evidence_currency: string | null;
+  evidence_row_count: number | null;
+  identifikator_predmeta: string | null;
+  identifikator_dokaznog_materijala: string | null;
+  proizvodjac: string | null;
+  model: string | null;
+  serijski_broj: string | null;
+  entries: CustodyLogRow[];
+}
+
+/** One row of the "Lanac dokaza" evidence-level browsing list. */
+export interface CustodyEvidenceSummary {
+  evidence_stored_name: string;
+  evidence_file_name: string | null;
+  evidence_sha256: string | null;
+  evidence_currency: string | null;
+  evidence_row_count: number | null;
+  access_count: number;
+  last_accessed_at: string | null;
 }

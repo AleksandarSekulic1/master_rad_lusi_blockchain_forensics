@@ -2,9 +2,9 @@ import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ApiService } from '../../core/services/api.service';
+import { ActivityReportOptions, ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
-import { ActivityLogEntry } from '../../models/blockchain-forensics.models';
+import { ActivityLogEntry, ActivityPeriodMode } from '../../models/blockchain-forensics.models';
 
 /** How each raw `action` string is presented: a short human label, a one-word group used
  * for the coloured tag, and an icon. Unknown/new actions fall back to the raw string
@@ -12,7 +12,7 @@ import { ActivityLogEntry } from '../../models/blockchain-forensics.models';
  * be worse than useless in a forensic context. */
 interface ActionPresentation {
   label: string;
-  group: 'evidence' | 'analysis' | 'case' | 'test' | 'other';
+  group: 'evidence' | 'analysis' | 'case' | 'test' | 'report' | 'custody' | 'other';
   icon: string;
 }
 
@@ -46,6 +46,20 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
    * user aren't a case worth designing around). */
   protected expandedRows = new Set<string>();
 
+  // --- Report export ---
+  protected isReportPanelOpen = false;
+  protected periodMode: ActivityPeriodMode = 'all';
+  protected reportDay = '';
+  protected reportFrom = '';
+  protected reportTo = '';
+  protected reportUsers = new Set<string>();
+  protected reportActiveUsers: string[] = [];
+  protected reportCount: number | null = null;
+  protected reportPeriodLabel = '';
+  protected isCountingReport = false;
+  protected isDownloadingReport = false;
+  protected reportError: string | null = null;
+
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly AUTO_REFRESH_MS = 20_000;
 
@@ -61,6 +75,8 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     test_scenario_created: { label: 'Kreiran validacioni scenario', group: 'test', icon: '＋' },
     test_scenario_updated: { label: 'Izmenjen validacioni scenario', group: 'test', icon: '✎' },
     test_scenario_deleted: { label: 'Obrisan validacioni scenario', group: 'test', icon: '✕' },
+    activity_report_exported: { label: 'Izvezen izveštaj aktivnosti', group: 'report', icon: '⭳' },
+    custody_pdf_exported: { label: 'Izvezen lanac dokaza (PDF)', group: 'custody', icon: '🖉' },
   };
 
   constructor(
@@ -154,7 +170,32 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     if (entry.action === 'path_finding') {
       return { label: 'Graf', sub: entry.file_name, kind: 'scope' };
     }
+    if (entry.action === 'activity_report_exported') {
+      return { label: 'Izveštaj', sub: 'izvoz aktivnosti', kind: 'scope' };
+    }
     return { label: '', sub: null, kind: 'none' };
+  }
+
+  /** "10.08.2026." from an ISO date, for the period a report was generated for. */
+  private dmy(value: unknown): string {
+    const text = String(value ?? '');
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    return match ? `${match[3]}.${match[2]}.${match[1]}.` : text;
+  }
+
+  /** Which time window an exported report covered - the whole point of recording the
+   * export is being able to tell two reports apart later. */
+  private reportPeriodText(from: unknown, to: unknown): string {
+    if (!from && !to) {
+      return 'sve aktivnosti';
+    }
+    if (from && to && from === to) {
+      return `jedan dan: ${this.dmy(from)}`;
+    }
+    if (from && to) {
+      return `${this.dmy(from)} – ${this.dmy(to)}`;
+    }
+    return from ? `od ${this.dmy(from)}` : `do ${this.dmy(to)}`;
   }
 
   /** A one-line "what exactly happened" summary built from the action's own details, so
@@ -181,12 +222,34 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
       case 'test_scenario_updated':
       case 'test_scenario_deleted':
         return String(details['name'] || details['scenario_id'] || '');
+      case 'activity_report_exported': {
+        const format = String(details['format'] ?? '').toUpperCase();
+        const count = Number(details['entry_count'] ?? 0);
+        const period = this.reportPeriodText(details['date_from'], details['date_to']);
+        const users = details['users'];
+        const usersText = Array.isArray(users) && users.length > 0 ? ` · ${users.join(', ')}` : '';
+        return `${format} · ${count} zapisa · ${period}${usersText}`;
+      }
       case 'analytics_run': {
         const seedCount = Number(details['seed_count'] ?? 0);
         const scope = String(details['evidence_scope'] ?? 'combined');
         const scopeText = scope === 'combined' ? 'sva evidencija (kombinovano)' : scope;
         const seedText = seedCount === 1 ? '1 izvor (seed)' : `${seedCount} izvora (seed)`;
-        return `${seedText} · ${scopeText}`;
+        let summary = `${seedText} · ${scopeText}`;
+        // Only deliberate runs (Taint analiza / "Analiziraj graf") carry this - a passive
+        // preview load never writes into the lanac dokaza, so this line is exactly what
+        // distinguishes the two at a glance, without opening the raw detalji JSON.
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          summary += ` · lanac dokaza: ${txRows} transakcija, ${evidenceFiles} fajl(ova)`;
+        }
+        return summary;
+      }
+      case 'custody_pdf_exported': {
+        const scope = details['scope'] === 'transaction' ? 'transakcija' : 'dokazni fajl';
+        const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
+        return `${scope}: ${target} · ${Number(details['entry_count'] ?? 0)} zapisa`;
       }
       case 'path_finding':
         return `${String(details['source_address'] ?? '?')} → ${String(details['target_address'] ?? '?')}`;
@@ -214,6 +277,125 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
 
   trackByEntry(_index: number, entry: ActivityLogEntry): string {
     return `${entry.timestamp}__${entry.action}__${entry.user}`;
+  }
+
+  // --- Report export ------------------------------------------------------------------
+
+  toggleReportPanel(): void {
+    this.isReportPanelOpen = !this.isReportPanelOpen;
+    if (this.isReportPanelOpen) {
+      this.refreshReportCount();
+    }
+  }
+
+  setPeriodMode(mode: ActivityPeriodMode): void {
+    this.periodMode = mode;
+    this.refreshReportCount();
+  }
+
+  toggleReportUser(username: string): void {
+    if (this.reportUsers.has(username)) {
+      this.reportUsers.delete(username);
+    } else {
+      this.reportUsers.add(username);
+    }
+    this.refreshReportCount();
+  }
+
+  selectAllReportUsers(): void {
+    this.reportUsers.clear();
+    this.refreshReportCount();
+  }
+
+  get isAllUsersSelected(): boolean {
+    return this.reportUsers.size === 0;
+  }
+
+  isHistoricalUser(username: string): boolean {
+    return this.reportActiveUsers.length > 0 && !this.reportActiveUsers.includes(username);
+  }
+
+  /** Empty dates mean "everything"; a single day is expressed as from === to, which is
+   * what the backend already treats as one whole local day. */
+  private reportOptions(): ActivityReportOptions {
+    const users = [...this.reportUsers];
+    if (this.periodMode === 'day') {
+      return { dateFrom: this.reportDay || null, dateTo: this.reportDay || null, users };
+    }
+    if (this.periodMode === 'range') {
+      return { dateFrom: this.reportFrom || null, dateTo: this.reportTo || null, users };
+    }
+    return { dateFrom: null, dateTo: null, users };
+  }
+
+  get isPeriodIncomplete(): boolean {
+    if (this.periodMode === 'day') {
+      return !this.reportDay;
+    }
+    if (this.periodMode === 'range') {
+      return !this.reportFrom || !this.reportTo;
+    }
+    return false;
+  }
+
+  get isRangeInverted(): boolean {
+    return this.periodMode === 'range' && !!this.reportFrom && !!this.reportTo && this.reportFrom > this.reportTo;
+  }
+
+  get canGenerateReport(): boolean {
+    return !this.isPeriodIncomplete && !this.isRangeInverted && (this.reportCount ?? 0) > 0 && !this.isDownloadingReport;
+  }
+
+  refreshReportCount(): void {
+    this.reportError = null;
+    if (this.isPeriodIncomplete || this.isRangeInverted) {
+      this.reportCount = null;
+      return;
+    }
+    this.isCountingReport = true;
+    this.api.getActivityReportPreview(this.reportOptions()).subscribe({
+      next: (preview) => {
+        this.reportCount = preview.count;
+        this.reportPeriodLabel = preview.period;
+        this.reportActiveUsers = preview.active_users;
+        if (preview.available_users.length > 0) {
+          this.availableUsers = preview.available_users;
+        }
+        this.isCountingReport = false;
+      },
+      error: () => {
+        this.isCountingReport = false;
+        this.reportCount = null;
+        this.reportError = 'Neuspešna provera broja zapisa.';
+      },
+    });
+  }
+
+  downloadReport(format: 'pdf' | 'csv'): void {
+    this.isDownloadingReport = true;
+    this.reportError = null;
+    this.api.downloadActivityReport(this.reportOptions(), format).subscribe({
+      next: (blob) => {
+        this.isDownloadingReport = false;
+        const suffix = this.periodMode === 'all' ? 'sve' : this.reportDay || this.reportFrom;
+        this.saveBlob(blob, `izvestaj_aktivnosti_${suffix}.${format}`);
+        // The export is itself a logged action, so the list is no longer current.
+        this.loadEntries();
+      },
+      error: () => {
+        this.isDownloadingReport = false;
+        this.reportError = 'Neuspešno generisanje izveštaja.';
+      },
+    });
+  }
+
+  private saveBlob(blob: Blob, fileName: string): void {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   private startAutoRefresh(): void {

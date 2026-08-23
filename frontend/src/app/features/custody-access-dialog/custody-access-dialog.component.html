@@ -1,0 +1,89 @@
+<div class="custody-overlay" (click)="cancel()">
+  <div class="custody-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">Lanac dokaza</p>
+    <h3>Razlog pristupa i potpis</h3>
+
+    <p class="custody-intro">
+      Pokretanje analize se beleži kao <strong>pristup svakoj transakciji</strong> koju obuhvata - u lanac dokaza
+      svake od njih dodaje se novi red sa vremenom, razlogom i potpisom, isto kao u obrascu evidencije rukovanja
+      dokaznim materijalom.
+    </p>
+
+    <div class="custody-grid">
+      <label>
+        Identifikator predmeta
+        <input type="text" [(ngModel)]="identifikatorPredmeta" list="custody-predmet-suggestions" name="identifikatorPredmeta" />
+        <datalist id="custody-predmet-suggestions">
+          <option *ngFor="let value of suggestions.identifikator_predmeta" [value]="value"></option>
+        </datalist>
+      </label>
+
+      <label>
+        Identifikator dokaznog materijala
+        <input
+          type="text"
+          [(ngModel)]="identifikatorDokaznogMaterijala"
+          list="custody-materijal-suggestions"
+          name="identifikatorDokaznogMaterijala"
+        />
+        <datalist id="custody-materijal-suggestions">
+          <option *ngFor="let value of suggestions.identifikator_dokaznog_materijala" [value]="value"></option>
+        </datalist>
+      </label>
+
+      <label>
+        Proizvođač
+        <input type="text" [(ngModel)]="proizvodjac" list="custody-proizvodjac-suggestions" name="proizvodjac" />
+        <datalist id="custody-proizvodjac-suggestions">
+          <option *ngFor="let value of suggestions.proizvodjac" [value]="value"></option>
+        </datalist>
+      </label>
+
+      <label>
+        Model
+        <input type="text" [(ngModel)]="model" list="custody-model-suggestions" name="model" />
+        <datalist id="custody-model-suggestions">
+          <option *ngFor="let value of suggestions.model" [value]="value"></option>
+        </datalist>
+      </label>
+
+      <label>
+        Serijski broj
+        <input type="text" [(ngModel)]="serijskiBroj" list="custody-serijski-suggestions" name="serijskiBroj" />
+        <datalist id="custody-serijski-suggestions">
+          <option *ngFor="let value of suggestions.serijski_broj" [value]="value"></option>
+        </datalist>
+      </label>
+
+      <label>
+        Ime i prezime
+        <input type="text" [(ngModel)]="imePrezime" name="imePrezime" placeholder="Ime i prezime analitičara" />
+      </label>
+    </div>
+
+    <label class="custody-field">
+      Opis radnje (razlog i cilj pristupa)
+      <textarea rows="3" [(ngModel)]="opisRadnje" name="opisRadnje" placeholder="Npr. provera povezanosti sa žrtvom X, po nalogu br. ..."></textarea>
+    </label>
+
+    <p class="custody-signature-label">Potpis</p>
+    <app-signature-pad></app-signature-pad>
+
+    <label class="custody-declaration">
+      <input type="checkbox" [(ngModel)]="declarationAccepted" name="declarationAccepted" />
+      <span>
+        Potvrđujem da pristupam navedenoj evidenciji u okviru navedenog predmeta, u svrhu opisanu iznad, i da je
+        potpis iznad moj.
+      </span>
+    </label>
+
+    <p class="error-inline" *ngIf="submitError">{{ submitError }}</p>
+
+    <div class="custody-actions">
+      <button type="button" class="ghost-button" (click)="cancel()" [disabled]="isSubmitting">Odustani</button>
+      <button type="button" class="primary-button" (click)="submit()" [disabled]="!canSubmit">
+        {{ isSubmitting ? 'Pokretanje...' : 'Potpiši i pokreni analizu' }}
+      </button>
+    </div>
+  </div>
+</div>

@@ -415,6 +415,29 @@ h3 {
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
+.custody-deep-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+  text-decoration: none;
+}
+
+.custody-deep-link:hover {
+  text-decoration: underline;
+}
+
+.custody-deep-link-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #8ea6c7;
+}
+
+.custody-deep-link-hint a {
+  color: #7dd3fc;
+}
+
 .node-inspector .blacklist-warning {
   padding: 0.65rem 0.8rem;
   border-radius: 0.75rem;
@@ -726,4 +749,294 @@ h3 {
   .taint-content {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- Predlog cvorova (pravila umesto statistike) ---------- */
+
+.suggestion-panel {
+  margin-top: 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: rgba(96, 165, 250, 0.06);
+  border: 1px solid rgba(123, 214, 255, 0.22);
+  display: grid;
+  gap: 0.85rem;
+}
+
+.suggestion-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.suggestion-head .panel-kicker {
+  margin: 0;
+}
+
+.suggestion-group {
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+  /* The two groups are colour-separated on purpose: mistaking a laundering point for an
+     origin is the single most damaging error an analyst can make here. */
+  border-left: 3px solid rgba(148, 163, 184, 0.4);
+}
+
+.suggestion-group.origin {
+  border-left-color: #4ade80;
+}
+
+.suggestion-group.laundering {
+  border-left-color: #fbbf24;
+}
+
+.group-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  color: #eef4ff;
+}
+
+.group-count {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cdd9ef;
+}
+
+.group-note {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #8ea6c7;
+}
+
+.suggestion-group.laundering .group-note {
+  color: #fbbf24;
+}
+
+.suggestion-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.suggestion-main {
+  min-width: 0;
+}
+
+.reason-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #b9c8e4;
+}
+
+.suggestion-empty {
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: #8ea6c7;
+}
+
+.suggestion-empty p {
+  margin: 0 0 0.4rem;
+}
+
+.suggestion-empty p:last-child {
+  margin-bottom: 0;
+}
+
+.suggestion-empty strong {
+  color: #eef4ff;
+}
+
+.checks-toggle {
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+  color: #9fb6d8;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.checks-table {
+  width: 100%;
+  margin-top: 0.6rem;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.checks-table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  color: #d5e0f6;
+  vertical-align: top;
+}
+
+.check-count {
+  width: 2.5rem;
+  text-align: right;
+  font-weight: 700;
+  color: #7bd6ff;
+}
+
+.check-count.zero {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.check-desc {
+  display: block;
+  color: #8ea6c7;
+  font-size: 0.74rem;
+}
+
+/* "Zero results because the evidence cannot show it" reads as a caution, not as an
+   all-clear - the two conclusions are opposites. */
+.suggestion-empty.structural {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.07);
+  color: #e6d7ae;
+}
+
+.suggestion-empty.structural strong {
+  color: #fbbf24;
+}
+
+/* Mixing currencies makes every percentage below meaningless, so this sits above the
+   whole workflow rather than beside one control. */
+.currency-warning {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.9rem;
+  color: #fde3a7;
+  background: rgba(217, 119, 6, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  font-size: 0.87rem;
+  line-height: 1.55;
+}
+
+.currency-warning strong {
+  color: #fbbf24;
+}
+
+/* ---------- Potpisivanje pre izvoza ---------- */
+
+.signature-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(3, 8, 18, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.signature-dialog {
+  width: min(46rem, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.4rem 1.5rem;
+  border-radius: 1.25rem;
+  background: #0b1526;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+}
+
+.signature-dialog h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  color: #eef4ff;
+}
+
+.signature-intro {
+  margin: 0 0 1rem;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: #8ea6c7;
+  text-wrap: balance;
+}
+
+.signature-intro strong {
+  color: #cdd9ef;
+}
+
+/* The signature canvas itself now lives in the shared <app-signature-pad> component (see
+   core/components/signature-pad) - its styling moved there with it. */
+
+.signature-declaration {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #cdd9ef;
+  cursor: pointer;
+}
+
+.signature-declaration input {
+  margin-top: 0.2rem;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  accent-color: #7dd3fc;
+}
+
+.signature-limit {
+  margin: 0.85rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #8ea6c7;
+}
+
+.signature-limit strong {
+  color: #fbbf24;
+}
+
+.error-inline {
+  margin: 0.8rem 0 0;
+  font-size: 0.85rem;
+  color: #fca5a5;
+}
+
+.signature-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.signature-actions .primary-button {
+  padding: 0.7rem 1.1rem;
+  border: none;
+  border-radius: 0.9rem;
+  cursor: pointer;
+  font-size: 0.87rem;
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+}
+
+.signature-actions .primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

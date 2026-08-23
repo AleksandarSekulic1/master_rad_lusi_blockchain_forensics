@@ -1,0 +1,298 @@
+.custody-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1.25rem;
+  background: rgba(8, 15, 29, 0.74);
+  box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
+  backdrop-filter: blur(16px);
+  padding: 1.15rem;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.panel-heading > div:first-child {
+  flex: 1 1 32rem;
+  min-width: 0;
+}
+
+.panel-kicker {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7bd6ff;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.panel-subtitle {
+  margin: 0.4rem 0 0;
+  max-width: 112ch;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #8ea6c7;
+  text-wrap: balance;
+}
+
+.pill {
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: #cdeaff;
+  background: rgba(125, 211, 252, 0.14);
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  white-space: nowrap;
+}
+
+.pill.muted {
+  color: #8ea6c7;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.4rem 0 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.tab-button {
+  padding: 0.6rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #8ea6c7;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.tab-button:hover {
+  color: #cdd9ef;
+}
+
+.tab-button.active {
+  color: #7dd3fc;
+  border-bottom-color: #7dd3fc;
+}
+
+.empty-state {
+  margin: 1.5rem 0 0.5rem;
+  text-align: center;
+  color: #8ea6c7;
+}
+
+.empty-state a {
+  color: #7dd3fc;
+}
+
+.notice-banner {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.85rem;
+  color: #fde68a;
+  background: rgba(217, 119, 6, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  font-size: 0.85rem;
+}
+
+.error-banner {
+  margin: 0.85rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.85rem;
+  color: #fecaca;
+  background: rgba(220, 38, 38, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  font-size: 0.85rem;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  margin-top: 0.8rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.87rem;
+}
+
+th {
+  padding: 0.7rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+  color: #8ea6c7;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+td {
+  padding: 0.7rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  color: #d5e0f6;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.arrow {
+  margin: 0 0.35rem;
+  color: #7dd3fc;
+}
+
+.dot {
+  margin: 0 0.4rem;
+  color: #4b5c78;
+}
+
+.tx-row {
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.tx-row:hover {
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.col-action {
+  text-align: right;
+}
+
+.ghost-button,
+.primary-button {
+  padding: 0.6rem 0.95rem;
+  border: none;
+  border-radius: 0.85rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  transition: transform 0.14s ease, background 0.14s ease;
+}
+
+.ghost-button {
+  color: #d9e6ff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ghost-button:hover {
+  background: rgba(125, 211, 252, 0.1);
+}
+
+.ghost-button.small {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.primary-button {
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+}
+
+.primary-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.muted {
+  color: #8ea6c7;
+}
+
+/* --- Obrazac evidencije rukovanja dokaznim materijalom (izabrana transakcija) --- */
+
+.custody-form {
+  margin-top: 0.6rem;
+}
+
+.custody-form-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.form-title {
+  margin: 0;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #eef4ff;
+}
+
+.tx-summary {
+  margin: 0.6rem 0 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #cdd9ef;
+}
+
+.form-header {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.85rem;
+}
+
+.form-header dt {
+  color: #8ea6c7;
+  font-weight: 600;
+}
+
+.form-header dd {
+  margin: 0;
+  color: #eef4ff;
+}
+
+.form-table th {
+  background: rgba(13, 24, 40, 0.6);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.opis-cell {
+  max-width: 26rem;
+  white-space: pre-wrap;
+}
+
+.signature-thumb {
+  max-width: 7rem;
+  max-height: 2.4rem;
+  border-radius: 0.35rem;
+  background: #ffffff;
+  padding: 2px;
+}
+
+@media (max-width: 720px) {
+  .form-header {
+    grid-template-columns: 1fr;
+  }
+}

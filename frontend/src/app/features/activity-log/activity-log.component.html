@@ -36,10 +36,99 @@
           {{ autoRefreshEnabled ? 'Uživo' : 'Pauzirano' }}
         </button>
 
+        <button type="button" class="ghost-button" [class.active]="isReportPanelOpen" (click)="toggleReportPanel()">
+          Izveštaj
+        </button>
+
         <button type="button" class="primary-button" (click)="loadEntries()" [disabled]="isLoading">
           {{ isLoading ? 'Osvežavanje...' : 'Osveži' }}
         </button>
       </div>
+    </div>
+
+    <div class="report-panel" *ngIf="isReportPanelOpen">
+      <p class="report-title">Izvoz izveštaja aktivnosti</p>
+
+      <div class="report-row">
+        <span class="report-label">Period</span>
+        <div class="mode-chips">
+          <button type="button" class="mode-chip" [class.active]="periodMode === 'all'" (click)="setPeriodMode('all')">
+            Sve aktivnosti
+          </button>
+          <button type="button" class="mode-chip" [class.active]="periodMode === 'day'" (click)="setPeriodMode('day')">
+            Jedan dan
+          </button>
+          <button type="button" class="mode-chip" [class.active]="periodMode === 'range'" (click)="setPeriodMode('range')">
+            Od — do
+          </button>
+        </div>
+      </div>
+
+      <div class="report-row" *ngIf="periodMode === 'day'">
+        <span class="report-label">Datum</span>
+        <input type="date" [(ngModel)]="reportDay" (ngModelChange)="refreshReportCount()" />
+      </div>
+
+      <div class="report-row" *ngIf="periodMode === 'range'">
+        <span class="report-label">Od — do</span>
+        <input type="date" [(ngModel)]="reportFrom" (ngModelChange)="refreshReportCount()" />
+        <span class="dash">—</span>
+        <input type="date" [(ngModel)]="reportTo" (ngModelChange)="refreshReportCount()" />
+      </div>
+
+      <div class="report-row" *ngIf="isAdmin && availableUsers.length > 0">
+        <span class="report-label">Korisnici</span>
+        <div class="user-chips">
+          <button type="button" class="mode-chip" [class.active]="isAllUsersSelected" (click)="selectAllReportUsers()">
+            Svi korisnici
+          </button>
+          <button
+            type="button"
+            class="mode-chip"
+            *ngFor="let username of availableUsers"
+            [class.active]="reportUsers.has(username)"
+            (click)="toggleReportUser(username)"
+            [title]="isHistoricalUser(username) ? 'Nalog više ne postoji u sistemu, ali njegove akcije ostaju u logu' : ''"
+          >
+            {{ username }}
+            <span class="historical-mark" *ngIf="isHistoricalUser(username)">neaktivan</span>
+          </button>
+        </div>
+      </div>
+
+      <p class="report-hint" *ngIf="!isAdmin">Izveštaj obuhvata isključivo vaše akcije.</p>
+
+      <div class="report-status">
+        <ng-container *ngIf="isRangeInverted; else countState">
+          <span class="report-warning">Datum „od" je posle datuma „do".</span>
+        </ng-container>
+        <ng-template #countState>
+          <ng-container *ngIf="isPeriodIncomplete; else haveCount">
+            <span class="muted">Izaberite datum da vidite broj zapisa.</span>
+          </ng-container>
+          <ng-template #haveCount>
+            <span *ngIf="isCountingReport" class="muted">Provera...</span>
+            <ng-container *ngIf="!isCountingReport && reportCount !== null">
+              <span class="count-chip" [class.empty]="reportCount === 0">{{ reportCount }} zapisa</span>
+              <span class="muted">{{ reportPeriodLabel }}</span>
+              <span class="report-warning" *ngIf="reportCount === 0">
+                Za izabrani period nema aktivnosti — izveštaj se ne može generisati.
+              </span>
+            </ng-container>
+          </ng-template>
+        </ng-template>
+      </div>
+
+      <div class="report-actions">
+        <button type="button" class="primary-button" (click)="downloadReport('pdf')" [disabled]="!canGenerateReport">
+          {{ isDownloadingReport ? 'Generisanje...' : 'Preuzmi PDF' }}
+        </button>
+        <button type="button" class="ghost-button" (click)="downloadReport('csv')" [disabled]="!canGenerateReport">
+          Preuzmi CSV
+        </button>
+      </div>
+
+      <p class="error-banner" *ngIf="reportError">{{ reportError }}</p>
     </div>
 
     <div class="meta-row">

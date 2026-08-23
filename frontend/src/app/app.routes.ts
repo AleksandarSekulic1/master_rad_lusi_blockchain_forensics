@@ -50,10 +50,22 @@ export const appRoutes: Routes = [
 			import('./features/report-export/report-export.component').then((module) => module.ReportExportComponent),
 	},
 	{
+		path: 'verify-report',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/report-verification/report-verification.component').then((module) => module.ReportVerificationComponent),
+	},
+	{
 		path: 'activity-log',
 		canActivate: [authGuard],
 		loadComponent: () =>
 			import('./features/activity-log/activity-log.component').then((module) => module.ActivityLogComponent),
+	},
+	{
+		path: 'lanac-dokaza',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/custody-log/custody-log.component').then((module) => module.CustodyLogComponent),
 	},
 	{
 		path: 'tests',

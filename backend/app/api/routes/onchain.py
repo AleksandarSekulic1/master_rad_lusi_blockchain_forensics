@@ -96,6 +96,9 @@ def fetch_transactions(
         size_bytes=size_bytes,
         sha256_hash=sha256_hash,
         analyst=user,
+        # The fetch uses Etherscan's `txlist` (native transfers only), never `tokentx`, so
+        # a pulled file can only ever contain the chain's native currency.
+        currency='ETH',
     )
 
     audit_entry = write_audit_log(

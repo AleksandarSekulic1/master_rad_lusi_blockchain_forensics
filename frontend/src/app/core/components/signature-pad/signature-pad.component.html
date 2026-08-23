@@ -1,0 +1,16 @@
+<div class="signature-pad-wrap">
+  <canvas
+    #canvas
+    width="640"
+    height="200"
+    (pointerdown)="startStroke($event)"
+    (pointermove)="continueStroke($event)"
+    (pointerup)="endStroke()"
+    (pointerleave)="endStroke()"
+  ></canvas>
+  <span class="signature-placeholder" *ngIf="!hasStrokes">{{ placeholder }}</span>
+</div>
+
+<div class="signature-tools">
+  <button type="button" class="ghost-button small" (click)="clear()">Obriši potpis</button>
+</div>

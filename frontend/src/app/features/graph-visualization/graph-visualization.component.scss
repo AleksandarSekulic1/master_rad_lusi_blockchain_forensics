@@ -81,11 +81,59 @@
   color: #fca5a5;
 }
 
+.evidence-picker {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .evidence-picker label {
   display: grid;
   gap: 0.4rem;
   font-size: 0.8rem;
   color: #8ea6c7;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.analysis-status {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.9rem;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  white-space: nowrap;
+}
+
+.analysis-status.done {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.primary-button {
+  padding: 0.65rem 1.1rem;
+  border: none;
+  border-radius: 0.9rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+  transition: transform 0.14s ease, opacity 0.14s ease;
+  white-space: nowrap;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .evidence-picker select {
@@ -408,10 +456,13 @@ h3 {
   border-color: #9bd1ff;
 }
 
+/* Solid gold, matching the graph - dashed is reserved for the cluster ring so the two
+   cannot be mistaken for one another. */
 .legend-swatch.anomaly {
   background: #c98500;
   border-color: #ffd479;
-  border-style: dashed;
+  border-style: solid;
+  border-width: 3px;
 }
 
 .legend-swatch.chain-hop {

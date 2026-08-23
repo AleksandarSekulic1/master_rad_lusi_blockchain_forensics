@@ -80,7 +80,7 @@
         type="button"
         class="ghost-button"
         *ngIf="hasRunTaint"
-        (click)="exportPdfReport()"
+        (click)="openSignatureDialog()"
         [disabled]="isExportingPdf"
         title="Izvezi PDF izveštaj sa trenutnim grafičkim prikazom (poštuje aktivni filter praga) i rezultatima analize"
       >
@@ -97,6 +97,20 @@
     nego i koliki procenat.
   </p>
 
+  <p class="currency-warning" *ngIf="hasRunTaint && taintResult?.single_hop_evidence">
+    ⚠ <strong>Evidencija prati novac samo jedan skok.</strong> Od {{ taintResult?.node_count }} adresa, samo
+    {{ taintResult?.relay_count }} i prima i prosleđuje sredstva. Zbog toga „tačke unovčavanja" nisu nalaz nego
+    <strong>ivica prikupljenih podataka</strong> — šta su te adrese radile dalje nije ni povučeno. Iz istog razloga skoro
+    sve stoji na 100%: ništa se nije mešalo, pa nema razblaživanja. Za smislen nalaz proširi evidenciju (režim „proširi
+    pošiljaoce") ili je dopuni istorijama tih adresa.
+  </p>
+
+  <p class="currency-warning" *ngIf="hasCurrencyConflict">
+    ⚠ Izabrani dokazi koriste <strong>različite valute ({{ mixedCurrencies.join(', ') }})</strong>. Taint procenat sabira
+    sve iznose kao da su ista jedinica, pa rezultat <strong>nije smislen</strong>. Izaberi jednu evidenciju iz padajućeg
+    menija iznad.
+  </p>
+
   <div class="seed-panel" *ngIf="!hasRunTaint">
     <p class="muted top-tainted-hint" *ngIf="seedAddresses.length > 0">
       Uređuješ postojeći izbor izvora — dodaj ili ukloni adrese, pa ponovo pokreni analizu.
@@ -106,10 +120,102 @@
       class="ghost-button"
       (click)="suggestSeeds()"
       [disabled]="!graph || isSuggestingSeeds"
-      title="Automatski doda čvorove koje su heuristike (crna lista, visok rizik, anomalija, peel lanac, skok lanca) već označile kao sumnjive"
+      title="Proverava adrese kroz imenovana forenzička pravila (crna lista, OFAC, mikser, brzi prolaz, peel chain, chain hopping, buđenje uspavane adrese, usitnjavanje) i za svaki predlog navodi razlog"
     >
-      {{ isSuggestingSeeds ? 'Tražim sumnjive čvorove...' : 'Predloži čvorove' }}
+      {{ isSuggestingSeeds ? 'Proveravam pravila...' : 'Predloži za pregled' }}
     </button>
+
+    <div class="suggestion-panel" *ngIf="seedSuggestions as suggestions">
+      <div class="suggestion-head">
+        <p class="panel-kicker">Rezultat provere — {{ suggestions.total_addresses }} adresa</p>
+        <button type="button" class="ghost-button small" (click)="dismissSuggestions()">Zatvori</button>
+      </div>
+
+      <!-- Kandidati za izvor -->
+      <div class="suggestion-group origin" *ngIf="suggestions.origin_candidates.length > 0">
+        <p class="group-heading">
+          Kandidati za izvor
+          <span class="group-count">{{ suggestions.origin_candidates.length }}</span>
+        </p>
+        <p class="group-note">Utvrđene činjenice o adresi (crna lista, OFAC) — jedina osnova za seed adresu.</p>
+        <div class="suggestion-item" *ngFor="let item of suggestions.origin_candidates">
+          <div class="suggestion-main">
+            <span class="mono-address">{{ item.address }}</span>
+            <ul class="reason-list">
+              <li *ngFor="let reason of item.reasons">{{ reason }}</li>
+            </ul>
+          </div>
+          <button
+            type="button"
+            class="ghost-button small"
+            (click)="addSuggestedSeed(item.address)"
+            [disabled]="isAlreadySeed(item.address)"
+          >
+            {{ isAlreadySeed(item.address) ? 'Dodato' : 'Dodaj kao izvor' }}
+          </button>
+        </div>
+        <button type="button" class="ghost-button small" (click)="addAllOriginCandidates()">Dodaj sve kandidate</button>
+      </div>
+
+      <!-- Tačke pranja -->
+      <div class="suggestion-group laundering" *ngIf="suggestions.laundering_points.length > 0">
+        <p class="group-heading">
+          Tačke pranja
+          <span class="group-count">{{ suggestions.laundering_points.length }}</span>
+        </p>
+        <p class="group-note">
+          ⚠ Ovo <strong>nisu</strong> izvori. Ako mikser ili relej postaviš kao izvor, označićeš i tuđa sredstva koja
+          sa slučajem nemaju veze.
+        </p>
+        <div class="suggestion-item" *ngFor="let item of suggestions.laundering_points">
+          <div class="suggestion-main">
+            <span class="mono-address">{{ item.address }}</span>
+            <ul class="reason-list">
+              <li *ngFor="let reason of item.reasons">{{ reason }}</li>
+            </ul>
+          </div>
+          <button
+            type="button"
+            class="ghost-button small"
+            (click)="addSuggestedSeed(item.address)"
+            [disabled]="isAlreadySeed(item.address)"
+          >
+            {{ isAlreadySeed(item.address) ? 'Dodato' : 'Ipak dodaj' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Prazan rezultat: razlikuje "cisto je" od "podaci ne mogu da odgovore" -->
+      <div class="suggestion-empty" *ngIf="!hasAnySuggestion" [class.structural]="suggestions.coverage_note">
+        <ng-container *ngIf="suggestions.coverage_note as note; else nothingMatched">
+          <p><strong>Nula nalaza — zbog oblika evidencije, ne zato što je čisto.</strong></p>
+          <p>{{ note }}</p>
+        </ng-container>
+        <ng-template #nothingMatched>
+          <p><strong>Nijedna adresa ne odgovara poznatim obrascima.</strong></p>
+          <p>
+            Izvore unesite iz predmeta — prijave oštećenog, sudskog naloga ili izveštaja berze. Poreklo sredstava nije
+            svojstvo transakcije i ne može se izvesti iz grafa.
+          </p>
+        </ng-template>
+      </div>
+
+      <!-- Izvršene provere -->
+      <div class="checks-block">
+        <button type="button" class="checks-toggle" (click)="toggleAllChecks()">
+          {{ showAllChecks ? 'Sakrij' : 'Prikaži' }} izvršene provere ({{ suggestions.checks_performed.length }})
+        </button>
+        <table class="checks-table" *ngIf="showAllChecks">
+          <tr *ngFor="let check of suggestions.checks_performed">
+            <td class="check-count" [class.zero]="check.matches === 0">{{ check.matches }}</td>
+            <td>
+              <strong>{{ check.label }}</strong>
+              <span class="check-desc">{{ check.description }}</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
     <div class="seed-input">
       <input
         type="text"
@@ -137,7 +243,7 @@
       Bez ručno izabranog izvora, analiza će automatski koristiti adrese koje su već na crnoj listi (ako ih ima).
     </p>
     <p class="taint-error" *ngIf="taintError">{{ taintError }}</p>
-    <button type="button" class="primary-button" (click)="runTaintAnalysis()" [disabled]="!graph || isRunningTaint">
+    <button type="button" class="primary-button" (click)="openCustodyDialog()" [disabled]="!graph || isRunningTaint">
       {{
         isRunningTaint
           ? 'Pokretanje...'
@@ -476,6 +582,26 @@
                 </dd>
               </div>
             </dl>
+
+            <!-- Lanac dokaza po transakciji - identifikator transakcije se poklapa sa
+                 tx_id samo kad evidencija ima heš (backend koristi baš tu vrednost kao
+                 tx_id); bez heša se ne može pouzdano pogoditi izvedeni id sa klijenta, pa
+                 se umesto direktnog linka nudi opšta stranica gde se transakcija može
+                 pronaći po pošiljaocu/primaocu. -->
+            <a
+              *ngIf="tx.metadata; else custodyLinkFallback"
+              class="custody-deep-link"
+              [routerLink]="['/lanac-dokaza']"
+              [queryParams]="{ caseId: activeCase?.id, tx: tx.metadata }"
+            >
+              Lanac dokaza za ovu transakciju →
+            </a>
+            <ng-template #custodyLinkFallback>
+              <p class="custody-deep-link-hint">
+                Evidencija nema heš ove transakcije, pa se ne može direktno povezati - potražite je po
+                pošiljaocu/primaocu na stranici <a [routerLink]="['/lanac-dokaza']">Lanac dokaza</a>.
+              </p>
+            </ng-template>
           </li>
         </ul>
       </div>
@@ -553,3 +679,52 @@
     </aside>
   </div>
 </div>
+
+<!-- Potpisivanje pre izvoza -->
+<div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
+  <div class="signature-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">Overa izveštaja</p>
+    <h3>Potpis analitičara</h3>
+
+    <p class="signature-intro">
+      Potpišite se mišem u polju ispod. Uz potpis se generiše <strong>pečat aplikacije Lusi</strong> sa kontrolnim brojem
+      i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.
+    </p>
+
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signature-declaration">
+      <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
+      <span>
+        Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi
+        kakve je aplikacija izračunala nad navedenom evidencijom.
+      </span>
+    </label>
+
+    <p class="signature-limit">
+      Napomena: potpis je <strong>izjava</strong>, a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni
+      dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.
+    </p>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signature-actions">
+      <button type="button" class="ghost-button" (click)="closeSignatureDialog()">Odustani</button>
+      <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
+        {{ isExportingPdf ? 'Generisanje...' : 'Potpiši i izvezi PDF' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre SVAKOG pokretanja analize -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isRunningTaint"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndRunAnalysis($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>

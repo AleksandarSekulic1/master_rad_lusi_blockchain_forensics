@@ -1,0 +1,30 @@
+[
+  {
+    "verification_code": "LUSI-2026-86AB-Y7YB",
+    "content_hash": "94d2a793299aeb581512097c458f3e5d0ef4e99d94a3de4b3beb5bd17a170ebf",
+    "case_id": "c23db4afd0f3",
+    "case_name": "Moj slucaj",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 163,
+      "cash_out_points": 162,
+      "seeds": 1
+    },
+    "registered_at": "2026-08-11T17:48:21.777987+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-TTYF-9PFW",
+    "content_hash": "80ce6a6e37aa4f24640ed918525e1d70f402fb2f40c0212412a7a1ac85f6eb8a",
+    "case_id": "a858f96b8c07",
+    "case_name": "test 1",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 10,
+      "cash_out_points": 3,
+      "seeds": 6
+    },
+    "registered_at": "2026-08-12T15:15:12.584769+00:00"
+  }
+]

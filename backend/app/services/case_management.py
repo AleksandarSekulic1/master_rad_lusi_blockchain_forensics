@@ -172,6 +172,7 @@ def append_evidence(
     sha256_hash: str,
     analyst: str,
     imported_at: datetime | None = None,
+    currency: str | None = None,
 ) -> dict[str, object]:
     case = get_case(case_id)
     evidence_entry = {
@@ -181,6 +182,10 @@ def append_evidence(
         'size_bytes': int(size_bytes),
         'sha256': sha256_hash,
         'analyst': analyst,
+        # None when the file never declared one - which is NOT the same as "ETH". Older
+        # evidence predates the column entirely, and guessing would put an unverifiable
+        # claim into a forensic record.
+        'currency': currency,
     }
 
     case.setdefault('evidence', [])
