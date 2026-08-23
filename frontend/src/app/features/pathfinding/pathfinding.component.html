@@ -190,6 +190,16 @@
               </li>
             </ol>
           </div>
+
+          <button
+            type="button"
+            class="primary-button export-pdf-button"
+            (click)="openSignatureDialog()"
+            [disabled]="isExportingPdf"
+            title="Izvezi PDF izveštaj sa potpisom, pečatom i kontrolnim brojem za proveru verodostojnosti"
+          >
+            {{ isExportingPdf ? 'Generisanje...' : 'Izvezi PDF izveštaj' }}
+          </button>
         </div>
         <ng-template #notFound>
           <p class="no-path-message" *ngIf="result.message as message; else genericNotFound">{{ message }}</p>
@@ -219,4 +229,41 @@
     (confirmed)="confirmCustodyAndRunTaint($event)"
     (cancelled)="closeTaintDialog()"
   ></app-custody-access-dialog>
+
+  <!-- Potpisivanje pre izvoza PDF izveštaja - ista struktura kao Taint analiza -->
+  <div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
+    <div class="signature-dialog" (click)="$event.stopPropagation()">
+      <p class="panel-kicker">Overa izveštaja</p>
+      <h3>Potpis analitičara</h3>
+
+      <p class="signature-intro">
+        Potpišite se mišem u polju ispod. Uz potpis se generiše <strong>pečat aplikacije Lusi</strong> sa kontrolnim
+        brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.
+      </p>
+
+      <app-signature-pad></app-signature-pad>
+
+      <label class="signature-declaration">
+        <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
+        <span>
+          Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati
+          onakvi kakve je aplikacija izračunala nad navedenom evidencijom.
+        </span>
+      </label>
+
+      <p class="signature-limit">
+        Napomena: potpis je <strong>izjava</strong>, a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni
+        dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.
+      </p>
+
+      <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+      <div class="signature-actions">
+        <button type="button" class="ghost-button" (click)="closeSignatureDialog()">Odustani</button>
+        <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
+          {{ isExportingPdf ? 'Generisanje...' : 'Potpiši i izvezi PDF' }}
+        </button>
+      </div>
+    </div>
+  </div>
 </div>

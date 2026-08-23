@@ -15,8 +15,9 @@ odgovara na drugo pitanje: „kako se zaprljana sredstva propagiraju kroz celu m
 | [5. Path Analysis panel](#5-path-analysis-panel-drugi-korak) | forenzički detalji pronađenog puta, opciona taint provera |
 | [6. Odredište: Nearest known CEX](#6-odredište-nearest-known-cex-treći-korak) | biranje cilja umesto ručnog unosa, samo iz postojećih podataka |
 | [7. Testiranje korak po korak](#7-testiranje-korak-po-korak) | UI i automatski testovi |
-| [8. Ograničenja prve verzije](#8-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
-| [9. Gde je šta u kodu](#9-gde-je-šta-u-kodu) | putanje |
+| [8. PDF izveštaj](#8-pdf-izveštaj) | potpis, pečat, kontrolni broj, provera verodostojnosti |
+| [9. Ograničenja prve verzije](#9-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
+| [10. Gde je šta u kodu](#10-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -298,7 +299,71 @@ sender_address,recipient_address,amount,timestamp
     (`0xThief → 0xMixer → 0xExitWallet`) nikad se ne spaja sa njom; poruka mora reći baš
     „nije dostupna", ne „nije prisutna".
 
-## 8. Ograničenja prve verzije
+## 8. PDF izveštaj
+
+Kad je put pronađen, dugme **„Izvezi PDF izveštaj"** generiše PDF sa **istom strukturom
+overe** kao Taint analiza (vidi TAINT-ANALIZA.md §6.3): potpis analitičara (mišem, u
+dijalogu), pečat aplikacije Lusi, kontrolni broj i otisak sadržaja (hash), koji se kasnije
+mogu proveriti na stranici „Provera izveštaja" — **bez ijedne izmene** u
+`taint-analysis.component.ts` ili u deljenoj backend infrastrukturi za registraciju/proveru
+izveštaja.
+
+### 8.1 Tok
+
+1. Klik na „Izvezi PDF izveštaj" otvara dijalog za potpis (`app-signature-pad`, isti
+   deljeni potpisni panel koji koristi i Taint analiza i dijalog za lanac dokaza — crtanje
+   mišem, `clear()`/`hasStrokes`/`getDataUrl()`).
+2. Analitičar se potpiše i potvrdi izjavu (checkbox) da je izveštaj njegov rad nad
+   navedenom evidencijom — dugme „Potpiši i izvezi PDF" ostaje onemogućeno dok oba uslova
+   nisu ispunjena (`canSubmitSignature`).
+3. Frontend gradi PDF u browseru (jsPDF + jspdf-autotable, bez backend poziva za samo
+   crtanje dokumenta): zaglavlje (naziv slučaja, evidencija, datum/vreme, ko je izvezao),
+   „Rezime puta" kartice (path length, initial/final amount, trajanje — isti podaci kao
+   panel Path Analysis, §5), okvir sa razrešenim odredištem kad je `destination_mode:
+   "nearest_cex"` (adresa + oznaka entiteta), „Taint provera puta" (initial/final
+   taint/dilution, samo ako je pokrenuta — §5.2), tabelu **„Putanja"** (redni broj + adresa
+   za svaki čvor) i tabelu **„Transakcije na putu"** (izvor/cilj/iznos/vreme/heš po skoku, §5.1),
+   slika grafa sa istaknutom putanjom (isti canvas koji je već iscrtan na stranici), napomenu
+   o metodologiji i ograničenjima (BFS, bez hronološke provere — §5.1, §9), i na kraju
+   **„Potpis i overa"**: vektorski pečat, snimljen potpis, kontrolni broj i otisak sadržaja.
+4. Pre čuvanja fajla, sadržaj izveštaja (bez slike potpisa) se hešira i registruje preko
+   **generičkog, ne-taint-specifičnog** `POST /api/v1/reports/register`
+   (`report_registry.py`) — isti registar koji već koristi Taint analiza za svoje izveštaje;
+   Pathfinding mu samo dodaje svoj `summary` (`hops`, `destination_mode`, `taint_trace`), pa
+   je stranica „Provera izveštaja" proširena samo mapiranjem ta tri ključa na čitljive
+   nazive (§10), bez ijedne druge izmene te (deljene) stranice.
+5. `doc.save(...)` snima PDF lokalno kod korisnika (isti obrazac kao Taint analiza — nema
+   posebnog „download" endpoint-a za ovo).
+
+### 8.2 Zašto je crtanje PDF-a samostalna kopija, a ne deljeni modul
+
+Pečat, potpis i kontrolni broj u `pathfinding.component.ts` su **namerno prepisani** iz
+`taint-analysis.component.ts` (isti izgled, iste boje, isti raspored), a ne izvučeni u
+zajednički servis/komponentu. Razlog je eksplicitno ograničenje koje je važilo kroz ceo
+razvoj ovog modula: **`taint-analysis.component.ts` se ne dira**. Izvlačenje deljenog
+modula bi zahtevalo refaktorisanje (makar i „bezbedno") postojećeg fajla Taint analize; ova
+samostalna kopija postiže identičnu strukturu izveštaja bez ikakvog rizika po taj fajl.
+Ono što JESTE deljeno i ponovo iskorišćeno bez izmene: `app-signature-pad` (crtanje
+potpisa) i `report_registry.py`/`GET /api/v1/reports/verify` (registracija i provera) — oba
+su već bila generička, napravljena da posluže bilo kojoj vrsti izveštaja.
+
+### 8.3 Ručna provera
+
+1. Pronađi bilo koju putanju (Test A iz §7.2, na primer) → „Izvezi PDF izveštaj" → potpiši
+   se → „Potpiši i izvezi PDF".
+2. Otvori snimljeni PDF: proveri da zaglavlje, „Rezime puta", tabele „Putanja"/„Transakcije
+   na putu", slika grafa i „Potpis i overa" (pečat + potpis + kontrolni broj) postoje i
+   odgovaraju podacima sa stranice.
+3. Kontrolni broj sa PDF-a → „Provera izveštaja" (`/report-verification`) → uneti kod (i
+   opciono otisak sadržaja) → očekivano: dokument je pronađen i nepromenjen, a rezime
+   prikazuje „Broj skokova", „Način određivanja odredišta" i (ako je taint provera bila
+   pokrenuta) „Taint provera puta".
+4. Otvori PDF u editoru teksta/izmeni jedan karakter i ponovo pokušaj proveru sa istim
+   kodom → očekivano: registar prijavljuje da otisak sadržaja **ne odgovara** (dokument je
+   izmenjen posle overe) — ista logika kao za Taint analizu, jer je registar potpuno
+   generički.
+
+## 9. Ograničenja prve verzije
 
 Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba):
 
@@ -316,7 +381,7 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
   custody gejtinga (nije analiza, samo pretraga strukture); dugme „Pokreni taint analizu za
   ovu putanju" JESTE gejtovano (§5.2), isto kao svako drugo pokretanje analize u aplikaciji.
 
-## 9. Gde je šta u kodu
+## 10. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
@@ -328,6 +393,10 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
 | Frontend stranica | `frontend/src/app/features/pathfinding/` |
 | API poziv | `frontend/src/app/core/services/api.service.ts` (`findCasePath`) |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`CasePathfindingResult`, `PathfindingDestinationMode`) |
+| PDF izveštaj (§8) — crtanje, potpis, pečat | `frontend/src/app/features/pathfinding/pathfinding.component.ts` (`buildPathfindingPdf`, `openSignatureDialog`, `confirmSignatureAndExport`) — samostalna kopija, ne deli kod sa Taint analizom (§8.2) |
+| Deljena komponenta za potpis mišem | `frontend/src/app/core/components/signature-pad/` (`SignaturePadComponent`) — koriste je i Taint analiza i lanac dokaza i ovo, bez izmene |
+| Generička registracija/provera izveštaja | `backend/app/exports/report_registry.py` (`POST /api/v1/reports/register`, `GET /api/v1/reports/verify`) — nepromenjeno, deljeno sa Taint analizom |
+| Stranica za proveru izveštaja | `frontend/src/app/features/report-verification/report-verification.component.ts` — dodata samo tri reda mapiranja labela (`hops`, `destination_mode`, `taint_trace`) |
 
 **Ruta:**
 
