@@ -127,7 +127,11 @@ h3 {
 
 .graph-header h2 {
   font-size: 1.1rem;
-  max-width: 40ch;
+  // Bez max-width ograničenja (kao graph-visualization.component.ts) - 40ch je bilo uže od
+  // same rečenice naslova, pa se lomilo nezgodno (jedna reč sama na drugom redu). Kad ipak
+  // dođe do preloma na uskom ekranu, text-wrap: balance ravnomerno raspoređuje reči po
+  // redovima umesto da ostavi kratki "rep".
+  text-wrap: balance;
 }
 
 .graph-header p {
