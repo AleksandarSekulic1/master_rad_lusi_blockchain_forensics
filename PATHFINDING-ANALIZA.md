@@ -53,9 +53,10 @@ POST /api/v1/cases/{case_id}/pathfinding?evidence=<opciono>
 ```
 
 Telo zahteva (`destination_mode` je opciono, podrazumevano `"specific_address"` — vidi §6
-za `"nearest_cex"`):
+za `"nearest_cex"`; `custody` je opciono NA NIVOU API-ja, ali ga jedini stvarni pozivalac —
+dugme FIND PATH — uvek šalje, jer je to namerno pristupanje evidenciji, vidi §5.2):
 ```json
-{ "from": "0x...", "to": "0x..." }
+{ "from": "0x...", "to": "0x...", "custody": { "ime_prezime": "...", "opis_radnje": "...", "signature_image": "data:image/png;base64,..." } }
 ```
 
 Odgovor za `destination_mode: "specific_address"` (uvek tačno ova tri polja, ništa više —
@@ -77,13 +78,22 @@ pokretanje se beleži u log aktivnosti pod već postojećom akcijom `path_findin
 
 Ruta `/pathfinding`, link „Pathfinding" u glavnom meniju.
 
-- Aktivan slučaj + birač evidencije (isti obrazac kao Graf stranica) — graf se učitava
-  **automatski**, bez boja po riziku (samo pronalaženje puta ne pokreće analitički pipeline,
-  pa tu nema potrebe za dijalogom za lanac dokaza; opciona taint provera ispod — §5 — ga
-  ipak koristi, jer ona TO jeste pokretanje analize).
+- Aktivan slučaj + birač evidencije (isti obrazac kao Graf stranica) — graf za PRIKAZ se
+  učitava **automatski**, bez boja po riziku i bez lanca dokaza (prost prikaz mreže, ništa
+  se ne pretražuje niti izvodi zaključak).
 - Polje **From** + padajući meni **Destination** (`Specific address` / `Nearest known CEX` /
   `Cash-out point` — poslednje onemogućeno, vidi §6) + polje **To** (samo kad je izabrano
   „Specific address") + dugme **FIND PATH**.
+- **From/To se mogu izabrati i klikom na sam graf**, kao alternativa ručnom kucanju adrese:
+  klik na čvor postavlja **From** (zeleni obrub), klik na drugi čvor postavlja **To** (roze
+  obrub, samo u režimu „Specific address"), a klik na već izabran čvor ga uklanja. Klik na
+  treći čvor kad su oba već popunjena počinje ispočetka (novi čvor postaje From). Obrub
+  ostaje vidljiv i preko isticanja pronađene putanje (§4 ispod), pa se uvek vidi i šta je
+  bilo polazno/krajnje biran čvor, i sama putanja.
+- Klik na **FIND PATH** (BFS pretraga puta koja stvarno pristupa transakcijama u obuhvaćenoj
+  evidenciji) otvara dijalog za lanac dokaza — razlog pristupa + potpis, isti obrazac kao
+  „Pokreni taint analizu"/„Analiziraj graf" — pre nego što se poziv uopšte pošalje backend-u
+  (vidi §5.2 za identičan dijalog na taint proveru puta, i napomenu ispod).
 - Kad je put pronađen: (za „Nearest known CEX") koja je adresa pronađena i njena oznaka,
   vertikalna lista adresa (`Address A ↓ Address B ↓ ...`), panel **„Path Analysis"** (§5), i
   na grafu se boji **samo** ta putanja (cijan, isti vizuelni jezik kao isticanje putanje u
@@ -126,9 +136,10 @@ je od TE konkretne, seed-ovane vrednosti stiglo do poslednje adrese, baš kroz o
 „Taint dilution" = Initial − Final.
 
 Pošto je ovo namerno pokretanje analize (isto kao „Pokreni taint analizu"/„Analiziraj
-graf"), prolazi kroz **isti dijalog za lanac dokaza** (`CustodyAccessDialogComponent`) —
-razlog pristupa + potpis, i upisuje se u `custody_log`/`custody_evidence_log` i u
-„Log aktivnosti" isto kao svako drugo pokretanje.
+graf"), prolazi kroz **isti obrazac dijaloga za lanac dokaza** (`CustodyAccessDialogComponent`,
+ODVOJENA instanca od one na FIND PATH dugmetu — dva različita čina pristupa, dva odvojena
+upisa sa svojim `run_id`) — razlog pristupa + potpis, i upisuje se u
+`custody_log`/`custody_evidence_log` i u „Log aktivnosti" isto kao svako drugo pokretanje.
 
 **Napomena:** `TaintAnalysisPlugin` podrazumevano DODATNO seeduje i svaku adresu sa crne
 liste (postojeće ponašanje, ne nešto uvedeno ovde) — ako neka adresa na putu slučajno
@@ -232,12 +243,17 @@ sender_address,recipient_address,amount,timestamp
 0xExchangeMule,0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be,200,2026-06-01T00:05:00Z
 ```
 
+**Napomena:** svaki klik na **FIND PATH** prvo otvara dijalog za lanac dokaza (razlog
+pristupa + potpis, §4) — u testovima ispod to je podrazumevano uz svaki „FIND PATH" korak,
+a ne ponavlja se u svakom testu posebno.
+
 **Test A — direktan put kroz jednog posrednika:**
 
 1. **Slučajevi** → izaberi „Demo: Sumnjiva laundering sema (hakovan novcanik)" (postaje aktivan slučaj).
 2. **Pathfinding** → u „Prikaz transakcija" izaberi `demo_taint_dilution.csv` (ili ostavi
    „Sve transakcije (kombinovano)").
-3. From: `0xThief`, To: `0xExitWallet` → **FIND PATH**.
+3. From: `0xThief`, To: `0xExitWallet` → **FIND PATH** → popuni dijalog za lanac dokaza
+   (razlog pristupa, potpis) → potvrdi.
 4. Očekivano: **2 skoka**, putanja `0xThief → 0xMixer → 0xExitWallet`. Na grafu su ta tri
    čvora i dve grane obojeni cijan, ostatak zatamnjen.
 5. U panelu „Path Analysis": **Initial amount 1000**, **Final amount 750**, i lista
@@ -377,9 +393,9 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
 - **Samo jedna putanja** — ne prikazuje alternativne/sve moguće puteve.
 - **Bez hronološke provere puta** — BFS ne proverava da li skokovi u putu stvarno mogu da
   predstavljaju JEDAN kontinuirani tok istog novca kroz vreme (videti §5.1).
-- **Taint provera je opciona i posebno pokretanje** — sâmo pronalaženje puta ostaje bez
-  custody gejtinga (nije analiza, samo pretraga strukture); dugme „Pokreni taint analizu za
-  ovu putanju" JESTE gejtovano (§5.2), isto kao svako drugo pokretanje analize u aplikaciji.
+- **Taint provera je opciona i posebno pokretanje** — dugme „Pokreni taint analizu za ovu
+  putanju" ima SVOJ dijalog za lanac dokaza (§5.2), odvojen od onog na FIND PATH dugmetu
+  (§4) — dva različita čina pristupa evidenciji, dva odvojena upisa u `custody_log`.
 
 ## 10. Gde je šta u kodu
 

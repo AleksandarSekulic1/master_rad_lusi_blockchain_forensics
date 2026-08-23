@@ -40,5 +40,19 @@
       "taint_trace": "da"
     },
     "registered_at": "2026-08-23T22:41:38.210900+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-WWPD-PNTE",
+    "content_hash": "5bcb3e664fb873d18380ef5d5ccde5e01ac26d096eecfafb06691c3fe4665c1f",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "hops": 2,
+      "destination_mode": "specific_address",
+      "taint_trace": "da"
+    },
+    "registered_at": "2026-08-23T23:02:20.411259+00:00"
   }
 ]

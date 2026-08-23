@@ -168,9 +168,10 @@ export class ApiService {
     destinationMode: PathfindingDestinationMode,
     to: string | null,
     evidence?: string | null,
+    custody?: TransactionCustodyEntry | null,
   ): Observable<CasePathfindingResult> {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
-    const body: Record<string, unknown> = { from, destination_mode: destinationMode };
+    const body: Record<string, unknown> = { from, destination_mode: destinationMode, custody: custody ?? undefined };
     if (destinationMode === 'specific_address') {
       body['to'] = to;
     }

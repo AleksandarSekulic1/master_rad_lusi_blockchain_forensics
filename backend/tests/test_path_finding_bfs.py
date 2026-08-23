@@ -262,6 +262,101 @@ class TestPathfindingRoute:
         assert excinfo.value.status_code == 400
 
 
+class TestPathfindingCustody:
+    """Lanac dokaza pri pokretanju pretrage (FIND PATH)
+
+    Pronalaženje puta je, kao i "Pokreni taint analizu"/"Analiziraj graf", namerno
+    pristupanje dokaznom materijalu radi forenzičkog nalaza - kad poziv nosi `custody`,
+    mora ostaviti trag u lancu dokaza po transakciji, isto kao analytics/run (vidi
+    _record_custody_access). Kad `custody` izostane (npr. direktan poziv iz testa/skripte
+    bez UI-a ispred), ponašanje ostaje kao pre - ništa se ne upisuje.
+    """
+
+    def test_custody_absent_writes_nothing_to_custody_log(self, tmp_path, monkeypatch):
+        """Bez 'custody' polja, ruta se ponaša kao ranije - nema upisa u lanac dokaza"""
+        from app.api.routes import cases as cases_routes
+        from app.evidence import custody_log
+
+        monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n')
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        request = cases_routes.CasePathfindingRequest(**{'from': '0xA', 'to': '0xB'})
+        cases_routes.run_case_pathfinding(
+            case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
+        )
+
+        assert custody_log.load_custody_entries(case_id='c1') == []
+
+    def test_custody_present_writes_one_row_per_evidence_transaction(self, tmp_path, monkeypatch):
+        """Sa 'custody' poljem, svaki red evidencije u obuhvatu dobija red u lancu dokaza"""
+        from app.api.routes import cases as cases_routes
+        from app.evidence import custody_log
+        from app.evidence.tx_identity import transaction_id
+
+        monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        rows = '0xA,0xB,100,2026-01-01T00:00:00Z\n0xB,0xC,90,2026-01-01T01:00:00Z\n'
+        csv_path = write_csv(tmp_path, rows)
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        request = cases_routes.CasePathfindingRequest(**{
+            'from': '0xA', 'to': '0xC',
+            'custody': {
+                'ime_prezime': 'Aleksandar Sekulić',
+                'opis_radnje': 'Provera puta ka 0xC',
+                'signature_image': 'data:image/png;base64,AAA',
+            },
+        })
+        result = cases_routes.run_case_pathfinding(
+            case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
+        )
+
+        assert result == {'found': True, 'path': ['0xA', '0xB', '0xC'], 'hops': 2}
+
+        entries = custody_log.load_custody_entries(case_id='c1')
+        assert len(entries) == 2
+        assert entries[0]['ime_prezime'] == 'Aleksandar Sekulić'
+        assert entries[0]['opis_radnje'] == 'Provera puta ka 0xC'
+        assert entries[0]['user'] == 'aco'
+        # Isti run_id na oba reda - genuinely jedan čin pristupa, ne dva odvojena.
+        assert entries[0]['run_id'] == entries[1]['run_id']
+
+    def test_custody_recorded_flag_appears_in_activity_log(self, tmp_path, monkeypatch):
+        """Log aktivnosti beleži da li je ovo pokretanje upisano i u lanac dokaza"""
+        from app.api.routes import cases as cases_routes
+        from app.evidence import audit_log, custody_log
+
+        monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
+        monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n')
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        request = cases_routes.CasePathfindingRequest(**{
+            'from': '0xA', 'to': '0xB',
+            'custody': {
+                'ime_prezime': 'Aleksandar Sekulić', 'opis_radnje': 'Provera',
+                'signature_image': 'data:image/png;base64,AAA',
+            },
+        })
+        cases_routes.run_case_pathfinding(
+            case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
+        )
+
+        entry = audit_log.load_audit_log_entries(case_id='c1')[0]
+        assert entry['details']['custody_recorded'] is True
+        assert entry['details']['custody_transaction_rows'] == 1
+        assert entry['details']['custody_evidence_files'] == 1
+
+
 class TestNearestCexMode:
     """Ruta POST /cases/{id}/pathfinding sa destination_mode 'nearest_cex'
 

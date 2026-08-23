@@ -379,6 +379,12 @@ class CasePathfindingRequest(BaseModel):
     # requesting it fails clearly (see run_case_pathfinding) instead of being silently
     # accepted and doing nothing useful.
     destination_mode: str = Field(default='specific_address')
+    # Same "all fields or none" custody gate as RunAnalyticsRequest.custody - optional at
+    # the API level (so direct/test callers without a UI in front of them still work), but
+    # the ONLY real caller (the Pathfinding page's "FIND PATH" button) always supplies one,
+    # since running a BFS search over the case's evidence is itself a deliberate access to
+    # every transaction it traverses, same as "Pokreni taint analizu"/"Analiziraj graf".
+    custody: TransactionCustodyEntry | None = None
 
 
 @router.post('/{case_id}/pathfinding')
@@ -405,7 +411,12 @@ def run_case_pathfinding(
     """
     case = _get_case_or_404(case_id)
     evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
-    _, graph = build_case_graph(evidence_paths)
+    # Built from per-evidence-file frames (like run_case_analytics) rather than via
+    # build_case_graph, so _record_custody_access can tag each row with the evidence file
+    # it came from - functionally identical graph, just exposes the per-file split too.
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
+    graph = build_transaction_graph(combined_frame)
 
     mode = request.destination_mode
     if mode == 'specific_address':
@@ -445,6 +456,7 @@ def run_case_pathfinding(
     # writes (see app/api/routes/graph.py) - reused rather than inventing a new action
     # name, so it picks up the existing label/colour/summary in Log aktivnosti and the
     # activity report for free, now with a case_id attached.
+    has_custody = bool(request.custody)
     write_audit_log(
         action='path_finding',
         user=str(current_user['username']),
@@ -457,7 +469,18 @@ def run_case_pathfinding(
             'evidence_scope': evidence or 'combined',
             'found': result['found'],
             'hops': result['hops'],
+            'custody_recorded': has_custody,
+            'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
+            'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,
         },
     )
+
+    if request.custody:
+        _record_custody_access(
+            case=case,
+            per_evidence_frames=per_evidence_frames,
+            custody=request.custody,
+            user=str(current_user['username']),
+        )
 
     return result

@@ -80,6 +80,14 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   protected searchError: string | null = null;
   protected result: CasePathfindingResult | null = null;
 
+  // --- FIND PATH samo je pronalaženje puta, ali BFS pretraga stvarno prolazi kroz
+  // transakcije evidencije da bi našla taj put - isto namerno pristupanje dokaznom
+  // materijalu kao "Pokreni taint analizu"/"Analiziraj graf", pa prolazi kroz isti dijalog
+  // za lanac dokaza (odvojena instanca od taint-trace dijaloga ispod - dva različita čina
+  // pristupa, dva odvojena upisa). ---
+  protected isFindPathDialogOpen = false;
+  protected findPathDialogError: string | null = null;
+
   // --- Path Analysis: taint trace for the found path, run on demand (see LANAC-DOKAZA.md
   // for why this goes through the same custody dialog as "Pokreni taint analizu"/
   // "Analiziraj graf" - it is the same kind of deliberate access to the evidence). ---
@@ -160,7 +168,86 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
   onDestinationModeChange(mode: PathfindingDestinationMode): void {
     this.destinationMode = mode;
+    if (mode !== 'specific_address') {
+      // 'To' has no meaning outside 'specific_address' (destination is resolved
+      // server-side) - clearing it here avoids leaving a "To" marker on the graph for a
+      // field that's no longer even shown.
+      this.clearToAddress();
+    }
     this.clearSearch();
+  }
+
+  // --- Selecting From/To by clicking nodes on the graph, as an alternative to typing an
+  // address by hand. First click on a node sets From; a second click on a DIFFERENT node
+  // sets To (only meaningful in 'specific_address' mode - other modes only ever use
+  // From); clicking an already-selected node again clears just that one. Clicking a third,
+  // still-unselected node when both slots are already taken starts a fresh selection from
+  // that node, same "click a new node to restart" rule as elsewhere in the app. ---
+
+  protected onNodeTap(nodeId: string): void {
+    if (this.fromAddress === nodeId) {
+      this.clearFromAddress();
+      return;
+    }
+    if (this.toAddress === nodeId) {
+      this.clearToAddress();
+      return;
+    }
+    if (!this.fromAddress) {
+      this.setFromAddress(nodeId);
+      return;
+    }
+    if (this.destinationMode === 'specific_address' && !this.toAddress) {
+      this.setToAddress(nodeId);
+      return;
+    }
+    this.clearToAddress();
+    this.setFromAddress(nodeId);
+  }
+
+  private setFromAddress(nodeId: string): void {
+    if (this.fromAddress) {
+      this.cy?.getElementById(this.fromAddress).removeClass('node-from');
+    }
+    this.fromAddress = nodeId;
+    this.cy?.getElementById(nodeId).addClass('node-from');
+  }
+
+  private clearFromAddress(): void {
+    if (this.fromAddress) {
+      this.cy?.getElementById(this.fromAddress).removeClass('node-from');
+    }
+    this.fromAddress = '';
+  }
+
+  private setToAddress(nodeId: string): void {
+    if (this.toAddress) {
+      this.cy?.getElementById(this.toAddress).removeClass('node-to');
+    }
+    this.toAddress = nodeId;
+    this.cy?.getElementById(nodeId).addClass('node-to');
+  }
+
+  private clearToAddress(): void {
+    if (this.toAddress) {
+      this.cy?.getElementById(this.toAddress).removeClass('node-to');
+    }
+    this.toAddress = '';
+  }
+
+  /** Re-applies the From/To markers after (re)rendering the graph (e.g. evidence switch) -
+   * the underlying cytoscape elements are rebuilt from scratch each time, so any classes
+   * added by a previous click are gone until this runs again. */
+  private applySelectionMarkers(): void {
+    if (!this.cy) {
+      return;
+    }
+    if (this.fromAddress) {
+      this.cy.getElementById(this.fromAddress).addClass('node-from');
+    }
+    if (this.toAddress) {
+      this.cy.getElementById(this.toAddress).addClass('node-to');
+    }
   }
 
   /** Plain, ungated graph - same as the Graf page's automatic preview. Pathfinding does
@@ -205,13 +292,28 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     return this.destinationMode !== 'specific_address' || this.toAddress.trim().length > 0;
   }
 
-  findPath(): void {
+  /** Opens the access-reason dialog before actually running the search - see the
+   * isFindPathDialogOpen field comment for why FIND PATH itself needs this now. */
+  openFindPathDialog(): void {
+    if (!this.activeCase?.id || !this.canSearch) {
+      return;
+    }
+    this.findPathDialogError = null;
+    this.isFindPathDialogOpen = true;
+  }
+
+  closeFindPathDialog(): void {
+    this.isFindPathDialogOpen = false;
+  }
+
+  confirmCustodyAndFindPath(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
     if (!caseId || !this.canSearch) {
       return;
     }
 
     this.isSearching = true;
+    this.findPathDialogError = null;
     this.searchError = null;
     this.result = null;
     // A fresh path invalidates any taint trace computed for the PREVIOUS path - otherwise
@@ -222,18 +324,21 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
     const to = this.destinationMode === 'specific_address' ? this.toAddress.trim() : null;
 
-    this.api.findCasePath(caseId, this.fromAddress.trim(), this.destinationMode, to, this.selectedEvidence).subscribe({
-      next: (result) => {
-        this.result = result;
-        this.isSearching = false;
-        this.applyPathHighlight(result.found ? result.path : null);
-      },
-      error: () => {
-        this.isSearching = false;
-        this.searchError = 'Pretraga puta nije uspela.';
-        this.applyPathHighlight(null);
-      },
-    });
+    this.api
+      .findCasePath(caseId, this.fromAddress.trim(), this.destinationMode, to, this.selectedEvidence, custody)
+      .subscribe({
+        next: (result) => {
+          this.result = result;
+          this.isSearching = false;
+          this.isFindPathDialogOpen = false;
+          this.applyPathHighlight(result.found ? result.path : null);
+        },
+        error: () => {
+          this.isSearching = false;
+          this.findPathDialogError = 'Pretraga puta nije uspela.';
+          this.applyPathHighlight(null);
+        },
+      });
   }
 
   private clearSearch(): void {
@@ -564,6 +669,26 @@ export class PathfindingComponent implements OnInit, OnDestroy {
           selector: 'edge.path-dimmed',
           style: { opacity: 0.06 },
         },
+        // Selecting From/To by clicking nodes on the graph (see onNodeTap) - border-*
+        // rather than outline-* so it layers independently on top of path-highlighted's
+        // outline (both a node's From/To marker and its path highlight can be visible at
+        // once once a path is found), same technique as taint-seed's gold border.
+        {
+          selector: 'node.node-from',
+          style: {
+            'border-width': 4,
+            'border-color': '#34d399',
+            'border-style': 'double',
+          },
+        },
+        {
+          selector: 'node.node-to',
+          style: {
+            'border-width': 4,
+            'border-color': '#f472b6',
+            'border-style': 'double',
+          },
+        },
     ];
 
     this.cy = cytoscape({
@@ -583,6 +708,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       } as any,
       style: graphStyles,
     });
+
+    this.cy.on('tap', 'node', (event) => {
+      this.onNodeTap(String(event.target.id()));
+    });
+
+    this.applySelectionMarkers();
   }
 
   fitWholeGraph(): void {

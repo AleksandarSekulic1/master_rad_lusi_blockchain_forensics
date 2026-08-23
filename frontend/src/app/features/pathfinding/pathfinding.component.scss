@@ -239,6 +239,30 @@ h3 {
   color: #8ea6c7;
 }
 
+.selection-hint {
+  margin: -0.3rem 0 0.4rem;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: #8ea6c7;
+}
+
+.selection-hint .mono-address {
+  padding: 0.05rem 0.35rem;
+  font-size: 0.68rem;
+}
+
+// Isti kod boja kao node.node-from/node.node-to na grafu (pathfinding.component.ts), da
+// legenda pored polja odgovara onome što se vidi na platnu.
+.node-from-swatch {
+  border-color: rgba(52, 211, 153, 0.55);
+  color: #34d399;
+}
+
+.node-to-swatch {
+  border-color: rgba(244, 114, 182, 0.55);
+  color: #f472b6;
+}
+
 .destination-resolved {
   margin: 0 0 0.6rem;
   padding: 0.55rem 0.7rem;
