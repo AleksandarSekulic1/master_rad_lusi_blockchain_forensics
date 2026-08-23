@@ -5,10 +5,11 @@ from uuid import uuid4
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
+from app.analytics.path_finding import bfs_shortest_path
 from app.analytics.plugins.manager import run_plugin_pipeline
 from app.analytics.seed_suggestion import suggest_seeds
 from app.api.deps import get_current_user
@@ -355,3 +356,56 @@ def run_case_analytics(
     payload['analytics'] = plugin_results
     payload['summary'] = graph_summary(graph)
     return payload
+
+
+class CasePathfindingRequest(BaseModel):
+    """Minimal first-version input: just the two addresses. Field names use Python-safe
+    identifiers with aliases for 'from'/'to' (reserved word), so the JSON body still looks
+    exactly like {"from": "0x...", "to": "0x..."} - populate_by_name also allows calling
+    code (tests, other Python) to pass from_address/to_address directly."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_address: str = Field(min_length=1, alias='from')
+    to_address: str = Field(min_length=1, alias='to')
+
+
+@router.post('/{case_id}/pathfinding')
+def run_case_pathfinding(
+    case_id: str,
+    request: CasePathfindingRequest,
+    evidence: str | None = None,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    """First version of Pathfinding Analysis: unweighted BFS shortest path of actual
+    transactions between two addresses, over the case's own graph (combined evidence, or
+    one file via ?evidence=) - same graph Taint Analysis and Graf already use.
+
+    Deliberately minimal: no CEX/cash-out detection, no weighting, no multiple paths -
+    see app.analytics.path_finding.bfs_shortest_path.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    _, graph = build_case_graph(evidence_paths)
+
+    result = bfs_shortest_path(graph, request.from_address, request.to_address)
+
+    # Same 'path_finding' action the old standalone /graph/path-finding route already
+    # writes (see app/api/routes/graph.py) - reused rather than inventing a new action
+    # name, so it picks up the existing label/colour/summary in Log aktivnosti and the
+    # activity report for free, now with a case_id attached.
+    write_audit_log(
+        action='path_finding',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        details={
+            'source_address': request.from_address,
+            'target_address': request.to_address,
+            'evidence_scope': evidence or 'combined',
+            'found': result['found'],
+            'hops': result['hops'],
+        },
+    )
+
+    return result

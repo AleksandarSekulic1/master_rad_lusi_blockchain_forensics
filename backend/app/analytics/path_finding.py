@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from typing import Any
 
 import networkx as nx
@@ -75,3 +76,49 @@ def find_transaction_paths(
         'path_count': len(paths),
         'paths': [_path_summary(graph, path) for path in paths],
     }
+
+
+def _reconstruct_path(parent: dict[str, str], source_address: str, target_address: str) -> list[str]:
+    path = [target_address]
+    while path[-1] != source_address:
+        path.append(parent[path[-1]])
+    path.reverse()
+    return path
+
+
+def bfs_shortest_path(graph: nx.DiGraph, source_address: str, target_address: str) -> dict[str, Any]:
+    """Plain breadth-first search for the shortest DIRECTED path of actual transactions
+    from source_address to target_address.
+
+    First version, intentionally minimal: unweighted, single path, no CEX/cash-out
+    detection, no scoring - see find_transaction_paths above for the richer sibling
+    (multiple strategies, multiple paths, per-hop amounts) once those are needed.
+
+    Directionality matters here: a graph edge only exists sender -> recipient, so walking
+    graph.successors() (rather than treating the graph as undirected) means a returned
+    path only ever follows hops where money actually moved that way - never against a
+    real transaction's direction.
+    """
+    if source_address not in graph or target_address not in graph:
+        return {'found': False, 'path': [], 'hops': 0}
+
+    if source_address == target_address:
+        return {'found': True, 'path': [source_address], 'hops': 0}
+
+    visited = {source_address}
+    parent: dict[str, str] = {}
+    queue: deque[str] = deque([source_address])
+
+    while queue:
+        current = queue.popleft()
+        for neighbor in graph.successors(current):
+            if neighbor in visited:
+                continue
+            visited.add(neighbor)
+            parent[neighbor] = current
+            if neighbor == target_address:
+                path = _reconstruct_path(parent, source_address, target_address)
+                return {'found': True, 'path': path, 'hops': len(path) - 1}
+            queue.append(neighbor)
+
+    return {'found': False, 'path': [], 'hops': 0}

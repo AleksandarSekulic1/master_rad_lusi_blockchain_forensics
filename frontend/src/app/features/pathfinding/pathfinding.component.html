@@ -1,0 +1,105 @@
+<div class="graph-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+    <button type="button" class="ghost-button" (click)="loadGraph()" [disabled]="!activeCase || isLoadingGraph">
+      {{ isLoadingGraph ? 'Učitavanje...' : 'Osveži graf' }}
+    </button>
+  </div>
+
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+
+  <p class="case-graph-error" *ngIf="graphError">{{ graphError }}</p>
+
+  <div class="graph-header">
+    <div>
+      <p class="panel-kicker">Pathfinding Analysis</p>
+      <h2>Kojim putem se sredstva kreću između dve adrese?</h2>
+      <p>
+        Za razliku od Taint analize (koja prati kako se zaprljana sredstva PROPAGIRAJU kroz celu mrežu), ovde se traži
+        konkretan put stvarnih transakcija između dve tačno određene adrese.
+      </p>
+    </div>
+    <div class="stats" *ngIf="graph">
+      <span>{{ graph.nodes.length }} čvorova</span>
+      <span>{{ graph.links.length }} veza</span>
+      <button type="button" class="ghost-button" (click)="fitWholeGraph()">Prikaži ceo graf</button>
+    </div>
+  </div>
+
+  <div class="graph-content">
+    <div class="graph-canvas-wrap">
+      <div #pathCanvas class="graph-canvas"></div>
+    </div>
+
+    <aside class="pathfinding-panel">
+      <p class="panel-kicker">Pretraga puta</p>
+      <h3>Pronađi put</h3>
+
+      <label class="address-field">
+        From
+        <input
+          type="text"
+          [(ngModel)]="fromAddress"
+          placeholder="0x..."
+          (keydown.enter)="findPath()"
+          [disabled]="!activeCase"
+        />
+      </label>
+
+      <label class="address-field">
+        To
+        <input
+          type="text"
+          [(ngModel)]="toAddress"
+          placeholder="0x..."
+          (keydown.enter)="findPath()"
+          [disabled]="!activeCase"
+        />
+      </label>
+
+      <button type="button" class="primary-button find-path-button" (click)="findPath()" [disabled]="!canSearch">
+        {{ isSearching ? 'Pretraga...' : 'FIND PATH' }}
+      </button>
+
+      <p class="error-inline" *ngIf="searchError">{{ searchError }}</p>
+
+      <ng-container *ngIf="result">
+        <div class="path-result" *ngIf="result.found; else notFound">
+          <p class="hop-count">{{ result.hops }} {{ result.hops === 1 ? 'skok' : 'skoka' }} između adresa</p>
+          <ol class="path-list">
+            <li *ngFor="let address of result.path; let last = last">
+              <span class="mono-address">{{ address }}</span>
+              <span class="path-arrow" *ngIf="!last">↓</span>
+            </li>
+          </ol>
+        </div>
+        <ng-template #notFound>
+          <p class="no-path-message">
+            Putanja nije pronađena — u izabranoj evidenciji ne postoji niz transakcija koji vodi od adrese <strong>From</strong>
+            do adrese <strong>To</strong>.
+          </p>
+        </ng-template>
+      </ng-container>
+
+      <p class="empty-hint" *ngIf="!result && !searchError">
+        Unesi obe adrese i klikni "FIND PATH" da vidiš najkraći put stvarnih transakcija između njih.
+      </p>
+    </aside>
+  </div>
+</div>

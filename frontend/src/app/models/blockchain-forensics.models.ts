@@ -201,6 +201,16 @@ export interface PathFindingResponse {
   paths: PathSummary[];
 }
 
+/** Result of the case-scoped Pathfinding Analysis endpoint (POST /cases/{id}/pathfinding)
+ * - first version, plain BFS. Deliberately separate from PathFindingResponse above, which
+ * describes the older, unrelated standalone /graph/path-finding endpoint (different
+ * shape, works off a raw CSV file rather than a case). */
+export interface CasePathfindingResult {
+  found: boolean;
+  path: string[];
+  hops: number;
+}
+
 export interface AnalyticsResponse extends NodeLinkGraphResponse {
   analytics: Record<string, unknown>;
   summary: {

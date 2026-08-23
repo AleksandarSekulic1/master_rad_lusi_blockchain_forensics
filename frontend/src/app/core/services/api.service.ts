@@ -10,6 +10,7 @@ import {
   AnalyticsResponse,
   AuthUser,
   Case,
+  CasePathfindingResult,
   CaseStatus,
   CaseSummary,
   CreateCaseRequest,
@@ -152,6 +153,13 @@ export class ApiService {
 
   findPaths(request: PathFindingRequest): Observable<PathFindingResponse> {
     return this.http.post<PathFindingResponse>(`${this.apiUrl}/api/v1/graph/path-finding`, request);
+  }
+
+  /** Pathfinding Analysis (case-scoped, first version - plain BFS). Separate from
+   * findPaths() above, which hits the older, unrelated standalone endpoint. */
+  findCasePath(caseId: string, from: string, to: string, evidence?: string | null): Observable<CasePathfindingResult> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.post<CasePathfindingResult>(`${this.apiUrl}/api/v1/cases/${caseId}/pathfinding`, { from, to }, { params });
   }
 
   listUsers(): Observable<{ users: AuthUser[] }> {
