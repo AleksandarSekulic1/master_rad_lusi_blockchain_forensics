@@ -339,6 +339,31 @@
   color: #eef4ff;
 }
 
+/* --- Timezone heuristic: visually set apart from the 4 observed-fact tiles above (this
+   one is an inference, not a raw count) - a top divider plus a muted disclaimer, same
+   restrained language as the rest of the panel, no new card style introduced. --- */
+
+.timezone-section {
+  margin-top: 0.3rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.timezone-kicker {
+  margin: 0;
+}
+
+.timezone-disclaimer {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: #8ea6c7;
+}
+
 @media (max-width: 60rem) {
   .behavioral-content {
     grid-template-columns: minmax(0, 1fr);

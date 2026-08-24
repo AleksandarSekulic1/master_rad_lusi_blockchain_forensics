@@ -125,6 +125,33 @@
           <span class="stat-label">Active period</span>
           <span class="stat-value">{{ activePeriodLabel ?? 'n/a' }}</span>
         </div>
+
+        <!-- Heuristic timezone/region compatibility - visually separated from the four
+             observed-fact tiles above, since this one is an INFERENCE, not a raw count.
+             Never claims a location; see BEHAVIORAL-ANALIZA.md §7 for the methodology and
+             confirmation there is no "vlasnik se nalazi u..." phrasing anywhere here. -->
+        <div class="timezone-section" *ngIf="result.timezone_estimate as tz">
+          <p class="panel-kicker timezone-kicker">Timezone Heuristic</p>
+
+          <ng-container *ngIf="tz.available; else timezoneUnavailable">
+            <div class="stat-tile">
+              <span class="stat-label">Possible time zones</span>
+              <span class="stat-value">{{ tz.utc_offset_range_label }}</span>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">Possible region{{ (tz.possible_regions?.length ?? 0) > 1 ? 's' : '' }}</span>
+              <span class="stat-value">{{ tz.possible_regions?.join(', ') }}</span>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">Confidence</span>
+              <span class="stat-value">{{ tz.confidence }}</span>
+            </div>
+            <p class="timezone-disclaimer">{{ tz.disclaimer }}</p>
+          </ng-container>
+          <ng-template #timezoneUnavailable>
+            <p class="timezone-disclaimer">{{ tz.message }}</p>
+          </ng-template>
+        </div>
       </aside>
     </div>
   </ng-container>

@@ -16,8 +16,9 @@ jedne adrese.
 | [4. Frontend stranica](#4-frontend-stranica) | šta se prikazuje i kako |
 | [5. Heatmap vizuelizacija](#5-heatmap-vizuelizacija) | boje, tabela-dvojnik, pristupačnost |
 | [6. Testiranje korak po korak](#6-testiranje-korak-po-korak) | automatski i ručni testovi, sa tačnim brojevima |
-| [7. Ograničenja prve verzije](#7-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
-| [8. Gde je šta u kodu](#8-gde-je-šta-u-kodu) | putanje |
+| [7. Heuristička procena vremenske zone i regiona](#7-heuristička-procena-vremenske-zone-i-regiona) | opcioni dodatak — kompatibilan opseg UTC offseta, NIKAD tvrdnja o lokaciji |
+| [8. Ograničenja prve verzije](#8-ograničenja-prve-verzije) | šta namerno nedostaje, zašto |
+| [9. Gde je šta u kodu](#9-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -144,8 +145,11 @@ Ruta `/behavioral`, link **„Behavioral"** u glavnom meniju.
   bez dodatnih kartica/filtera, po zahtevu da stranica ostane jednostavna.
 - `Active period` **nije backend polje** — računa se na frontend-u kao raspon od
   najranijeg do najkasnijeg UTC sata sa bilo kakvom aktivnošću (agregirano preko svih
-  dana), iz `hourly_distribution` koji stranica već ima učitan. Vidi §7 za posledicu ove
+  dana), iz `hourly_distribution` koji stranica već ima učitan. Vidi §8 za posledicu ove
   definicije (jedna izdvojena transakcija ume znatno da proširi prikazani raspon).
+- Ispod „Active period", ako backend proceni da ima dovoljno podataka, prikazuje se i
+  **Timezone Heuristic** blok (§7) — vizuelno odvojen isprekidanom linijom, jer je to
+  *procena*, ne izmerena činjenica kao ostale četiri kartice.
 
 ## 5. Heatmap vizuelizacija
 
@@ -243,18 +247,208 @@ sadržajem (ne izračunat ručno), uključujući i kroz stvarno seed-ovanu evide
      2026-08-25 utorak (dan te dodate transakcije).
    - Ukupan zbir u „Prikaži kao tabelu": **11**.
 
-## 7. Ograničenja prve verzije
+## 7. Heuristička procena vremenske zone i regiona
+
+Dodatak na osnovnu Behavioral Analysis (§1–§6): pokušaj da se iz **celog obrasca**
+aktivnosti (ne jedne transakcije) proceni koji opseg UTC vremenskih zona je *kompatibilan*
+sa time da je vlasnik adrese budan/aktivan tokom te aktivnosti — i koji široki region(i)
+tim zonama odgovaraju.
+
+### 7.0 Šta ovo NIJE — pročitati pre svega ostalog
+
+**Blockchain timestamp sam po sebi nije dokaz fizičke lokacije.** Ova funkcija nikad ne
+tvrdi gde se vlasnik adrese nalazi — samo da li je vremenski obrazac **aritmetički
+kompatibilan** sa time da je neko budan u datoj zoni. To je tvrdnja o satu, ne o geografiji
+ili identitetu.
+
+Zato:
+- Svaki dostupan rezultat nosi **`disclaimer`** polje, doslovno: *„Vremenski obrazac
+  predstavlja heuristički indikator i ne predstavlja dokaz stvarne lokacije vlasnika
+  adrese."* — backend ga generiše, frontend ga **uvek** prikazuje uz procenu, nikad ga ne
+  izostavlja.
+- Formulacija je uvek **„Obrazac aktivnosti je kompatibilan sa regionom X"** (ili prikaz
+  polja „Possible region(s)"), **nikad** „Vlasnik se nalazi u X" — ni u kodu, ni u
+  komentarima, ni u UI stringovima (§7.4 ima automatski test koji to proverava).
+
+### 7.1 Metod
+
+`backend/app/analytics/timezone_heuristics.py` → `estimate_timezone_compatibility(hourly_distribution, total_transactions)`
+
+Radi isključivo nad `hourly_distribution` koji `analyze_time_of_day()` već izračuna (§2) —
+ne čita graf ponovo, ne parsira nijedan timestamp iznova.
+
+**Ideja:** čovek po pravilu ne transakcioniše dok spava. Za svaki kandidat UTC offset
+(cela vrednost, `-11` do `+12`) izračuna se koliki deo adresinih transakcija bi, uz taj
+offset, pao u „noćne" lokalne sate **00:00–05:59** (`NIGHT_LOCAL_HOURS`). Offset je
+**kompatibilan** samo ako je taj udeo ≤ **15%** (`NIGHT_FRACTION_COMPATIBILITY_THRESHOLD`)
+— potpuno ravnomerna (nasumična) aktivnost bi već stavila ~25% u bilo koji 6-časovni
+prozor, pa 15% zahteva stvaran obrazac, ne slučajnost.
+
+Prikazani opseg je **omotač** (najmanji→najveći kompatibilan offset), a „Possible
+region(s)" je unija regiona svih kompatibilnih offseta iz fiksne, grube tabele
+(`REGIONS_BY_UTC_OFFSET` — samo kontinent/širi region, nikad država; jedan offset ume da
+mapira na više regiona, npr. UTC+2 na Evropu/Afriku/Bliski istok, jer to geografski
+stvarno tako stoji).
+
+**Prag za pokušaj procene:** ispod **8 transakcija** (`MIN_TRANSACTIONS_FOR_ESTIMATE`) ne
+pokušava se ništa — sa premalo podataka, nizak udeo „noćne" aktivnosti je lako slučajnost.
+
+**Poverenje** (`confidence`) zavisi od DVA faktora, ne jednog:
+
+| Nivo | Uslov |
+|---|---|
+| **High** | najbolji udeo „noćne" aktivnosti ≤ 5% **I** ≥ 20 transakcija |
+| **Medium** | najbolji udeo ≤ 10% **I** ≥ 12 transakcija |
+| **Low** | sve ostalo što je uopšte dostupno (prošlo prag kompatibilnosti od 15%) |
+
+Čist obrazac iz samo 9 transakcija dobija **Low**, ne High — mali uzorak ostaje mali uzorak
+bez obzira koliko „čisto" izgleda.
+
+### 7.2 Dva različita razloga za „nema procene" — ista poruka
+
+Zahtev je tražio **jedan** string za „nema dovoljno podataka", pa oba slučaja ispod vraćaju
+tačno `"Insufficient data for reliable timezone inference."` (backend ipak čuva `reason` za
+testove/dijagnostiku, UI ga ne čita):
+
+1. `insufficient_transactions` — manje od 8 transakcija ukupno.
+2. `no_compatible_offset` — 8 ili više transakcija, ali NIJEDAN offset ne prolazi prag od
+   15% (npr. aktivnost ravnomerno raspoređena po sva 24 sata — nema signala, ne nedostaju
+   podaci per se, ali rezultat je isti: nema pouzdane procene).
+
+### 7.3 API dopuna
+
+Isti odgovor kao §3, sa jednim dodatim poljem — `timezone_estimate`:
+
+```json
+{
+  "...": "... (sva polja iz §3 nepromenjena) ...",
+  "timezone_estimate": {
+    "available": true,
+    "utc_offset_min": 5,
+    "utc_offset_max": 12,
+    "utc_offset_range_label": "UTC+5 – UTC+12",
+    "possible_regions": ["Asia", "Oceania"],
+    "confidence": "Medium",
+    "best_night_fraction": 0.0,
+    "disclaimer": "Vremenski obrazac predstavlja heuristički indikator i ne predstavlja dokaz stvarne lokacije vlasnika adrese."
+  }
+}
+```
+ili, kad nema pouzdane procene:
+```json
+{ "timezone_estimate": { "available": false, "reason": "insufficient_transactions", "message": "Insufficient data for reliable timezone inference." } }
+```
+
+### 7.4 UI prikaz
+
+Ispod četiri postojeće statistike (§4), odvojeno isprekidanom linijom (jer je ovo procena,
+ne izmerena činjenica):
+
+```
+┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+TIMEZONE HEURISTIC
+
+Possible time zones     UTC+5 – UTC+12
+Possible regions        Asia, Oceania
+Confidence               Medium
+
+Vremenski obrazac predstavlja heuristički indikator i
+ne predstavlja dokaz stvarne lokacije vlasnika adrese.
+```
+
+Kad `available` nije `true`, umesto tri polja prikazuje se samo `"Insufficient data for
+reliable timezone inference."` — bez praznih/nula kartica.
+
+### 7.5 Testiranje
+
+**Automatski testovi:**
+```bash
+python -m pytest backend/tests/test_timezone_heuristics.py -v
+```
+14 testova: prag od 8 transakcija, ravnomerna aktivnost (nema signala) → oba puta tačno
+propisana poruka, formatiranje opsega (bez crte kad je jedan offset, sa crtom kad su
+različiti, negativan predznak), više kompatibilnih regiona bez duplikata, `disclaimer`
+prisutan u svakom dostupnom rezultatu, i eksplicitna provera da nijedan string koji
+funkcija vraća ne sadrži „nalazi se"/„located in".
+
+**Ručna provera kroz UI — zašto `0xNightOwlWallet` (§6.2) NIJE dobar primer ovde:**
+
+Njegov obrazac je namerno uzak (sve u 3 sata, 02:00–04:00 UTC) da bi demonstrirao „Active
+period" omotač (§6.2 Test B). Za procenu vremenske zone to je **prezak** signal — toliko
+uzak prozor aktivnosti izbegava „noćni" prozor gotovo SVAKOG mogućeg offseta, pa rezultat
+ispadne `UTC-11 – UTC+12` sa `confidence: Low` — tehnički tačno, ali beskorisno široko.
+**Ovo je i sâmo namerna, dokumentovana demonstracija ograničenja:** uzak obrazac aktivnosti
+daje slab signal za ovu heuristiku, čak i kad savršeno izbegava „noć".
+
+Zato treći demo dokaz (isti seed script, `backend/scripts/seed_demo_behavioral_evidence.py`)
+dodaje širi, realističniji obrazac:
+
+**`demo_timezone_estimate.csv`** (13 redova, adresa `0xAsiaHoursWallet`) — po jedna
+transakcija svakog UTC sata od 00 do 12 (13 uzastopnih sati, bez rupa), raspoređeno preko
+svih 7 dana iste nedelje:
+```
+sender_address,recipient_address,amount,timestamp
+0xAsiaHoursWallet,0xExchangeCounterparty,20,2026-08-24T00:10:00Z
+0xPeerWalletA,0xAsiaHoursWallet,15,2026-08-24T01:20:00Z
+0xAsiaHoursWallet,0xExchangeCounterparty,25,2026-08-25T02:05:00Z
+0xAsiaHoursWallet,0xPeerWalletB,10,2026-08-25T03:40:00Z
+0xPeerWalletA,0xAsiaHoursWallet,30,2026-08-26T04:15:00Z
+0xAsiaHoursWallet,0xExchangeCounterparty,18,2026-08-26T05:30:00Z
+0xAsiaHoursWallet,0xPeerWalletB,22,2026-08-26T06:50:00Z
+0xPeerWalletA,0xAsiaHoursWallet,12,2026-08-27T07:05:00Z
+0xAsiaHoursWallet,0xExchangeCounterparty,28,2026-08-27T08:45:00Z
+0xAsiaHoursWallet,0xPeerWalletB,16,2026-08-28T09:10:00Z
+0xPeerWalletA,0xAsiaHoursWallet,24,2026-08-28T10:25:00Z
+0xAsiaHoursWallet,0xExchangeCounterparty,19,2026-08-29T11:35:00Z
+0xAsiaHoursWallet,0xPeerWalletB,21,2026-08-30T12:50:00Z
+```
+
+Svaki broj ispod je stvarno izračunat kroz pravi `GET
+/cases/46ae7f91db9b/behavioral-analysis` poziv (prijavljen kao admin), ne ručno.
+
+**Test — kompatibilan opseg preko realističnijeg obrasca:**
+
+1. **Slučajevi** → „Demo: Sumnjiva laundering sema (hakovan novcanik)".
+2. **Behavioral** → „Prikaz transakcija" → `demo_timezone_estimate.csv`.
+3. Address: `0xAsiaHoursWallet` → **ANALYZE**.
+4. Očekivano, ispod četiri osnovne statistike:
+   - **Possible time zones: UTC+5 – UTC+12**
+   - **Possible regions: Asia, Oceania** — DVA regiona, ne jedan, jer opseg uključuje i
+     offsete gde ta dva regiona genuinski koegzistiraju (npr. UTC+8 je i istočna Azija i
+     zapadna Australija) — namerna demonstracija zahteva „ako postoji više kompatibilnih
+     regiona, prikaži sve".
+   - **Confidence: Medium** (13 transakcija, najbolji udeo „noćne" aktivnosti 0% — prolazi
+     Medium prag od ≥12 transakcija, ali ne i High prag od ≥20).
+   - Napomena o heurističkom karakteru procene, vidljiva ispod sve tri vrednosti.
+5. „Prikaz transakcija" → **„Sve transakcije (kombinovano)"**. Address: `0xCoConspirator1`
+   (iz `demo_case_cluster.csv` — tačno **1** transakcija u celoj evidenciji ovog slučaja) →
+   **ANALYZE**.
+6. Očekivano: `total_transactions: 1` (osnovne 4 statistike i dalje rade — vidi §2), ali
+   umesto tri Timezone Heuristic polja prikazuje se samo **„Insufficient data for reliable
+   timezone inference."**
+
+## 8. Ograničenja prve verzije
 
 Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba):
 
 - **Samo UTC** — nema zaključivanja vremenske zone ili kontinenta iz obrasca aktivnosti
-  (§2.2). Analitičar koji radi u drugoj zoni mora sam da preračuna „lokalno" vreme.
+  (§2.2) za osnovnu analizu; §7 dodaje jednu heurističku PROCENU kompatibilnog opsega, ne
+  pouzdano zaključivanje, i nikad ne tvrdi lokaciju (§7.0).
 - **„Active period" je omotač, ne procena tipičnog prozora** — najraniji→najkasniji UTC sat
   sa BILO KAKVOM aktivnošću (agregirano preko svih dana), pa ga jedna usamljena
   transakcija van glavnog obrasca može znatno raširiti — demonstrirano konkretno u §6.2
   Test B (uzan 02:00–04:00 postaje 02:00–14:00 zbog JEDNE dodatne transakcije). Nije
   klasterovanje niti "gustina po prozoru" — to bi bila druga, složenija metrika.
   Trenutno je jedina agregacija po satu-dana, ne i „najgušći N-časovni prozor".
+- **Timezone heuristika je namerno gruba** (§7.1): samo cele UTC vrednosti (nema
+  polučasovnih zona kao Indija UTC+5:30), prag od 15%/8 transakcija je jedna razumna
+  kalibracija (ne jedina moguća), a prikazani opseg je uvek KONTINUALAN omotač
+  najmanji→najveći kompatibilan offset — čak i kad bi tehnički postojala „rupa" unutar tog
+  opsega, ona se ne prikazuje posebno. Region-po-offset tabela je gruba geografska
+  aproksimacija (kontinent/širi region), nikad država.
+- **Uzak obrazac aktivnosti daje slab signal za timezone heuristiku** — demonstrirano u
+  §7.5 (`0xNightOwlWallet`, 3-časovni prozor → `Low` pouzdanost, opseg skoro ceo globus).
+  Heuristika radi najbolje sa širim, realističnijim „radni dan" obrascem.
 - **Bez unakrsnog poređenja sa ostalim analitičkim modulima** — ne kombinuje se
   automatski sa Taint/anomaly_detection nalazima (npr. „da li je ovaj obrazac aktivnosti
   neuobičajen za adrese slične ove"). Heatmap pokazuje sirovu vremensku raspodelu, ništa
@@ -268,17 +462,18 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
   pokreće se nova obrada nad evidencijom, pa se ne beleži u `custody_log` (za razliku od
   „Pokreni taint analizu"/„FIND PATH").
 
-## 8. Gde je šta u kodu
+## 9. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
 | Algoritam (bucketing, statistike) | `backend/app/analytics/behavioral_analysis.py` (`analyze_time_of_day`) |
+| Timezone/region heuristika (§7) | `backend/app/analytics/timezone_heuristics.py` (`estimate_timezone_compatibility`) |
 | Ruta | `backend/app/api/routes/cases.py` (`get_case_behavioral_analysis`) |
-| Testovi | `backend/tests/test_behavioral_analysis.py` |
-| Demo podaci (§6.2) | `backend/scripts/seed_demo_behavioral_evidence.py` |
+| Testovi | `backend/tests/test_behavioral_analysis.py`, `backend/tests/test_timezone_heuristics.py` |
+| Demo podaci (§6.2, §7.5) | `backend/scripts/seed_demo_behavioral_evidence.py` |
 | Frontend stranica | `frontend/src/app/features/behavioral-analysis/` |
 | API poziv | `frontend/src/app/core/services/api.service.ts` (`getBehavioralAnalysis`) |
-| Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`BehavioralAnalysisResult`, `BehavioralAnalysisStats`, `BehavioralAnalysisPeakPeriod`) |
+| Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`BehavioralAnalysisResult`, `BehavioralAnalysisStats`, `BehavioralAnalysisPeakPeriod`, `TimezoneEstimate`) |
 
 **Ruta:**
 

@@ -17,7 +17,7 @@ from app.services.case_management import append_evidence, get_case, require_open
 DEMO_CASE_ID = '46ae7f91db9b'
 
 # Two files, same address (0xNightOwlWallet), so the Behavioral Analysis walkthrough
-# (BEHAVIORAL-ANALIZA.md §7.2) can show BOTH a clean result and the "one outlier widens
+# (BEHAVIORAL-ANALIZA.md §6.2) can show BOTH a clean result and the "one outlier widens
 # Active period" limitation, using the app's own evidence picker rather than two uploads:
 #
 # 1. demo_behavioral_analysis.csv (10 rows) - a tight nocturnal pattern, entirely inside
@@ -27,9 +27,9 @@ DEMO_CASE_ID = '46ae7f91db9b'
 #    transaction for the same address. Selecting "Sve transakcije (kombinovano)" (which
 #    always includes every evidence file in the case) pulls this row in too, and Active
 #    period widens from 02:00-04:00 to 02:00-14:00 - demonstrating that it is an envelope
-#    over ALL activity, not a "typical window" estimate (see BEHAVIORAL-ANALIZA.md §9).
+#    over ALL activity, not a "typical window" estimate (see BEHAVIORAL-ANALIZA.md §8).
 #
-# Every number in BEHAVIORAL-ANALIZA.md §7.2 was computed by actually running
+# Every number in BEHAVIORAL-ANALIZA.md §6.2 was computed by actually running
 # analyze_time_of_day() over this exact content, not by hand - see the docstring there.
 CORE_FILE_NAME = 'demo_behavioral_analysis.csv'
 CORE_CSV_CONTENT = (
@@ -50,6 +50,31 @@ OUTLIER_FILE_NAME = 'demo_behavioral_analysis_outlier.csv'
 OUTLIER_CSV_CONTENT = (
     'sender_address,recipient_address,amount,timestamp\n'
     '0xNightOwlWallet,0xExchangeCounterparty,10,2026-08-25T14:00:00Z\n'
+)
+
+# Third file, different address (0xAsiaHoursWallet) - for the timezone-estimate heuristic
+# (BEHAVIORAL-ANALIZA.md §7), which needs a WIDER, more realistic waking-hours pattern than
+# 0xNightOwlWallet's tight 3-hour window above. That narrow a window is compatible with
+# almost every offset (nothing to discriminate with - see §7's own worked example of that
+# failure mode); one transaction per UTC hour, 00 through 12 (13 hours, no gaps), across
+# all 7 days of the same week, is comfortably above MIN_TRANSACTIONS_FOR_ESTIMATE and
+# actually excludes enough offsets to produce a real, narrower-than-"everything" range.
+TIMEZONE_FILE_NAME = 'demo_timezone_estimate.csv'
+TIMEZONE_CSV_CONTENT = (
+    'sender_address,recipient_address,amount,timestamp\n'
+    '0xAsiaHoursWallet,0xExchangeCounterparty,20,2026-08-24T00:10:00Z\n'
+    '0xPeerWalletA,0xAsiaHoursWallet,15,2026-08-24T01:20:00Z\n'
+    '0xAsiaHoursWallet,0xExchangeCounterparty,25,2026-08-25T02:05:00Z\n'
+    '0xAsiaHoursWallet,0xPeerWalletB,10,2026-08-25T03:40:00Z\n'
+    '0xPeerWalletA,0xAsiaHoursWallet,30,2026-08-26T04:15:00Z\n'
+    '0xAsiaHoursWallet,0xExchangeCounterparty,18,2026-08-26T05:30:00Z\n'
+    '0xAsiaHoursWallet,0xPeerWalletB,22,2026-08-26T06:50:00Z\n'
+    '0xPeerWalletA,0xAsiaHoursWallet,12,2026-08-27T07:05:00Z\n'
+    '0xAsiaHoursWallet,0xExchangeCounterparty,28,2026-08-27T08:45:00Z\n'
+    '0xAsiaHoursWallet,0xPeerWalletB,16,2026-08-28T09:10:00Z\n'
+    '0xPeerWalletA,0xAsiaHoursWallet,24,2026-08-28T10:25:00Z\n'
+    '0xAsiaHoursWallet,0xExchangeCounterparty,19,2026-08-29T11:35:00Z\n'
+    '0xAsiaHoursWallet,0xPeerWalletB,21,2026-08-30T12:50:00Z\n'
 )
 
 
@@ -114,9 +139,10 @@ def _seed_file(case: dict[str, object], file_name: str, csv_content: str) -> Non
 def main() -> None:
     require_open_case(DEMO_CASE_ID)
     _seed_file(get_case(DEMO_CASE_ID), CORE_FILE_NAME, CORE_CSV_CONTENT)
-    # Re-fetch: _seed_file may have just appended the core file above, and the evidence
-    # list on the in-memory `case` dict would otherwise be stale for this second call.
+    # Re-fetch before each call: _seed_file may have just appended the previous file, and
+    # the evidence list on an already-fetched `case` dict would otherwise be stale.
     _seed_file(get_case(DEMO_CASE_ID), OUTLIER_FILE_NAME, OUTLIER_CSV_CONTENT)
+    _seed_file(get_case(DEMO_CASE_ID), TIMEZONE_FILE_NAME, TIMEZONE_CSV_CONTENT)
 
 
 if __name__ == '__main__':

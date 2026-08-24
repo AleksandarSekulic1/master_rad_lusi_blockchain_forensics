@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.analytics.behavioral_analysis import analyze_time_of_day
 from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
+from app.analytics.timezone_heuristics import estimate_timezone_compatibility
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
 from app.analytics.plugins.manager import run_plugin_pipeline
@@ -203,6 +204,11 @@ def get_case_behavioral_analysis(
         result = analyze_time_of_day(graph, address.strip())
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # Heuristic UTC-offset/region compatibility estimate, layered on top of the raw
+    # hourly_distribution analyze_time_of_day() already computed - see
+    # timezone_heuristics.py's module docstring for what this claim is (and is not).
+    result['timezone_estimate'] = estimate_timezone_compatibility(result['hourly_distribution'], result['total_transactions'])
 
     result['case_id'] = case_id
     result['evidence'] = evidence

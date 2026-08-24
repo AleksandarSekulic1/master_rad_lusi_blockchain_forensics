@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-07-16T16:48:06.761081+00:00",
-  "updated_at": "2026-08-24T00:03:55.312325+00:00",
+  "updated_at": "2026-08-24T00:19:05.387027+00:00",
   "evidence": [
     {
       "file_name": "demo_case.csv",
@@ -56,9 +56,18 @@
       "sha256": "dfd347298b06c13da48a1b7a2e3cd13638b70948c0e2a5de1e5f8ed66242aef8",
       "analyst": "admin",
       "currency": null
+    },
+    {
+      "file_name": "demo_timezone_estimate.csv",
+      "stored_name": "20260824_001905_381531_demo_timezone_estimate.csv",
+      "imported_at": "2026-08-24T00:19:05.387027+00:00",
+      "size_bytes": 837,
+      "sha256": "8c9ec9f24830dc13379a516f0ad901efb75ffa41ab87dca55f7e55ee11f11ace",
+      "analyst": "admin",
+      "currency": null
     }
   ],
-  "evidence_count": 6,
-  "total_size_bytes": 2262,
-  "last_imported_at": "2026-08-24T00:03:55.312325+00:00"
+  "evidence_count": 7,
+  "total_size_bytes": 3099,
+  "last_imported_at": "2026-08-24T00:19:05.387027+00:00"
 }

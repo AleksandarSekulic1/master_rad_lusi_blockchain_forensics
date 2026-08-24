@@ -245,6 +245,28 @@ export interface BehavioralAnalysisStats {
   total_analyzed_transactions: number;
 }
 
+/** Heuristic UTC-offset-range / broad-region compatibility estimate, layered on top of
+ * BehavioralAnalysisResult.hourly_distribution. NEVER a location claim - see `disclaimer`,
+ * which is present on every `available: true` result and MUST be rendered alongside it.
+ * `available: false` covers two distinct backend reasons (too few transactions, or enough
+ * transactions but no offset's pattern clears the compatibility bar) that both surface the
+ * same `message` - the UI only ever needs to branch on `available`. */
+export interface TimezoneEstimate {
+  available: boolean;
+  /** Only present when `available` is true. */
+  utc_offset_min?: number;
+  utc_offset_max?: number;
+  /** Pre-formatted "UTC+5 – UTC+8" (or "UTC+6" alone when the range is a single offset) - render as-is, do not reformat. */
+  utc_offset_range_label?: string;
+  /** Broad regions only (continent-level) - never a country, never phrased as "located in". */
+  possible_regions?: string[];
+  confidence?: 'Low' | 'Medium' | 'High';
+  /** Always present when `available` is true - render verbatim beneath the estimate. */
+  disclaimer?: string;
+  /** Only present when `available` is false - e.g. "Insufficient data for reliable timezone inference." */
+  message?: string;
+}
+
 /** Result of the case-scoped Behavioral / Time-of-Day Analysis endpoint
  * (GET /cases/{id}/behavioral-analysis) - first version, UTC only, no timezone/continent
  * inference. `hourly_distribution` and `day_of_week_distribution` are always fully
@@ -255,6 +277,7 @@ export interface BehavioralAnalysisResult {
   case_id: string;
   evidence: string | null;
   address: string;
+  timezone_estimate: TimezoneEstimate;
   total_transactions: number;
   hourly_distribution: Record<string, number>;
   day_of_week_distribution: Record<string, number>;
