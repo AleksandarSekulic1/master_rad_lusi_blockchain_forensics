@@ -225,6 +225,44 @@ export interface CasePathfindingResult {
   message?: string | null;
 }
 
+/** Busiest single (day, hour) cell in BehavioralAnalysisResult.hour_by_day_distribution -
+ * a more specific claim than "most active hour" (summed across all days) or "most active
+ * day" (summed across all hours) alone. Null when the address has no timestamped
+ * transactions at all. */
+export interface BehavioralAnalysisPeakPeriod {
+  day: string;
+  hour: string;
+  count: number;
+  label: string;
+}
+
+export interface BehavioralAnalysisStats {
+  most_active_hour: string | null;
+  most_active_hour_count: number;
+  most_active_day: string | null;
+  most_active_day_count: number;
+  peak_period: BehavioralAnalysisPeakPeriod | null;
+  total_analyzed_transactions: number;
+}
+
+/** Result of the case-scoped Behavioral / Time-of-Day Analysis endpoint
+ * (GET /cases/{id}/behavioral-analysis) - first version, UTC only, no timezone/continent
+ * inference. `hourly_distribution` and `day_of_week_distribution` are always fully
+ * zero-filled (all 24 hour keys "00".."23", all 7 day names Monday..Sunday), and
+ * `hour_by_day_distribution` is the same 7x24 grid nested by day then hour - exactly what
+ * the heatmap renders. */
+export interface BehavioralAnalysisResult {
+  case_id: string;
+  evidence: string | null;
+  address: string;
+  total_transactions: number;
+  hourly_distribution: Record<string, number>;
+  day_of_week_distribution: Record<string, number>;
+  hour_by_day_distribution: Record<string, Record<string, number>>;
+  stats: BehavioralAnalysisStats;
+  generated_at: string;
+}
+
 export interface AnalyticsResponse extends NodeLinkGraphResponse {
   analytics: Record<string, unknown>;
   summary: {

@@ -9,6 +9,7 @@ import {
   AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
+  BehavioralAnalysisResult,
   Case,
   CasePathfindingResult,
   CaseStatus,
@@ -176,6 +177,17 @@ export class ApiService {
       body['to'] = to;
     }
     return this.http.post<CasePathfindingResult>(`${this.apiUrl}/api/v1/cases/${caseId}/pathfinding`, body, { params });
+  }
+
+  /** Behavioral / Time-of-Day Analysis (case-scoped, first version - UTC only, no
+   * timezone/continent inference). Read-only, like getCaseGraph/getSeedSuggestions - no
+   * custody entry, since it only re-reads the case's own already-built graph. */
+  getBehavioralAnalysis(caseId: string, address: string, evidence?: string | null): Observable<BehavioralAnalysisResult> {
+    let params = new HttpParams().set('address', address);
+    if (evidence) {
+      params = params.set('evidence', evidence);
+    }
+    return this.http.get<BehavioralAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/behavioral-analysis`, { params });
   }
 
   listUsers(): Observable<{ users: AuthUser[] }> {

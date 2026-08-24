@@ -1,0 +1,135 @@
+<div class="behavioral-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+  </div>
+
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+
+  <div class="behavioral-header">
+    <p class="panel-kicker">Behavioral Analysis</p>
+    <h2>BEHAVIORAL ANALYSIS</h2>
+    <p>Analiza vremenskog obrasca aktivnosti blockchain adrese.</p>
+  </div>
+
+  <div class="address-form">
+    <label class="address-field">
+      Address
+      <input
+        type="text"
+        [(ngModel)]="address"
+        placeholder="0x..."
+        (keydown.enter)="analyze()"
+        [disabled]="!activeCase"
+      />
+    </label>
+    <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+      {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
+    </button>
+  </div>
+
+  <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+
+  <ng-container *ngIf="result">
+    <div class="behavioral-content">
+      <section class="heatmap-panel">
+        <div class="heatmap-panel-header">
+          <p class="panel-kicker">Activity Heatmap</p>
+          <span class="tx-count-pill">{{ result.total_transactions }} transakcija (UTC)</span>
+        </div>
+
+        <div class="heatmap-scroll">
+          <div class="heatmap-grid">
+            <span class="heatmap-corner"></span>
+            <span class="heatmap-hour-label" *ngFor="let hour of hours">{{ hour }}</span>
+
+            <ng-container *ngFor="let day of days">
+              <span class="heatmap-day-label">{{ dayShortLabels[day] }}</span>
+              <button
+                type="button"
+                class="heatmap-cell"
+                *ngFor="let hour of hours"
+                [attr.aria-label]="cellLabel(day, hour)"
+                [title]="cellLabel(day, hour)"
+                [style.background]="cellColor(day, hour)"
+              ></button>
+            </ng-container>
+          </div>
+        </div>
+
+        <div class="heatmap-legend">
+          <span>Less</span>
+          <span class="legend-gradient"></span>
+          <span>More</span>
+        </div>
+
+        <details class="heatmap-table-toggle">
+          <summary>Prikaži kao tabelu</summary>
+          <div class="heatmap-table-scroll">
+            <table class="heatmap-table">
+              <caption class="sr-only">Broj transakcija po danu u nedelji i UTC satu</caption>
+              <thead>
+                <tr>
+                  <th scope="col"></th>
+                  <th scope="col" *ngFor="let hour of hours">{{ hour }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let day of days">
+                  <th scope="row">{{ dayShortLabels[day] }}</th>
+                  <td *ngFor="let hour of hours">{{ cellCount(day, hour) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <aside class="stats-panel">
+        <p class="panel-kicker">Statistike</p>
+
+        <div class="stat-tile">
+          <span class="stat-label">Most active hour</span>
+          <span class="stat-value">{{ result.stats.most_active_hour ? result.stats.most_active_hour + ':00 UTC' : 'n/a' }}</span>
+        </div>
+
+        <div class="stat-tile">
+          <span class="stat-label">Most active day</span>
+          <span class="stat-value">{{ result.stats.most_active_day ?? 'n/a' }}</span>
+        </div>
+
+        <div class="stat-tile">
+          <span class="stat-label">Peak activity</span>
+          <span class="stat-value">
+            {{ result.stats.most_active_hour_count }}
+            {{ result.stats.most_active_hour_count === 1 ? 'transaction' : 'transactions' }}
+          </span>
+        </div>
+
+        <div class="stat-tile">
+          <span class="stat-label">Active period</span>
+          <span class="stat-value">{{ activePeriodLabel ?? 'n/a' }}</span>
+        </div>
+      </aside>
+    </div>
+  </ng-container>
+
+  <p class="empty-hint" *ngIf="!result && !analysisError">
+    Unesi Ethereum adresu i klikni "ANALYZE" da vidiš heatmap njene vremenske aktivnosti (UTC).
+  </p>
+</div>

@@ -50,6 +50,12 @@ export const appRoutes: Routes = [
 			import('./features/pathfinding/pathfinding.component').then((module) => module.PathfindingComponent),
 	},
 	{
+		path: 'behavioral',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/behavioral-analysis/behavioral-analysis.component').then((module) => module.BehavioralAnalysisComponent),
+	},
+	{
 		path: 'reports',
 		canActivate: [authGuard],
 		loadComponent: () =>
