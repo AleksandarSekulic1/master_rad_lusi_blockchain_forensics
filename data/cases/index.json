@@ -7,10 +7,10 @@
       "analyst": "admin",
       "status": "open",
       "created_at": "2026-07-16T16:48:06.761081+00:00",
-      "updated_at": "2026-08-24T00:19:05.387027+00:00",
-      "evidence_count": 7,
-      "total_size_bytes": 3099,
-      "last_imported_at": "2026-08-24T00:19:05.387027+00:00"
+      "updated_at": "2026-08-25T21:03:07.050588+00:00",
+      "evidence_count": 8,
+      "total_size_bytes": 3942,
+      "last_imported_at": "2026-08-25T21:03:07.050588+00:00"
     },
     {
       "id": "c23db4afd0f3",
