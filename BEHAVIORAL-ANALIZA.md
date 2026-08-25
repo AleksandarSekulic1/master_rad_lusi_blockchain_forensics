@@ -140,16 +140,17 @@ Ruta `/behavioral`, link **„Behavioral"** u glavnom meniju.
   automatskog učitavanja grafa na platnu, jer ova stranica ne crta mrežu (nema
   cytoscape-a).
 - Polje **Address** + dugme **ANALYZE** — jedina dva unosa na stranici.
-- Nakon analize: **Activity Heatmap** (§5) kao glavni sadržaj, i uz nju samo **četiri**
-  statistike (Most active hour, Most active day, Peak activity, Active period) — namerno
-  bez dodatnih kartica/filtera, po zahtevu da stranica ostane jednostavna.
+- Nakon analize: **Activity Heatmap** (§5) kao glavni sadržaj, i uz nju kompaktan bočni
+  panel sa dva jasno odvojena bloka — namerno bez dodatnih kartica/filtera, po zahtevu da
+  stranica ostane jednostavna:
+  - **ACTIVITY SUMMARY** — četiri izmerene statistike (Most active hour, Most active day,
+    Peak activity, Active period).
+  - **TIMEZONE INFERENCE** (§7) — heuristička procena, vizuelno odvojena isprekidanom
+    linijom ispod prve četiri kartice, jer je to *procena*, ne izmerena činjenica.
 - `Active period` **nije backend polje** — računa se na frontend-u kao raspon od
   najranijeg do najkasnijeg UTC sata sa bilo kakvom aktivnošću (agregirano preko svih
   dana), iz `hourly_distribution` koji stranica već ima učitan. Vidi §8 za posledicu ove
   definicije (jedna izdvojena transakcija ume znatno da proširi prikazani raspon).
-- Ispod „Active period", ako backend proceni da ima dovoljno podataka, prikazuje se i
-  **Timezone Heuristic** blok (§7) — vizuelno odvojen isprekidanom linijom, jer je to
-  *procena*, ne izmerena činjenica kao ostale četiri kartice.
 
 ## 5. Heatmap vizuelizacija
 
@@ -341,23 +342,30 @@ ili, kad nema pouzdane procene:
 
 ### 7.4 UI prikaz
 
-Ispod četiri postojeće statistike (§4), odvojeno isprekidanom linijom (jer je ovo procena,
-ne izmerena činjenica):
+Ispod **ACTIVITY SUMMARY** bloka (četiri postojeće statistike, §4), odvojeno isprekidanom
+linijom (jer je ovo procena, ne izmerena činjenica) — panel-kicker naslov je **TIMEZONE
+INFERENCE** (ne „Timezone Heuristic" — ime je promenjeno u finalnoj reviziji da naglasi da
+je reč o zaključivanju/proceni, isto obrazloženje kao za formulaciju „Compatible" ispod):
 
 ```
 ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
-TIMEZONE HEURISTIC
+TIMEZONE INFERENCE
 
-Possible time zones     UTC+5 – UTC+12
-Possible regions        Asia, Oceania
-Confidence               Medium
+Compatible time zones    UTC+5 – UTC+12
+Possible regions         Asia, Oceania
+Confidence                Medium
 
-Vremenski obrazac predstavlja heuristički indikator i
-ne predstavlja dokaz stvarne lokacije vlasnika adrese.
+Napomena: Vremenski obrazac predstavlja heuristički
+indikator i ne predstavlja dokaz stvarne lokacije
+vlasnika adrese.
 ```
 
 Kad `available` nije `true`, umesto tri polja prikazuje se samo `"Insufficient data for
 reliable timezone inference."` — bez praznih/nula kartica.
+
+**Labela „Possible time zones" je preimenovana u „Compatible time zones"** — ista vrednost
+(`utc_offset_range_label`), samo tačnija reč: naglašava da je opseg *kompatibilan* sa
+obrascem, ne da je to spisak „mogućih" zona među kojima bi trebalo birati.
 
 ### 7.5 Testiranje
 
@@ -411,20 +419,21 @@ Svaki broj ispod je stvarno izračunat kroz pravi `GET
 1. **Slučajevi** → „Demo: Sumnjiva laundering sema (hakovan novcanik)".
 2. **Behavioral** → „Prikaz transakcija" → `demo_timezone_estimate.csv`.
 3. Address: `0xAsiaHoursWallet` → **ANALYZE**.
-4. Očekivano, ispod četiri osnovne statistike:
-   - **Possible time zones: UTC+5 – UTC+12**
+4. Očekivano, u **TIMEZONE INFERENCE** bloku ispod ACTIVITY SUMMARY kartica:
+   - **Compatible time zones: UTC+5 – UTC+12**
    - **Possible regions: Asia, Oceania** — DVA regiona, ne jedan, jer opseg uključuje i
      offsete gde ta dva regiona genuinski koegzistiraju (npr. UTC+8 je i istočna Azija i
      zapadna Australija) — namerna demonstracija zahteva „ako postoji više kompatibilnih
      regiona, prikaži sve".
    - **Confidence: Medium** (13 transakcija, najbolji udeo „noćne" aktivnosti 0% — prolazi
      Medium prag od ≥12 transakcija, ali ne i High prag od ≥20).
-   - Napomena o heurističkom karakteru procene, vidljiva ispod sve tri vrednosti.
+   - **„Napomena: Vremenski obrazac predstavlja heuristički indikator..."**, vidljiva ispod
+     sve tri vrednosti.
 5. „Prikaz transakcija" → **„Sve transakcije (kombinovano)"**. Address: `0xCoConspirator1`
    (iz `demo_case_cluster.csv` — tačno **1** transakcija u celoj evidenciji ovog slučaja) →
    **ANALYZE**.
-6. Očekivano: `total_transactions: 1` (osnovne 4 statistike i dalje rade — vidi §2), ali
-   umesto tri Timezone Heuristic polja prikazuje se samo **„Insufficient data for reliable
+6. Očekivano: `total_transactions: 1` (ACTIVITY SUMMARY i dalje radi — vidi §2), ali umesto
+   tri TIMEZONE INFERENCE polja prikazuje se samo **„Insufficient data for reliable
    timezone inference."**
 
 ## 8. Ograničenja prve verzije
