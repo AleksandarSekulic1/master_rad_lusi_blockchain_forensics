@@ -101,7 +101,7 @@
       </section>
 
       <aside class="stats-panel">
-        <p class="panel-kicker">Statistike</p>
+        <p class="panel-kicker">Activity Summary</p>
 
         <div class="stat-tile">
           <span class="stat-label">Most active hour</span>
@@ -131,11 +131,11 @@
              Never claims a location; see BEHAVIORAL-ANALIZA.md §7 for the methodology and
              confirmation there is no "vlasnik se nalazi u..." phrasing anywhere here. -->
         <div class="timezone-section" *ngIf="result.timezone_estimate as tz">
-          <p class="panel-kicker timezone-kicker">Timezone Heuristic</p>
+          <p class="panel-kicker timezone-kicker">Timezone Inference</p>
 
           <ng-container *ngIf="tz.available; else timezoneUnavailable">
             <div class="stat-tile">
-              <span class="stat-label">Possible time zones</span>
+              <span class="stat-label">Compatible time zones</span>
               <span class="stat-value">{{ tz.utc_offset_range_label }}</span>
             </div>
             <div class="stat-tile">
@@ -146,7 +146,7 @@
               <span class="stat-label">Confidence</span>
               <span class="stat-value">{{ tz.confidence }}</span>
             </div>
-            <p class="timezone-disclaimer">{{ tz.disclaimer }}</p>
+            <p class="timezone-disclaimer"><span class="disclaimer-label">Napomena:</span> {{ tz.disclaimer }}</p>
           </ng-container>
           <ng-template #timezoneUnavailable>
             <p class="timezone-disclaimer">{{ tz.message }}</p>
