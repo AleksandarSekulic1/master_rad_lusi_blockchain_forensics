@@ -14,6 +14,7 @@ import {
   AddressEnrichment,
   AddressType,
   CaseSummary,
+  DexSwapEvent,
   KnownEntityCategory,
   EvidenceEntry,
   GraphLinkData,
@@ -65,6 +66,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected fundingSourceFilterEnabled = false;
   protected showAllSenders = false;
   protected showAllRecipients = false;
+
+  // --- DEX Swap overlay (see DEX-SWAP-ANALIZA.md) - a heuristic annotation drawn OVER
+  // this same graph, not a new graph. Fetched from its own read-only endpoint,
+  // independent of the plain/analytics graph above; a failure here only means no dashed
+  // SWAP edges are drawn, it never blocks or errors out the graph itself. ---
+  protected dexSwapEvents: DexSwapEvent[] = [];
+  protected dexSwapOverlayEnabled = true;
+  protected selectedSwapEvent: DexSwapEvent | null = null;
 
   /** A node with hundreds of counterparties (e.g. a deposit hub) would otherwise render
    * hundreds of <dd> rows in the inspector panel, forcing the whole page to scroll past
@@ -124,6 +133,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
     this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
+      this.selectedSwapEvent = null;
       this.showAllSenders = false;
       this.showAllRecipients = false;
       this.syncSelection();
@@ -178,11 +188,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.state.setGraph(null);
       this.state.setAnalytics(null);
       this.caseGraphError = null;
+      this.dexSwapEvents = [];
+      this.selectedSwapEvent = null;
       return;
     }
 
     this.isLoadingCaseGraph = true;
     this.caseGraphError = null;
+    this.selectedSwapEvent = null;
 
     this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph) => {
@@ -196,6 +209,120 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
       },
     });
+
+    this.loadDexSwapOverlay(caseId);
+  }
+
+  /** Fetches every candidate DEX swap for the case's currently scoped evidence (no
+   * `address` filter - see ApiService.getDexSwapAnalysis) and draws them as dashed
+   * overlay edges on the ALREADY-rendered graph. Runs independently of, and in parallel
+   * with, the plain graph fetch above - on error it just leaves the overlay empty rather
+   * than surfacing caseGraphError, since this is supplementary information, not the
+   * graph itself. */
+  private loadDexSwapOverlay(caseId: string): void {
+    this.api.getDexSwapAnalysis(caseId, null, this.selectedEvidence).subscribe({
+      next: (result) => {
+        this.dexSwapEvents = result.events;
+        this.renderSwapOverlay();
+      },
+      error: () => {
+        this.dexSwapEvents = [];
+        this.renderSwapOverlay();
+      },
+    });
+  }
+
+  /** Adds/removes just the dashed SWAP overlay edges on top of whatever cytoscape
+   * instance already exists, WITHOUT touching real nodes/edges or re-running the
+   * (randomized) layout. DEX swap data arrives from its own request, usually shortly
+   * after the plain graph already rendered - a full renderGraph() at that point would
+   * needlessly re-layout the whole graph the analyst may already be looking at.
+   * buildElements() below includes these same edges too, for the case where
+   * renderGraph() runs AFTER dexSwapEvents is already populated (e.g. switching
+   * evidence) - so this method only has to handle "the graph is already on screen". */
+  private renderSwapOverlay(): void {
+    if (!this.cy || !this.graph) {
+      return;
+    }
+    this.cy.remove('edge.swap-edge');
+    if (this.dexSwapOverlayEnabled) {
+      const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+      this.cy.add(this.buildSwapEdgeElements(nodeIds));
+    }
+    this.applyVisibilityFilters();
+  }
+
+  protected toggleDexSwapOverlay(): void {
+    this.dexSwapOverlayEnabled = !this.dexSwapOverlayEnabled;
+    this.renderSwapOverlay();
+  }
+
+  /** Confidence as shown in the overlay/inspector: a 3-level read (High/Medium/Low) over
+   * the backend's own two-level `confidence` field, refined by `dex_match_basis` - NOT a
+   * new backend concept. 'Detected' (both legs share one real transaction hash) is
+   * always High. A 'Potential' match is Medium when the DEX contract itself was
+   * identified with a real signal (a curated known address, or a brand keyword like
+   * "uniswap"), and Low when it was only a generic keyword ("router"/"dex"/"aggregator")
+   * - the same distinction DEX-SWAP-ANALIZA.md §3.1 already draws between those two
+   * keyword tiers, just surfaced as a single label here. */
+  protected swapConfidenceLevel(event: DexSwapEvent): 'High' | 'Medium' | 'Low' {
+    if (event.confidence === 'Detected') {
+      return 'High';
+    }
+    return event.dex_match_basis.startsWith('keyword_match_generic') ? 'Low' : 'Medium';
+  }
+
+  private formatSwapAmount(amount: number, token: string | null): string {
+    const formattedAmount = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(amount);
+    return `${formattedAmount} ${token ?? '?'}`;
+  }
+
+  /** One representative tx hash line (or two, for a Potential swap whose legs were never
+   * confirmed to be the same on-chain transaction) - same logic as
+   * dex-swap-analysis.component.ts's txHashLines, duplicated rather than shared (see
+   * that component for why: this app copies small per-component display helpers rather
+   * than introducing a shared utils module). */
+  protected swapTxHashLines(event: DexSwapEvent): { label: string; hash: string }[] {
+    if (event.confidence === 'Detected') {
+      const hash = event.input_transaction_hash ?? event.output_transaction_hash;
+      return hash ? [{ label: 'Tx', hash }] : [];
+    }
+
+    const lines: { label: string; hash: string }[] = [];
+    if (event.input_transaction_hash) {
+      lines.push({ label: 'Tx in', hash: event.input_transaction_hash });
+    }
+    if (event.output_transaction_hash) {
+      lines.push({ label: 'Tx out', hash: event.output_transaction_hash });
+    }
+    return lines;
+  }
+
+  private buildSwapEdgeElements(nodeIds: Set<string>): ElementDefinition[] {
+    const elements: ElementDefinition[] = [];
+    this.dexSwapEvents.forEach((event, index) => {
+      // Defensive: the evidence scope should always match between the graph and the
+      // overlay fetch (both use the same selectedEvidence), so this should never
+      // actually trigger - but a swap edge pointing at a node cytoscape doesn't have
+      // would silently fail to render, so it's worth skipping explicitly rather than
+      // letting cytoscape.add() throw.
+      if (!nodeIds.has(event.user_address) || !nodeIds.has(event.dex_address)) {
+        return;
+      }
+      const level = this.swapConfidenceLevel(event);
+      elements.push({
+        data: {
+          id: `swap__${index}__${event.user_address}__${event.dex_address}`,
+          source: event.user_address,
+          target: event.dex_address,
+          label: `SWAP · ${this.formatSwapAmount(event.input_amount, event.input_token)} → ${this.formatSwapAmount(event.output_amount, event.output_token)}`,
+          isSwapEdge: true,
+          swapEvent: event,
+        },
+        classes: `swap-edge swap-${level.toLowerCase()}`,
+      } as ElementDefinition);
+    });
+    return elements;
   }
 
   /** File name of the currently scoped evidence, for the custody dialog's default
@@ -423,6 +550,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       node.style('display', timelineVisible && !hiddenAsDeadEnd && !hiddenAsFundingSource ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {
+      if (edge.hasClass('swap-edge')) {
+        // Overlay annotation, not part of the graph's own chronology (it has no
+        // chronoRank) - shown/hidden purely by the DEX swap toggle above, never by
+        // timeline position. A hidden endpoint node still hides it via cytoscape's own
+        // node->edge display cascade, same as any other edge.
+        edge.style('display', 'element');
+        return;
+      }
       const rank = edge.data('chronoRank');
       const timelineVisible = !this.timelineEnabled || (rank != null && rank <= position);
       edge.style('display', timelineVisible ? 'element' : 'none');
@@ -877,6 +1012,52 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           opacity: 1,
         },
       },
+      // DEX Swap overlay (see DEX-SWAP-ANALIZA.md) - dashed and a distinct purple/violet
+      // hue so a SWAP is never mistaken for an ordinary transaction edge (solid blue) or
+      // a cross-chain bridge hop (also dashed, but green/teal node + no purple line).
+      // Opacity/width step with confidence: High (Detected, shared tx hash) is the
+      // boldest, Low (generic-keyword DEX match only) the faintest - see
+      // swapConfidenceLevel().
+      {
+        selector: 'edge.swap-edge',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [6, 4],
+          'line-color': '#c084fc',
+          'target-arrow-color': '#c084fc',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          width: 3,
+          opacity: 0.8,
+          label: 'data(label)',
+          'font-size': 9,
+          'min-zoomed-font-size': 7,
+          color: '#e9d5ff',
+          'text-background-color': '#07111f',
+          'text-background-opacity': 0.85,
+          'text-background-padding': '3px',
+        },
+      },
+      {
+        selector: 'edge.swap-low',
+        style: { opacity: 0.55 },
+      },
+      {
+        selector: 'edge.swap-medium',
+        style: { opacity: 0.78 },
+      },
+      {
+        selector: 'edge.swap-high',
+        style: { opacity: 1, width: 4 },
+      },
+      {
+        selector: 'edge.swap-edge:selected',
+        style: {
+          'overlay-opacity': 0.22,
+          'overlay-color': '#f0abfc',
+          width: 5,
+        },
+      },
     ];
 
     this.cy = cytoscape({
@@ -916,7 +1097,15 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.cy.on('tap', 'node', (event) => {
       const nodeData = event.target.data() as GraphNodeData;
       this.selectedNode = nodeData;
+      this.selectedSwapEvent = null;
       this.state.setSelectedNode(nodeData);
+    });
+
+    // Delegated selector-based listener - also fires for swap edges added later via
+    // renderSwapOverlay()'s cy.add(), not just the ones present at this initial build.
+    this.cy.on('tap', 'edge.swap-edge', (event) => {
+      this.selectedSwapEvent = (event.target.data('swapEvent') as DexSwapEvent) ?? null;
+      this.selectedNode = null;
     });
 
     this.applyVisibilityFilters();
@@ -1022,7 +1211,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       } as ElementDefinition;
     });
 
-    return [...nodes, ...links];
+    // Overlay only if it's already known at build time (e.g. re-rendering after an
+    // evidence switch, once loadDexSwapOverlay's response has arrived) - the far more
+    // common "swap data lands after the graph already rendered" case is handled by
+    // renderSwapOverlay() adding these same elements directly, without a full rebuild.
+    const swapEdges = this.dexSwapOverlayEnabled ? this.buildSwapEdgeElements(new Set(nodeById.keys())) : [];
+
+    return [...nodes, ...links, ...swapEdges];
   }
 
   /** Chronological rank (1 = earliest) of each link by its first-seen timestamp, so the

@@ -191,8 +191,15 @@ export class ApiService {
     return this.http.get<BehavioralAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/behavioral-analysis`, { params });
   }
 
-  getDexSwapAnalysis(caseId: string, address: string, evidence?: string | null): Observable<DexSwapAnalysisResult> {
-    let params = new HttpParams().set('address', address);
+  /** `address` is optional (unlike getBehavioralAnalysis above) - omitted, the backend
+   * returns every candidate swap in the case's evidence, which is what the Graph page's
+   * overlay needs (see graph-visualization.component.ts's loadDexSwapOverlay); the DEX
+   * Swap Analysis page itself always supplies one. */
+  getDexSwapAnalysis(caseId: string, address?: string | null, evidence?: string | null): Observable<DexSwapAnalysisResult> {
+    let params = new HttpParams();
+    if (address) {
+      params = params.set('address', address);
+    }
     if (evidence) {
       params = params.set('evidence', evidence);
     }

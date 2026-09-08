@@ -1,4 +1,4 @@
-# DEX Swap Analysis — prva verzija (backend)
+# DEX Swap Analysis
 
 Dokumentacija novog, samostalnog modula koji pokušava da automatski prepozna **DEX swap
 događaje** — situacije kada adresa pošalje jedan token na poznat/verovatan DEX smart
@@ -17,7 +17,9 @@ nalaz nosi eksplicitan nivo pouzdanosti (`Detected` ili `Potential`) i disclaime
 | [5. API](#5-api) | ruta, parametri, oblik odgovora |
 | [6. Demo podaci i ručna provera](#6-demo-podaci-i-ručna-provera) | šest namerno izolovanih parova, tačni brojevi |
 | [7. Šta nedostaje za pouzdaniju detekciju](#7-šta-nedostaje-za-pouzdaniju-detekciju) | pošteno o ograničenjima podataka |
-| [8. Gde je šta u kodu](#8-gde-je-šta-u-kodu) | putanje |
+| [8. Frontend stranica](#8-frontend-stranica) | `/dex-swaps` — Address + ANALYZE, lista swap kartica |
+| [9. Graph integracija](#9-graph-integracija) | isprekidane SWAP veze preko postojećeg grafa, klik-detalji, High/Medium/Low |
+| [10. Gde je šta u kodu](#10-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -227,10 +229,107 @@ Pošteno, po zahtevu — ovo NIJE potpuna zamena za pravu ERC-20 Transfer analiz
   checksum trenutno tačan; treba proveriti/dopuniti pre pravog forenzičkog korišćenja.
 - **Generička ključna reč (`dex`/`router`/`aggregator`) je slab signal**, uvek posebno
   obeležen u `dex_match_basis` — analitičar treba dodatno da proveri takve nalaze.
-- **Bez PDF izveštaja i bez dijaloga za lanac dokaza** — prva verzija je samo backend
-  API; frontend stranica i izveštaj su sledeći, odvojeni koraci.
+- **Bez PDF izveštaja i bez dijaloga za lanac dokaza** — read-only pregled, ne pokreće
+  novu obradu nad evidencijom, pa se ne beleži u `custody_log` (izveštaj je poseban,
+  kasniji korak — vidi zahtev).
 
-## 8. Gde je šta u kodu
+## 8. Frontend stranica
+
+Ruta `/dex-swaps`, link **„DEX Swaps"** u glavnom meniju — potpuno odvojena od Graph/
+Taint/Pathfinding/Behavioral stranica, isti obrazac kao Behavioral Analysis (aktivan
+slučaj + evidence picker, pa **Address** + **ANALYZE**, ništa više na vrhu).
+
+Namerno **bez grafova/statističkih kartica** — glavni (jedini) sadržaj je ravna lista
+kartica, jedna po detektovanom događaju, sa jednom istaknutom linijom:
+
+```
+INPUT AMOUNT INPUT_TOKEN → DEX_NAME → OUTPUT AMOUNT OUTPUT_TOKEN
+```
+
+npr. `10 ETH → 0xUniswapRouter → 25,000 USDC`. Badge iznad kartice je `Detected Swap`
+(akcentna boja — isti tx hash na oba kraka) ili `Potential Swap` (priguušena siva —
+samo adresa + vreme). Kad `input_token`/`output_token` nedostaje, prikazuje se `?` sa
+`title` objašnjenjem — nikad izmišljen simbol. Prazan rezultat: **„No DEX swaps detected
+for this address."** Disclaimer iz API odgovora se prikazuje uvek, jednom, ispod liste.
+
+`address` je na ovoj stranici **obavezno polje** (za razliku od same rute, koja ga
+prima opciono) — stranica uvek analizira tačno jednu adresu, po zahtevu.
+
+## 9. Graph integracija
+
+DEX swap nalazi se iscrtavaju **preko postojećeg** grafa transakcija na `/graph` stranici
+— ne gradi se novi graf, ne menja se `graph_building.py`, `Taint`/`Pathfinding` logika
+nije dirana. Realizovano isključivo na frontend-u, kao dodatni sloj cytoscape elemenata.
+
+### 9.1 Šta se crta
+
+Za svaki event iz `GET /cases/{id}/dex-swap-analysis` (pozvano **bez** `address`
+parametra — vraća sve kandidate u trenutno izabranoj evidenciji, isti poziv kao
+frontend stranica iz §8, samo case-wide), dodaje se **jedna** dodatna grana
+`user_address → dex_address`:
+
+- **Isprekidana, ljubičasta** (`#c084fc`) — vizuelno jasno odvojena i od običnih
+  transakcionih grana (plava, puna linija) i od bridge/chain-hop grana (takođe
+  isprekidane, ali zelen šestougaoni čvor, bez ljubičaste linije).
+  Oznaka na grani: `SWAP · 10 ETH → 25,000 USDC`.
+- **Providnost/debljina prati pouzdanost** (§9.2) — `High` je najupadljivija, `Low`
+  najprigušenija, bez potrebe da se klikne da bi se stekao prvi utisak.
+- Realne grane (Wallet A→Uniswap i Uniswap→Wallet A pojedinačno) **ostaju nepromenjene**
+  — SWAP grana je trećа, dodatna veza između istog para čvorova, ne zamena.
+
+### 9.2 High / Medium / Low — prevod postojeća dva polja u treće, samo za prikaz
+
+Zahtev traži tronivojski prikaz pouzdanosti; backend ima samo `confidence`
+(`Detected`/`Potential`) i `dex_match_basis`. Umesto novog backend polja,
+`swapConfidenceLevel()` (frontend, čisto prezentaciono, ne menja API) izvodi treći nivo
+iz ta dva postojeća:
+
+| Prikazano | Uslov |
+|---|---|
+| **High** | `confidence === 'Detected'` (isti tx hash — najjači signal) |
+| **Medium** | `Potential`, ali DEX čvor prepoznat pouzdano (`known_address` ili `keyword_match_brand`) |
+| **Low** | `Potential` **i** DEX čvor prepoznat samo generičkom rečju (`keyword_match_generic`) |
+
+Ista razlika koju §3.1/§4 već prave između brand i generic ključnih reči — ovde samo
+dobija jedno ime za prikaz.
+
+### 9.3 Klik na SWAP vezu
+
+Otvara panel u desnom „Detalji čvora" prostoru (zamenjuje ga dok je swap veza izabrana —
+klik na čvor ili drugu granu ga zatvara, isto obrnuto):
+
+```
+DEX:                Uniswap
+Input:               10 ETH
+Output:              25,000 USDC
+Timestamp:           2026-08-24 09:00 UTC
+Transaction hash:    Tx: 0xswap0001
+Confidence:          High (Detected · keyword_match_brand: uniswap)
+```
+
+Za `Potential` bez zajedničkog hash-a, red „Transaction hash" prikazuje `Tx in:`/
+`Tx out:` odvojeno (nikad tvrdi da je jedan hash zajednički kad nije potvrđeno). Ispod
+liste polja, uvek isti disclaimer kao na §8 stranici.
+
+### 9.4 Toggle i vremenska traka
+
+Dugme **„Prikaži/Sakrij DEX swap veze (N)"** pored ostalih filtera u zaglavlju grafa —
+uključeno po default-u. Kad je **Vremenska traka** aktivna, SWAP veze **nisu** deo
+hronologije (nemaju `chronoRank` kao prave grane) — ostaju vidljive nezavisno od pozicije
+trake, isključivo pod kontrolom ovog toggle-a; ako se sakrije čvor (npr. filterom „bez
+odliva"), povezana SWAP veza se automatski sakriva zajedno s njim (cytoscape-ovo
+podrazumevano ponašanje, bez dodatne logike).
+
+### 9.5 Učitavanje — nezavisno od samog grafa
+
+Overlay se učitava **posebnim** pozivom, paralelno sa običnim `/graph` pozivom, ne kao
+njegov deo — ako overlay poziv ne uspe, graf se i dalje normalno prikazuje, samo bez
+isprekidanih veza (bez greške na ekranu). Dodavanje/uklanjanje veza kad odgovor stigne NE
+pokreće ponovni layout celog grafa (`renderSwapOverlay()` samo doda/ukloni elemente na
+već postojećem cytoscape objektu) — layout bi inače nepotrebno „promešao" pozicije
+čvorova koje je analitičar možda već ručno rasporedio.
+
+## 10. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
@@ -239,12 +338,13 @@ Pošteno, po zahtevu — ovo NIJE potpuna zamena za pravu ERC-20 Transfer analiz
 | Ruta | `backend/app/api/routes/cases.py` (`get_case_dex_swap_analysis`) |
 | Testovi | `backend/tests/test_dex_swap_analysis.py` |
 | Demo podaci | `backend/scripts/seed_demo_dex_swap_evidence.py` |
+| Frontend stranica (§8) | `frontend/src/app/features/dex-swap-analysis/` |
+| Graph integracija (§9) | `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` (`loadDexSwapOverlay`, `renderSwapOverlay`, `buildSwapEdgeElements`, `swapConfidenceLevel`) |
+| API poziv | `frontend/src/app/core/services/api.service.ts` (`getDexSwapAnalysis`) |
+| Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`DexSwapEvent`, `DexSwapAnalysisResult`, `DexSwapDataCompleteness`, `DexSwapNodeConsidered`) |
 
 **Ruta:**
 
 | Ruta | Namena |
 |---|---|
 | `GET /api/v1/cases/{id}/dex-swap-analysis` | Kandidati za DEX swap (Detected/Potential) u evidenciji slučaja, opciono ograničeno na jednu adresu |
-
-Frontend stranica **nije** deo ove verzije — sledeći korak, po istom obrascu kao ostali
-moduli (`frontend/src/app/features/dex-swap-analysis/`, ruta `/dex-swaps`, link u meniju).

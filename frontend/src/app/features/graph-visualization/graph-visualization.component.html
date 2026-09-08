@@ -82,6 +82,16 @@
       >
         {{ fundingSourceFilterEnabled ? 'Prikaži čvorove bez priliva' : 'Sakrij čvorove bez priliva' }} ({{ fundingSourceNodeCount }})
       </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="dexSwapOverlayEnabled"
+        (click)="toggleDexSwapOverlay()"
+        [disabled]="!hasLoadedGraph"
+        title="Heuristička DEX swap detekcija, iscrtana kao isprekidane veze preko postojećeg grafa — vidi DEX-SWAP-ANALIZA.md"
+      >
+        {{ dexSwapOverlayEnabled ? 'Sakrij DEX swap veze' : 'Prikaži DEX swap veze' }} ({{ dexSwapEvents.length }})
+      </button>
     </div>
   </div>
 
@@ -143,7 +153,54 @@
       <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
     </div>
 
-    <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
+    <!-- SWAP edge details take priority over a node selection - the two are already kept
+         mutually exclusive in the component (selecting one clears the other), see
+         graph-visualization.component.ts's tap handlers. -->
+    <aside class="node-inspector swap-inspector" *ngIf="selectedSwapEvent as swap">
+      <p class="panel-kicker">SWAP događaj (heuristika)</p>
+      <h3>{{ swap.user_address }} → {{ swap.dex_name }}</h3>
+      <span class="swap-confidence-badge" [class]="'level-' + swapConfidenceLevel(swap).toLowerCase()">
+        {{ swapConfidenceLevel(swap) }}
+      </span>
+      <dl>
+        <div>
+          <dt>DEX</dt>
+          <dd>{{ swap.dex_name }} <span class="mono-address">({{ swap.dex_address }})</span></dd>
+        </div>
+        <div>
+          <dt>Input</dt>
+          <dd>{{ swap.input_amount | number : '1.0-6' }} {{ swap.input_token ?? '?' }}</dd>
+        </div>
+        <div>
+          <dt>Output</dt>
+          <dd>{{ swap.output_amount | number : '1.0-6' }} {{ swap.output_token ?? '?' }}</dd>
+        </div>
+        <div>
+          <dt>Timestamp</dt>
+          <dd
+            >{{ swap.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container *ngIf="swap.time_gap_seconds > 0"
+              >, izlaz {{ swap.time_gap_seconds }}s kasnije</ng-container
+            ></dd
+          >
+        </div>
+        <div>
+          <dt>Transaction hash</dt>
+          <dd *ngFor="let line of swapTxHashLines(swap)"><span class="mono-address">{{ line.label }}: {{ line.hash }}</span></dd>
+          <dd *ngIf="swapTxHashLines(swap).length === 0">n/a</dd>
+        </div>
+        <div>
+          <dt>Confidence</dt>
+          <dd>{{ swapConfidenceLevel(swap) }} <span class="muted-inline">({{ swap.confidence }} · {{ swap.dex_match_basis }})</span></dd>
+        </div>
+      </dl>
+      <p class="swap-disclaimer">
+        Heuristička detekcija zasnovana na adresnom obrascu i vremenskoj bliskosti — nije kriptografski dokaz swap transakcije.
+      </p>
+    </aside>
+
+    <!-- selectedNode and selectedSwapEvent are kept mutually exclusive by the component
+         (every place either is set clears the other), so no extra guard is needed here. -->
+    <aside class="node-inspector" *ngIf="!selectedSwapEvent && selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
       <dl>
@@ -287,7 +344,10 @@
     <ng-template #noSelection>
       <aside class="node-inspector empty">
         <p class="panel-kicker">Detalji čvora</p>
-        <p>Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake.</p>
+        <p>
+          Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake — ili isprekidanu SWAP vezu da vidite
+          detalje detektovane DEX razmene.
+        </p>
       </aside>
     </ng-template>
   </div>
@@ -331,6 +391,10 @@
       <div class="legend-item">
         <span class="legend-line last-transaction"></span>
         Poslednja transakcija hronološki (najskorija u ovom prikazu)
+      </div>
+      <div class="legend-item">
+        <span class="legend-line swap-edge"></span>
+        DEX SWAP (heuristika) — <strong>isprekidana ljubičasta veza</strong>; kliknite za DEX, iznose, hash i pouzdanost
       </div>
     </div>
     <p class="legend-hint">

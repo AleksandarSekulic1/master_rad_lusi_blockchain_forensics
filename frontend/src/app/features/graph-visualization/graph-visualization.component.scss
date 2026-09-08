@@ -421,6 +421,51 @@ h3 {
   text-align: center;
 }
 
+/* --- DEX Swap overlay inspector (see DEX-SWAP-ANALIZA.md) - reuses .node-inspector's
+   own layout/typography (padding, sticky header, dl/dt/dd) wholesale; only the badge and
+   disclaimer below are new. --- */
+
+.swap-confidence-badge {
+  display: inline-block;
+  margin-top: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.swap-confidence-badge.level-high {
+  color: #04111f;
+  background: linear-gradient(135deg, #c084fc, #e9d5ff);
+}
+
+.swap-confidence-badge.level-medium {
+  color: #f3e8ff;
+  background: rgba(192, 132, 252, 0.28);
+  border: 1px solid rgba(192, 132, 252, 0.45);
+}
+
+.swap-confidence-badge.level-low {
+  color: #d5e0f6;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.node-inspector .muted-inline {
+  color: #8ea6c7;
+  font-size: 0.78rem;
+}
+
+.swap-disclaimer {
+  margin: 1rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: #8ea6c7;
+}
+
 .graph-legend {
   padding: 1rem;
   border-radius: 1rem;
@@ -507,6 +552,13 @@ h3 {
 
 .legend-line.last-transaction {
   background: #fbbf24;
+}
+
+/* Dashed look via a repeating gradient (a plain background can't be dashed) - matches
+   the actual 'line-dash-pattern' used for edge.swap-edge on the graph itself. */
+.legend-line.swap-edge {
+  background: repeating-linear-gradient(90deg, #c084fc 0, #c084fc 6px, transparent 6px, transparent 10px);
+  border-radius: 0;
 }
 
 .legend-hint {
