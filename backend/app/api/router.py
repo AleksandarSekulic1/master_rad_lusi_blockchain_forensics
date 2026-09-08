@@ -9,6 +9,7 @@ from app.api.routes.cases import router as cases_router
 from app.api.routes.custody import router as custody_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.graph import router as graph_router
+from app.api.routes.investigations import router as investigations_router
 from app.api.routes.onchain import router as onchain_router
 from app.api.routes.reports import router as reports_router
 from app.api.routes.tests import router as tests_router
@@ -27,6 +28,9 @@ api_router.include_router(analytics_router, dependencies=authenticated)
 api_router.include_router(graph_router, dependencies=authenticated)
 api_router.include_router(upload_router, dependencies=authenticated)
 api_router.include_router(cases_router, dependencies=authenticated)
+# Investigator layer container (notes / pinned nodes / off-chain links attach here later).
+# Separate entity from the evidence Case above; same "any authenticated user" access.
+api_router.include_router(investigations_router, dependencies=authenticated)
 # Chain of custody per transaction - readable by any logged-in user (analyst or admin),
 # same as the case data it describes access to.
 api_router.include_router(custody_router, dependencies=authenticated)

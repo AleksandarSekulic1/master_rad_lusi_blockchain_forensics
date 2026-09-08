@@ -1,0 +1,637 @@
+# Case Management / Investigator Layer — Implementation Log
+
+Status: **Step 1 done** — backend data model for the investigation case container is
+implemented, built and tested. No frontend. No notes / pins / links yet.
+Date started: 2026-09-08
+
+This file is the running implementation log for the new *Case Management / Investigator
+Layer*.
+
+- **§1–§9** — findings of the codebase analysis done before any implementation.
+- **§10** — Step 1 implementation log: the investigation-case container.
+
+---
+
+## 0. Goal (recap)
+
+Add an "investigator layer" on top of the existing forensic tooling that lets an
+investigator:
+
+1. Add notes to addresses / graph nodes.
+2. Add notes to transactions / graph edges.
+3. Pin / fix important nodes on the graph.
+4. Manually link two addresses based on **off-chain** evidence.
+5. Keep these investigator conclusions **clearly separated** from on-chain facts.
+
+The hard requirement running through all five points is **separation**: nothing the
+investigator asserts may be mixed into, or mistaken for, data derived from the imported
+blockchain evidence.
+
+---
+
+## 1. Project shape (what exists today)
+
+### 1.1 Repository layout
+
+```
+master_rad_lusi_blockchain_forensics/
+├── backend/            FastAPI (Python), no ORM, no SQL — JSON/JSONL files on disk
+│   └── app/
+│       ├── main.py                 app factory, CORS, router mount at /api/v1
+│       ├── paths.py                REPO_ROOT / DATA_DIR / RAW_DIR / CASES_DIR / LOGS_DIR
+│       ├── security.py             JWT encode/decode, password hashing
+│       ├── api/
+│       │   ├── router.py           includes every sub-router, attaches auth deps
+│       │   ├── deps.py             get_current_user -> {id, username, role}; require_admin
+│       │   └── routes/             auth, cases, graph, analytics, onchain, addresses,
+│       │                           upload, custody, exports, reports, activity_log,
+│       │                           users(admin), tests(admin)
+│       ├── services/               case_management, report_registry, user_management,
+│       │                           onchain_ingestion, address_enrichment
+│       ├── analytics/              ingestion, graph_building, case_graph, path_finding,
+│       │                           behavioral_analysis, dex_swap_analysis,
+│       │                           seed_suggestion, timezone_heuristics, plugins/*
+│       ├── evidence/               audit_log, custody_log, custody_evidence_log,
+│       │                           tx_identity, hashing
+│       └── exports/                service (case CSV/PDF/GraphML/GEXF), custody_report,
+│                                   custody_evidence_report, custody_pdf_common, pdf_fonts
+├── frontend/           Angular 18, standalone components, cytoscape graphs
+│   └── src/app/
+│       ├── app.routes.ts           lazy standalone routes + auth/admin/guest guards
+│       ├── app.config.ts           provideRouter + provideHttpClient(authInterceptor)
+│       ├── app.component.html      top nav bar (one <a routerLink> per feature)
+│       ├── core/
+│       │   ├── cytoscape-setup.ts  ensureCytoscapeExtensionsRegistered() (fcose etc.)
+│       │   ├── services/           api.service, auth.service, analysis-state.service
+│       │   ├── guards/             auth.guard (authGuard / adminGuard / guestGuard)
+│       │   ├── interceptors/       auth.interceptor (Bearer token + 401 -> /login)
+│       │   └── components/signature-pad/   reusable canvas signature
+│       ├── models/blockchain-forensics.models.ts   ALL shared TS interfaces
+│       └── features/              dashboard, cases, graph-visualization, taint-analysis,
+│                                  pathfinding, behavioral-analysis, dex-swap-analysis,
+│                                  report-export, report-verification, activity-log,
+│                                  custody-log, custody-access-dialog, admin, auth, tests
+├── data/               cases/, raw/, report_registry.json, users.json, test_scenarios.json
+└── logs/               audit_log.jsonl, custody_log.jsonl, custody_evidence_log.jsonl
+```
+
+### 1.2 Persistence model — **there is no database**
+
+Everything is flat files:
+
+| Data | Location | Shape |
+|---|---|---|
+| Case index | `data/cases/index.json` | `{ "cases": [ CaseSummary, ... ] }` |
+| Case record | `data/cases/<case_id>/case.json` | full case + `evidence[]` array |
+| Stored evidence files | `data/cases/<case_id>/evidence/*.csv` and `data/raw/*.csv` | raw CSV |
+| Signed reports | `data/report_registry.json` | `[ ReportRegistryEntry, ... ]` |
+| Users | `data/users.json` | `[ user, ... ]` |
+| App-wide activity log | `logs/audit_log.jsonl` | append-only, one JSON object per line |
+| Per-transaction chain of custody | `logs/custody_log.jsonl` | append-only, `scope:"transaction"` |
+| Per-evidence-file chain of custody | `logs/custody_evidence_log.jsonl` | append-only, `scope:"evidence_file"` |
+
+Read/write helpers are tiny and repeated per module (`_read_json` / `_write_json` in
+`case_management.py`; `open(path, 'a')` + `json.dumps(...)+'\n'` in the custody logs).
+Any new persistence must follow one of these two existing shapes.
+
+### 1.3 Auth / roles
+
+- JWT bearer token, stored in `localStorage` by `auth.service.ts`, attached by
+  `auth.interceptor.ts`.
+- `get_current_user` (backend) returns `{ id, username, role }`. Roles are `admin` and
+  `analyst`.
+- `api/router.py` mounts most routers with `dependencies=[Depends(get_current_user)]`
+  (any active, non-blocked user). `users` and `tests` routers additionally require
+  `require_admin`.
+- Precedent for "readable by everyone, writes scoped by identity": `activity_log.py`
+  narrows non-admins to their own rows; the `custody` router is open to any authenticated
+  user (see `LANAC-DOKAZA.md` §6).
+
+---
+
+## 2. The graph: node / edge / transaction data structures
+
+### 2.1 The graph is **derived, never stored**
+
+`build_case_graph(evidence_paths)` (`app/analytics/case_graph.py`) does, on **every**
+request:
+
+```
+clean each evidence CSV  ->  concat into one DataFrame  ->  build_transaction_graph()
+```
+
+`build_transaction_graph(df)` (`app/analytics/graph_building.py`) returns a
+`networkx.DiGraph`:
+
+- **Node** — id = the address **string, verbatim** (case-sensitive, no normalisation).
+  Base attributes: `address`, `label`, and (added by `_annotate_node_flow_totals`)
+  `total_received`, `total_sent`, `net_flow`.
+  Analytics plugins later write more attributes onto the same nodes: `blacklist_flag`,
+  `risk_score`, `cluster_id`, `cluster_size`, `taint_percentage`, `is_taint_seed`,
+  `taint_by_source`, `peel_chain_flag/role/step`, `chain_hop_flag/type`, `anomaly_flag`,
+  etc.
+- **Edge** — one directed edge per `(sender, recipient)` **pair**, not per transaction
+  (it is a `DiGraph`, not a `MultiDiGraph`). Attributes: `weight`, `total_amount`,
+  `transaction_count`, `first_seen`, `last_seen`, and `transactions` — a list of
+  `{ amount, timestamp, metadata }` (the individual transfers that were folded onto this
+  edge). `metadata` is where a CSV's `tx_hash`/`hash` column lands after ingestion.
+- `transaction_graph_to_node_link_json(graph)` serialises to
+  `{ directed, multigraph, graph, nodes[], links[] }`; each node carries `id`, each link
+  carries `source` + `target`.
+
+### 2.2 Stable identity for a single transaction
+
+`app/evidence/tx_identity.py::transaction_id(row, evidence_stored_name)`:
+
+- if the row has a real tx hash (`metadata`) → that hash **is** the id;
+- otherwise → `"row-" + sha256(sender|recipient|amount|timestamp|evidence_stored_name)[:16]`.
+
+This is exactly how the chain-of-custody feature keys a transaction across separate runs.
+**Edge notes should reuse this function** so a note keyed today still points at the same
+transfer next week.
+
+### 2.3 Frontend types
+
+All shared interfaces live in one file:
+`frontend/src/app/models/blockchain-forensics.models.ts` — `GraphNodeData`,
+`GraphLinkData`, `NodeLinkGraphResponse`, `AnalyticsResponse`, `CaseSummary`, `Case`,
+`EvidenceEntry`, `TransactionCustodyEntry`, `CustodyChain`, `ActivityLogEntry`, etc.
+`GraphNodeData` and `GraphLinkData` both end with `[key: string]: unknown`, so extra
+server-side fields flow through untyped.
+
+### 2.4 Graph rendering (frontend)
+
+- cytoscape + `cytoscape-fcose` + `cytoscape-layout-utilities`, registered once via
+  `core/cytoscape-setup.ts::ensureCytoscapeExtensionsRegistered()`.
+- **Each graph page builds its own cytoscape instance** from the node-link JSON. There is
+  **no shared graph component**. The stated project convention (comment in
+  `pathfinding.component.ts`) is *"look consistent, stay independent"* between analysis
+  pages — `graph-visualization.component.ts` is used as a visual reference, never imported
+  by the others.
+- Pages with a cytoscape graph: `graph-visualization` (main), `taint-analysis`,
+  `pathfinding`. Pages without: `behavioral-analysis` (heatmap), `dex-swap-analysis`
+  (event list), `dashboard` (embeds `GraphVisualizationComponent`).
+- **Layout / repositioning:** every render calls
+  `cytoscape({ ..., layout: { name: 'fcose', randomize: true, animate: false, fit: true }})`.
+  There is **no preset layout, no saved coordinates, no `node.lock()`, no `grabbable`
+  handling, no `dragfree` listener, and no persistence of positions anywhere**. "Fit whole
+  graph" = `cy.fit()`. Consequence: the layout is different on every load. This is the
+  single biggest architectural gap for requirement #3 ("pin/fix nodes").
+- **Overlay mechanism already exists** — the DEX-swap overlay in
+  `graph-visualization.component.ts` (`loadDexSwapOverlay` → `renderSwapOverlay` →
+  `buildSwapEdgeElements`, `toggleDexSwapOverlay`, and the `edge.swap-edge` /
+  `edge.swap-*` cytoscape styles) adds/removes extra dashed edges **without re-running the
+  layout**. This is a ready-made template for rendering manual off-chain links and for a
+  "show/hide investigator layer" toggle.
+- The **node inspector** is `graph-visualization.component.html` →
+  `<aside class="node-inspector">` (a `<dl>` of node facts). `taint-analysis` additionally
+  has an **edge details panel** (`selectedEdgeDetails`: `{ source, target, totalAmount,
+  transactions: EdgeTransactionDetail[] }`, built by `buildEdgeDetails(edge)`), plus
+  `cy.on('tap', 'edge', ...)`. `graph-visualization` currently has no edge click handler.
+
+---
+
+## 3. Existing analyses (relevant surface, and how they touch the graph)
+
+| Analysis | Backend | Frontend | Custody-gated? | Notes |
+|---|---|---|---|---|
+| **Graph Analysis** | `GET /cases/{id}/graph` (plain, no risk colours), `POST /cases/{id}/analytics/run` (adds plugin colours) | `features/graph-visualization/` | `analytics/run` yes, plain graph no | plain graph auto-loads on case/evidence select; risk colouring needs the custody dialog |
+| **Taint Analysis** | `POST /cases/{id}/analytics/run` → `analytics.taint_analysis` (plugin in `plugins/taint_analysis.py`) | `features/taint-analysis/` | yes | own cytoscape graph, seed picking, timeline scrubber, edge-details panel, signed PDF export |
+| **Pathfinding** | `POST /cases/{id}/pathfinding` (BFS, `app/analytics/path_finding.py`) + legacy `POST /graph/path-finding` | `features/pathfinding/` | yes | own cytoscape graph, path highlight, signed PDF export |
+| **Behavioral / Time-of-Day** | `GET /cases/{id}/behavioral-analysis` (`app/analytics/behavioral_analysis.py` + `timezone_heuristics.py`) | `features/behavioral-analysis/` | no (read-only) | heatmap, per-address, no graph |
+| **DEX Swap** | `GET /cases/{id}/dex-swap-analysis` (passive) + `POST .../dex-swap-analysis/run` (deliberate) | `features/dex-swap-analysis/` + overlay in graph page | run: yes | heuristic; drawn as an overlay on the main graph |
+
+All case-scoped analysis pages share the same page skeleton: read `activeCase` from
+`AnalysisStateService.selectedCase$`, an evidence-file `<select>` (`?evidence=<stored_name>`
+scopes any of the endpoints to one file, otherwise combined), then their own panel.
+
+---
+
+## 4. Cross-cutting infrastructure the new layer will lean on
+
+### 4.1 `AnalysisStateService` (`core/services/analysis-state.service.ts`)
+
+`BehaviorSubject`-based store, `providedIn: 'root'`. Streams: `upload$`, `graph$`,
+`analytics$`, `selectedNode$`, `selectedCase$`, plus `*Snapshot` getters and
+`ensureValidSelectedNode(nodes)`. This is the glue that lets the graph page and (say) the
+report page agree on "the current case / current graph / selected node". The investigator
+overlay should get a stream here too (`investigatorOverlay$`).
+
+### 4.2 `ApiService` (`core/services/api.service.ts`)
+
+One class, one method per endpoint, returns `Observable<T>`; base url from
+`environment.apiUrl` (`http://localhost:8000`). New endpoints get new methods here.
+
+### 4.3 Audit log — `app/evidence/audit_log.py::write_audit_log(...)`
+
+Append-only `logs/audit_log.jsonl`. Called by essentially every state-changing route
+(`case_created`, `analytics_run`, `path_finding`, `report_signed`, `custody_pdf_exported`,
+…). It stores `case_name` next to `case_id` on purpose (so renames/deletes can't rewrite
+history) and takes a free-form `details` dict. **Every investigator write should call
+this** (`investigator_note_added`, `investigator_note_edited`, `investigator_link_added`,
+`investigator_pin_set`, …) — it is the app-wide convention and it automatically flows into
+the Activity Log page + the activity report.
+
+### 4.4 Chain of custody — the closest existing precedent to "a separate layer"
+
+`LANAC-DOKAZA.md` + `app/evidence/custody_log.py` / `custody_evidence_log.py` +
+`app/api/routes/custody.py` + `features/custody-log/`. Properties worth copying wholesale:
+
+- a **separate append-only JSONL store**, never written into `case.json` or the graph;
+- keyed by `(case_id, tx_id)` / `(case_id, evidence_stored_name)`;
+- each row **self-describes** its granularity with a stamped `"scope"` field;
+- a **derived read model** folds the log into "current view" objects
+  (`custody_chain_for_transaction`, `list_case_transactions`);
+- its **own routes** under `/cases/{id}/custody/...`, its **own page** (`/lanac-dokaza`),
+  its **own PDF exports**;
+- tests isolate the store with `monkeypatch.setattr(module, '_..._path', lambda: tmp_path / '...')`
+  (see `backend/tests/test_custody_log.py`, `test_report_registry.py`).
+
+### 4.5 Reusable frontend pieces
+
+| Piece | Path | Reuse for |
+|---|---|---|
+| `SignaturePadComponent` | `core/components/signature-pad/` | *if* a manual off-chain link needs a signed declaration |
+| `CustodyAccessDialogComponent` | `features/custody-access-dialog/` | template for a modal with `@Input`/`@Output`, suggestions, declaration checkbox |
+| DEX-swap overlay code path | `graph-visualization.component.ts` | add/remove manual-link edges + layer toggle without re-layout |
+| node inspector `<aside class="node-inspector">` | `graph-visualization.component.html` | host the per-node notes + "pin" control |
+| taint edge-details panel + `cy.on('tap','edge')` | `taint-analysis.component.ts` | pattern for an edge inspector on the main graph |
+| evidence `<select>` + `activeCase` wiring | any case-scoped feature component | the new Case Management page skeleton |
+| `_section_title` / `_draw_table` | `app/exports/service.py` | an "Investigator conclusions" section in the case PDF/CSV |
+| server merges display fields into node-link JSON | `app/api/routes/graph.py::enrich_node_metadata` | precedent for attaching `investigator_*` fields to nodes/links |
+
+---
+
+## 5. Where the new functionality should be implemented
+
+### 5.1 Backend
+
+**New store** — one per-case, append-only event log, folded into a read model
+(mirrors `custody_log.py`; append-only preferred over a rewritten JSON blob because the
+forensic framing wants an immutable history of who concluded what and when, and because
+flat-file rewrites race under concurrent editors):
+
+- `app/investigator/case_notes.py` (or `app/services/case_notes.py`) — store + read model.
+  - suggested file: `logs/investigator_log.jsonl` (app-wide, `case_id` on every row,
+    `"scope"` ∈ `node_note | edge_note | pin | manual_link`) **or**
+    `data/cases/<case_id>/investigator_log.jsonl` (per-case, matches `case.json` locality).
+  - event kinds: `note_added`, `note_edited`, `note_deleted`, `pin_set`, `pin_cleared`,
+    `manual_link_added`, `manual_link_deleted`.
+  - derived read model: `investigator_overlay(case_id)` →
+    ```
+    {
+      case_id,
+      node_notes:   { "<address>":  [ Note, ... ] },
+      edge_notes:   { "<tx_id or edgeKey>": [ Note, ... ] },
+      pinned_nodes: { "<address>": { x?, y?, pinned_by, pinned_at } },
+      manual_links: [ ManualLink, ... ]
+    }
+    ```
+  - `Note` = `{ id, author, text, created_at, updated_at, deleted? }`.
+  - `ManualLink` = `{ id, source_address, target_address, relationship_type, direction,
+    rationale, evidence_ref?, created_by, created_at }` where `relationship_type` ∈
+    `same_entity | controls | associated_with | off_chain_payment | other` and `direction`
+    ∈ `directed | undirected`.
+  - `tx_identity.transaction_id` reused verbatim for the edge-note key; a fallback
+    `edgeKey = f"{source} {target}"` for notes attached to an aggregated edge rather
+    than one transfer.
+
+**New router** — `app/api/routes/investigator.py`, prefix `/cases/{case_id}/investigator`,
+mounted in `api/router.py` under the plain `authenticated` dependency list (any analyst,
+same as the custody router):
+
+| Method + path | Purpose |
+|---|---|
+| `GET  /cases/{id}/investigator` | full overlay for the case |
+| `POST /cases/{id}/investigator/nodes/{address}/notes` | add a node note |
+| `PATCH/DELETE .../nodes/{address}/notes/{note_id}` | edit / delete (author or admin) |
+| `POST .../edges/{edge_key}/notes` + `PATCH`/`DELETE` | edge notes |
+| `PUT  /cases/{id}/investigator/pins/{address}` | pin (optional `{x,y}` body) |
+| `DELETE /cases/{id}/investigator/pins/{address}` | unpin |
+| `GET/POST /cases/{id}/investigator/manual-links`, `DELETE .../manual-links/{id}` | off-chain links |
+
+Every write → `write_audit_log(action='investigator_*', case_id=..., user=...)`.
+
+**Optional, additive** merges (keep namespaced, never overwrite plugin/on-chain attrs):
+
+- `GET /cases/{id}/graph` and `POST /cases/{id}/analytics/run` may attach
+  `payload['investigator']` (the whole overlay) and/or per-node
+  `investigator_note_count`, and append manual links to `payload['links']` **only** with
+  `data.investigator_manual_link === true` + no `amount`/`total_amount`.
+  Preferred: return the overlay as its **own top-level block** and let the frontend merge,
+  so the graph payload proper stays 100% on-chain-derived.
+- `app/exports/service.py` — new "Investigator conclusions" section in the case PDF/CSV;
+  in GraphML/GEXF, emit manual links as edges tagged `edge_kind="manual_offchain"` (and
+  node notes as a `note_count` attribute) so downstream tools never treat them as
+  transactions.
+
+**Tests** — `backend/tests/test_case_notes.py` in the style of `test_custody_log.py`
+(isolate the store path via `monkeypatch`).
+
+### 5.2 Frontend
+
+- **Models** (`models/blockchain-forensics.models.ts`): `InvestigatorNote`,
+  `InvestigatorPin`, `ManualLink`, `CaseInvestigatorOverlay`.
+- **`ApiService`**: `getInvestigatorOverlay`, `addNodeNote` / `updateNodeNote` /
+  `deleteNodeNote`, `addEdgeNote` / …, `pinNode(caseId, address, pos?)` / `unpinNode`,
+  `listManualLinks` / `addManualLink` / `deleteManualLink`.
+- **`AnalysisStateService`**: `investigatorOverlay$` + `setInvestigatorOverlay(...)` +
+  `refreshInvestigatorOverlay(caseId)`; refresh on `selectedCase$` change (same place the
+  graph page already reloads on case change).
+- **New feature area** `features/case-management/` (route `/case-management`, add to
+  `app.routes.ts` + a nav link in `app.component.html`):
+  - a "case notebook" listing every note / pin / manual link for the active case, with
+    author + timestamps + edit/delete, grouped by target (address / transaction /
+    off-chain link). Reuses the `activeCase` + evidence-`<select>` skeleton.
+  - a form to create a manual off-chain link (two address inputs, relationship type,
+    rationale, optional evidence reference).
+- **Main graph page** (`features/graph-visualization/`) — the integration point:
+  - node inspector: an "Istražiteljski zaključci / beleške" sub-panel (list + add box) and
+    a **Pin / Otkači** toggle button, visually distinct (amber "conclusion" styling vs the
+    blue on-chain `<dl>`).
+  - add `cy.on('tap', 'edge')` + a small edge-details panel (borrow from taint page) so
+    edge notes have a home.
+  - **pins**: after `fcose` runs, apply saved `{x,y}` for pinned nodes, `node.lock()` +
+    `.addClass('pinned')` (distinct badge), make nodes `grabbable`, and on `dragfree`
+    call `pinNode(caseId, id, node.position())`. This is a real change to `renderGraph()`
+    (from "always random" to "random for unpinned, fixed for pinned").
+  - **manual links**: render via a new overlay method modelled on `renderSwapOverlay()` —
+    `classes: 'manual-link'`, solid distinct colour, no amount label, arrow only when
+    `direction === 'directed'`, label e.g. `OFF-CHAIN: same_entity`.
+  - **layer toggle** + **legend entry** mirroring the DEX-swap overlay toggle
+    ("Prikaži istražiteljski sloj").
+- First pass targets the **main graph page only** (per the "stay independent" convention);
+  taint / pathfinding graphs can adopt the overlay later.
+
+---
+
+## 6. Reusable components / endpoints (summary answer)
+
+**Backend, reuse directly:**
+`app/evidence/custody_log.py` (store + read-model template), `tx_identity.transaction_id`
+(edge/tx key), `audit_log.write_audit_log` (log every write),
+`case_management._read_json/_write_json/_case_dir` (if a per-case JSON file is chosen),
+`api/deps.get_current_user` (author identity), `exports/service._section_title/_draw_table`
+(report section), `api/routes/graph.enrich_node_metadata` (precedent for merging fields).
+
+**Frontend, reuse directly:**
+`AnalysisStateService` (add a stream), `ApiService` (add methods), the DEX-swap overlay
+code path in `graph-visualization.component.ts` (manual links + toggle),
+`<aside class="node-inspector">` markup (host notes/pin), taint page's
+`cy.on('tap','edge')` + `selectedEdgeDetails` (edge inspector), the `activeCase` +
+evidence-`<select>` skeleton (new page), `SignaturePadComponent` /
+`CustodyAccessDialogComponent` (only if a signed declaration is wanted on manual links).
+
+**Endpoints that already return what the overlay must line up against:**
+`GET /cases/{id}` (evidence list), `GET /cases/{id}/graph` (node ids = address strings,
+link `source`/`target`), `POST /cases/{id}/analytics/run` (same shape + plugin attrs).
+
+---
+
+## 7. Backend models / APIs that will probably be needed
+
+- **New service/module** `case_notes` (append-only event log + `investigator_overlay()`
+  read model) — no schema migration, just a new JSONL file + helpers.
+- **New router** `investigator.py` under `/cases/{case_id}/investigator` (see §5.1 table),
+  mounted with the standard authenticated dependency.
+- **New audit-log actions**: `investigator_note_added` / `_edited` / `_deleted`,
+  `investigator_pin_set` / `_cleared`, `investigator_manual_link_added` / `_deleted`.
+- **New Pydantic request models** in that router: `NodeNoteRequest { text }`,
+  `EdgeNoteRequest { text }`, `PinRequest { x?: float, y?: float }`,
+  `ManualLinkRequest { source_address, target_address, relationship_type, direction,
+  rationale, evidence_ref? }`.
+- **Additive response fields** (optional): `investigator` block on the graph/analytics
+  responses; `edge_kind="manual_offchain"` + `note_count` in GraphML/GEXF; an
+  "Investigator conclusions" section in the case CSV/PDF.
+- **New TS interfaces** + **`ApiService` methods** + **`AnalysisStateService` stream** as
+  in §5.2.
+- **New tests**: `backend/tests/test_case_notes.py` (store isolation via `monkeypatch`).
+
+No changes required to: auth, the graph builder itself, the analytics plugins, the
+existing custody logs, `report_registry` (unless conclusions are put into signed reports —
+see risk #4).
+
+---
+
+## 8. Risks & conflicts with the current architecture
+
+1. **No persisted graph layout / node positions.** Every render runs `fcose` with
+   `randomize: true`; nothing is saved. "Pinning" is only meaningful if we also persist
+   coordinates and change `renderGraph()` to seed saved positions + `lock()` pinned nodes
+   and layout only the rest. If pins must be visible on the taint / pathfinding graphs
+   too, that change has to be repeated in each (they deliberately don't share code).
+   *Mitigation:* start with pins as a **boolean** ("keep this node visible / flagged as
+   important") and treat stored `{x,y}` as optional; full "fixed coordinate" pinning is a
+   follow-up once `renderGraph()` is reworked.
+
+2. **Graph nodes/edges have no stable server key beyond the raw address string / derived
+   tx id.** Address ids are **case-sensitive and un-normalised** everywhere
+   (`path_finding`, `behavioral_analysis` do exact matches). Investigator keys MUST use
+   the identical (non-)normalisation or they silently won't line up. Edge notes must key
+   off `tx_identity.transaction_id`, with a documented fallback for notes on an aggregated
+   edge.
+
+3. **The graph is rebuilt from CSV per request and can be evidence-scoped.** An address or
+   edge that a note/pin/link refers to may not be present in the currently displayed graph
+   (different evidence filter, or evidence changed since the note was made). The overlay is
+   **case-level**; the UI must (a) still list such notes on the Case Management page and
+   (b) not crash the graph overlay when a referenced node is absent (the DEX overlay
+   already guards this with a `nodeIds.has(...)` check — copy that).
+
+4. **Separation must be enforced at every layer, not just visually.**
+   - *Data:* separate store; never written into `case.json`, the DataFrame, or the graph
+     builder.
+   - *API:* separate endpoints; if merged into a graph response, a namespaced
+     (`investigator_*`) additive block only.
+   - *UI:* distinct colour + iconography + explicit "ISTRAŽITELJSKI SLOJ / ZAKLJUČAK"
+     labelling, its own legend entry, toggleable off.
+   - *Exports:* a clearly-headed separate section; manual links tagged as non-transaction
+     edges in GraphML/GEXF.
+   - *Signed reports:* investigator conclusions are **mutable**, the `report_registry`
+     content hash assumes immutable inputs. If conclusions go into a signed PDF, either
+     snapshot them into the hashed `content` at sign time, or keep them out and label them
+     "as of export". Decide explicitly.
+
+5. **Concurrency / multi-user.** Flat files, no locking. A rewritten per-case JSON blob
+   can lose a concurrent editor's write (the existing `case.json` has the same weakness).
+   An **append-only JSONL** with a fold-to-current read model tolerates concurrent appends
+   far better — another reason to follow the custody-log shape rather than a single JSON
+   object.
+
+6. **Authorship / edit rights.** Custody pages are readable by everyone; activity log
+   scopes non-admins to their own rows. Need a decision: recommend **anyone can read and
+   add; edit/delete restricted to the note's author or an admin**; always stamp `author`
+   and always `write_audit_log`.
+
+7. **Closed cases.** `require_open_case` blocks new *evidence* on closed cases but not
+   analysis. Decide whether investigator notes can be added to a closed case (reading must
+   always work). Leaning: allow adding (an investigator's conclusions often land after a
+   case is administratively closed), but surface the closed status in the UI.
+
+8. **Manual-link semantics vs. on-chain edges.** On-chain edges mean "money moved,
+   sender→recipient". An off-chain link ("same person", "known associate") is frequently
+   **undirected** and carries no amount. The model needs `relationship_type` + `direction`
+   + free-text `rationale` (+ optional `evidence_ref`), and the renderer must make it
+   impossible to read as a value transfer (no amount, distinct style, arrow only if
+   directed).
+
+9. **`GraphNodeData` / `GraphLinkData` are open (`[key: string]: unknown`) and are spread
+   verbatim into cytoscape `data`.** Any server-side field added to the node-link JSON
+   flows straight into the graph elements. Safe, but name investigator fields
+   deliberately (`investigator_note_count`, `investigator_manual_link`) to avoid colliding
+   with plugin attributes.
+
+10. **Nav bar is already ~13 links.** Adding "Case management" is fine but the header is
+    getting crowded; consider grouping later (out of scope for this feature).
+
+11. **Frontend has no unit-test culture in these feature components** (there's a
+    `src/app/features/tests/` *page*, and a backend pytest suite, but the Angular
+    components aren't covered by specs). New backend logic should ship with pytest in the
+    `test_custody_log.py` style; frontend verification will be manual, matching the rest of
+    the app.
+
+12. **`data/report_registry.json` is currently open in the editor** — unrelated to this
+    task. The investigator layer should not touch it unless decision #4 says conclusions
+    go into signed reports.
+
+---
+
+## 9. Open decisions to confirm before implementation
+
+- Store location: app-wide `logs/investigator_log.jsonl` vs per-case
+  `data/cases/<id>/investigator_log.jsonl`. *(Leaning: per-case, matches `case.json`
+  locality and makes case deletion clean up automatically.)*
+- Pin = boolean flag first, or fixed `{x,y}` coordinates from day one.
+- Do manual off-chain links require a signed declaration (`SignaturePadComponent`) like
+  custody access / report export, or just a typed rationale?
+- Do investigator conclusions appear in the exported case report / signed report, and if
+  so are they part of the verification hash?
+- Edit/delete rights: author-or-admin (recommended) vs. any analyst.
+- Which graphs get the overlay in v1: main graph page only (recommended) vs. taint +
+  pathfinding too.
+
+---
+
+*End of analysis entry. No source files were modified.*
+
+---
+
+## 10. Step 1 — investigation case container (backend data model)
+
+Date: 2026-09-08. Scope of this step: **only** the backend container entity that will
+later hold investigator notes, pinned nodes and off-chain address links. No frontend. No
+notes / pins / links. No change to any Graph / Taint / Pathfinding / Behavioral / DEX
+algorithm.
+
+### 10.1 Design decisions taken
+
+- **A new, independent entity — `InvestigationCase` — separate from the evidence `Case`.**
+  The evidence `Case` (`app/services/case_management.py`) owns imported on-chain facts,
+  currency validation, open/closed status, and the chain of custody. The investigation
+  case owns investigator-generated interpretation. They are kept in separate code
+  (`app/investigations/`) and separate storage (`data/investigations/`), which is the
+  concrete form of the "keep conclusions separated from on-chain facts" requirement.
+- **No link to an evidence `Case` in this step.** Notes / pins / links key off address
+  strings and stable transaction ids, which exist independently of any particular graph
+  render, so the container does not need an evidence-case foreign key yet. If a link is
+  wanted later it is an additive nullable field, no migration.
+- **Same conventions as the rest of the backend:** flat-file JSON (no DB), 12-char hex id
+  (`uuid4().hex[:12]`), UTC ISO-8601 timestamps, an `index.json` + per-entity directory
+  layout copied from `case_management.py`, a function-module service, Pydantic v2 request
+  models, `FileNotFoundError`-based "not found" signalling mapped to HTTP 404 in the
+  route, and an `write_audit_log(...)` call on every write.
+- **Layered on purpose** (the task asked for models / repositories / services as distinct
+  things): `models.py` (entities + validation) → `repository.py` (pure file I/O, dicts
+  only) → `service.py` (ids, timestamps, index sync, model⇄dict) → `routes/investigations.py`
+  (HTTP + audit log).
+- **Audit logging included** because every state-changing route in this project writes to
+  `logs/audit_log.jsonl`; omitting it would be the inconsistent choice. New actions:
+  `investigation_case_created` / `_updated` / `_deleted`.
+
+### 10.2 Files created
+
+| File | Purpose |
+|---|---|
+| `backend/app/investigations/__init__.py` | new package marker (empty, like every other package `__init__` in this project) |
+| `backend/app/investigations/models.py` | Pydantic v2 models: `InvestigationCase` (persisted entity), `InvestigationCaseCreate` and `InvestigationCaseUpdate` (request bodies, with validators that trim `name`/`description` and reject a blank `name`). Helpers `utc_now_iso()` and `new_investigation_id()`. |
+| `backend/app/investigations/repository.py` | Storage layer. Reads/writes `data/investigations/index.json` and `data/investigations/<id>/investigation.json`; `load_index` / `save_index` (keeps newest-updated first), `read_record` / `write_record` / `delete_record` / `exists`. Pure dict I/O, no validation. |
+| `backend/app/investigations/service.py` | Orchestration. `list_investigations`, `get_investigation`, `create_investigation`, `update_investigation` (partial, bumps `updated_at`, never touches `created_at`), `delete_investigation`. Converts between `InvestigationCase` models and stored dicts, and keeps the index in sync. Defines `InvestigationCaseNotFoundError(FileNotFoundError)`. |
+| `backend/app/api/routes/investigations.py` | `APIRouter(prefix='/investigations')` with list / create / detail / update / delete. Each write also calls `write_audit_log`. `InvestigationCaseNotFoundError` → HTTP 404. |
+| `backend/tests/test_investigation_management.py` | 11 tests over the service layer (create → unique id + equal timestamps, name trimming, blank-name rejection, get, list ordering, 404s, update advances only `updated_at`, description clearing, delete removes record + index entry). Isolated from the real store via `monkeypatch.setattr(repository, '_root', ...)`, same pattern as `test_report_registry.py`. |
+
+### 10.3 Files modified
+
+| File | Change | Why |
+|---|---|---|
+| `backend/app/paths.py` | added `INVESTIGATIONS_DIR = DATA_DIR / 'investigations'` next to `CASES_DIR` | central path constants are defined here for every other store; the investigator container gets its own tree so its data never shares a directory with imported on-chain evidence |
+| `backend/app/api/router.py` | `import ... investigations_router`; `api_router.include_router(investigations_router, dependencies=authenticated)` right after the `cases_router` include | expose the new routes under `/api/v1`, with the same "any authenticated, non-blocked user" access the `cases` router uses |
+
+Nothing else was touched. No analytics / graph / taint / pathfinding / behavioral / DEX
+code, no existing routes, no existing models, no existing tests.
+
+### 10.4 Current model / storage structure
+
+**Entity — `InvestigationCase`** (`app/investigations/models.py`):
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `str` | 12-char hex, generated (`uuid4().hex[:12]`), unique, stable — the anchor notes/pins/links will reference later |
+| `name` | `str` | required, 1–200 chars, trimmed |
+| `description` | `str \| null` | optional, ≤ 5000 chars, trimmed; blank ⇒ stored as `null` |
+| `created_at` | `str` | UTC ISO-8601, set once at creation, never changed afterwards |
+| `updated_at` | `str` | UTC ISO-8601, equals `created_at` at creation, advanced on every successful edit |
+
+**Request models:** `InvestigationCaseCreate { name, description? }`,
+`InvestigationCaseUpdate { name?, description? }` (partial — only fields present in the
+body are applied; `description: ""` clears it).
+
+**On disk** (no database — flat JSON, mirrors `app/services/case_management.py`):
+
+```
+data/investigations/
+├── index.json                         { "investigations": [ {id,name,description,created_at,updated_at}, ... ] }
+│                                        sorted by updated_at, newest first
+└── <investigation_id>/
+    └── investigation.json             the full InvestigationCase record
+        (notes.jsonl / pinned_nodes.json / links.jsonl will be added in this
+         same per-investigation directory in later steps)
+```
+
+`logs/audit_log.jsonl` (existing app-wide log) gains rows with
+`action ∈ { investigation_case_created, investigation_case_updated, investigation_case_deleted }`,
+each carrying `user` and `details.investigation_id`.
+
+### 10.5 API endpoints introduced
+
+All under `/api/v1`, all require a valid bearer token (mounted with the shared
+`get_current_user` dependency), all JSON.
+
+| Method & path | Body | Success | Errors | Notes |
+|---|---|---|---|---|
+| `GET /api/v1/investigations` | — | `200 { "investigations": [InvestigationCase, ...] }` | `401` | newest-updated first |
+| `POST /api/v1/investigations` | `{ "name": str, "description"?: str }` | `200 InvestigationCase` | `401`, `422` (blank/too-long name) | audit: `investigation_case_created` |
+| `GET /api/v1/investigations/{id}` | — | `200 InvestigationCase` | `401`, `404` | |
+| `PATCH /api/v1/investigations/{id}` | `{ "name"?: str, "description"?: str }` | `200 InvestigationCase` | `401`, `404`, `422` | partial update; advances `updated_at` only; audit: `investigation_case_updated` |
+| `DELETE /api/v1/investigations/{id}` | — | `204` no content | `401`, `404` | removes the record + index entry; audit: `investigation_case_deleted` |
+
+### 10.6 Build / verification performed
+
+- `python -c "from app.main import app; app.openapi()"` — app imports, schema builds; the
+  five routes above appear under `/api/v1/investigations`.
+- `pytest backend/tests/test_investigation_management.py` — **11 passed**.
+- `pytest backend/tests` (whole suite) — **197 passed** (was 186; +11 new), 0 failures.
+  The only warning is the pre-existing `datetime.utcnow()` deprecation in
+  `graph_building.py`, untouched by this step.
+- End-to-end HTTP smoke via `TestClient` (login → list → create → detail → patch → list →
+  404 → 422 on blank name → 401 without token → delete → 404): all as expected, and the
+  three audit-log actions were written.
+
+### 10.7 Not done yet (next steps)
+
+- Frontend (models, `ApiService` methods, `AnalysisStateService` stream, a Case Management
+  page, graph integration).
+- Investigator **notes** on addresses / transactions.
+- **Pinned nodes**.
+- Manual **off-chain links** between addresses.
+- Optional: link an `InvestigationCase` to an evidence `Case`; a summary projection with
+  child-collection counts; an "Investigator conclusions" section in the case exports.
