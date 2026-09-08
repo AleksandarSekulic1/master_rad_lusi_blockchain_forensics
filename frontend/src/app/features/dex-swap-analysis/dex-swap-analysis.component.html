@@ -1,0 +1,104 @@
+<div class="dex-swap-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+  </div>
+
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+
+  <div class="dex-swap-header">
+    <p class="panel-kicker">DEX Swap Analysis</p>
+    <h2>DEX SWAPS</h2>
+    <p>Heuristička detekcija swap događaja — adresa šalje jedan token na DEX kontrakt i ubrzo prima drugi token nazad.</p>
+  </div>
+
+  <div class="address-form">
+    <label class="address-field">
+      Address
+      <input
+        type="text"
+        [(ngModel)]="address"
+        placeholder="0x..."
+        (keydown.enter)="analyze()"
+        [disabled]="!activeCase"
+      />
+    </label>
+    <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+      {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
+    </button>
+  </div>
+
+  <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+
+  <ng-container *ngIf="result">
+    <div class="result-meta">
+      <span class="tx-count-pill">{{ result.total_events }} swap{{ result.total_events === 1 ? '' : 's' }} detected</span>
+    </div>
+
+    <p class="data-note" *ngIf="!result.data_completeness.currency_declared">{{ result.data_completeness.note }}</p>
+
+    <div class="swap-list" *ngIf="result.events.length > 0; else noSwaps">
+      <article class="swap-card" *ngFor="let event of result.events">
+        <span
+          class="confidence-badge"
+          [class.confidence-detected]="event.confidence === 'Detected'"
+          [class.confidence-potential]="event.confidence === 'Potential'"
+        >
+          {{ event.label }}
+        </span>
+
+        <p class="swap-route">{{ event.user_address }} → {{ event.dex_name }}</p>
+
+        <p class="swap-headline">
+          <span class="amount">{{ event.input_amount | number : '1.0-6' }}</span>
+          <span class="token" [class.token-unknown]="!event.input_token" [title]="tokenTitle(event.input_token)">{{
+            tokenLabel(event.input_token)
+          }}</span>
+          <span class="arrow">→</span>
+          <span class="dex-name">{{ event.dex_name }}</span>
+          <span class="arrow">→</span>
+          <span class="amount">{{ event.output_amount | number : '1.0-6' }}</span>
+          <span class="token" [class.token-unknown]="!event.output_token" [title]="tokenTitle(event.output_token)">{{
+            tokenLabel(event.output_token)
+          }}</span>
+        </p>
+
+        <div class="swap-footer">
+          <span
+            >Time: {{ event.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
+              *ngIf="event.time_gap_seconds > 0"
+            >
+              · gap {{ event.time_gap_seconds }}s</ng-container
+            ></span
+          >
+          <span *ngFor="let line of txHashLines(event)">{{ line.label }}: {{ line.hash }}</span>
+        </div>
+      </article>
+    </div>
+
+    <ng-template #noSwaps>
+      <p class="empty-hint">No DEX swaps detected for this address.</p>
+    </ng-template>
+
+    <p class="disclaimer-note">{{ result.disclaimer }}</p>
+  </ng-container>
+
+  <p class="empty-hint" *ngIf="!result && !analysisError">
+    Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.
+  </p>
+</div>

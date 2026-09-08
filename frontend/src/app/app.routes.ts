@@ -56,6 +56,12 @@ export const appRoutes: Routes = [
 			import('./features/behavioral-analysis/behavioral-analysis.component').then((module) => module.BehavioralAnalysisComponent),
 	},
 	{
+		path: 'dex-swaps',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/dex-swap-analysis/dex-swap-analysis.component').then((module) => module.DexSwapAnalysisComponent),
+	},
+	{
 		path: 'reports',
 		canActivate: [authGuard],
 		loadComponent: () =>

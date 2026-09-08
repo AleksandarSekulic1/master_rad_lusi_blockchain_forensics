@@ -21,6 +21,7 @@ import {
   CustodyEvidenceSummary,
   CustodyFieldSuggestions,
   CustodyTransactionSummary,
+  DexSwapAnalysisResult,
   FetchOnchainRequest,
   KnownEntity,
   NodeLinkGraphResponse,
@@ -188,6 +189,14 @@ export class ApiService {
       params = params.set('evidence', evidence);
     }
     return this.http.get<BehavioralAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/behavioral-analysis`, { params });
+  }
+
+  getDexSwapAnalysis(caseId: string, address: string, evidence?: string | null): Observable<DexSwapAnalysisResult> {
+    let params = new HttpParams().set('address', address);
+    if (evidence) {
+      params = params.set('evidence', evidence);
+    }
+    return this.http.get<DexSwapAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/dex-swap-analysis`, { params });
   }
 
   listUsers(): Observable<{ users: AuthUser[] }> {

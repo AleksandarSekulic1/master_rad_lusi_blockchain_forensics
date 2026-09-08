@@ -286,6 +286,70 @@ export interface BehavioralAnalysisResult {
   generated_at: string;
 }
 
+// --- DEX Swap Analysis (see DEX-SWAP-ANALIZA.md) - a heuristic, not a proof. Every event
+// carries an explicit `confidence` ('Detected' when both legs share the same real
+// transaction hash, 'Potential' when matched only by DEX address + a short time window),
+// and the result always carries `disclaimer`, which the UI must render, not just the
+// per-event data. ---
+
+/** One candidate swap: `user_address` sent `input_token`/`input_amount` to `dex_address`,
+ * then received `output_token`/`output_amount` back from that same address. Token fields
+ * are null when the evidence never declared a currency for that leg - render that as
+ * "unknown", never guess a symbol (see `data_completeness` below). */
+export interface DexSwapEvent {
+  type: 'SWAP';
+  confidence: 'Detected' | 'Potential';
+  label: string;
+  user_address: string;
+  dex_address: string;
+  dex_name: string;
+  dex_match_basis: string;
+  input_token: string | null;
+  input_amount: number;
+  input_transaction_hash: string | null;
+  input_timestamp: string;
+  output_token: string | null;
+  output_amount: number;
+  output_transaction_hash: string | null;
+  output_timestamp: string;
+  time_gap_seconds: number;
+  match_basis: 'shared_transaction_hash' | 'time_window';
+  reasons: string[];
+}
+
+export interface DexSwapNodeConsidered {
+  address: string;
+  name: string;
+  match_basis: string;
+}
+
+/** Whether ANY transaction in the analyzed evidence declared a currency/token at all -
+ * false means every event's input_token/output_token is null, and the UI should explain
+ * why rather than silently showing blanks. */
+export interface DexSwapDataCompleteness {
+  currency_declared: boolean;
+  note: string;
+}
+
+/** Result of the case-scoped DEX Swap Analysis endpoint (GET
+ * /cases/{id}/dex-swap-analysis). `address` on the request is optional server-side, but
+ * this app's page always supplies one (see dex-swap-analysis.component.ts) - `address` on
+ * the response mirrors back whatever was requested (null when omitted). */
+export interface DexSwapAnalysisResult {
+  case_id: string;
+  evidence: string | null;
+  address: string | null;
+  total_events: number;
+  detected_count: number;
+  potential_count: number;
+  events: DexSwapEvent[];
+  dex_nodes_considered: DexSwapNodeConsidered[];
+  data_completeness: DexSwapDataCompleteness;
+  max_gap_seconds: number;
+  disclaimer: string;
+  generated_at: string;
+}
+
 export interface AnalyticsResponse extends NodeLinkGraphResponse {
   analytics: Record<string, unknown>;
   summary: {
