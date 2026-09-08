@@ -132,10 +132,11 @@ export class ApiService {
     return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/links/${linkId}`);
   }
 
-  /** Investigator notes for one address in an investigation (backend scopes ?address= to
-   * address/node notes only - see step 4). */
-  getInvestigatorNotes(investigationId: string, address: string): Observable<InvestigatorNoteListResponse> {
-    const params = new HttpParams().set('address', address);
+  /** Investigator notes in an investigation. With `address`, only that address's
+   * node notes (backend scopes ?address= to address/node notes - see step 4); without it,
+   * every note in the investigation (nodes + transactions). */
+  getInvestigatorNotes(investigationId: string, address?: string | null): Observable<InvestigatorNoteListResponse> {
+    const params = address ? new HttpParams().set('address', address) : undefined;
     return this.http.get<InvestigatorNoteListResponse>(
       `${this.apiUrl}/api/v1/investigations/${investigationId}/notes`,
       { params },

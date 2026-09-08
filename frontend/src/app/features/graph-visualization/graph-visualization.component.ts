@@ -17,6 +17,7 @@ import {
   DexSwapEvent,
   Investigation,
   InvestigatorLink,
+  InvestigatorNote,
   KnownEntityCategory,
   EvidenceEntry,
   GraphLinkData,
@@ -25,13 +26,21 @@ import {
   TaintAnalysisResult,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
+import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent, InvestigatorNodeDialogComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    CustodyAccessDialogComponent,
+    InvestigatorNodeDialogComponent,
+    CaseOverviewPanelComponent,
+  ],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
@@ -99,6 +108,12 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected selectedNodeNoteCount = 0;
   protected isNodeDialogOpen = false;
   protected nodeDialogMode: 'notes' | 'link' = 'notes';
+
+  // --- Case Overview panel (CASE-MANAGEMENT-IMPLEMENTATION.md §17). Compact summary of
+  // the selected investigation's investigator-generated info - notes, pinned addresses,
+  // links. No analytics. `investigatorLinks` (from step 7) and `pinnedNodePositions`
+  // (from step 5) are reused directly; only the full note list needs its own fetch. ---
+  protected caseOverviewNotes: InvestigatorNote[] = [];
 
   /** A node with hundreds of counterparties (e.g. a deposit hub) would otherwise render
    * hundreds of <dd> rows in the inspector panel, forcing the whole page to scroll past
@@ -312,6 +327,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.investigatorLinkError = null;
     this.loadInvestigatorLinks();
     this.refreshSelectedNodeNoteCount();
+    this.loadCaseOverviewNotes();
   }
 
   // --- Case Management actions in the node details panel (CASE-MANAGEMENT-IMPLEMENTATION.md §16) ---
@@ -370,11 +386,71 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
   protected onNodeDialogNotesChanged(): void {
     this.refreshSelectedNodeNoteCount();
+    this.loadCaseOverviewNotes();
   }
 
   protected onNodeDialogLinkCreated(): void {
     this.loadInvestigatorLinks();
     this.closeNodeDialog();
+  }
+
+  // --- Case Overview panel (CASE-MANAGEMENT-IMPLEMENTATION.md §17) ---
+
+  protected get selectedInvestigationDescription(): string | null {
+    return this.investigations.find((inv) => inv.id === this.selectedInvestigationId)?.description ?? null;
+  }
+
+  /** Addresses of the currently pinned nodes (step 5 state, session-scoped). */
+  protected get pinnedNodeIds(): string[] {
+    return Array.from(this.pinnedNodePositions.keys());
+  }
+
+  /** Node ids present in the graph currently on screen - lets the overview panel flag an
+   * address that is not in this view. */
+  protected get currentGraphAddresses(): string[] {
+    return this.graph ? this.graph.nodes.map((node) => String(node.id)) : [];
+  }
+
+  /** Every investigator note (nodes + transactions) in the selected investigation, for the
+   * overview count and drill-down. No investigation selected -> empty. */
+  private loadCaseOverviewNotes(): void {
+    if (!this.selectedInvestigationId) {
+      this.caseOverviewNotes = [];
+      return;
+    }
+    this.api.getInvestigatorNotes(this.selectedInvestigationId).subscribe({
+      next: (res) => (this.caseOverviewNotes = res.notes),
+      error: () => (this.caseOverviewNotes = []),
+    });
+  }
+
+  /** Select and centre a node by its address, from the overview panel's "na graf" jump. */
+  protected focusNodeById(address: string): void {
+    const node = this.graph?.nodes.find((item) => String(item.id) === address);
+    if (node) {
+      this.state.setSelectedNode(node);
+    }
+  }
+
+  /** Unpin a node by address, from the overview panel. Mirrors togglePinSelectedNode()'s
+   * unpin branch. */
+  protected unpinNodeById(address: string): void {
+    if (!this.pinnedNodePositions.has(address)) {
+      return;
+    }
+    this.pinnedNodePositions.delete(address);
+    const element = this.cy?.$id(address);
+    if (element && element.nonempty()) {
+      element.unlock();
+      element.removeClass('pinned');
+    }
+  }
+
+  /** Open the step-7 link inspector for a link picked in the overview panel. */
+  protected showInvestigatorLinkDetails(link: InvestigatorLink): void {
+    this.selectedInvestigatorLink = link;
+    this.selectedNode = null;
+    this.selectedSwapEvent = null;
   }
 
   /** Fetches the chosen investigation's links and (re)draws the overlay. A failure only

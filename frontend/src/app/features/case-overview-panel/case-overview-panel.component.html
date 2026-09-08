@@ -1,0 +1,79 @@
+<div class="co-panel">
+  <div class="co-head">
+    <span class="co-kicker">Istražiteljski pregled slučaja</span>
+    <strong class="co-name">{{ investigationName }}</strong>
+    <p class="co-desc" *ngIf="description">{{ description }}</p>
+  </div>
+
+  <div class="co-counts">
+    <button type="button" [class.active]="open === 'notes'" (click)="toggle('notes')">
+      Beleške: <strong>{{ notes.length }}</strong>
+    </button>
+    <button type="button" [class.active]="open === 'pins'" (click)="toggle('pins')">
+      Zakačene adrese: <strong>{{ pinnedAddresses.length }}</strong>
+    </button>
+    <button type="button" [class.active]="open === 'links'" (click)="toggle('links')">
+      Istražiteljske veze: <strong>{{ links.length }}</strong>
+    </button>
+  </div>
+
+  <!-- NOTES -->
+  <div class="co-list" *ngIf="open === 'notes'">
+    <p class="co-empty" *ngIf="notes.length === 0">Nema beleški u ovoj istrazi.</p>
+    <ul>
+      <li *ngFor="let note of notes">
+        <span class="co-tag">{{ note.target_type === 'address' ? 'čvor' : 'transakcija' }}</span>
+        <span class="co-mono">{{ noteTargetId(note) }}</span>
+        <span class="co-text">{{ note.text }}</span>
+        <button
+          type="button"
+          class="co-jump"
+          *ngIf="note.target_type === 'address' && note.address"
+          [disabled]="!inGraph(note.address)"
+          [title]="inGraph(note.address) ? 'Izaberi ovaj čvor na grafu' : 'Adresa nije u trenutnom prikazu grafa'"
+          (click)="focusNode.emit(note.address!)"
+        >
+          na graf →
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <!-- PINNED ADDRESSES -->
+  <div class="co-list" *ngIf="open === 'pins'">
+    <p class="co-empty" *ngIf="pinnedAddresses.length === 0">Nema zakačenih adresa (zakačeno traje dok je stranica otvorena).</p>
+    <ul>
+      <li *ngFor="let address of pinnedAddresses">
+        <span class="co-mono">{{ address }}</span>
+        <button
+          type="button"
+          class="co-jump"
+          [disabled]="!inGraph(address)"
+          [title]="inGraph(address) ? 'Izaberi ovaj čvor na grafu' : 'Adresa nije u trenutnom prikazu grafa'"
+          (click)="focusNode.emit(address)"
+        >
+          na graf →
+        </button>
+        <button type="button" class="co-jump danger" (click)="unpinNode.emit(address)">otkači</button>
+      </li>
+    </ul>
+  </div>
+
+  <!-- INVESTIGATOR LINKS -->
+  <div class="co-list" *ngIf="open === 'links'">
+    <p class="co-empty" *ngIf="links.length === 0">Nema istražiteljskih veza u ovoj istrazi.</p>
+    <ul>
+      <li *ngFor="let link of links">
+        <span class="co-mono">{{ link.source_address }}</span>
+        <span class="co-rel">↔</span>
+        <span class="co-mono">{{ link.target_address }}</span>
+        <span class="co-tag">{{ link.confidence }}</span>
+        <button type="button" class="co-jump" (click)="showLink.emit(link)">detalji →</button>
+      </li>
+    </ul>
+  </div>
+
+  <p class="co-foot">
+    Samo pregled zapažanja i zaključaka istražitelja — analize su na stranicama Graf / Taint / Pathfinding / Behavioral / DEX.
+  </p>
+</div>

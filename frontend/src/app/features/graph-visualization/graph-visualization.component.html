@@ -56,6 +56,22 @@
       >
     </button>
   </div>
+
+  <!-- Case Overview: kompaktan pregled zapažanja i zaključaka istražitelja za izabranu
+       istragu (beleške / zakačene adrese / veze). Bez analitike - vidi §17. -->
+  <app-case-overview-panel
+    *ngIf="selectedInvestigationId"
+    [investigationName]="selectedInvestigationName ?? ''"
+    [description]="selectedInvestigationDescription"
+    [notes]="caseOverviewNotes"
+    [pinnedAddresses]="pinnedNodeIds"
+    [links]="investigatorLinks"
+    [graphAddresses]="currentGraphAddresses"
+    (focusNode)="focusNodeById($event)"
+    (unpinNode)="unpinNodeById($event)"
+    (showLink)="showInvestigatorLinkDetails($event)"
+  ></app-case-overview-panel>
+
   <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
 
   <!-- Lanac dokaza: razlog pristupa i potpis pre SVAKOG pokretanja analize -->

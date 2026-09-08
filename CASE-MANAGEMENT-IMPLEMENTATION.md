@@ -1,11 +1,11 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4, 5, 6, 7 & 8 done.** Backend: investigation-case container;
+Status: **Steps 1, 3, 4, 5, 6, 7, 8 & 9 done.** Backend: investigation-case container;
 investigator notes on addresses/nodes **and** transactions/edges; investigator links
 (suspected off-chain relations). Frontend: "Pin node" (step 5), the investigator-link
-overlay on the Graph Analysis page (step 7), and Case Management actions (pin / add note /
-investigator link / note count) wired into the existing node details panel with a compact
-modal for the detail (step 8).
+overlay on the Graph Analysis page (step 7), Case Management actions in the node details
+panel + a compact modal for the detail (step 8), and a compact Case Overview panel
+summarising the selected investigation's notes / pinned addresses / links (step 9).
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -19,6 +19,7 @@ Layer*.
 - **§14** — Step 6 implementation log: investigator links (suspected off-chain relations).
 - **§15** — Step 7 implementation log: investigator links on the Graph Analysis UI.
 - **§16** — Step 8 implementation log: Case Management actions in the node details panel.
+- **§17** — Step 9 implementation log: the compact Case Overview panel.
 
 ---
 
@@ -1483,11 +1484,114 @@ link overlay + closes), `closed`.
   self-link (`A→A`) is `422` (backend guard; `canCreateLink` also blocks it client-side);
   the five audit actions are written.
 
-### 16.7 Not done yet (next steps)
+### 16.7 Not done yet (as of step 8)
 
-- A standalone Case Management page (list all investigations / notes / links per
-  investigation, notes on transactions/edges). So far notes are reachable only via a graph
-  node.
+- A compact case-overview summary → done in step 9, see §17.
+- A standalone Case Management page (list every investigation, manage them). So far the
+  investigator layer lives entirely on the Graph page.
 - Persist the selected investigation across navigation (component-local for now).
+- Author-or-admin restriction on editing/deleting another investigator's note/link
+  (§8 risk 6).
+
+---
+
+## 17. Step 9 — the compact Case Overview panel
+
+Date: 2026-09-08. Scope: a **minimal** summary panel for the selected investigation —
+case name + description, and the **counts** of investigator notes, pinned addresses and
+investigator links, each expandable to the underlying items. **No charts, no analytics, no
+backend changes.** Analysis stays on the Graph / Taint / Pathfinding / Behavioral / DEX
+pages; this is only the investigator's workspace overview.
+
+Renders like the example:
+
+```
+ISTRAŽITELJSKI PREGLED SLUČAJA   CASE #2026-001
+Sumnjiva laundering šema
+
+[ Beleške: 7 ]   [ Zakačene adrese: 4 ]   [ Istražiteljske veze: 2 ]
+```
+
+Clicking a count expands a short list below it.
+
+### 17.1 Where it lives
+
+Embedded on the **Graph Analysis page**, directly under the step-7 "Istražiteljski sloj"
+investigation selector, shown only when an investigation is selected. Not a new route, not
+a new page — the Graph page is already the investigator's workspace (investigation
+selector, notes, links, pins all live there), and putting the overview beside those
+controls keeps everything in one place and lets it read the pinned-nodes state (which is
+graph-component-local, session-scoped — step 5) directly. A standalone page is noted as a
+later option.
+
+### 17.2 The panel (`CaseOverviewPanelComponent`)
+
+A new **presentational** standalone component (`features/case-overview-panel/`). The graph
+page owns the data and the actions; the panel only displays and drills down.
+
+- **CASE** — `investigationName` + `description` (`@Input`s).
+- **Beleške: N** — every note (address + transaction) in the investigation. Expanded: one
+  line per note — a `čvor` / `transakcija` tag, the target id, the text, and a "na graf →"
+  jump for node notes (disabled when the address is not in the graph currently on screen).
+- **Zakačene adrese: N** — the graph component's live `pinnedNodePositions` keys.
+  Expanded: the address, a "na graf →" jump, and an "otkači" (unpin) action. An empty
+  state notes that pins last only while the page is open.
+- **Istražiteljske veze: N** — the `investigatorLinks` already loaded for the step-7
+  overlay. Expanded: `source ↔ target`, the confidence, and a "detalji →" that opens the
+  step-7 link inspector.
+- A footer line restating that analysis lives on the other pages.
+
+`@Output`s: `focusNode(address)`, `unpinNode(address)`, `showLink(link)` — all handled by
+the graph component (select/centre the node, unpin, open the link inspector).
+
+### 17.3 Frontend files changed
+
+**No new route. No backend changes.**
+
+| File | Change |
+|---|---|
+| `frontend/src/app/features/case-overview-panel/` *(new — .ts / .html / .scss)* | `CaseOverviewPanelComponent` — the summary + drill-down described above. Compact, self-contained styles, amber left accent (matches the step-7/8 investigator-layer accent). |
+| `frontend/src/app/core/services/api.service.ts` | `getInvestigatorNotes(investigationId, address?)` — `address` made **optional**; with none, `GET …/notes` returns every note in the investigation (the overview count). Existing step-8 callers pass an address and are unaffected. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` | + `caseOverviewNotes` state; + getters `selectedInvestigationDescription`, `pinnedNodeIds`, `currentGraphAddresses`; + `loadCaseOverviewNotes()` (on investigation-select and after a note change), `focusNodeById()`, `unpinNodeById()`, `showInvestigatorLinkDetails()`. Imports + registers `CaseOverviewPanelComponent`. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.html` | + `<app-case-overview-panel *ngIf="selectedInvestigationId" …>` under the investigation selector, wired to the getters/handlers above. |
+
+### 17.4 Where each number comes from
+
+| Overview row | Source | Endpoint / state |
+|---|---|---|
+| CASE name / description | selected investigation | `GET /api/v1/investigations` (step 1) |
+| Beleške: N | all notes in the investigation | `GET /api/v1/investigations/{id}/notes` **no `address`** (step 4) |
+| Zakačene adrese: N | graph component `pinnedNodePositions` (session-scoped, step 5) | in-memory |
+| Istražiteljske veze: N | `investigatorLinks`, already fetched for the step-7 overlay | `GET /api/v1/investigations/{id}/links` (step 6) |
+
+### 17.5 Constraints honoured
+
+- **Minimal, no analytical dashboard** — three count chips + short lists; no charts, no
+  aggregation, no computed metrics.
+- **Only investigator-generated information** — notes, pins, links. Nothing about the
+  transaction graph, risk, taint, etc.
+- **Analysis pages untouched** — Graph (its analysis parts), Taint, Pathfinding,
+  Behavioral, DEX are not modified; the panel only adds a summary block to the Graph
+  page's investigator-layer area and reuses data already loaded there.
+- **Open a category to see items** — each count toggles a compact list with a jump back to
+  the graph / link inspector.
+
+### 17.6 Testing performed
+
+- **Frontend build** — `ng build --configuration development` before and after: both
+  succeed, **0 errors, 0 warnings** (full template type-check covers the new component).
+- **Backend suite** — `pytest backend/tests` → **242 passed** (no backend files touched).
+- **Steps 5 & 7 headless smoke checks** re-run → **12/12 each** (no regression).
+- **Overview data path** — `TestClient` smoke: an investigation with 2 node notes + 1
+  transaction note + 2 links; `GET …/investigations` returns the name/description,
+  `GET …/notes` (no filter) returns **all 3** notes (`{address: 2, transaction: 1}`),
+  `GET …/links` returns **2** — i.e. the panel would show "Beleške: 3 · Istražiteljske
+  veze: 2", matching the requested format.
+
+### 17.7 Not done yet (next steps)
+
+- A standalone Case Management route (manage investigations themselves: create / rename /
+  close). The investigator layer is currently reachable only from the Graph page.
+- Persist the selected investigation, and pins, across navigation (both component-local).
 - Author-or-admin restriction on editing/deleting another investigator's note/link
   (§8 risk 6).
