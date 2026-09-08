@@ -20,7 +20,8 @@ nalaz nosi eksplicitan nivo pouzdanosti (`Detected` ili `Potential`) i disclaime
 | [8. Frontend stranica](#8-frontend-stranica) | `/dex-swaps` — Address + ANALYZE, lista swap kartica |
 | [9. Graph integracija](#9-graph-integracija) | isprekidane SWAP veze preko postojećeg grafa, klik-detalji, High/Medium/Low |
 | [10. Taint preko swap-a](#10-taint-preko-swap-a) | zašto se taint ne sme pustiti kroz DEX čvor kao kroz običan, i šta radimo umesto toga |
-| [11. Gde je šta u kodu](#11-gde-je-šta-u-kodu) | putanje |
+| [11. PDF izveštaj](#11-pdf-izveštaj) | potpisan izveštaj sa kontrolnim brojem, isti obrazac kao Taint/Pathfinding |
+| [12. Gde je šta u kodu](#12-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -402,7 +403,63 @@ izborom `demo_dex_swap_analysis.csv`, klikom „Analiziraj graf" (razlog pristup
 potpis), pa klikom na SWAP granu — oba broja gore su stvarno izračunata kroz pravu
 aplikaciju (Playwright provera), ne ručno.
 
-## 11. Gde je šta u kodu
+## 11. PDF izveštaj
+
+Potpuno frontend funkcionalnost — **nema nove backend rute**. Ponovo iskorišćen isti
+generički mehanizam koji već koriste Taint i Pathfinding izveštaji
+(`POST /api/v1/reports/register` → `GET /api/v1/reports/verify`, vidi
+`report_registry.py`), i ista `<app-signature-pad>` komponenta — samo novi poziv iz
+`dex-swap-analysis.component.ts`, izgrađen po **identičnom obrascu** kao
+`taint-analysis.component.ts`-ov PDF (jspdf + jspdf-autotable), radi vizuelne
+doslednosti.
+
+### 11.1 Šta izveštaj sadrži
+
+Tačno ono što je trenutno prikazano na ekranu za analiziranu adresu (ista adresa +
+evidencija + `max_gap_seconds` kao poslednji uspešan "ANALYZE"), na tri strane:
+
+1. **Zaglavlje** — Case ID, analizirana adresa, ko je izvezao, evidencija, vremenski
+   prozor, vreme generisanja; odmah ispod, kutija sa **istim `disclaimer` tekstom** koji
+   API vraća (§5).
+2. **Rezime analize** — kartice: ukupno događaja, Detected, Potential, broj razmotrenih
+   DEX kontrakata.
+3. **Ključni nalazi** — kratak spisak sa kvačicama (broj događaja, da li je valuta
+   deklarisana, upozorenje ako postoje događaji sa Low pouzdanošću).
+4. **DEX kontrakti razmotreni** — tabela (`dex_nodes_considered`, ista lista kao API
+   odgovor).
+5. **Detektovani swap događaji** — glavna tabela, jedan red po događaju: DEX,
+   Input, Output, **Pouzdanost** (High/Medium/Low — ista `swapConfidenceLevel` logika
+   kao Graph overlay, §9.2 — obojena u tabeli po istom ključu boja), Vreme, Tx hash.
+6. Ako postoji bar jedan **Low** događaj — posebna upozoravajuća sekcija sa tabelom tih
+   događaja i objašnjenjem zašto zaslužuju dodatnu proveru.
+7. **Zaključak** — automatski sastavljen pasus (ista svrha kao Taint izveštajev
+   `buildConclusionParagraph`).
+8. **Metodologija i ograničenja** — sažeta verzija §3/§4/§7 ovog dokumenta: kako radi
+   heuristika (dva prolaza), šta NIJE (nije dokaz), i tačno ista lista ograničenja
+   podataka (valuta retko popunjena, nema pravog ERC-20 uvoza, nema linked-address
+   logike, mali kuriran spisak, generic keyword slab signal, case-sensitive).
+9. **Potpis i overa** — nacrtan potpis analitičara + vektorski pečat "LUSI" + kontrolni
+   broj + otisak sadržaja (SHA-256) — identičan mehanizam kao Taint/Pathfinding, uključno
+   i napomenu da je potpis izjava, ne kriptografski dokaz (vidi `report_registry.py`
+   modul-docstring).
+
+### 11.2 Otisak sadržaja
+
+`reportContentPayload()` hešuje: case ID, adresu, evidenciju, `max_gap_seconds`, i za
+svaki događaj — adrese, pouzdanost, tokene/iznose, timestamp-ove, osnov uparivanja
+(sortirano, da redosled polja nikad ne utiče na heš). Namerno **ne** uključuje
+`reasons[]`/opisne tekstove — heš prati brojeve i adrese koje bi neko mogao osporiti, ne
+prozu.
+
+### 11.3 Testirano stvarnim izvozom
+
+Pokretanjem prave aplikacije (Playwright): izabrana adresa `0xInvestorWallet`, klik
+"Izvezi PDF izveštaj", nacrtan potpis, klik "Potpiši i izvezi PDF" — preuzet je pravi,
+validan 3-stranični PDF (`%PDF-1.3` zaglavlje, ~406 KB), sa tačno očekivanim sadržajem
+(uključujući ispravno obojenu "High (Detected)" / "Medium (Potential)" kolonu i
+generisan, jedinstven kontrolni broj svaki put).
+
+## 12. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
@@ -414,7 +471,8 @@ aplikaciju (Playwright provera), ne ručno.
 | Frontend stranica (§8) | `frontend/src/app/features/dex-swap-analysis/` |
 | Graph integracija (§9) | `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` (`loadDexSwapOverlay`, `renderSwapOverlay`, `buildSwapEdgeElements`, `swapConfidenceLevel`) |
 | Taint preko swap-a (§10) | isti fajl kao gore (`swapCarriedTaint`, `taintAnalysis`, `swapTaintBreakdown`) — čita `TaintAnalysisResult` tip koji već postoji za `/taint` stranicu, ništa novo u backend-u |
-| API poziv | `frontend/src/app/core/services/api.service.ts` (`getDexSwapAnalysis`) |
+| PDF izveštaj (§11) | `frontend/src/app/features/dex-swap-analysis/dex-swap-analysis.component.ts` (`buildDexSwapPdf`, `confirmSignatureAndExport`) — nema nove backend rute, koristi postojeći `/reports/register` |
+| API poziv | `frontend/src/app/core/services/api.service.ts` (`getDexSwapAnalysis`, `registerReport` — potonji već postojao za Taint/Pathfinding) |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`DexSwapEvent`, `DexSwapAnalysisResult`, `DexSwapDataCompleteness`, `DexSwapNodeConsidered`) |
 
 **Ruta:**
