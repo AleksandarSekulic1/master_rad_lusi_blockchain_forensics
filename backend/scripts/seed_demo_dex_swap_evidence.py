@@ -23,8 +23,17 @@ DEMO_CASE_ID = '46ae7f91db9b'
 # currency to demonstrate the heuristic at all - see DEX-SWAP-ANALIZA.md #2 for why the
 # normal upload path cannot accept a file like this yet.
 #
-# Pair 1 (rows 1-2): Detected Swap - same tx_hash on both legs, different tokens.
-# Pair 2 (rows 3-4): Potential Swap - no shared hash, different tokens, 70s apart.
+# Row 0: 0xInvestorWallet receives exactly 10 ETH from a DEFAULT-BLACKLISTED address
+#   (blacklist_check.py's DEFAULT_BLACKLIST_ENTRIES - auto-seeds taint_analysis with no
+#   extra setup) right before Pair 1 - this is what makes Pair 1's swap carry real,
+#   nonzero taint once "Analiziraj graf" is run, the worked example in
+#   DEX-SWAP-ANALIZA.md #10 (Hacker -> 10 ETH 100% taint -> Uniswap -> 25,000 USDC 100%
+#   taint). It does not affect swap DETECTION itself (that ran identically before this
+#   row existed) - only what the taint bridge has to carry across Pair 1's edge.
+# Pair 1 (rows 1-2): Detected Swap - same tx_hash on both legs, different tokens. 100%
+#   tainted (see row 0 above).
+# Pair 2 (rows 3-4): Potential Swap - no shared hash, different tokens, 70s apart. 0%
+#   tainted - 0xInvestorWallet's OTHER 2 ETH here never touched the blacklisted address.
 # Pair 3 (rows 5-6): NOT flagged - same token (ETH) on both legs.
 # Pair 4 (rows 7-8): NOT flagged at the default 5-minute window - 2 hours apart
 #   (still recoverable by widening max_gap_seconds, see DEX-SWAP-ANALIZA.md #6).
@@ -35,6 +44,7 @@ DEMO_CASE_ID = '46ae7f91db9b'
 FILE_NAME = 'demo_dex_swap_analysis.csv'
 CSV_CONTENT = (
     'sender_address,recipient_address,amount,timestamp,currency,tx_hash\n'
+    '0xbad0000000000000000000000000000000000001,0xInvestorWallet,10,2026-08-24T08:55:00Z,ETH,0xtaintseed\n'
     '0xInvestorWallet,0xUniswapRouter,10,2026-08-24T09:00:00Z,ETH,0xswap0001\n'
     '0xUniswapRouter,0xInvestorWallet,25000,2026-08-24T09:00:00Z,USDC,0xswap0001\n'
     '0xInvestorWallet,0xUniswapRouter,2,2026-08-25T11:15:00Z,ETH,\n'

@@ -19,7 +19,8 @@ nalaz nosi eksplicitan nivo pouzdanosti (`Detected` ili `Potential`) i disclaime
 | [7. Šta nedostaje za pouzdaniju detekciju](#7-šta-nedostaje-za-pouzdaniju-detekciju) | pošteno o ograničenjima podataka |
 | [8. Frontend stranica](#8-frontend-stranica) | `/dex-swaps` — Address + ANALYZE, lista swap kartica |
 | [9. Graph integracija](#9-graph-integracija) | isprekidane SWAP veze preko postojećeg grafa, klik-detalji, High/Medium/Low |
-| [10. Gde je šta u kodu](#10-gde-je-šta-u-kodu) | putanje |
+| [10. Taint preko swap-a](#10-taint-preko-swap-a) | zašto se taint ne sme pustiti kroz DEX čvor kao kroz običan, i šta radimo umesto toga |
+| [11. Gde je šta u kodu](#11-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -329,7 +330,79 @@ pokreće ponovni layout celog grafa (`renderSwapOverlay()` samo doda/ukloni elem
 već postojećem cytoscape objektu) — layout bi inače nepotrebno „promešao" pozicije
 čvorova koje je analitičar možda već ručno rasporedio.
 
-## 10. Gde je šta u kodu
+## 10. Taint preko swap-a
+
+Backend `taint_analysis.py` je **potpuno nedirnut** — nula izmena algoritma, grafa ili
+nove rute. Ovo je isključivo frontend funkcionalnost na `/graph` stranici, i aktivira se
+samo posle "Analiziraj graf".
+
+### 10.1 Zašto se taint ne sme pustiti kroz DEX čvor kao kroz običan
+
+`taint_analysis.py` prati JEDAN bezjedinični `balance`/`tainted_balance` broj po čvoru —
+model uopšte ne zna za valutu (ista arhitektonska činjenica kao u §2). Kad bi se taint
+pustio kroz Uniswap kao kroz običan čvor:
+
+1. **Mešanje jedinica kvari, ne samo razblažuje, aritmetiku.** Ulazni krak doda "10"
+   (ETH) u Uniswap-ov balans; kad izlazni krak (25.000, USDC) stigne, `share =
+   min(1.0, amount/source_balance) = min(1.0, 25000/10) = 1.0` — pojede se CEO praćeni
+   "prljavi" balans DEX čvora, prenoseći apsolutno **10 jedinica** (ne 25.000), jer
+   ETH i USDC brojevi nisu uporedivi 1:1. Rezultat na primaocu: `100 × 10 / 25000 =
+   0.04%` — daleko od stvarnih 100%.
+2. **Uniswap je deljen čvor** — kroz njega prolaze i tuđi swap-ovi; nepromenjen
+   algoritam bi taj udeo računao protiv CELOG agregiranog balansa DEX-a, tačno kao
+   generičko razblaživanje kod konsolidatora — ispravno za pravi mixing hub, pogrešno za
+   privatnu 1:1 konverziju jednog trgovca.
+
+**Ovo NIJE hipoteza — potvrđeno je stvarnim brojem u demo podacima (§10.4 ispod).**
+
+### 10.2 Rešenje — prenos VEĆ izračunatog broja, bez novog modela
+
+Za svaki detektovan swap, frontend traži u `analytics.taint_analysis.tainted_hops[]`
+(deo odgovora `POST /cases/{id}/analytics/run`, već postojeći, nepromenjen) unos koji
+odgovara ULAZNOM kraku swap-a — spojeno po `(source, target, amount, timestamp)`,
+**isti obrazac koji `taint-analysis.component.ts` već koristi** (`buildEdgeDetails()`,
+linija ~818) da poveže `tainted_hops` sa konkretnom transakcijom, pošto nijedan od ta
+dva zapisa nema zajednički ID transakcije. Pronađen unos → njegov `taint_pct_at_hop` i
+`taint_by_source` JESU preneti taint (već izračunat, ISKLJUČIVO za taj jedan transfer,
+pre nego što je ikad dotakao Uniswap). Nije pronađen → **"0% — čista transakcija"**
+(ista formulacija koju Taint stranica već koristi za nezaprljan transfer) — pošto
+`tainted_hops` beleži SVAKI transfer koji je nosio bilo kakav taint, odsustvo znači
+"nula", ne "nedostaju podaci".
+
+Prikazano **samo na swap grani** (`swapCarriedTaint()` u
+`graph-visualization.component.ts`):
+- Oznaka na grani dobija `· N% tainted` sufiks, plus crveni „halo" (underlay) kad je
+  procenat > 0 — vidljivo bez klika.
+- Klik-panel dobija novi red **„Taint (preneto sa ulaznog kraka)"**, sa eksplicitnom
+  napomenom da je preneto sa ulaznog kraka, ne nezavisno izračunato za DEX ili izlazni
+  token — i sa raspodelom po seed-u kad ih ima više (isti prikaz kao Taint stranica).
+- Pre „Analiziraj graf": „Taint analiza nije pokrenuta — klikni..." — nula, ne prazno.
+
+### 10.3 Šta OSTAJE vidljivo pogrešno, i zašto je to u redu
+
+Uniswap-ov **sopstveni** `taint_percentage` (vidljiv na zasebnoj `/taint` stranici, ne
+na `/graph` čvor-panelu, koji taj broj i inače ne prikazuje) i dalje trpi od §10.1 — to
+NIJE popravljeno, niti je trebalo da bude (značilo bi dirati model bez dogovora). Prenos
+taint-a preko swap grane je **dodatan, ispravno izračunat, jasno obeležen kanal**
+specifično za identifikovane swap parove — ne tvrdi ništa o DEX čvoru samom.
+
+### 10.4 Demo — stvaran primer, ne izmišljen
+
+`seed_demo_dex_swap_evidence.py` dodaje red `0xbad0...0001 → 0xInvestorWallet, 10 ETH`
+(podrazumevano crnolistirana adresa — automatski seed za taint, bez ikakve dodatne
+konfiguracije) neposredno pre Para 1, tačno replicira primer iz zahteva:
+
+| Swap | Preneti taint | Zašto |
+|---|---|---|
+| Par 1 — 10 ETH → Uniswap → 25.000 USDC (Detected) | **100%** | Investor je pre swap-a primio TAČNO 10 ETH od crne liste i odmah ih poslao dalje — ceo ulazni krak je 100% zaprljan. |
+| Par 2 — 2 ETH → Uniswap → 3.200 DAI (Potential) | **0.04%**, ne 0% | **Namerna, poštena demonstracija §10.1**: Uniswap-ov izlazni krak iz Para 1 (25.000 USDC) je, po nepromenjenom modelu, preneo samo 10 „jedinica" apsolutnog taint-a (ne 100% od 25.000, iz razloga u §10.1/tačka 1) — te 10 jedinica ostaju „zaglavljene" u Investor-ovom sad mešovito-valutnom balansu i cure u SVAKI naredni transfer, uključujući Par 2. Ovo NIJE greška u prenosu — verno je prikazan broj koji nepromenjen algoritam stvarno računa. |
+
+Pokretanjem `python scripts/seed_demo_dex_swap_evidence.py`, pa na `/graph` stranici
+izborom `demo_dex_swap_analysis.csv`, klikom „Analiziraj graf" (razlog pristupa +
+potpis), pa klikom na SWAP granu — oba broja gore su stvarno izračunata kroz pravu
+aplikaciju (Playwright provera), ne ručno.
+
+## 11. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
@@ -340,6 +413,7 @@ već postojećem cytoscape objektu) — layout bi inače nepotrebno „promešao
 | Demo podaci | `backend/scripts/seed_demo_dex_swap_evidence.py` |
 | Frontend stranica (§8) | `frontend/src/app/features/dex-swap-analysis/` |
 | Graph integracija (§9) | `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` (`loadDexSwapOverlay`, `renderSwapOverlay`, `buildSwapEdgeElements`, `swapConfidenceLevel`) |
+| Taint preko swap-a (§10) | isti fajl kao gore (`swapCarriedTaint`, `taintAnalysis`, `swapTaintBreakdown`) — čita `TaintAnalysisResult` tip koji već postoji za `/taint` stranicu, ništa novo u backend-u |
 | API poziv | `frontend/src/app/core/services/api.service.ts` (`getDexSwapAnalysis`) |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`DexSwapEvent`, `DexSwapAnalysisResult`, `DexSwapDataCompleteness`, `DexSwapNodeConsidered`) |
 

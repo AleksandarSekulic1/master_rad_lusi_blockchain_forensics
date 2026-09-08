@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-07-16T16:48:06.761081+00:00",
-  "updated_at": "2026-08-25T21:03:07.050588+00:00",
+  "updated_at": "2026-09-08T12:46:28.721301+00:00",
   "evidence": [
     {
       "file_name": "demo_case.csv",
@@ -68,15 +68,15 @@
     },
     {
       "file_name": "demo_dex_swap_analysis.csv",
-      "stored_name": "20260825_210307_021414_demo_dex_swap_analysis.csv",
-      "imported_at": "2026-08-25T21:03:07.050588+00:00",
-      "size_bytes": 843,
-      "sha256": "28f479ec8e6c836424f3c7aa3feb25d76b8315456660cf07c27f6e8ad7575c72",
+      "stored_name": "20260908_124628_695981_demo_dex_swap_analysis.csv",
+      "imported_at": "2026-09-08T12:46:28.721301+00:00",
+      "size_bytes": 944,
+      "sha256": "4d6a6a9c267c8cec5c9b967addfb94c6cea4935e797b54358e952a9c98fbc8ef",
       "analyst": "admin",
       "currency": null
     }
   ],
   "evidence_count": 8,
-  "total_size_bytes": 3942,
-  "last_imported_at": "2026-08-25T21:03:07.050588+00:00"
+  "total_size_bytes": 4043,
+  "last_imported_at": "2026-09-08T12:46:28.721301+00:00"
 }

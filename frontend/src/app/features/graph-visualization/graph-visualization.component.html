@@ -192,9 +192,33 @@
           <dt>Confidence</dt>
           <dd>{{ swapConfidenceLevel(swap) }} <span class="muted-inline">({{ swap.confidence }} · {{ swap.dex_match_basis }})</span></dd>
         </div>
+        <div
+          *ngIf="swapCarriedTaint(swap) as carried"
+          [class.blacklist-warning]="carried.available && (carried.percentage ?? 0) > 0"
+        >
+          <dt>Taint (preneto sa ulaznog kraka)</dt>
+          <dd *ngIf="!carried.available">
+            Taint analiza nije pokrenuta — klikni „Analiziraj graf" da vidiš da li je ovaj swap deo zaprljanog toka.
+          </dd>
+          <dd *ngIf="carried.available && carried.percentage === 0">0% — čista transakcija</dd>
+          <dd *ngIf="carried.available && (carried.percentage ?? 0) > 0">
+            {{ carried.percentage }}%
+            <span class="muted-inline"
+              >(preneto iz stanja pošiljaoca u trenutku ulaska u swap — nije nezavisno izračunato za DEX čvor ni za izlazni
+              token)</span
+            >
+          </dd>
+          <ng-container *ngIf="carried.available && swapTaintBreakdown(carried).length > 1">
+            <dd *ngFor="let entry of swapTaintBreakdown(carried)">
+              <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+            </dd>
+          </ng-container>
+        </div>
       </dl>
       <p class="swap-disclaimer">
         Heuristička detekcija zasnovana na adresnom obrascu i vremenskoj bliskosti — nije kriptografski dokaz swap transakcije.
+        Preneti taint procenat je vezan za ulazni krak (pre swap-a) — ne tvrdi da je nezavisno izmeren za DEX kontrakt ili
+        izlazni token.
       </p>
     </aside>
 

@@ -20,6 +20,7 @@ import {
   GraphLinkData,
   GraphNodeData,
   NodeLinkGraphResponse,
+  TaintAnalysisResult,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
@@ -310,19 +311,93 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         return;
       }
       const level = this.swapConfidenceLevel(event);
+      const taint = this.swapCarriedTaint(event);
+      const taintSuffix = taint.available && taint.percentage !== null ? ` · ${taint.percentage}% tainted` : '';
+      const classes = ['swap-edge', `swap-${level.toLowerCase()}`];
+      if (taint.available && (taint.percentage ?? 0) > 0) {
+        classes.push('swap-tainted');
+      }
       elements.push({
         data: {
           id: `swap__${index}__${event.user_address}__${event.dex_address}`,
           source: event.user_address,
           target: event.dex_address,
-          label: `SWAP · ${this.formatSwapAmount(event.input_amount, event.input_token)} → ${this.formatSwapAmount(event.output_amount, event.output_token)}`,
+          label: `SWAP · ${this.formatSwapAmount(event.input_amount, event.input_token)} → ${this.formatSwapAmount(event.output_amount, event.output_token)}${taintSuffix}`,
           isSwapEdge: true,
           swapEvent: event,
         },
-        classes: `swap-edge swap-${level.toLowerCase()}`,
+        classes: classes.join(' '),
       } as ElementDefinition);
     });
     return elements;
+  }
+
+  /** This case's already-computed taint_analysis plugin output (`analytics.run`'s
+   * response, unaltered) - null until "Analiziraj graf" has actually been clicked
+   * (hasAnalytics), since that is the only thing that ever computes taint at all. Read
+   * straight off `this.graph.analytics`, exactly like taint-analysis.component.ts does
+   * for its own copy of the same response - no separate request, no new backend field. */
+  private get taintAnalysis(): TaintAnalysisResult | null {
+    const analytics = this.graph?.analytics as Record<string, unknown> | undefined;
+    return (analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+  }
+
+  /** Bridges an ALREADY-COMPUTED taint number across a detected swap, without touching
+   * the taint algorithm or the DEX node's own (currency-mixed, unreliable - see
+   * DEX-SWAP-ANALIZA.md §10) taint_percentage at all.
+   *
+   * `tainted_hops` records, per individual transfer, what fraction of THAT transfer was
+   * tainted (`taint_pct_at_hop`) - a completely different, correct number from the DEX
+   * node's own aggregate. The swap's input leg (wallet -> DEX) is one specific transfer
+   * already IN that list (or, if it carried no taint at all, simply absent from it - the
+   * plugin only records hops with tainted_amount > 0). Matched by (source, target,
+   * amount, timestamp) - the exact same join taint-analysis.component.ts's
+   * buildEdgeDetails() already uses to attach tainted_hops onto a specific transaction,
+   * since neither record has a shared transaction id to join on directly.
+   *
+   * The result is displayed as the swap's carried-over taint (same % assumed to hold for
+   * the output token) - never as an independently computed taint for the DEX contract or
+   * the output token itself. */
+  protected swapCarriedTaint(event: DexSwapEvent): {
+    available: boolean;
+    percentage: number | null;
+    bySource: Record<string, number>;
+    sourceHopRank: number | null;
+  } {
+    const taint = this.taintAnalysis;
+    if (!taint) {
+      return { available: false, percentage: null, bySource: {}, sourceHopRank: null };
+    }
+
+    const hop = taint.tainted_hops.find(
+      (candidate) =>
+        candidate.source === event.user_address &&
+        candidate.target === event.dex_address &&
+        candidate.timestamp === event.input_timestamp &&
+        Math.abs(candidate.amount - event.input_amount) < 1e-9,
+    );
+
+    if (!hop) {
+      // No matching tainted_hops entry - per the plugin's own contract, that means this
+      // exact transfer carried no taint at all (not "unknown"), same reading
+      // taint-analysis.component.ts already gives an untainted transaction.
+      return { available: true, percentage: 0, bySource: {}, sourceHopRank: null };
+    }
+
+    return {
+      available: true,
+      percentage: hop.taint_pct_at_hop,
+      bySource: hop.taint_by_source,
+      sourceHopRank: hop.rank,
+    };
+  }
+
+  /** Same shape/sort as taint-analysis.component.ts's edgeTransactionSourceBreakdown -
+   * only shown when more than one seed contributed, same as everywhere else in the app. */
+  protected swapTaintBreakdown(carried: { bySource: Record<string, number> }): Array<{ address: string; pct: number }> {
+    return Object.entries(carried.bySource)
+      .map(([address, pct]) => ({ address, pct }))
+      .sort((a, b) => b.pct - a.pct);
   }
 
   /** File name of the currently scoped evidence, for the custody dialog's default
@@ -1056,6 +1131,20 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'overlay-opacity': 0.22,
           'overlay-color': '#f0abfc',
           width: 5,
+        },
+      },
+      // Taint bridged across the swap (see DEX-SWAP-ANALIZA.md §10) - a red halo BEHIND
+      // the purple dashed line (underlay, not overlay, so it doesn't fight :selected's
+      // own overlay above), visible at a glance without clicking. Only appears once
+      // "Analiziraj graf" has actually been run AND the carried-over % is nonzero - a
+      // swap that turns out to be clean, or hasn't been checked yet, looks like a normal
+      // swap edge.
+      {
+        selector: 'edge.swap-tainted',
+        style: {
+          'underlay-color': '#ef4444',
+          'underlay-opacity': 0.35,
+          'underlay-padding': 4,
         },
       },
     ];
