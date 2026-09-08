@@ -34,11 +34,11 @@
         type="text"
         [(ngModel)]="address"
         placeholder="0x..."
-        (keydown.enter)="analyze()"
+        (keydown.enter)="openCustodyDialog()"
         [disabled]="!activeCase"
       />
     </label>
-    <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+    <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
       {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
     </button>
   </div>
@@ -111,6 +111,19 @@
     Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.
   </p>
 </div>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre same DEX swap analize (isti deljeni
+     dijalog kao Taint/Pathfinding/Graf — vidi LANAC-DOKAZA.md i DEX-SWAP-ANALIZA.md #12) -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isAnalyzing"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndAnalyze($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>
 
 <!-- Isti obrazac potpisa/pečata/kontrolnog broja kao Taint Analysis (vidi
      DEX-SWAP-ANALIZA.md #11) - odvojen overlay, ne deo glavnog .dex-swap-shell, da bi

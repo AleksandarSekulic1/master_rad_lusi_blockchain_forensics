@@ -38,6 +38,7 @@ ACTION_LABELS: dict[str, str] = {
     'csv_upload': 'Otpremljena CSV evidencija',
     'analytics_run': 'Pokrenuta analiza',
     'path_finding': 'Pretraga putanja',
+    'dex_swap_analysis_run': 'Pokrenuta DEX swap analiza',
     'case_created': 'Kreiran slučaj',
     'case_status_changed': 'Promenjen status slučaja',
     'case_deleted': 'Obrisan slučaj',
@@ -72,7 +73,7 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_TEST
     if action.startswith('case_'):
         return _GROUP_CASE
-    if action in ('analytics_run', 'path_finding'):
+    if action in ('analytics_run', 'path_finding', 'dex_swap_analysis_run'):
         return _GROUP_ANALYSIS
     if action == 'csv_upload' or action.startswith('onchain_fetch'):
         return _GROUP_EVIDENCE
@@ -151,6 +152,16 @@ def summarize_details(entry: dict[str, Any]) -> str:
         scope = details.get('evidence_scope', 'combined')
         scope_text = 'sva evidencija (kombinovano)' if scope == 'combined' else str(scope)
         summary = f'{seed_count} izvora (seed) · {scope_text}'
+        if details.get('custody_recorded'):
+            tx_rows = details.get('custody_transaction_rows', 0)
+            evidence_files = details.get('custody_evidence_files', 0)
+            summary += f' · lanac dokaza: {tx_rows} transakcija, {evidence_files} fajl(ova)'
+        return summary
+    if action == 'dex_swap_analysis_run':
+        address = details.get('address') or 'sve adrese'
+        scope = details.get('evidence_scope', 'combined')
+        scope_text = 'sva evidencija (kombinovano)' if scope == 'combined' else str(scope)
+        summary = f'{address} · {scope_text} · {details.get("total_events", 0)} dogadjaja'
         if details.get('custody_recorded'):
             tx_rows = details.get('custody_transaction_rows', 0)
             evidence_files = details.get('custody_evidence_files', 0)

@@ -67,6 +67,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     csv_upload: { label: 'Otpremljena CSV evidencija', group: 'evidence', icon: '⬆' },
     analytics_run: { label: 'Pokrenuta analiza', group: 'analysis', icon: '⚙' },
     path_finding: { label: 'Pretraga putanja', group: 'analysis', icon: '↝' },
+    dex_swap_analysis_run: { label: 'Pokrenuta DEX swap analiza', group: 'analysis', icon: '⇌' },
     case_created: { label: 'Kreiran slučaj', group: 'case', icon: '＋' },
     case_status_changed: { label: 'Promenjen status slučaja', group: 'case', icon: '⇄' },
     case_deleted: { label: 'Obrisan slučaj', group: 'case', icon: '✕' },
@@ -239,6 +240,18 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         // Only deliberate runs (Taint analiza / "Analiziraj graf") carry this - a passive
         // preview load never writes into the lanac dokaza, so this line is exactly what
         // distinguishes the two at a glance, without opening the raw detalji JSON.
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          summary += ` · lanac dokaza: ${txRows} transakcija, ${evidenceFiles} fajl(ova)`;
+        }
+        return summary;
+      }
+      case 'dex_swap_analysis_run': {
+        const address = String(details['address'] ?? '') || 'sve adrese';
+        const scope = String(details['evidence_scope'] ?? 'combined');
+        const scopeText = scope === 'combined' ? 'sva evidencija (kombinovano)' : scope;
+        let summary = `${address} · ${scopeText} · ${Number(details['total_events'] ?? 0)} događaja`;
         if (details['custody_recorded']) {
           const txRows = Number(details['custody_transaction_rows'] ?? 0);
           const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);

@@ -46,33 +46,49 @@ upisuje u oba odjednom (vidi §2).
 
 ## 2. Kad se pravi novi red
 
-Okidač je **svako deliberatno pokretanje analize**, na bilo kojoj od dve stranice koje to
-rade:
+Okidač je **svako deliberatno pokretanje analize**, na bilo kojoj od četiri stranice koje
+to rade:
 
-| Stranica | Dugme | Šta se dešava |
-|---|---|---|
-| **Taint analiza** | „Pokreni taint analizu" | traži izvore (seed), boji graf po zaprljanosti |
-| **Graf** | „Analiziraj graf" | boji graf po riziku/crnoj listi, bez izbora izvora |
+| Stranica | Dugme | Šta se dešava | Endpoint |
+|---|---|---|---|
+| **Taint analiza** | „Pokreni taint analizu" | traži izvore (seed), boji graf po zaprljanosti | `POST /cases/{id}/analytics/run` |
+| **Graf** | „Analiziraj graf" | boji graf po riziku/crnoj listi, bez izbora izvora | `POST /cases/{id}/analytics/run` |
+| **Pathfinding** | „FIND PATH" | BFS pretraga puta kroz evidenciju | `POST /cases/{id}/pathfinding` |
+| **DEX Swaps** | „ANALYZE" | heuristička detekcija swap događaja (vidi DEX-SWAP-ANALIZA.md §12) | `POST /cases/{id}/dex-swap-analysis/run` |
 
-Oba dugmeta otvaraju **isti dijalog** (`CustodyAccessDialogComponent`) tražeći razlog
-pristupa, ime i prezime i potpis, i oba, na potvrdu, pozivaju isti backend endpoint
-(`POST /cases/{id}/analytics/run`). Taj endpoint, kad dobije `custody` objekat, upisuje:
+Sva četiri dugmeta otvaraju **isti dijalog** (`CustodyAccessDialogComponent`) tražeći
+razlog pristupa, ime i prezime i potpis, i sva četiri, na potvrdu, pozivaju svoj endpoint
+sa istim oblikom `custody` objekta. Svaki od ta tri endpoint-a, kad dobije `custody`,
+upisuje kroz isti deljeni helper (`_record_custody_access`):
 
 - **jedan red po transakciji** u opsegu (`custody_log.jsonl`) — potencijalno stotine odjednom
 - **jedan red po dokaznom fajlu** u opsegu (`custody_evidence_log.jsonl`) — obično 1-5
 
 ...oba dela istog pokretanja, sa istim vremenom/imenom/razlogom/potpisom, jer su stvarno
-pristupljeni istim činom.
+pristupljeni istim činom. „Opseg" je uvek **cela evidencija trenutno izabrana na toj
+stranici** (kombinovana ili jedan fajl) — ne samo transakcije koje se pojave u konačnom
+rezultatu (npr. za Pathfinding to je cela evidencija kroz koju je BFS tražio put, ne samo
+same grane puta; za DEX Swaps to je cela evidencija u kojoj se tražio obrazac, ne samo
+transakcije koje su ispale kao detektovan swap) — jer je pretraga/analiza stvarno
+pročitala/obradila svaki taj red da bi došla do rezultata.
 
-**Bitno razgraničenje:** `POST /cases/{id}/analytics/run` se poziva i **pasivno** (Kontrolna
-tabla, kao i sam Graf pri prvom učitavanju slučaja — vidi niže) radi prikaza grafa bez boja.
-Kad `custody` nije poslat u telu zahteva, ništa se ne upisuje ni u jedan lanac — samo
-namerni klik na jedno od dva dugmeta iznad predstavlja pristup u smislu ovog obrasca.
+**Bitno razgraničenje:** sva tri endpoint-a se pozivaju i **pasivno** (Kontrolna tabla, kao
+i sam Graf/Pathfinding/DEX Swaps overlay pri prvom učitavanju — vidi niže) radi prikaza
+podataka bez custody upisa. Kad `custody` nije poslat u telu zahteva, ništa se ne upisuje
+ni u jedan lanac — samo namerni klik na jedno od dugmadi iznad predstavlja pristup u
+smislu ovog obrasca.
 
-**Graf stranica konkretno:** sirovi graf (bez boja rizika) učitava se **automatski** čim se
-izabere slučaj/evidencija — to je samo pregled podataka, ne analiza. Bojenje po
-riziku/crnoj listi (što JESTE analitika — pokreće se `run_plugin_pipeline`) zahteva klik na
-„Analiziraj graf", isti gated tok kao na Taint analizi.
+**Graf stranica konkretno:** sirovi graf (bez boja rizika) i DEX swap overlay preko njega
+(vidi DEX-SWAP-ANALIZA.md §9) učitavaju se **automatski** čim se izabere slučaj/evidencija
+— to je samo pregled podataka, ne analiza. Bojenje po riziku/crnoj listi (što JESTE
+analitika — pokreće se `run_plugin_pipeline`) zahteva klik na „Analiziraj graf", isti
+gated tok kao na Taint analizi.
+
+**DEX Swaps stranica konkretno:** ima DVA endpoint-a namerno — `GET
+.../dex-swap-analysis` (pasivan, koristi ga i Graf stranicin overlay, nikad ne piše u
+lanac) i `POST .../dex-swap-analysis/run` (deliberatan, iza „ANALYZE" dugmeta na samoj
+DEX Swaps stranici, uvek nosi `custody`). Isti obrazac kao razdvajanje sirovog Graf
+prikaza od „Analiziraj graf".
 
 ## 3. Identitet transakcije/fajla
 
@@ -107,12 +123,12 @@ Identična pravila za oba nivoa (isti dijalog, ista polja):
 
 ## 5. Tok kroz aplikaciju
 
-1. Analitičar klikne **„Pokreni taint analizu"** (Taint analiza) ili **„Analiziraj graf"**
-   (Graf).
+1. Analitičar klikne **„Pokreni taint analizu"** (Taint analiza), **„Analiziraj graf"**
+   (Graf), **„FIND PATH"** (Pathfinding) ili **„ANALYZE"** (DEX Swaps).
 2. Otvara se dijalog **„Razlog pristupa i potpis"** (`features/custody-access-dialog`,
-   zajednički za obe stranice) — polja iz tabele iznad, plus potpis mišem i obavezan
-   checkbox izjave.
-3. Na potvrdu se šalje `POST /cases/{id}/analytics/run` sa `custody` objektom.
+   zajednički za sve četiri stranice) — polja iz tabele iznad, plus potpis mišem i
+   obavezan checkbox izjave.
+3. Na potvrdu se šalje odgovarajući endpoint (vidi tabelu u §2) sa `custody` objektom.
 4. Backend prolazi kroz **svaki red** evidencije u opsegu i piše: po jedan zapis u
    `custody_log.jsonl` za svaku transakciju, i po jedan zapis u `custody_evidence_log.jsonl`
    za svaki dokazni fajl u opsegu — svi zapisi iz jednog pokretanja dele isti `run_id`.
@@ -163,11 +179,14 @@ brojanje redova, odvojeni lanci za različite fajlove, PDF izvoz.
    analiza se pokreće.
 2. Otvori Graf za isti slučaj → graf se učitava **odmah, bez boja** (siva/plava, ne po
    riziku) → klikni „Analiziraj graf" → isti dijalog → potvrdi → graf se oboji po riziku.
-3. Idi na „Lanac dokaza" → tab „Po transakciji": neka od upravo obrađenih transakcija ima
-   nov red. Tab „Po dokaznom fajlu": fajl ima **dva** reda (jedan od Taint analize, jedan
-   od Grafa) — potvrđuje da oba dugmeta pišu u isti fajl-lanac.
-4. „Izvezi PDF" na oba taba → uporedi zaglavlje/tabelu sa referentnim obrascem.
-5. Prijavi se kao ne-admin korisnik → stranica „Lanac dokaza" i dalje dostupna (za razliku
+3. Otvori DEX Swaps za isti slučaj → unesi adresu → klikni „ANALYZE" → isti dijalog →
+   potvrdi → rezultati se prikazuju tek POSLE potvrde (ne pre, za razliku od pasivnog
+   Graf overlay-a iz koraka 2).
+4. Idi na „Lanac dokaza" → tab „Po transakciji": neka od upravo obrađenih transakcija ima
+   nov red. Tab „Po dokaznom fajlu": fajl ima **tri** reda (Taint analiza, Graf, DEX
+   Swaps) — potvrđuje da sva tri dugmeta pišu u isti fajl-lanac.
+5. „Izvezi PDF" na oba taba → uporedi zaglavlje/tabelu sa referentnim obrascem.
+6. Prijavi se kao ne-admin korisnik → stranica „Lanac dokaza" i dalje dostupna (za razliku
    od „Testovi").
 
 ## 8. Gde je šta u kodu
@@ -187,12 +206,16 @@ brojanje redova, odvojeni lanci za različite fajlove, PDF izvoz.
 | Stranica „Lanac dokaza" (dva taba) | `frontend/src/app/features/custody-log/` |
 | Poziv sa Taint analize | `taint-analysis.component.ts` (`openCustodyDialog`, `confirmCustodyAndRunAnalysis`) |
 | Poziv sa Grafa | `graph-visualization.component.ts` (`openCustodyDialog`, `confirmCustodyAndAnalyze`) |
+| Poziv sa Pathfinding-a | `pathfinding.component.ts` (`openFindPathDialog`, `confirmCustodyAndFindPath`) |
+| Poziv sa DEX Swaps | `dex-swap-analysis.component.ts` (`openCustodyDialog`, `confirmCustodyAndAnalyze`) |
 
 **Rute:**
 
 | Ruta | Namena |
 |---|---|
-| `POST /api/v1/cases/{id}/analytics/run` | pokretanje analize; `custody` opciono (vidi §2) |
+| `POST /api/v1/cases/{id}/analytics/run` | pokretanje Taint/Graf analize; `custody` opciono (vidi §2) |
+| `POST /api/v1/cases/{id}/pathfinding` | BFS pretraga puta; `custody` opciono |
+| `POST /api/v1/cases/{id}/dex-swap-analysis/run` | DEX swap detekcija (deliberatna); `custody` opciono — pasivna varijanta je `GET .../dex-swap-analysis`, bez custody upisa |
 | `GET /api/v1/cases/{id}/custody/suggestions` | predlozi za autocomplete polja (zajedničko) |
 | `GET /api/v1/cases/{id}/custody/transactions` | spisak transakcija sa lancem dokaza |
 | `GET /api/v1/cases/{id}/custody/transactions/{tx_id}` | pun obrazac za jednu transakciju |

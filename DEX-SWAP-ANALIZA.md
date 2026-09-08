@@ -21,7 +21,8 @@ nalaz nosi eksplicitan nivo pouzdanosti (`Detected` ili `Potential`) i disclaime
 | [9. Graph integracija](#9-graph-integracija) | isprekidane SWAP veze preko postojećeg grafa, klik-detalji, High/Medium/Low |
 | [10. Taint preko swap-a](#10-taint-preko-swap-a) | zašto se taint ne sme pustiti kroz DEX čvor kao kroz običan, i šta radimo umesto toga |
 | [11. PDF izveštaj](#11-pdf-izveštaj) | potpisan izveštaj sa kontrolnim brojem, isti obrazac kao Taint/Pathfinding |
-| [12. Gde je šta u kodu](#12-gde-je-šta-u-kodu) | putanje |
+| [12. Lanac dokaza](#12-lanac-dokaza) | ANALYZE kao deliberatan pristup, isti obrazac kao Taint/Pathfinding/Graf |
+| [13. Gde je šta u kodu](#13-gde-je-šta-u-kodu) | putanje |
 
 ---
 
@@ -459,7 +460,58 @@ validan 3-stranični PDF (`%PDF-1.3` zaglavlje, ~406 KB), sa tačno očekivanim 
 (uključujući ispravno obojenu "High (Detected)" / "Medium (Potential)" kolonu i
 generisan, jedinstven kontrolni broj svaki put).
 
-## 12. Gde je šta u kodu
+## 12. Lanac dokaza
+
+DEX Swap Analysis se sad ponaša identično Taint/Pathfinding/Graf-u: skeniranje evidencije
+u potrazi za swap parovima **jeste** deliberatan pristup svakoj transakciji u tom opsegu,
+pa se tako i beleži (vidi LANAC-DOKAZA.md §2). Ništa u samom `detect_dex_swaps()`
+algoritmu nije dirano — ovo je isključivo nova ruta plus deljena logika koja već postoji.
+
+### 12.1 Dva endpoint-a, namerno razdvojena
+
+Isti obrazac kao Graf stranica (sirovi graf vs. "Analiziraj graf"):
+
+| Ruta | Ko je zove | Custody |
+|---|---|---|
+| `GET /cases/{id}/dex-swap-analysis` | Graf stranicin DEX swap overlay (§9) — pasivan, automatski, deo pregleda | Nikad — nepromenjena, i dalje read-only |
+| `POST /cases/{id}/dex-swap-analysis/run` | DEX Swaps stranicino „ANALYZE" dugme (§8) | Uvek — `custody` u telu zahteva |
+
+Overlay na Grafu ostaje potpuno nepromenjen (i dalje čita GET rutu) — swap veze se i
+dalje vide na grafu bez ijednog dodatnog klika, tačno kao pre. Samo dedikovana DEX Swaps
+stranica sada traži razlog pristupa i potpis PRE nego što uopšte pozove backend.
+
+### 12.2 Šta se upisuje
+
+`run_case_dex_swap_analysis` gradi `per_evidence_frames`/`combined_frame` na isti način
+kao `run_case_analytics`/`run_case_pathfinding`, i kad `custody` stigne, poziva **isti,
+nepromenjen** `_record_custody_access()` helper — nema posebne logike „upiši samo
+transakcije koje su ispale u detektovan swap"; upisuje se **cela evidencija u opsegu**
+(kombinovana ili jedan fajl), jer je algoritam stvarno pročitao svaki taj red da bi našao
+parove, tačno isti princip kao kod Pathfinding-ove BFS pretrage (vidi LANAC-DOKAZA.md §2).
+
+Audit log dobija akciju `dex_swap_analysis_run` (Aktivnost log + izveštaj aktivnosti,
+amber boja, ista grupa kao `analytics_run`/`path_finding`) sa `custody_recorded` i brojem
+upisanih transakcija/fajlova — isti obrazac kao ostale tri deliberatne rute.
+
+### 12.3 UI tok
+
+Klik na **ANALYZE** više ne zove API direktno — otvara isti deljeni
+`CustodyAccessDialogComponent` (razlog pristupa, potpis, checkbox izjave). Tek na
+potvrdu se poziva `POST .../dex-swap-analysis/run`; rezultati (kartice) se pojavljuju tek
+tada, ne pre. Neuspeh ostaje prikazan UNUTAR dijaloga (ništa uneto se ne gubi), isti
+obrazac kao Taint/Pathfinding/Graf.
+
+### 12.4 Testirano stvarnim pokretanjem
+
+Playwright provera: klik ANALYZE → dijalog se otvara, **nula** kartica prikazano pre
+potvrde → popunjen razlog, nacrtan potpis, potvrđeno → dijalog se zatvara, kartice se
+pojavljuju. Direktnom proverom `logs/custody_log.jsonl` posle: 58 novih redova (cela
+evidencija demo slučaja u opsegu), tačno onoliko koliko ima transakcija u kombinovanoj
+evidenciji. Stranica „Lanac dokaza" → tab „Po transakciji" odmah pokazuje ažuriran
+„Poslednji pristup" za te transakcije; Aktivnost log pokazuje novi red sa tačnim brojem
+detektovanih događaja i „lanac dokaza: N transakcija, M fajl(ova)" sažetkom.
+
+## 13. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
@@ -472,11 +524,14 @@ generisan, jedinstven kontrolni broj svaki put).
 | Graph integracija (§9) | `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` (`loadDexSwapOverlay`, `renderSwapOverlay`, `buildSwapEdgeElements`, `swapConfidenceLevel`) |
 | Taint preko swap-a (§10) | isti fajl kao gore (`swapCarriedTaint`, `taintAnalysis`, `swapTaintBreakdown`) — čita `TaintAnalysisResult` tip koji već postoji za `/taint` stranicu, ništa novo u backend-u |
 | PDF izveštaj (§11) | `frontend/src/app/features/dex-swap-analysis/dex-swap-analysis.component.ts` (`buildDexSwapPdf`, `confirmSignatureAndExport`) — nema nove backend rute, koristi postojeći `/reports/register` |
-| API poziv | `frontend/src/app/core/services/api.service.ts` (`getDexSwapAnalysis`, `registerReport` — potonji već postojao za Taint/Pathfinding) |
+| Lanac dokaza (§12) | `backend/app/api/routes/cases.py` (`run_case_dex_swap_analysis`, `DexSwapAnalysisRunRequest`) — koristi nepromenjen `_record_custody_access` |
+| Aktivnost log oznake (§12.2) | `backend/app/exports/activity_report.py` + `frontend/src/app/features/activity-log/activity-log.component.ts` — akcija `dex_swap_analysis_run` |
+| API poziv | `frontend/src/app/core/services/api.service.ts` (`getDexSwapAnalysis` — pasivno, `runDexSwapAnalysis` — deliberatno, `registerReport` — već postojao za Taint/Pathfinding) |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`DexSwapEvent`, `DexSwapAnalysisResult`, `DexSwapDataCompleteness`, `DexSwapNodeConsidered`) |
 
-**Ruta:**
+**Rute:**
 
 | Ruta | Namena |
 |---|---|
-| `GET /api/v1/cases/{id}/dex-swap-analysis` | Kandidati za DEX swap (Detected/Potential) u evidenciji slučaja, opciono ograničeno na jednu adresu |
+| `GET /api/v1/cases/{id}/dex-swap-analysis` | Kandidati za DEX swap (Detected/Potential) u evidenciji slučaja, opciono ograničeno na jednu adresu — pasivno, bez custody |
+| `POST /api/v1/cases/{id}/dex-swap-analysis/run` | Isto, ali deliberatno — `custody` opciono u telu, upisuje lanac dokaza kad je prisutan (vidi §12) |

@@ -14,7 +14,14 @@ import { SignaturePadComponent } from '../../core/components/signature-pad/signa
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
-import { CaseSummary, DexSwapAnalysisResult, DexSwapEvent, EvidenceEntry } from '../../models/blockchain-forensics.models';
+import {
+  CaseSummary,
+  DexSwapAnalysisResult,
+  DexSwapEvent,
+  EvidenceEntry,
+  TransactionCustodyEntry,
+} from '../../models/blockchain-forensics.models';
+import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 /** DEX Swap Analysis - "did this address swap one token for another through a DEX",
  * deliberately separate page from Graph/Taint/Pathfinding/Behavioral (see those
@@ -30,7 +37,7 @@ import { CaseSummary, DexSwapAnalysisResult, DexSwapEvent, EvidenceEntry } from 
 @Component({
   selector: 'app-dex-swap-analysis',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SignaturePadComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SignaturePadComponent, CustodyAccessDialogComponent],
   templateUrl: './dex-swap-analysis.component.html',
   styleUrl: './dex-swap-analysis.component.scss',
 })
@@ -43,6 +50,13 @@ export class DexSwapAnalysisComponent implements OnInit {
   protected isAnalyzing = false;
   protected analysisError: string | null = null;
   protected result: DexSwapAnalysisResult | null = null;
+
+  // --- Lanac dokaza (see DEX-SWAP-ANALIZA.md #12 / LANAC-DOKAZA.md) - scanning the case's
+  // evidence for swap pairs is a deliberate access to every transaction it touches, same
+  // as "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf", so ANALYZE goes through the
+  // same shared custody-access dialog before actually calling the API. ---
+  protected isCustodyDialogOpen = false;
+  protected custodyDialogError: string | null = null;
 
   // --- PDF export (see DEX-SWAP-ANALIZA.md #11) - same signed-report mechanism as
   // Taint/Pathfinding: a control number is registered server-side BEFORE the document is
@@ -99,28 +113,57 @@ export class DexSwapAnalysisComponent implements OnInit {
     return !!this.activeCase && this.address.trim().length > 0 && !this.isAnalyzing;
   }
 
-  protected analyze(): void {
+  /** Opens the access-reason dialog before actually running the analysis - see
+   * isCustodyDialogOpen's own comment for why ANALYZE itself needs this now. */
+  protected openCustodyDialog(): void {
+    if (!this.canAnalyze) {
+      return;
+    }
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  protected closeCustodyDialog(): void {
+    this.isCustodyDialogOpen = false;
+  }
+
+  protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
     const address = this.address.trim();
-    if (!caseId || !address || this.isAnalyzing) {
+    if (!caseId || !address) {
       return;
     }
 
     this.isAnalyzing = true;
+    this.custodyDialogError = null;
     this.analysisError = null;
     this.result = null;
 
-    this.api.getDexSwapAnalysis(caseId, address, this.selectedEvidence).subscribe({
+    this.api.runDexSwapAnalysis(caseId, address, this.selectedEvidence, custody).subscribe({
       next: (result) => {
         this.result = result;
         this.isAnalyzing = false;
+        this.isCustodyDialogOpen = false;
       },
       error: (error: HttpErrorResponse) => {
         this.isAnalyzing = false;
-        this.analysisError =
+        // Shown INSIDE the dialog (still open) rather than analysisError, which sits
+        // below the address field and would not be visible behind the overlay - nothing
+        // typed/signed is lost, the analyst can just retry.
+        this.custodyDialogError =
           error.status === 404 ? 'Adresa nije pronađena u evidenciji ovog slučaja.' : 'Neuspešna DEX swap analiza.';
       },
     });
+  }
+
+  /** File name of the currently scoped evidence, for the custody dialog's default
+   * "identifikator dokaznog materijala" - null means the combined view (all evidence),
+   * same pattern as Graph/Pathfinding. */
+  protected get selectedEvidenceFileName(): string | null {
+    if (!this.selectedEvidence) {
+      return null;
+    }
+    return this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? null;
   }
 
   private clearResult(): void {
