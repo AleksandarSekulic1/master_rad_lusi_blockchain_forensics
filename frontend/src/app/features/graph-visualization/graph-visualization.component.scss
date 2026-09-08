@@ -400,6 +400,48 @@ h3 {
   border-color: rgba(125, 211, 252, 0.5);
 }
 
+/* --- Investigator "pin node" control - one small row inside the existing details panel,
+   deliberately not a new section (see CASE-MANAGEMENT-IMPLEMENTATION.md §13). --- */
+.pin-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+
+.pin-badge {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #422006;
+  background: linear-gradient(135deg, #fde047, #facc15);
+}
+
+.pin-toggle {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.ghost-button.pin-toggle.active {
+  border-color: rgba(250, 204, 21, 0.6);
+  background: rgba(250, 204, 21, 0.18);
+  color: #fde68a;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.28) inset;
+}
+
+.ghost-button.pin-toggle.active:hover:not(:disabled) {
+  background: rgba(250, 204, 21, 0.26);
+}
+
+.legend-swatch.pinned {
+  background: #4f8cff;
+  border: 2px solid #fde047;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.22);
+}
+
 .node-inspector .blacklist-warning {
   padding: 0.65rem 0.8rem;
   border-radius: 0.75rem;

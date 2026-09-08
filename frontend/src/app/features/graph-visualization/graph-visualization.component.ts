@@ -92,6 +92,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * and aren't flagged as suspicious - common in single-address "deposits only" evidence,
    * where every counterparty is a one-way funding source rather than a forwarding hop. */
   private fundingSourceNodeIds = new Set<string>();
+  /** Investigator-pinned nodes: node id -> the position it was pinned at. Kept in the
+   * component, NOT persisted: nothing about graph presentation is persisted in this
+   * project (fcose re-randomizes positions on every load by design), so there is no
+   * durable thing to hang a position off of - see CASE-MANAGEMENT-IMPLEMENTATION.md §13.
+   * These positions are replayed into fcose's own `fixedNodeConstraint` on every
+   * re-layout and the nodes are `lock()`-ed, so a pin survives every in-page re-layout
+   * (case/evidence switch, "Analiziraj graf") for as long as the page stays open. */
+  private pinnedNodePositions = new Map<string, { x: number; y: number }>();
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
   private timelinePlayTimer: ReturnType<typeof setInterval> | null = null;
   /** Index 0 = the label for rank 1, etc. - so the slider can show "do transakcije #N
@@ -561,6 +569,71 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   toggleFundingSourceFilter(): void {
     this.fundingSourceFilterEnabled = !this.fundingSourceFilterEnabled;
     this.applyVisibilityFilters();
+  }
+
+  // --- Investigator "pin node" (see CASE-MANAGEMENT-IMPLEMENTATION.md §13). Reuses the
+  // existing fcose layout (its `fixedNodeConstraint` option) plus cytoscape's own
+  // `node.lock()` - no separate positioning system. ---
+
+  /** Whether the currently selected node is investigator-pinned - drives the badge and
+   * button label in the node details panel. */
+  get isSelectedNodePinned(): boolean {
+    return !!this.selectedNode && this.pinnedNodePositions.has(String(this.selectedNode.id));
+  }
+
+  /** How many nodes are pinned right now (for the details-panel button title / any hint). */
+  get pinnedNodeCount(): number {
+    return this.pinnedNodePositions.size;
+  }
+
+  /** Pin/unpin the selected node, straight from the node details panel. Pinning records
+   * the node's CURRENT position (wherever fcose placed it, or wherever it was dragged),
+   * locks it there and marks it `.pinned`; unpinning releases it back to normal layout.
+   * The pin set is replayed into fcose's `fixedNodeConstraint` and re-locked on every
+   * subsequent re-layout (renderGraph -> reapplyPinnedNodes), so the existing layout does
+   * the actual "stay put" work. Does NOT trigger a re-layout itself - the rest of the
+   * graph is left exactly where it is. */
+  togglePinSelectedNode(): void {
+    if (!this.cy || !this.selectedNode) {
+      return;
+    }
+    const id = String(this.selectedNode.id);
+    const element = this.cy.$id(id);
+    if (element.empty()) {
+      return;
+    }
+
+    if (this.pinnedNodePositions.has(id)) {
+      this.pinnedNodePositions.delete(id);
+      element.unlock();
+      element.removeClass('pinned');
+    } else {
+      this.pinnedNodePositions.set(id, { ...element.position() });
+      element.lock();
+      element.addClass('pinned');
+    }
+  }
+
+  /** Re-applies every still-present pin after a fresh cytoscape instance was built: snap
+   * the node to its stored position, lock it, mark it. fcose's `fixedNodeConstraint`
+   * (set in renderGraph) already holds it during layout - this is the belt-and-braces
+   * guarantee plus the `.pinned` class for the visual. A pin whose node is not in the
+   * current graph (e.g. hidden by the evidence filter) is kept and re-applies if it
+   * returns. */
+  private reapplyPinnedNodes(): void {
+    if (!this.cy) {
+      return;
+    }
+    for (const [id, position] of this.pinnedNodePositions) {
+      const element = this.cy.$id(id);
+      if (element.empty()) {
+        continue;
+      }
+      element.unlock();
+      element.position({ ...position });
+      element.lock();
+      element.addClass('pinned');
+    }
   }
 
   toggleTimelinePlay(): void {
@@ -1035,6 +1108,23 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'outline-offset': 2,
         },
       },
+      // Investigator-pinned node (CASE-MANAGEMENT-IMPLEMENTATION.md §13) - a gold double
+      // border plus a soft gold underlay glow. Layered so it never overrides the
+      // risk/blacklist fill (background-color), the peel/bridge shape, or the cluster
+      // outline ring: only `border-*` and the (otherwise unused on nodes) `underlay-*`
+      // are touched. Placed before `node:selected` so selection feedback still wins where
+      // they overlap.
+      {
+        selector: 'node.pinned',
+        style: {
+          'border-color': '#fde047',
+          'border-width': 4,
+          'border-style': 'double',
+          'underlay-color': '#facc15',
+          'underlay-opacity': 0.3,
+          'underlay-padding': 6,
+        },
+      },
       {
         selector: 'node:selected',
         style: {
@@ -1149,6 +1239,15 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       },
     ];
 
+    // Investigator-pinned nodes -> fcose's OWN fixed-position constraint, so a re-layout
+    // arranges every other node around them exactly as before. Only ids still present in
+    // this graph are constrained; when there are no pins the layout config below is byte-
+    // for-byte what it was, so non-pinned behaviour is unchanged.
+    const presentNodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+    const fixedNodeConstraint = Array.from(this.pinnedNodePositions.entries())
+      .filter(([id]) => presentNodeIds.has(id))
+      .map(([nodeId, position]) => ({ nodeId, position }));
+
     this.cy = cytoscape({
       container: this.graphCanvas.nativeElement,
       elements,
@@ -1167,6 +1266,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         nodeSeparation: nodeCount > 60 ? 150 : 100,
         nodeRepulsion: nodeCount > 60 ? 10000 : 6000,
         idealEdgeLength: nodeCount > 60 ? 100 : 80,
+        ...(fixedNodeConstraint.length ? { fixedNodeConstraint } : {}),
       } as any,
       style: graphStyles,
     });
@@ -1197,6 +1297,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.selectedNode = null;
     });
 
+    this.reapplyPinnedNodes();
     this.applyVisibilityFilters();
     this.syncSelection();
   }

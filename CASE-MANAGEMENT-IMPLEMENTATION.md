@@ -1,8 +1,8 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3 & 4 done** — backend: the investigation-case container plus
-investigator notes on **both** addresses/nodes **and** transactions/edges are implemented,
-built and tested. No frontend. Pinned nodes and off-chain links not started.
+Status: **Steps 1, 3, 4 & 5 done.** Backend: investigation-case container + investigator
+notes on addresses/nodes **and** transactions/edges. Frontend: a "Pin node" action on the
+graph page (step 5 — the first frontend work). Off-chain links not started.
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -12,6 +12,7 @@ Layer*.
 - **§10** — Step 1 implementation log: the investigation-case container.
 - **§11** — Step 3 implementation log: investigator notes on blockchain addresses/nodes.
 - **§12** — Step 4 implementation log: extending notes to transactions/edges.
+- **§13** — Step 5 implementation log: "Pin node" (frontend, reuses the fcose layout).
 
 ---
 
@@ -932,11 +933,145 @@ GET /api/v1/investigations/{id}/notes                           -> all, each wit
   transaction note keeps `tx_id` + `target_type`, changes `text`; `DELETE` → `204`; audit
   rows carry `target_type`. All as expected.
 
-### 12.6 Not done yet (next steps)
+### 12.6 Not done yet (as of step 4)
 
-- **Pinned nodes** and manual **off-chain links** between addresses.
+- **Pinned nodes** → done in step 5, see §13. Manual **off-chain links** between addresses
+  still pending.
 - Author-or-admin restriction on editing/deleting someone else's note (§8 risk 6).
 - Optional: an aggregated-edge (`source→target` pair) note target, distinct from a single
   transaction — only the transaction-level `tx_id` is supported now, matching the chain of
   custody's granularity.
-- Frontend.
+- Frontend for notes (a Case Management page; graph integration).
+
+---
+
+## 13. Step 5 — "Pin node" (frontend, reuses the fcose layout)
+
+Date: 2026-09-08. First frontend work in this effort. Scope: let an investigator mark a
+graph node as important and keep it **fixed in place when the graph is re-laid out**, from
+the existing node details panel. **No backend, no new API, no persistence.** No change to
+any Graph / Taint / Pathfinding / Behavioral / DEX algorithm.
+
+### 13.1 Inspection — how graph layout & node positions work today
+
+(Confirmed against `frontend/src/app/features/graph-visualization/graph-visualization.component.ts`,
+unchanged since commit `fd20888`.)
+
+- The graph page builds its cytoscape instance in `renderGraph()`, which **destroys and
+  recreates `this.cy`** on every `graph$` emission — i.e. on case select, evidence-file
+  switch, and "Analiziraj graf".
+- Layout is **cytoscape-fcose** (`{ name: 'fcose', quality: 'default', randomize: true,
+  animate: false, fit: true, … }`), passed as `… as any`. `cytoscape-fcose@2.2.0` and
+  `cytoscape-layout-utilities` are already registered once via
+  `core/cytoscape-setup.ts::ensureCytoscapeExtensionsRegistered()`.
+- **Nothing about node positions is persisted anywhere.** `randomize: true` means every
+  render produces a fresh, different arrangement. There was no `node.lock()`, no
+  `grabbable` handling, no `dragfree`/`free` listener, and no `preset` layout.
+- Nodes are draggable already (cytoscape's default `grabbable: true`); the app just never
+  did anything with a dragged position.
+- `applyVisibilityFilters()` (timeline / dead-end / funding-source filters) and
+  `renderSwapOverlay()` (DEX overlay) mutate the existing `cy` **without** re-running the
+  layout.
+- **cytoscape-fcose natively supports fixed positions**: a `fixedNodeConstraint` layout
+  option — `[{ nodeId, position: { x, y } }]` — keeps the listed nodes exactly where
+  stated and arranges every other node around them. `cytoscape@3.34` also has
+  `node.lock()` (immune to layout moves and to dragging) and node `underlay-*` styling.
+
+**Conclusion:** the "stay fixed on re-layout" requirement is met entirely by fcose's own
+`fixedNodeConstraint` + `node.lock()`. No new positioning system is introduced.
+
+### 13.2 Design decisions
+
+- **Reuse fcose, don't replace it.** On pin, the node's *current* position (wherever fcose
+  put it, or wherever it was dragged) is captured into a component `Map`. Every subsequent
+  `renderGraph()` feeds that map into fcose's `fixedNodeConstraint` **and** re-`lock()`s
+  the node and re-adds a `.pinned` class. Non-pinned nodes are laid out by the same fcose
+  call, exactly as before.
+- **No re-layout on the pin click itself.** `togglePinSelectedNode()` only locks/unlocks
+  and toggles the class + map entry on the live `cy`; the rest of the graph is left
+  untouched. A re-layout only happens on the events that already caused one.
+- **Non-pinned behaviour is byte-for-byte unchanged.** When the pin map is empty, the
+  `fixedNodeConstraint` key is *not* added to the layout options at all, so the config
+  object is identical to the pre-step-5 one (verified — see §13.5).
+- **No backend persistence — deliberately.** The instruction was to persist "only if
+  persistence is necessary in the current architecture". It is not:
+  - Nothing about graph *presentation* is persisted in this project — fcose re-randomizes
+    every load by design, and the graph itself is recomputed from evidence on every
+    request. A component-held pin map is *consistent* with that.
+  - The stated goal ("pinned nodes remain at their position when the graph is re-laid
+    out") is fully delivered by fcose + a component `Map`: a pin survives every **in-page**
+    re-layout (case switch, evidence switch, "Analiziraj graf", DEX overlay refresh) for
+    as long as the `/graph` page stays open.
+  - It does **not** survive navigating away from `/graph` or a full reload. Making it
+    survive that would require the graph page to be scoped to an *investigation* (steps
+    1–4) — i.e. an investigation picker on the graph page — which is exactly the "large
+    new UI section" the task rules out. The investigator-layer container is where such a
+    pin store would live (`data/investigations/<id>/pinned_nodes.json`) if that's wanted
+    later; noted, not built.
+- **Pin action lives in the existing node details panel**, as asked — one small
+  `.pin-controls` row under the node's address `<h3>`, not a new section.
+- **Visual indication** is additive-only, chosen so it never overrides an existing cue:
+  on the canvas, `node.pinned` adds a **gold double border** + a soft **gold underlay
+  glow** (`underlay-*` is unused by any other node rule; the cluster ring uses `outline-*`
+  and the risk/blacklist cues use `background-color`/shape — all untouched). In the panel,
+  a `📌 ZAKAČENO` badge + the toggle button's lit `.active` state. One legend row added.
+
+### 13.3 Files changed
+
+**No new source files. No backend changes. No API changes.**
+
+| File | Change | Purpose |
+|---|---|---|
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` | New private `pinnedNodePositions: Map<string, {x,y}>`. New `get isSelectedNodePinned`, `get pinnedNodeCount`, `togglePinSelectedNode()`, `private reapplyPinnedNodes()`. In `renderGraph()`: build `fixedNodeConstraint` from the map (only for node ids present in the current graph), spread it into the fcose `layout` options **only when non-empty**, and call `reapplyPinnedNodes()` right after the new `cy` is built. New `node.pinned` cytoscape style rule (gold double border + gold underlay), placed just before `node:selected`. | the whole feature |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.html` | In the node-details `<aside>`, a `.pin-controls` row after `<h3>`: a `📌 ZAKAČENO` badge (when pinned) and a `📌 Zakači čvor` / `📌 Otkači čvor` button bound to `togglePinSelectedNode()` / `isSelectedNodePinned`. One extra `.legend-item` for the pinned marker. | the pin/unpin action + visual/legend |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.scss` | `.pin-controls`, `.pin-badge`, `.pin-toggle`, `.ghost-button.pin-toggle.active` (gold lit state), `.legend-swatch.pinned`. ~35 lines, all new selectors — nothing existing restyled. | styling for the above |
+| `frontend/scripts/pin-node-behavior-check.mjs` *(new)* | Headless `node` smoke check (no `ng test` runner exists in this project — mirrors `backend/scripts/smoke_*.py`). Drives the real cytoscape + cytoscape-fcose exactly as `renderGraph()` does and asserts the pin behaviour (see §13.5). | reproducible verification |
+
+### 13.4 Behaviour
+
+- **Pin** (button in node details): `pinnedNodePositions.set(id, {…node.position()})`,
+  `node.lock()`, `node.addClass('pinned')`. The panel shows `📌 ZAKAČENO`; the button
+  becomes "Otkači čvor" and lit.
+- **Unpin**: `pinnedNodePositions.delete(id)`, `node.unlock()`,
+  `node.removeClass('pinned')`. The node rejoins normal layout on the next re-layout.
+- **Re-layout** (case/evidence switch, "Analiziraj graf"): `renderGraph()` passes
+  `fixedNodeConstraint: [{nodeId, position}, …]` for every still-present pinned node, so
+  fcose places all other nodes around them; then `reapplyPinnedNodes()` snaps each pinned
+  node exactly onto its stored position and re-locks it.
+- A pin whose node is **not in the current graph** (hidden by the evidence filter) is kept
+  in the map and re-applies if that node reappears.
+- Pins are **per component instance**: leaving `/graph` (component destroyed) or reloading
+  clears them. Documented limitation (§13.2).
+
+### 13.5 Testing performed
+
+- **Frontend build** — `ng build --configuration development` before and after: both
+  succeed, **0 errors, 0 warnings**; bundle sizes unchanged.
+- **Backend suite** — `pytest backend/tests` → **222 passed** (no backend files touched;
+  run as a regression guard).
+- **Graph / pin / re-layout behaviour** — `node frontend/scripts/pin-node-behavior-check.mjs`,
+  run repeatedly, **all 12 checks pass**:
+  - plain fcose layout gives finite, distinct positions for every node;
+  - with nothing pinned: the layout config has **no** `fixedNodeConstraint` key, **no**
+    node is locked, **no** node has `.pinned`, and repeated fresh layouts still vary
+    (randomized re-layout intact);
+  - a pinned node is at its pinned position after re-layout **to < 1e-6 px** (i.e. exactly),
+    is `locked()`, and carries `.pinned`, while the other nodes are still laid out (finite
+    positions, none collapsed onto the pin);
+  - the pinned node stays exactly put across a **second, independent** re-layout;
+  - after unpin: the node is no longer `locked()`, has no `.pinned`, and is placed by the
+    layout again (tens–hundreds of px from the old pinned spot).
+  - Note: on an 8-node graph fcose occasionally reproduces an identical arrangement
+    between two runs — expected fcose determinism on a trivial graph, unrelated to
+    pinning; the check accounts for it by looking at a spread of runs.
+
+### 13.6 Not done yet (next steps)
+
+- Manual **off-chain links** between addresses (the last of the five investigator-layer
+  capabilities).
+- Frontend for investigator **notes** (steps 3–4 are backend-only so far).
+- If cross-navigation / cross-reload pin persistence is wanted: scope the graph page to an
+  investigation and store pins under `data/investigations/<id>/pinned_nodes.json` via the
+  investigator layer.
+- Optional: let a pinned node be dragged to fine-tune its position (currently `lock()`
+  disables dragging — re-position by unpin → drag → re-pin).

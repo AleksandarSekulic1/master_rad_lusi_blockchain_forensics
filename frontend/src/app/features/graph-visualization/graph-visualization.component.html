@@ -231,6 +231,21 @@
     <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
+      <!-- Istražiteljski "zakači čvor" - mala akcija u postojećem panelu detalja, ne nova
+           sekcija. Fiksira čvor na trenutnoj poziciji pri ponovnom raspoređivanju grafa
+           (koristi fcose fixedNodeConstraint + node.lock()). -->
+      <div class="pin-controls">
+        <span class="pin-badge" *ngIf="isSelectedNodePinned">📌 ZAKAČENO</span>
+        <button
+          type="button"
+          class="ghost-button pin-toggle"
+          [class.active]="isSelectedNodePinned"
+          (click)="togglePinSelectedNode()"
+          title="Označi čvor kao važan i zadrži ga na fiksnoj poziciji pri ponovnom raspoređivanju grafa"
+        >
+          {{ isSelectedNodePinned ? '📌 Otkači čvor' : '📌 Zakači čvor' }}
+        </button>
+      </div>
       <dl>
         <div>
           <dt>ENS ime</dt>
@@ -424,6 +439,11 @@
       <div class="legend-item">
         <span class="legend-line swap-edge"></span>
         DEX SWAP (heuristika) — <strong>isprekidana ljubičasta veza</strong>; kliknite za DEX, iznose, hash i pouzdanost
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch pinned"></span>
+        Zakačen čvor (istražitelj) — <strong>zlatna dvostruka ivica</strong>; ostaje na fiksnoj poziciji pri ponovnom
+        raspoređivanju grafa
       </div>
     </div>
     <p class="legend-hint">
