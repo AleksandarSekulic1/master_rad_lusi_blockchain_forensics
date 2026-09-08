@@ -246,6 +246,11 @@ export class ApiService {
     declaration: string;
     content: Record<string, unknown>;
     summary: Record<string, unknown>;
+    /** 'taint' | 'pathfinding' | 'dex_swap' so far - purely descriptive, lets Log
+     * aktivnosti/izveštaj aktivnosti tell one signed report apart from another (see
+     * activity_report.py's _REPORT_TYPE_LABELS). Optional so this method's existing
+     * callers keep compiling even before each one is updated to pass it. */
+    report_type?: string;
   }): Observable<{ verification_code: string; content_hash: string; registered_at: string; analyst: string }> {
     return this.http.post<{ verification_code: string; content_hash: string; registered_at: string; analyst: string }>(
       `${this.apiUrl}/api/v1/reports/register`,

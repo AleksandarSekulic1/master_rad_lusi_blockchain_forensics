@@ -511,6 +511,38 @@ evidenciji. Stranica „Lanac dokaza" → tab „Po transakciji" odmah pokazuje 
 „Poslednji pristup" za te transakcije; Aktivnost log pokazuje novi red sa tačnim brojem
 detektovanih događaja i „lanac dokaza: N transakcija, M fajl(ova)" sažetkom.
 
+### 12.5 Uzgredna popravka — `report_signed` akcija u Log aktivnosti
+
+Dok je ovo testirano, primećeno je da PDF izvoz (§11 — akcija `report_signed`, koju
+`POST /reports/register` piše kad se izveštaj potpiše) **nije imao lep prikaz ni za
+jednu od tri stranice** koje ga koriste (Taint, Pathfinding, DEX Swaps) — u logu se
+video goli tekst `report_signed`, bez ikonice, bez detalja o TIPU izveštaja (jer se
+`RegisterReportRequest.summary` — jedini deo koji nosi taj podatak — do sada uopšte nije
+upisivao u audit log, samo `verification_code`/`content_hash`). Popravljeno za sve tri
+stranice odjednom (deljen mehanizam, deljena popravka):
+
+- `RegisterReportRequest` dobija novo, opciono polje `report_type` (`'taint'` |
+  `'pathfinding'` | `'dex_swap'`) — čisto opisno, **nikad** deo otiska sadržaja
+  (`compute_content_hash` i dalje hešuje samo `content`, ne `summary`/`report_type`).
+- Sve tri stranice (`taint-analysis.component.ts`, `pathfinding.component.ts`,
+  `dex-swap-analysis.component.ts`) sada šalju svoj `report_type` uz poziv
+  `registerReport()`.
+- `write_audit_log` za `report_signed` sada upisuje `report_type` **plus ceo `summary`
+  rečnik** koji stranica pošalje (ne samo dva generička polja kao ranije) — svaki
+  segment sad vidljiv pod „Prikaži" u Log aktivnosti, isti obrazac kao ostale akcije.
+- Lep naziv/ikonica/boja (`'Izvezen potpisan izveštaj (PDF)'`, 🖋, grupa `report`) i
+  sažetak u jednom redu (`DEX Swap izveštaj · LUSI-2026-... · 2 događaja`, odn. `Taint
+  izveštaj · ... · N zaprljanih adresa, M tačaka unovčavanja`, odn. `Pathfinding
+  izveštaj · ... · N skokova`) — dodato i u `activity_report.py` (PDF/CSV izveštaj
+  aktivnosti) i u `activity-log.component.ts` (ekran), iste formulacije na oba mesta.
+
+Provereno stvarnim PDF izvozom kroz aplikaciju: red u Log aktivnosti sad glasi „🖋
+Izvezen potpisan izveštaj (PDF)" / „DEX Swap izveštaj · LUSI-2026-LZHR-SURE · 2
+događaja", a razvijen prikaz („Prikaži") ispisuje svih devet polja pojedinačno
+(uključujući `total_events`, `detected_count`, `potential_count`, `address`,
+`report_type`, `verification_code`, `content_hash`) — ništa od ranije nije obrisano,
+samo dodato.
+
 ## 13. Gde je šta u kodu
 
 | Šta | Fajl |

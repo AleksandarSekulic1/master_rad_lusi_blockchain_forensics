@@ -1801,6 +1801,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             cash_out_points: this.cashOutCandidates.length,
             seeds: this.taintResult.seed_addresses.length,
           },
+          report_type: 'taint',
         }),
       );
 

@@ -78,6 +78,16 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     test_scenario_deleted: { label: 'Obrisan validacioni scenario', group: 'test', icon: '✕' },
     activity_report_exported: { label: 'Izvezen izveštaj aktivnosti', group: 'report', icon: '⭳' },
     custody_pdf_exported: { label: 'Izvezen lanac dokaza (PDF)', group: 'custody', icon: '🖉' },
+    report_signed: { label: 'Izvezen potpisan izveštaj (PDF)', group: 'report', icon: '🖋' },
+  };
+
+  /** Report type (see reports.py's RegisterReportRequest.report_type) -> human label -
+   * mirrors backend/app/exports/activity_report.py's _REPORT_TYPE_LABELS exactly, so the
+   * on-screen log and the exported PDF/CSV activity report never disagree. */
+  private static readonly REPORT_TYPE_LABELS: Record<string, string> = {
+    taint: 'Taint izveštaj',
+    pathfinding: 'Pathfinding izveštaj',
+    dex_swap: 'DEX Swap izveštaj',
   };
 
   constructor(
@@ -263,6 +273,20 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         const scope = details['scope'] === 'transaction' ? 'transakcija' : 'dokazni fajl';
         const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
         return `${scope}: ${target} · ${Number(details['entry_count'] ?? 0)} zapisa`;
+      }
+      case 'report_signed': {
+        const reportType = String(details['report_type'] ?? '');
+        const typeLabel = ActivityLogComponent.REPORT_TYPE_LABELS[reportType] ?? 'Izveštaj';
+        const code = String(details['verification_code'] ?? '?');
+        let extra = '';
+        if (reportType === 'taint') {
+          extra = ` · ${Number(details['tainted_addresses'] ?? 0)} zaprljanih adresa, ${Number(details['cash_out_points'] ?? 0)} tačaka unovčavanja`;
+        } else if (reportType === 'pathfinding') {
+          extra = ` · ${Number(details['hops'] ?? 0)} skokova`;
+        } else if (reportType === 'dex_swap') {
+          extra = ` · ${Number(details['total_events'] ?? 0)} događaja`;
+        }
+        return `${typeLabel} · ${code}${extra}`;
       }
       case 'path_finding':
         return `${String(details['source_address'] ?? '?')} → ${String(details['target_address'] ?? '?')}`;

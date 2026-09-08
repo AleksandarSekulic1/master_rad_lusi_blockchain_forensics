@@ -112,5 +112,20 @@
       "address": "0xInvestorWallet"
     },
     "registered_at": "2026-09-08T13:21:51.587166+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-LZHR-SURE",
+    "content_hash": "bff4c8d795d0fc25ef643344f5cc2dc56b04e3bfbeb581f956733fed681ca347",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T14:03:04.805101+00:00"
   }
 ]

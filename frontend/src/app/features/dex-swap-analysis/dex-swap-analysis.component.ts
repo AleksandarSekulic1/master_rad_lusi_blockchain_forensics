@@ -332,6 +332,7 @@ export class DexSwapAnalysisComponent implements OnInit {
             potential_count: this.result.potential_count,
             address: this.result.address,
           },
+          report_type: 'dex_swap',
         }),
       );
 

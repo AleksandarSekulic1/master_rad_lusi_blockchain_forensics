@@ -836,6 +836,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
             destination_mode: this.destinationMode,
             taint_trace: this.pathTaintResult ? 'da' : 'ne',
           },
+          report_type: 'pathfinding',
         }),
       );
 
