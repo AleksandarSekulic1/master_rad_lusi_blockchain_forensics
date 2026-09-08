@@ -1,7 +1,8 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Step 1 done** — backend data model for the investigation case container is
-implemented, built and tested. No frontend. No notes / pins / links yet.
+Status: **Steps 1 & 3 done** — backend: the investigation-case container plus investigator
+notes on addresses/nodes are implemented, built and tested. No frontend. Pinned nodes and
+off-chain links not started; notes on transactions/edges not started.
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -9,6 +10,7 @@ Layer*.
 
 - **§1–§9** — findings of the codebase analysis done before any implementation.
 - **§10** — Step 1 implementation log: the investigation-case container.
+- **§11** — Step 3 implementation log: investigator notes on blockchain addresses/nodes.
 
 ---
 
@@ -626,12 +628,164 @@ All under `/api/v1`, all require a valid bearer token (mounted with the shared
   404 → 422 on blank name → 401 without token → delete → 404): all as expected, and the
   three audit-log actions were written.
 
-### 10.7 Not done yet (next steps)
+### 10.7 Not done yet (as of step 1)
 
 - Frontend (models, `ApiService` methods, `AnalysisStateService` stream, a Case Management
   page, graph integration).
-- Investigator **notes** on addresses / transactions.
+- Investigator **notes** on addresses → done in step 3, see §11. Notes on
+  transactions / edges still pending.
 - **Pinned nodes**.
 - Manual **off-chain links** between addresses.
 - Optional: link an `InvestigationCase` to an evidence `Case`; a summary projection with
   child-collection counts; an "Investigator conclusions" section in the case exports.
+
+---
+
+## 11. Step 3 — investigator notes on blockchain addresses / nodes (backend)
+
+Date: 2026-09-08. Scope: the backend entity/model, repository, service, API and validation
+for a **textual investigator note attached to one address**. No frontend. No notes on
+transactions/edges yet. No pinned nodes, no links. No change to any Graph / Taint /
+Pathfinding / Behavioral / DEX code.
+
+Example the feature covers:
+
+> Address `0xABC…` — Note: *"Sumnja se da je ovo cold wallet. Čeka se dodatna provera."*
+
+### 11.1 Design decisions taken
+
+- **A note belongs to an investigation case (step 1), not to the evidence `Case`.** The
+  "case ID" on a note is the `investigation_id`. Notes live only inside the investigator
+  layer tree (`data/investigations/<investigation_id>/notes.json`) — never in
+  `data/cases/`, never in the transaction graph, never in any analysis output. That is the
+  concrete form of *"notes must not be mixed with blockchain facts"*.
+- **The address is stored and matched VERBATIM** — surrounding whitespace trimmed, letter
+  case preserved (never lower-cased). Graph node ids in this project are the raw address
+  strings from the evidence and are compared case-sensitively
+  (`app/analytics/path_finding.py`, `app/analytics/behavioral_analysis.py`), so a note
+  only lines up with the node it is about if it keeps the exact same spelling. See §11.5.
+- **The address on a note is immutable.** `PATCH` changes only `text`. Re-pointing a note
+  at a different address would make its `created_at` / author meaningless as a record of
+  one observation — delete and create a new one instead.
+- **The creator is recorded (`author`), matching the existing architecture** — the custody
+  log stores `user`, `report_registry` stores `analyst`, `case.json` stores `analyst`,
+  the audit log stores `user`. `author` is set from the authenticated user, not from the
+  request body, and is immutable. Edit/delete attribution is the activity log's job (same
+  as everywhere else in this project — no record tracks its own editor).
+- **Storage is a mutable JSON list per investigation**, edited in place — same shape as
+  `case.json` / `users.json`. (The append-only-JSONL style used by the custody logs was
+  considered — §4.4 / §8 risk 5 — but that fits immutable audit records; notes have
+  first-class `update` and `delete` and a moving `updated_at`, so an in-place record is
+  the honest model. The immutable who-did-what history is the `audit_log.jsonl` entries.)
+- **Multiple notes per address are allowed** — a running commentary, newest first.
+- **Same layering and conventions as step 1**: `notes_models.py` (entities + validators)
+  → `notes_repository.py` (pure dict file I/O) → `notes_service.py` (ids, timestamps,
+  parent-exists check) → `routes/investigation_notes.py` (HTTP + `write_audit_log`).
+  `FileNotFoundError` subclasses signal "not found" and become HTTP 404 in the route.
+- **Cascade delete for free**: notes sit inside the per-investigation directory, and step
+  1's `delete_investigation` already `rmtree`s that directory — deleting an investigation
+  removes its notes with it (covered by a test).
+
+### 11.2 Files created
+
+| File | Purpose |
+|---|---|
+| `backend/app/investigations/notes_models.py` | Pydantic v2 models: `InvestigatorNote` (persisted), `InvestigatorNoteCreate` (`address` + `text`), `InvestigatorNoteUpdate` (`text` only). Validators trim `address`/`text` and reject blank values; `address` case is never changed. Constants `ADDRESS_MAX_LENGTH = 256`, `NOTE_TEXT_MAX_LENGTH = 10_000`. Helpers `utc_now_iso()`, `new_note_id()`. |
+| `backend/app/investigations/notes_repository.py` | Storage: one file `data/investigations/<investigation_id>/notes.json` shaped `{ "notes": [ … ] }`. `load_notes` / `save_notes`, pure dict I/O. Locates the file via the new public `repository.investigation_dir()` helper, so redirecting the investigations root in tests also redirects the notes. |
+| `backend/app/investigations/notes_service.py` | Orchestration: `list_notes(investigation_id, address=None)`, `get_note`, `create_note(…, author=…)`, `update_note`, `delete_note`. Every call first runs step 1's `get_investigation(...)` (→ `InvestigationCaseNotFoundError` → 404). `create` stamps `created_at == updated_at`; `update` moves `updated_at` only and never touches `created_at` / `id` / `address` / `author`. Defines `InvestigatorNoteNotFoundError(FileNotFoundError)`. |
+| `backend/app/api/routes/investigation_notes.py` | `APIRouter(prefix='/investigations/{investigation_id}/notes')` — list (with optional `?address=`), create, get-one, update, delete. Each write calls `write_audit_log` (`investigator_note_created` / `_updated` / `_deleted`, with `details = { investigation_id, note_id, address }`). Missing investigation **or** missing note → HTTP 404. |
+| `backend/tests/test_investigator_notes.py` | 17 service-layer tests: create (id/author/case-id/timestamps), address trimmed but case preserved, blank text/address rejected, create against unknown investigation → 404-class error, filter by address, list-all, newest-first ordering, update advances only `updated_at`, update persists, update/delete unknown note → error, delete removes only that note, notes scoped per investigation, deleting the investigation removes its notes. Isolated via `monkeypatch.setattr(repository, '_root', …)` (one patch covers records + notes). |
+
+### 11.3 Files modified
+
+| File | Change | Why |
+|---|---|---|
+| `backend/app/investigations/repository.py` | added public `investigation_dir(investigation_id) -> Path` (thin wrapper over the existing private `_investigation_dir`) | give child-collection modules (notes now; pins/links later) one place to resolve the per-investigation directory instead of each re-deriving the layout; keeps test isolation to a single monkeypatch point |
+| `backend/app/api/router.py` | `import … investigation_notes_router`; `include_router(investigation_notes_router, dependencies=authenticated)` right after the investigations router | expose the note routes under `/api/v1`, same "any authenticated user" access as the rest of the investigator layer |
+
+Nothing else was touched. No analytics / graph / taint / pathfinding / behavioral / DEX
+code; no existing routes, models or tests.
+
+### 11.4 Model / storage structure
+
+**Entity — `InvestigatorNote`** (`app/investigations/notes_models.py`):
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `str` | 12-char hex, generated, unique within the investigation |
+| `investigation_id` | `str` | the "case ID" — the step-1 `InvestigationCase` this note belongs to (never the evidence `Case`) |
+| `address` | `str` | the address / graph-node identifier, 1–256 chars, whitespace-trimmed, **case preserved** |
+| `text` | `str` | the observation, 1–10 000 chars, trimmed, non-blank |
+| `author` | `str` | username of the creator; set server-side from the auth token; immutable |
+| `created_at` | `str` | UTC ISO-8601, set once |
+| `updated_at` | `str` | UTC ISO-8601, equals `created_at` on create, advances on every edit |
+
+**Request models:** `InvestigatorNoteCreate { address, text }`,
+`InvestigatorNoteUpdate { text }` (text required — it is the only editable field).
+
+**On disk** (no database; mutable JSON, same style as `case.json`):
+
+```
+data/investigations/<investigation_id>/
+├── investigation.json     (step 1)
+└── notes.json             { "notes": [ { id, investigation_id, address, text,
+                                          author, created_at, updated_at }, ... ] }
+```
+
+`logs/audit_log.jsonl` gains rows with
+`action ∈ { investigator_note_created, investigator_note_updated, investigator_note_deleted }`,
+each carrying `user` and `details = { investigation_id, note_id, address }`.
+
+### 11.5 How a note is associated with an address
+
+- A note carries the address as a **plain string** in its `address` field. There is no
+  foreign key to a graph node, because the graph is rebuilt from evidence on every request
+  and has no persistent node table (see §2.1).
+- The association key is the pair **`(investigation_id, address)`**. `GET …/notes?address=X`
+  returns every note whose `address` equals `X` exactly.
+- Matching is **exact and case-sensitive**, after trimming surrounding whitespace only.
+  This is deliberate: graph node ids are the raw address strings from the imported CSV and
+  are compared without normalisation elsewhere in the codebase, so a note attaches to the
+  right node only if it stores the identical spelling. A frontend that lets the
+  investigator click a node will pass that node's id straight through.
+- A note may reference an address that is **not currently in any graph view** (a different
+  evidence-file filter, or evidence imported/removed since) — the note is independent of
+  graph state and is still returned by its investigation + address.
+- Notes are **never** written into the evidence case, the `networkx` graph, the node-link
+  JSON, or any analysis result. They are read only through the
+  `/investigations/{id}/notes` endpoints and stored only under `data/investigations/`.
+
+### 11.6 API endpoints introduced
+
+All under `/api/v1`, all require a valid bearer token, all JSON.
+
+| Method & path | Body | Success | Errors | Notes |
+|---|---|---|---|---|
+| `GET /api/v1/investigations/{investigation_id}/notes` | — (optional `?address=<exact>`) | `200 { "investigation_id", "address", "notes": [InvestigatorNote, …] }` | `401`, `404` (investigation) | with `address`: only that address's notes; without: every note in the investigation. Newest-created first. |
+| `POST /api/v1/investigations/{investigation_id}/notes` | `{ "address": str, "text": str }` | `200 InvestigatorNote` | `401`, `404` (investigation), `422` (blank/too-long `address` or `text`) | `author` taken from the token; `created_at == updated_at`. Audit: `investigator_note_created`. |
+| `GET /api/v1/investigations/{investigation_id}/notes/{note_id}` | — | `200 InvestigatorNote` | `401`, `404` (investigation or note) | |
+| `PATCH /api/v1/investigations/{investigation_id}/notes/{note_id}` | `{ "text": str }` | `200 InvestigatorNote` | `401`, `404`, `422` | changes `text` only; advances `updated_at`; `id`/`address`/`author`/`created_at` unchanged. Audit: `investigator_note_updated`. |
+| `DELETE /api/v1/investigations/{investigation_id}/notes/{note_id}` | — | `204` no content | `401`, `404` | Audit: `investigator_note_deleted`. |
+
+### 11.7 Build / verification performed
+
+- `from app.main import app; app.openapi()` — app imports, schema builds; the five note
+  routes appear under `/api/v1/investigations/{investigation_id}/notes`.
+- `pytest backend/tests/test_investigator_notes.py` — **17 passed**.
+- `pytest backend/tests` (whole suite) — **214 passed** (was 197; +17 new), 0 failures.
+  Only the pre-existing `datetime.utcnow()` deprecation warning in `graph_building.py`
+  (untouched).
+- End-to-end HTTP smoke via `TestClient` (login → empty list → create with padded
+  address/text → three notes across two addresses → filter by address → list all → patch →
+  get one → `422` blank text → `404` unknown investigation → `404` unknown note → `401`
+  no token → delete → `404` → delete investigation → notes now `404`): all as expected;
+  the five audit actions were written.
+
+### 11.8 Not done yet (next steps)
+
+- Investigator notes on **transactions / edges** (would key off
+  `app/evidence/tx_identity.transaction_id` instead of an address — see §2.2 / §5.1).
+- **Pinned nodes** and manual **off-chain links** between addresses.
+- Author-or-admin restriction on editing/deleting someone else's note (currently any
+  authenticated user can; deferred decision from §8 risk 6).
+- Frontend.

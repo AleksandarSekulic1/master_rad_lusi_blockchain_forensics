@@ -37,6 +37,13 @@ def _investigation_dir(investigation_id: str) -> Path:
     return _root() / investigation_id
 
 
+def investigation_dir(investigation_id: str) -> Path:
+    """Public accessor for the per-investigation directory, so sibling child-collection
+    modules (notes, and later pinned nodes / links) can put their own files under it
+    without each re-deriving the storage layout."""
+    return _investigation_dir(investigation_id)
+
+
 def _record_path(investigation_id: str) -> Path:
     return _investigation_dir(investigation_id) / 'investigation.json'
 
