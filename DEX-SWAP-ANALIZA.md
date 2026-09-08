@@ -6,6 +6,11 @@ contract, a zatim u kratkom vremenskom periodu primi drugi token nazad — namer
 od Graph/Taint/Pathfinding/Behavioral stranica. Ovo je **heuristika**, ne dokaz: svaki
 nalaz nosi eksplicitan nivo pouzdanosti (`Detected` ili `Potential`) i disclaimer.
 
+> **Samo želiš da testiraš (korak po korak, sa gotovim demo podacima)?** Idi direktno na
+> **[§14. Testiranje korak po korak — kompletan vodič](#14-testiranje-korak-po-korak--kompletan-vodič)**
+> na kraju ovog dokumenta — sve ostalo ispod je tehničko objašnjenje ZAŠTO je tako
+> napravljeno, ne uputstvo kako da se proveri da radi.
+
 **Sadržaj**
 
 | Deo | Šta pokriva |
@@ -23,6 +28,7 @@ nalaz nosi eksplicitan nivo pouzdanosti (`Detected` ili `Potential`) i disclaime
 | [11. PDF izveštaj](#11-pdf-izveštaj) | potpisan izveštaj sa kontrolnim brojem, isti obrazac kao Taint/Pathfinding |
 | [12. Lanac dokaza](#12-lanac-dokaza) | ANALYZE kao deliberatan pristup, isti obrazac kao Taint/Pathfinding/Graf |
 | [13. Gde je šta u kodu](#13-gde-je-šta-u-kodu) | putanje |
+| [14. Testiranje korak po korak — kompletan vodič](#14-testiranje-korak-po-korak--kompletan-vodič) | **🡒 počni ovde ako samo želiš da testiraš** |
 
 ---
 
@@ -177,7 +183,8 @@ Odgovor:
 ## 6. Demo podaci i ručna provera
 
 `backend/scripts/seed_demo_dex_swap_evidence.py` dodaje **jedan** fajl
-(`demo_dex_swap_analysis.csv`, 12 redova) u isti deljeni demo slučaj (`46ae7f91db9b`) koji
+(`demo_dex_swap_analysis.csv`, 13 redova — dvanaest za šest parova plus jedan red koji
+priprema taint-seed za §10) u isti deljeni demo slučaj (`46ae7f91db9b`) koji
 koriste i ostali moduli, adresa `0xInvestorWallet`. Fajl je namerno seed-ovan direktno
 (mimo `/upload/csv`), jer sadrži više valuta — vidi §7 zašto to obična otprema danas ne
 bi prihvatila.
@@ -567,3 +574,146 @@ samo dodato.
 |---|---|
 | `GET /api/v1/cases/{id}/dex-swap-analysis` | Kandidati za DEX swap (Detected/Potential) u evidenciji slučaja, opciono ograničeno na jednu adresu — pasivno, bez custody |
 | `POST /api/v1/cases/{id}/dex-swap-analysis/run` | Isto, ali deliberatno — `custody` opciono u telu, upisuje lanac dokaza kad je prisutan (vidi §12) |
+
+## 14. Testiranje korak po korak — kompletan vodič
+
+Ovaj deo je namerno **odvojen od tehničkih objašnjenja iznad** — čisto uputstvo, redosled
+klikova i tačni brojevi koje treba da vidiš, bez obrazloženja "zašto". Za "zašto", vidi
+odgovarajući broj sekcije iz §1–§13 (naveden uz svaki korak ispod).
+
+Sve što sledi koristi **isti demo slučaj** koji koriste i ostali moduli (Taint, Graf,
+Pathfinding, Behavioral) — ništa dodatno ne treba da praviš ručno.
+
+### 14.0 Priprema (jednom)
+
+1. Pokreni backend i frontend (`uvicorn app.main:app` iz `backend/`, `ng serve` iz
+   `frontend/`).
+2. Iz `backend/` foldera pokreni:
+   ```bash
+   python scripts/seed_demo_dex_swap_evidence.py
+   ```
+   Ovo dodaje (ili osvežava, ako već postoji) fajl `demo_dex_swap_analysis.csv` u slučaj
+   **„Demo: Sumnjiva laundering sema (hakovan novcanik)"** (ID `46ae7f91db9b`) — 13 redova,
+   šest namerno izolovanih parova plus jedan red za taint-seed (vidi §6 i §10.4 za tačan
+   sadržaj i zašto je baš tako sastavljeno).
+3. Prijavi se u aplikaciju (`admin` / `admin123` na demo instalaciji).
+4. **Slučajevi** → izaberi **„Demo: Sumnjiva laundering sema (hakovan novcanik)"** kao
+   aktivan slučaj (klik na red u tabeli).
+
+### 14.1 Korak 1 — Osnovna detekcija + Lanac dokaza (stranica „DEX Swaps")
+
+*Vidi §8 (stranica) i §12 (lanac dokaza) za pozadinu.*
+
+1. Klikni **„DEX Swaps"** u glavnom meniju.
+2. „Prikaz transakcija" → izaberi `demo_dex_swap_analysis.csv` (radi preglednosti — bez
+   ovoga radi i nad „Sve transakcije (kombinovano)", samo sa više nepovezanih rezultata iz
+   ostale demo evidencije istog slučaja).
+3. Address: `0xInvestorWallet` → klikni **ANALYZE**.
+4. **Očekivano:** umesto da odmah vidiš rezultat, otvara se dijalog **„Razlog pristupa i
+   potpis"** — jer je ovo, kao i Taint/Pathfinding/Graf, deliberatan pristup evidenciji
+   (§12.1). Nijedna kartica se ne vidi iza dijaloga.
+5. Upiši bilo šta u **„Opis radnje"** (npr. „Provera DEX swap detekcije"), nacrtaj potpis
+   mišem u polju, čekiraj izjavu, klikni **„Potpiši i pokreni analizu"**.
+6. **Očekivano posle potvrde:**
+   - **2 swap-a detected** (pilula pored dugmeta).
+   - Kartica 1: badge **DETECTED SWAP**, `0xInvestorWallet → 0xUniswapRouter`,
+     **`10 ETH → 0xUniswapRouter → 25,000 USDC`**, `Time: 2026-08-24 09:00 UTC`,
+     `Tx: 0xswap0001`.
+   - Kartica 2: badge **POTENTIAL SWAP**, `0xInvestorWallet → 0xUniswapRouter`,
+     **`2 ETH → 0xUniswapRouter → 3,200 DAI`**, `Time: 2026-08-25 11:15 UTC · gap 70s`.
+   - Ispod obe kartice: disclaimer rečenica (heuristika, ne dokaz).
+
+### 14.2 Korak 2 — Graph vizuelizacija (isprekidane SWAP veze)
+
+*Vidi §9 za pozadinu.*
+
+1. Klikni **„Graf"** u meniju (isti slučaj je i dalje aktivan).
+2. „Prikaz transakcija" → izaberi opet `demo_dex_swap_analysis.csv`.
+3. **Očekivano, automatski (bez klika)**: na grafu se, pored običnih plavih strelica,
+   vide **dve isprekidane ljubičaste veze** između `0xInvestorWallet` i `0xUniswapRouter`,
+   sa oznakom `SWAP · 10 ETH → 25,000 USDC` i `SWAP · 2 ETH → 3,200 DAI`. Dugme **„Sakrij
+   DEX swap veze (2)"** pored ostalih filtera potvrđuje broj.
+4. Klikni na jednu od isprekidanih veza (ako ti je teško da pogodiš mišem, uveličaj
+   scroll-om najpre). **Očekivano:** desni panel se menja na **„SWAP DOGAĐAJ
+   (HEURISTIKA)"** sa poljima DEX / Input / Output / Timestamp / Transaction hash /
+   Confidence — za `10 ETH → 25,000 USDC` treba da piše `High (Detected · ...)`.
+5. Polje **„Taint (preneto sa ulaznog kraka)"** u istom panelu treba da kaže **„Taint
+   analiza nije pokrenuta"** — jer još nisi kliknuo „Analiziraj graf" (sledeći korak).
+
+### 14.3 Korak 3 — Taint preko swap-a
+
+*Vidi §10 za pozadinu, uključujući ZAŠTO je drugi broj ispod 0.04% a ne 0%.*
+
+1. Na istoj Graf stranici, klikni **„Analiziraj graf"** → otvara se isti dijalog kao u
+   §14.1 → popuni i potpiši → potvrdi.
+2. **Očekivano:** graf se oboji po riziku; `0xbad0...0001` (crna lista) postaje crven
+   čvor, `0xInvestorWallet` dobija istaknutu ivicu (visok rizik/taint).
+3. Klikni ponovo na granu `10 ETH → 25,000 USDC`. **Očekivano:** polje „Taint" sad
+   pokazuje **100%**, sa napomenom da je preneto sa ulaznog kraka. Grana takođe dobija
+   crveni „halo" oko isprekidane linije.
+4. Klikni na drugu granu (`2 ETH → 3,200 DAI`). **Očekivano: 0.04%**, ne 0% — namerna
+   demonstracija ostatka nepromenjenog modela (§10.1/§10.4), ne greška.
+
+### 14.4 Korak 4 — PDF izveštaj
+
+*Vidi §11 za pozadinu.*
+
+1. Vrati se na **„DEX Swaps"** stranicu. **Napomena:** i izbor evidencije i rezultat iz
+   koraka 14.1 se **ne pamte** kad odeš na drugu stranicu i vratiš se (obična komponenta,
+   ne deljeno stanje) — ponovi korake 2–6 iz §14.1 u celosti (ponovo izaberi
+   `demo_dex_swap_analysis.csv` u „Prikaz transakcija", pa adresa `0xInvestorWallet` →
+   **ANALYZE** → popuni i potpiši dijalog) da bi kartice ponovo bile na ekranu pre nego
+   što nastaviš ovde. Ako preskočiš ponovni izbor evidencije, analiza i dalje radi (nad
+   „Sve transakcije (kombinovano)"), ali brojevi u §14.5 koraku 2 ispod neće se poklopiti.
+2. Klikni **„Izvezi PDF izveštaj"** → otvara se dijalog **„Potpis analitičara"**.
+3. Nacrtaj potpis, čekiraj izjavu, klikni **„Potpiši i izvezi PDF"**.
+4. **Očekivano:** preuzima se fajl `<case_id>_dex_swap_report.pdf` — tri strane:
+   zaglavlje + ključni nalazi + tabela događaja (strana 1), metodologija/ograničenja
+   (strana 2), potpis + pečat „LUSI" + kontrolni broj (strana 3).
+
+### 14.5 Korak 5 — Provera u Log aktivnosti i Lanac dokaza
+
+*Vidi §12 (lanac dokaza) i §12.5 (log aktivnosti) za pozadinu.*
+
+1. Klikni **„Lanac dokaza"** u meniju → tab **„Po transakciji"**. **Očekivano:**
+   transakcije iz `demo_dex_swap_analysis.csv` (npr. `0xInvestorWallet→0xUniswapRouter`)
+   imaju svež unos u koloni „Poslednji pristup", sa vremenom bliskim koraku 14.1.
+2. Klikni **„Log"** u meniju. **Očekivano, odozgo naniže (najnoviji prvi):**
+   - **🖋 Izvezen potpisan izveštaj (PDF)** — `DEX Swap izveštaj · LUSI-2026-... · 2
+     događaja` (od koraka 14.4).
+   - **⇌ Pokrenuta DEX swap analiza** — `0xInvestorWallet · demo_dex_swap_analysis.csv ·
+     2 događaja · lanac dokaza: 13 transakcija, 1 fajl(ova)` (od PONOVLJENOG koraka 14.1
+     unutar koraka 14.4, ne od prvog pokretanja — to je zato najnovija takva stavka).
+     Tačno 13 transakcija zato što je `demo_dex_swap_analysis.csv` bio izabran u „Prikaz
+     transakcija", ne „Sve transakcije (kombinovano)" (vidi napomenu u §14.4).
+   - **⚙ Pokrenuta analiza** — od „Analiziraj graf" (koraka 14.3).
+   - Ispod toga, još jedan **⇌ Pokrenuta DEX swap analiza** red — od PRVOG pokretanja u
+     koraku 14.1 (svaki deliberatan pristup dobija svoj red, ništa se ne prepisuje).
+3. Klikni **„Prikaži"** na redu „Pokrenuta DEX swap analiza" — **očekivano:** razvijen
+   prikaz sa SVAKIM poljem posebno (`address`, `evidence_scope`, `max_gap_seconds`,
+   `total_events`, `detected_count`, `potential_count`, `custody_recorded`,
+   `custody_transaction_rows`, `custody_evidence_files`).
+
+### 14.6 (Opciono) Provera da se NE prijavljuju lažni pozitivi
+
+*Vidi §4 i §6 za pozadinu — ovo su preostala četiri para iz demo fajla, namerno bez
+swap oznake.*
+
+Na „DEX Swaps" stranici (ponovo izaberi `demo_dex_swap_analysis.csv` u „Prikaz
+transakcija" — vidi napomenu u §14.4, izbor se ne pamti između poseta stranici), probaj i:
+
+- Address `0xSushiRouter` — **očekivano: 0 swap-ova** (SushiRouter je DEX čvor, ne
+  korisnička adresa — analiza traži swap-ove ZA tu adresu kao pošiljaoca/primaoca, ne
+  kroz nju kao DEX).
+- „Sve transakcije (kombinovano)" + adresa `0xInvestorWallet` → i dalje **tačno 2**
+  swap-a (ne 6) — parovi 3–6 su namerno isključeni (ista valuta, prevelik razmak, pogrešna
+  povratna adresa, nema DEX signala) — potvrđuje da kočnice iz §4 stvarno rade, ne samo
+  na papiru.
+
+### 14.7 Automatski testovi
+
+```bash
+python -m pytest backend/tests/test_dex_swap_analysis.py -v
+```
+19 testova — pokriva tačno iste kočnice kao §14.6, plus klasifikaciju DEX čvora,
+Detected/Potential razliku, i granične slučajeve (§6 ima pun spisak).
