@@ -1,12 +1,13 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4, 5, 6, 7, 8, 9, 10 & 11 done.** All five Case Management categories
-(case, address notes, transaction notes, pinned nodes, investigator links) are persisted,
-case-scoped, and — as of the **step 11 focused test pass** — verified across the full
-checklist (CRUD, validation, very-long input, multiple pins, duplicate links, confidence
-values, restart persistence, case isolation) with the existing Graph / Taint / Pathfinding
-/ Behavioral / DEX analyses confirmed unaffected.
-Date started: 2026-09-08
+Status: **Complete (steps 1–12).** All five Case Management categories (case, address
+notes, transaction notes, pinned nodes, investigator links) are implemented, persisted,
+case-scoped, integrated into the Graph UI, tested across the full checklist, and reviewed.
+The existing Graph / Taint / Pathfinding / Behavioral / DEX analyses are unchanged and
+confirmed working. **§20 is the final consolidated reference** (architecture, files,
+models, endpoints, integration, per-feature notes, testing, design decisions, known
+limitations, deliberately-deferred work).
+Date started: 2026-09-08 · Reviewed: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
 Layer*.
@@ -22,6 +23,7 @@ Layer*.
 - **§17** — Step 9 implementation log: the compact Case Overview panel.
 - **§18** — Step 10: pinned-node persistence + the **final persistence model & verification**.
 - **§19** — Step 11: the **focused test pass** across the whole Case Management checklist.
+- **§20** — Step 12: final review + the **consolidated reference** (read this one).
 
 ---
 
@@ -1805,9 +1807,365 @@ rather than being typed freely and then rejected with a generic error. Backend l
 validation were already correct — this is purely the client-side guard. No other issue was
 found.
 
-### 19.5 Not done yet (next steps)
+### 19.5 Not done yet (as of step 11)
 
-- A standalone Case Management route (create / rename / close investigations without going
-  through the Graph page).
-- Author-or-admin restriction on editing/deleting another investigator's note / pin / link
-  (§8 risk 6).
+- Final review + consolidated reference → done in step 12, see **§20**.
+- A standalone Case Management route (create / rename / close investigations).
+- Author-or-admin restriction on editing/deleting another investigator's note / pin / link.
+
+---
+
+# 20. FINAL REVIEW & CONSOLIDATED REFERENCE (step 12)
+
+Date: 2026-09-08. A review of the whole Case Management layer against: architecture,
+naming, duplicated code, API consistency, frontend consistency, database relationships,
+validation, error handling, UI clutter, and the separation between blockchain facts and
+investigator conclusions. **No features added. No analytical algorithm touched.** Two
+small, behavior-neutral refactors were made (§20.11); the full suite (279 backend tests +
+both headless checks) is green before and after.
+
+## 20.1 Final architecture
+
+```
+                              BLOCKCHAIN FACTS
+             (evidence Case: data/cases/<case_id>/ + data/raw/*.csv)
+                                     │
+   ┌─────────────────────────────────┼─────────────────────────────────┐
+   │        automatically derived, on request, never persisted:        │
+   │   Graph Analysis · Taint Analysis · Pathfinding · Behavioral      │
+   │   Analysis · DEX Swap Analysis   (app/analytics/*, unchanged)     │
+   └─────────────────────────────────┼─────────────────────────────────┘
+                                     │   read-only inputs (address strings,
+                                     │   tx ids, node positions)
+                                     ▼
+                              INVESTIGATOR LAYER
+              (Investigation "case": data/investigations/<id>/)
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              ▼                      ▼                      ▼
+           Notes                Pinned Nodes          Investigator Links
+     notes.json            pinned_nodes.json          links.json
+   (address OR tx target)  (per address, x/y)     (2 addresses, undirected,
+                                                   reason/evidence/confidence)
+```
+
+- **Two separate "case" concepts, two separate trees.** The **evidence `Case`**
+  (`data/cases/`, pre-existing) owns imported on-chain data and its chain of custody. The
+  **`InvestigationCase`** (`data/investigations/`, new) owns investigator-generated
+  interpretation. They are **not linked** in the data model — the investigator layer keys
+  everything off `investigation_id`, and references blockchain elements only by opaque
+  strings (address, `tx_id`) that are valid independent of any graph render.
+- **The analytics layer is a pure, one-directional input.** No investigator module imports
+  anything from `app/analytics`; nothing in `app/analytics` knows the investigator layer
+  exists. Investigator data is never merged into `build_transaction_graph`, the node-link
+  JSON, `case_graph`, or the case exports.
+- **Storage: flat JSON, no database** — one directory per investigation, matching the
+  project's existing style (`case_management.py`, `report_registry.py`). Deleting an
+  investigation `rmtree`s the directory, cascading to every child collection.
+- **Frontend: no new route.** The whole layer is reached from the **Graph Analysis page**
+  (`features/graph-visualization`), via an investigation `<select>`, a node-details action
+  block, a modal, an overlay, and a Case Overview panel.
+
+## 20.2 Backend files
+
+*(new package `app/investigations/` unless noted; `app/services/case_management.py` is the
+older, unrelated evidence-case service and is NOT part of this layer.)*
+
+| File | Role |
+|---|---|
+| `app/investigations/__init__.py` | package marker |
+| `app/investigations/repository.py` | storage root — path helpers (`investigation_dir`), shared JSON I/O (`read_json` / `write_json` / `read_collection` / `write_collection`), investigation index + record CRUD, `delete_record` (rmtree) |
+| `app/investigations/models.py` | `InvestigationCase`, `InvestigationCaseCreate`, `InvestigationCaseUpdate` |
+| `app/investigations/service.py` | investigation CRUD orchestration; `InvestigationCaseNotFoundError` |
+| `app/investigations/notes_models.py` | `InvestigatorNote`, `…Create`, `…Update`; `NoteTargetType`; length limits |
+| `app/investigations/notes_repository.py` | `notes.json` load/save (thin wrapper over `repository.read_collection`) |
+| `app/investigations/notes_service.py` | note CRUD, `list_notes(address? / tx_id? / target_type?)`, legacy-row coercion; `InvestigatorNoteNotFoundError` |
+| `app/investigations/links_models.py` | `InvestigatorLink`, `…Create`, `…Update`; `LinkConfidence`; length limits; `involves(address)` |
+| `app/investigations/links_repository.py` | `links.json` load/save (thin wrapper) |
+| `app/investigations/links_service.py` | link CRUD, `list_links(address?)` (undirected); `InvestigatorLinkNotFoundError` |
+| `app/investigations/pins_models.py` | `PinNodeRequest`, `PinnedNode` |
+| `app/investigations/pins_repository.py` | `pinned_nodes.json` load/save (thin wrapper) |
+| `app/investigations/pins_service.py` | `list_pins`, `set_pin` (upsert by address), `clear_pin`; `PinnedNodeNotFoundError` |
+| `app/api/routes/investigations.py` | `/investigations` CRUD |
+| `app/api/routes/investigation_notes.py` | `/investigations/{id}/notes` |
+| `app/api/routes/investigation_links.py` | `/investigations/{id}/links` (+ `disclaimer` on list) |
+| `app/api/routes/investigation_pins.py` | `/investigations/{id}/pins` |
+| `app/api/router.py` | *(modified)* registers the four routers under the shared `authenticated` dependency |
+| `app/paths.py` | *(modified)* `INVESTIGATIONS_DIR = DATA_DIR / 'investigations'` |
+
+**Backend tests:** `test_investigation_management.py` (11), `test_investigator_notes.py`
+(25), `test_investigator_links.py` (20), `test_investigator_pins.py` (11),
+`test_case_management_persistence.py` (7), `test_case_management_full_pass.py` (19). All
+isolate the store via `monkeypatch.setattr(repository, '_root', …)`.
+
+## 20.3 Frontend files
+
+| File | Role |
+|---|---|
+| `models/blockchain-forensics.models.ts` | *(modified)* + `Investigation`, `InvestigatorLink(+Confidence, +ListResponse)`, `InvestigatorNote(+TargetType, +ListResponse)`, `PinnedNode(+ListResponse)` |
+| `core/services/api.service.ts` | *(modified)* + `listInvestigations`; notes `get/add/update/delete`; links `get/add/delete`; pins `get/pin/unpin` |
+| `features/graph-visualization/…component.ts` | *(modified)* investigation selector + `localStorage` restore; link overlay (build/render/toggle/select/remove); pin state loaded from & synced to the API; node-dialog wiring + note count; Case Overview data + jump/unpin/show-link handlers |
+| `features/graph-visualization/…component.html` | *(modified)* investigation `<select>` row; investigator-link overlay toggle; investigator-link inspector `<aside>` (outermost inspector branch); delimited investigator-action block in the node inspector; Case Overview panel mount; two legend rows |
+| `features/graph-visualization/…component.scss` | *(modified)* investigator-layer accent (`.investigator-layer-picker`, `.investigator-block`), link inspector + amber confidence badge, `.danger-ghost`, action chips + note summary, legend markers |
+| `features/investigator-node-dialog/` *(new, .ts/.html/.scss)* | `InvestigatorNodeDialogComponent` — modal: notes tab (list + add + edit + delete) and "new link" tab, opened from the node inspector |
+| `features/case-overview-panel/` *(new, .ts/.html/.scss)* | `CaseOverviewPanelComponent` — compact case summary: name/description + counts of notes / pinned addresses / links, each expandable |
+| `scripts/pin-node-behavior-check.mjs` *(new)* | headless cytoscape+fcose check: pinned node stays fixed across re-layout, unpin frees it (12 checks) |
+| `scripts/investigator-link-overlay-check.mjs` *(new)* | headless check: link edge is visually distinct + separate; real tx edges untouched on toggle (12 checks) |
+
+*No `angular.json`/route changes; no Karma runner exists, hence the `node` smoke scripts.*
+
+## 20.4 Database models (persisted records)
+
+No RDBMS — these are the JSON shapes on disk. Every child record carries `investigation_id`
+**and** lives inside `data/investigations/<investigation_id>/`.
+
+**`InvestigationCase`** — `investigation.json` (+ summary in `index.json`)
+```
+id: str(12-hex)  ·  name: str(1..200)  ·  description: str(0..5000)|null
+created_at: iso  ·  updated_at: iso        (updated_at advances on edit; created_at never)
+```
+
+**`InvestigatorNote`** — `notes.json → { "notes": [ … ] }`
+```
+id: str(12-hex)  ·  investigation_id: str  ·  target_type: "address" | "transaction"
+address: str|null   (set ⟺ target_type=="address")
+tx_id:   str|null   (set ⟺ target_type=="transaction"; the chain-of-custody tx id)
+text: str(1..10000)  ·  author: str  ·  created_at: iso  ·  updated_at: iso
+```
+
+**`PinnedNode`** — `pinned_nodes.json → { "pinned_nodes": [ … ] }`
+```
+investigation_id: str  ·  address: str(1..256, verbatim)   ← key (upsert)
+x: float|null  ·  y: float|null        (cytoscape model coords captured at pin time)
+pinned_by: str  ·  pinned_at: iso  ·  updated_at: iso
+```
+
+**`InvestigatorLink`** — `links.json → { "links": [ … ] }`
+```
+id: str(12-hex)  ·  investigation_id: str
+source_address: str(1..256)  ·  target_address: str(1..256)   (order carries no meaning)
+directed: bool = false        (always false — undirected investigator association)
+reason:   str(1..5000)        (free text — the "why")
+evidence: str(1..2000)        (free text — the off-chain reference)
+confidence: "Low" | "Medium" | "High"
+author: str  ·  created_at: iso  ·  updated_at: iso
+```
+
+**Relationships:** `InvestigationCase (1) ──< Note (0..N)`, `──< PinnedNode (0..N,
+unique per address)`, `──< InvestigatorLink (0..N)`. No FK to the evidence `Case`. No
+cross-references between notes/pins/links. Delete-cascade is by directory removal.
+
+## 20.5 API endpoints
+
+All under `/api/v1`, all require a bearer token (mounted with the shared
+`get_current_user` dependency — any active, non-blocked user, admin or analyst).
+
+| Method & path | Body / query | Success | Errors |
+|---|---|---|---|
+| `GET  /investigations` | — | `200 {investigations:[…]}` | `401` |
+| `POST /investigations` | `{name, description?}` | `200 InvestigationCase` | `401`, `422` |
+| `GET  /investigations/{id}` | — | `200 InvestigationCase` | `401`, `404` |
+| `PATCH /investigations/{id}` | `{name?, description?}` | `200 InvestigationCase` | `401`, `404`, `422` |
+| `DELETE /investigations/{id}` | — | `204` | `401`, `404` |
+| `GET  /investigations/{id}/notes` | `?address=` / `?tx_id=` / `?target_type=` (≤1) | `200 {investigation_id,address,tx_id,target_type,notes}` | `401`, `404`, `400` (>1 filter / bad `target_type`) |
+| `POST /investigations/{id}/notes` | `{address? XOR tx_id?, text}` | `200 InvestigatorNote` | `401`, `404`, `422` (0/2 targets, blank/too-long text) |
+| `GET  /investigations/{id}/notes/{note_id}` | — | `200 InvestigatorNote` | `401`, `404` |
+| `PATCH /investigations/{id}/notes/{note_id}` | `{text}` | `200 InvestigatorNote` | `401`, `404`, `422` |
+| `DELETE /investigations/{id}/notes/{note_id}` | — | `204` | `401`, `404` |
+| `GET  /investigations/{id}/pins` | — | `200 {investigation_id,pins:[…]}` | `401`, `404` |
+| `PUT  /investigations/{id}/pins` | `{address, x?, y?}` (**upsert**) | `200 PinnedNode` | `401`, `404`, `422` |
+| `DELETE /investigations/{id}/pins` | `?address=` | `204` | `401`, `404` (not pinned) |
+| `GET  /investigations/{id}/links` | `?address=` (either endpoint) | `200 {investigation_id,address,disclaimer,links:[…]}` | `401`, `404` |
+| `POST /investigations/{id}/links` | `{source_address,target_address,reason,evidence,confidence}` | `200 InvestigatorLink` | `401`, `404`, `422` (equal endpoints, blank/missing field, bad confidence) |
+| `GET  /investigations/{id}/links/{link_id}` | — | `200 InvestigatorLink` | `401`, `404` |
+| `PATCH /investigations/{id}/links/{link_id}` | `{reason?, evidence?, confidence?}` | `200 InvestigatorLink` | `401`, `404`, `422` |
+| `DELETE /investigations/{id}/links/{link_id}` | — | `204` | `401`, `404` |
+
+**Consistency:** notes and links are identical CRUD shapes (`GET` list / `POST` create /
+`GET`·`PATCH`·`DELETE` by id). Pins deliberately differ — a node has no id, it is pinned
+or not — so `PUT` (upsert by address) + `DELETE ?address=`. Every write appends to
+`logs/audit_log.jsonl` (`investigation_case_*`, `investigator_note_*`, `investigator_pin_*`,
+`investigator_link_*`), each row carrying `user` and `details.investigation_id`. Every
+"not found" is a typed `FileNotFoundError` subclass mapped to HTTP `404` in the route;
+validation failures are Pydantic `422`; filter-combination errors are explicit `400`.
+
+## 20.6 Graph integration (Graph Analysis page)
+
+The layer is bolted onto `features/graph-visualization` without a new route and without
+touching the graph builder, the existing edges, or the other analyses:
+
+| Element | Where | Reuses |
+|---|---|---|
+| **Investigation `<select>`** ("Istražiteljski sloj") | a picker row under the evidence picker | the evidence-`<select>` markup/style; amber left accent to read as "investigator layer" |
+| **Investigator-link overlay** | dashed **orange**, no arrowheads, `◆ INVESTIGATOR LINK · <conf>` label, confidence steps opacity/width | the DEX-swap overlay mechanism (`cy.remove`/`cy.add`, no re-layout); a new `edge.investigator-link*` style block — the `edge` / `edge.swap-*` / `edge.bridge-edge` rules are untouched |
+| **Link inspector** | outermost branch of the `link → swap → node → empty` else-chain: source/target/reason/evidence/confidence/created/author + disclaimer + "Ukloni vezu" | `.node-inspector` layout; step-7 |
+| **Pinned nodes** | gold double border + gold underlay glow; fcose `fixedNodeConstraint` + `node.lock()` on re-layout | the fcose layout already in use — no separate positioning system; loaded from / synced to the pins API |
+| **Node-details action block** | delimited block above the on-chain `<dl>`, kicker "Istražiteljski sloj — nije blockchain podatak": `[📌 Zakači/Otkači] [📝 Dodaj belešku] [🔗 Istražiteljska veza]` + "N beleški · Prikaži beleške" | the existing inspector; a modal for detail |
+| **Investigator node dialog** | modal, notes tab + new-link tab | the custody-dialog overlay pattern |
+| **Case Overview panel** | compact: name/description + `Beleške: N` / `Zakačene adrese: N` / `Istražiteljske veze: N`, each expandable with a jump back to the graph / link inspector | data already loaded on the page |
+| **Legend** | two rows — pinned node, investigator link ("nije blockchain transakcija") | existing legend |
+
+`applyVisibilityFilters()` treats `investigator-link` edges as overlay (always visible,
+not timeline-bound), same as `swap-edge`. The selected investigation is remembered in
+`localStorage` and re-selected after a reload so its notes/pins/links come straight back.
+
+## 20.7 Notes implementation
+
+- **Target:** exactly one of an **address** (`target_type:"address"`) or a **transaction**
+  (`target_type:"transaction"`, keyed by the chain-of-custody `tx_id` from
+  `app/evidence/tx_identity.py` — no new id scheme). An explicit `target_type` field keeps
+  the two kinds distinguishable even reading the raw JSON, and filtering is scoped by it
+  so the same string used as an address and a tx id never cross over.
+- **Identifiers stored verbatim** (whitespace-trimmed, case preserved) — graph node ids
+  and custody tx ids are compared case-sensitively elsewhere, so a note lines up with its
+  target only if it keeps the exact spelling.
+- **Editable:** `text` only. `id` / `target` / `author` / `created_at` are immutable —
+  re-pointing a note would falsify its provenance; delete + recreate.
+- **Validation:** `text` 1..10 000, trimmed, non-blank (blank / missing / whitespace →
+  `422`, on create and on edit). Frontend textareas carry `maxlength=10000`.
+- **Frontend:** count only in the inspector (never the text); full list + add/edit/delete
+  in the modal's Beleške tab (first frontend for notes). `GET …/notes` with no filter
+  (all notes, both kinds) feeds the Case Overview count.
+
+## 20.8 Pinning implementation
+
+- **Mechanism:** reuses the page's existing **cytoscape-fcose** layout — the pin's
+  position goes into fcose's own `fixedNodeConstraint` on every re-layout and the node is
+  `node.lock()`-ed. No separate positioning system was built.
+- **Persistence (step 10):** each pin is a `PinnedNode` in `pinned_nodes.json`, keyed by
+  **address** (a node is pinned or not — `PUT` is an upsert; re-pinning updates `x`/`y`/
+  `updated_at`, keeps `pinned_at`). Survives reload / backend restart.
+- **Scope:** pins belong to an investigation — the Pin chip is disabled until one is
+  selected. Switching investigations clears the visual pins and loads the new one's.
+- **Frontend state:** a `Map<address,{x,y}>` render cache, filled from `GET …/pins` on
+  investigation-select and re-applied on every render; `togglePinSelectedNode` /
+  `unpinNodeById` also `PUT` / `DELETE` server-side.
+- **Verified:** `pin-node-behavior-check.mjs` — pinned node stays at its coordinates
+  (< 1e-6 px) across one and repeated re-layouts while the rest lays out around it; unpin
+  frees it. Non-pinned behaviour is byte-identical when nothing is pinned.
+
+## 20.9 Investigator Links implementation
+
+- **What it is:** a manually recorded **suspected relation** between two addresses based
+  on **off-chain** evidence — an "investigator association". Enforced as *not a fact*:
+  the entity/route/audit names, a `disclaimer` on every list response, **no
+  `relationship_type` enum** (no `same_owner` / `same_person` / `proven` values — the
+  claim goes in free-text `reason`/`evidence`), and `confidence` limited to Low/Medium/High.
+- **Undirected:** the investigation model has no from/to consumer, so `directed` is always
+  `false`; `source_address`/`target_address` order is not significant; retrieval by
+  address matches **either** endpoint.
+- **Editable:** `reason` / `evidence` / `confidence`. The two addresses are immutable.
+- **Validation:** all five create fields required and non-blank; `source == target` (after
+  trim) → `422`; `confidence` outside the three values → `422`; `reason` 1..5000,
+  `evidence` 1..2000. Duplicate links between the same pair are **allowed** (two
+  independent pieces of off-chain evidence).
+- **Graph:** drawn as a visually distinct overlay (see §20.6), never as a transaction
+  edge; clickable for detail; removable from the inspector. Created from the node dialog's
+  "Nova veza" tab.
+
+## 20.10 Testing performed
+
+| Suite | Count | Covers |
+|---|---|---|
+| `test_investigation_management.py` | 11 | case create (unique id, equal timestamps) / load / list order / update (advances `updated_at` only) / delete + cascade / blank-name reject |
+| `test_investigator_notes.py` | 25 | node + tx note CRUD, exactly-one-target, verbatim id match, filter by address/tx_id/target_type, newest-first, blank reject, per-investigation scope, cascade |
+| `test_investigator_links.py` | 20 | link CRUD, undirected retrieval (both endpoints), equal-endpoints reject, confidence enum, blank reject, empty-PATCH no-op, per-investigation scope, cascade, stored separately from notes/graph |
+| `test_investigator_pins.py` | 11 | pin stores address/pos/author/timestamps, **upsert not duplicate**, list, clear (+ unknown → 404), per-investigation scope, cascade |
+| `test_case_management_persistence.py` | 7 | full flow → **fresh `TestClient(app)` = reload** → all 5 present with ids & pin coords; every item carries `investigation_id`; files under the case dir; A/B isolation; delete A ⇒ 404 everywhere + dir gone, B intact; **only writes under `data/investigations/` + audit log** |
+| `test_case_management_full_pass.py` | 19 | the step-11 checklist 1:1 (CASE / NOTES / PINNING / LINKS / PERSISTENCE / ISOLATION) + **very-long input boundaries** + **missing vs blank field** + **all confidence values** + existing analysis routes still registered & respond `404` (not `500`) for a missing case |
+| `pin-node-behavior-check.mjs` (headless) | 12 | pin render / re-layout / unpin, non-pinned behaviour unchanged |
+| `investigator-link-overlay-check.mjs` (headless) | 12 | link edge distinct & separate; real tx edges never modified on overlay toggle |
+
+**Whole backend suite: 279 passed, 0 failures** (this includes every analysis-algorithm
+test file — `test_taint_analysis`, `test_path_finding_bfs`, `test_behavioral_analysis`,
+`test_dex_swap_analysis`, `test_peel_chains`, `test_seed_suggestion`, custody, reports).
+**`ng build`: 0 errors, 0 warnings.** End-to-end smoke on a seeded case: Graph / Taint /
+Pathfinding / Behavioral / DEX all `200` with correct results.
+
+## 20.11 Important design decisions
+
+1. **Investigator layer is a separate entity and a separate tree, not fields on the
+   evidence `Case`.** Keeps investigator conclusions structurally isolated from on-chain
+   facts and their chain of custody.
+2. **Reference blockchain elements by opaque string, never by graph object.** The graph
+   is recomputed per request and has no persistent node/edge table; addresses and the
+   custody `tx_id` are the only stable identifiers, and they are valid regardless of the
+   current evidence filter.
+3. **Reuse existing mechanisms, add nothing parallel.** Pinning uses fcose's
+   `fixedNodeConstraint`; the link overlay uses the DEX-swap overlay's add/remove path;
+   the modal uses the custody-dialog overlay pattern; storage uses the `case_management`
+   flat-JSON style.
+4. **"Not a fact" is enforced structurally**, not just in copy: separate storage, no
+   analytics imports, `disclaimer` on link responses, `directed:false`, no loaded
+   `relationship_type` values, `confidence` capped at Low/Medium/High, distinct edge
+   style + legend + inspector kicker on the graph.
+5. **Persist only what must survive a reload.** The graph itself isn't persisted (by
+   design); notes/links/pins are, because their whole value is continuity. Pin *positions*
+   are persisted so a reload restores the exact layout.
+6. **Pins are keyed by address (upsert), notes/links by generated id.** A node is pinned
+   or not — an id would be ceremony; a note/link is a distinct record that can be
+   duplicated and needs its own handle.
+7. **The Graph page hosts the whole layer** (no standalone route yet) — it already is the
+   investigator's workspace (the graph, the addresses, the selected node).
+8. **Refactors made in this review (behavior-neutral):**
+   (a) the 4× duplicated `_read_json`/`_write_json` and the per-collection `load_/save_`
+   boilerplate collapsed into `repository.read_json/write_json/read_collection/write_collection`
+   — the three child repos are now ~10-line wrappers.
+   (b) the node-inspector investigator controls wrapped in one delimited `.investigator-block`
+   with an "Istražiteljski sloj — nije blockchain podatak" kicker and a bottom rule, so the
+   boundary with the on-chain `<dl>` is explicit.
+   *(Not consolidated: the 1-line `utc_now_iso()` per model module — the project
+   deliberately favours small-helper duplication over a shared utils module, and each copy
+   sits next to the `default_factory` that uses it.)*
+
+## 20.12 Known limitations
+
+- **No standalone Case Management page.** Investigations can only be *listed / selected*
+  in the UI; **creating / renaming / closing** one requires calling the API directly (the
+  backend endpoints exist). The whole layer is reachable only from `/graph`.
+- **UI density on the Graph page.** It now carries the investigation picker, overlay
+  toggle, Case Overview panel, node-action block, two modals and two legend rows on top of
+  its own controls. Each addition is compact, but the page is busy — a dedicated route
+  would relieve it.
+- **Selection persistence is per-browser.** The active investigation is remembered in
+  `localStorage`; the active *evidence case* is not (pre-existing app behaviour), so after
+  a reload the evidence case must be re-picked before the graph renders.
+- **No authorisation beyond "authenticated".** Any logged-in user can edit or delete any
+  investigator note / pin / link, regardless of author. `author` / `pinned_by` are
+  recorded and every change is in the audit log, but there is no author-or-admin gate.
+- **Concurrency.** Flat-file JSON with no locking — two simultaneous writers to the same
+  investigation's `notes.json` could lose one write (same exposure as the existing
+  `case.json`). Append-only was considered and rejected because notes/pins need in-place
+  edit/delete.
+- **Notes on an aggregated edge.** Only *transaction-level* notes exist (keyed by
+  `tx_id`), matching the chain-of-custody granularity; there is no note target for a whole
+  `source→target` aggregated graph edge.
+- **A link/note/pin can reference an address not in the current graph view** — it is
+  stored and listed, but the "na graf →" jump is disabled and the link/pin is not drawn
+  until that address is in view.
+- **`x`/`y` on a pin are cytoscape model coordinates for one layout run.** They restore
+  the pin faithfully on reload, but they are not meaningful outside this app's graph.
+
+## 20.13 Deliberately NOT implemented (future improvements)
+
+- A **standalone Case Management route** (`/case-management`): full investigation
+  lifecycle, all notes/pins/links per investigation in one place, off the Graph page.
+- **Author-or-admin restriction** on editing / deleting another investigator's item
+  (analysis §8 risk 6).
+- **Linking an `InvestigationCase` to an evidence `Case`** (an optional FK) so the Graph
+  page could auto-select the investigation for the open evidence case.
+- **Investigator conclusions in the exported case report** — a separate, clearly-headed
+  "Investigator conclusions (not blockchain facts)" section in the PDF/CSV, and
+  `edge_kind="manual_offchain"` tagging for links in the GraphML/GEXF export.
+- **A directed variant of investigator links** (`directed:true`) — the field exists and
+  is always `false`; a directed "A controls B" association could be added without a
+  migration.
+- **A `relationship_type` vocabulary** for links (e.g. `same_entity` / `associated` /
+  `off_chain_payment`) — deliberately omitted so the layer never ships loaded labels;
+  the claim stays in free text.
+- **Notes / pins / links on the Taint, Pathfinding, Behavioral and DEX pages** — the
+  overlay + inspector currently live only on the main Graph page (per the project's
+  "look consistent, stay independent" convention between analysis pages).
+- **Cross-device / server-side selection state**, richer note formatting, note
+  attachments, bulk operations, an activity feed per investigation — none are needed for
+  the thesis scope.

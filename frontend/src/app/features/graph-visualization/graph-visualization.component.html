@@ -345,9 +345,11 @@
       <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
 
-      <!-- Case Management akcije - kompaktan red u POSTOJEĆEM panelu detalja, ne nova
-           sekcija/panel. Detalji (lista beleški, forme) su u modalu koji se otvara tek na
-           klik - vidi CASE-MANAGEMENT-IMPLEMENTATION.md §16. -->
+      <!-- Case Management akcije - kompaktan blok u POSTOJEĆEM panelu detalja, jasno
+           odvojen od on-chain podataka ispod (<dl>). Detalji su u modalu koji se otvara
+           tek na klik - vidi CASE-MANAGEMENT-IMPLEMENTATION.md §16 / §20. -->
+      <div class="investigator-block">
+      <span class="notes-summary-label">Istražiteljski sloj — nije blockchain podatak</span>
       <div class="investigator-actions">
         <button
           type="button"
@@ -386,6 +388,7 @@
         <span class="notes-summary-label">Istražiteljske beleške</span>
         <span class="notes-count">{{ selectedNodeNoteCount }} {{ noteCountLabel }}</span>
         <button type="button" class="ghost-button small" (click)="openNodeDialog('notes')">Prikaži beleške</button>
+      </div>
       </div>
 
       <dl>

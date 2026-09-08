@@ -48,21 +48,39 @@ def _record_path(investigation_id: str) -> Path:
     return _investigation_dir(investigation_id) / 'investigation.json'
 
 
-def _read_json(path: Path, default: Any) -> Any:
+# --- Shared JSON I/O ------------------------------------------------------------------
+# Used by this module AND by the child-collection repositories (notes / links / pins), so
+# the "read a { key: [...] } file" plumbing lives in exactly one place for the whole
+# investigations package.
+
+def read_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def _write_json(path: Path, payload: Any) -> None:
+def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def read_collection(investigation_id: str, filename: str, key: str) -> list[dict[str, Any]]:
+    """One per-investigation child collection file, shaped ``{ "<key>": [ {...}, ... ] }``."""
+    payload = read_json(investigation_dir(investigation_id) / filename, {key: []})
+    if not isinstance(payload, dict):
+        return []
+    items = payload.get(key)
+    return items if isinstance(items, list) else []
+
+
+def write_collection(investigation_id: str, filename: str, key: str, items: list[dict[str, Any]]) -> None:
+    write_json(investigation_dir(investigation_id) / filename, {key: items})
 
 
 # --- Index -------------------------------------------------------------------------------
 
 def load_index() -> list[dict[str, Any]]:
-    payload = _read_json(_index_path(), {'investigations': []})
+    payload = read_json(_index_path(), {'investigations': []})
     if not isinstance(payload, dict):
         return []
     entries = payload.get('investigations')
@@ -71,7 +89,7 @@ def load_index() -> list[dict[str, Any]]:
 
 def save_index(entries: list[dict[str, Any]]) -> None:
     ordered = sorted(entries, key=lambda item: str(item.get('updated_at', '')), reverse=True)
-    _write_json(_index_path(), {'investigations': ordered})
+    write_json(_index_path(), {'investigations': ordered})
 
 
 # --- Records -----------------------------------------------------------------------------
@@ -81,12 +99,12 @@ def exists(investigation_id: str) -> bool:
 
 
 def read_record(investigation_id: str) -> dict[str, Any] | None:
-    payload = _read_json(_record_path(investigation_id), None)
+    payload = read_json(_record_path(investigation_id), None)
     return payload if isinstance(payload, dict) else None
 
 
 def write_record(record: dict[str, Any]) -> None:
-    _write_json(_record_path(str(record['id'])), record)
+    write_json(_record_path(str(record['id'])), record)
 
 
 def delete_record(investigation_id: str) -> bool:

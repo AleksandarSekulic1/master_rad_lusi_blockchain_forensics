@@ -400,15 +400,30 @@ h3 {
   border-color: rgba(125, 211, 252, 0.5);
 }
 
-/* --- Case Management action row inside the existing node details panel - compact
+/* --- Case Management block inside the existing node details panel - compact
    [Pin] / [Add Note] / [Investigator Link] chips + a note-count summary, deliberately not
-   a new section/panel (see CASE-MANAGEMENT-IMPLEMENTATION.md §13 / §16). --- */
+   a new section/panel. Delimited from the on-chain <dl> below by a bottom rule + an
+   "investigator layer, not blockchain data" kicker (see §13 / §16 / §20). --- */
+.investigator-block {
+  margin-top: 0.55rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.investigator-block > .notes-summary-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fdba74;
+}
+
 .investigator-actions {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
-  margin-top: 0.55rem;
 }
 
 .investigator-actions .action-chip {
