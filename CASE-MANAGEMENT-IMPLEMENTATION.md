@@ -1,9 +1,11 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4, 5, 6 & 7 done.** Backend: investigation-case container;
+Status: **Steps 1, 3, 4, 5, 6, 7 & 8 done.** Backend: investigation-case container;
 investigator notes on addresses/nodes **and** transactions/edges; investigator links
-(suspected off-chain relations). Frontend: "Pin node" (step 5) and the investigator-link
-overlay on the Graph Analysis page (step 7). Frontend for notes is still pending.
+(suspected off-chain relations). Frontend: "Pin node" (step 5), the investigator-link
+overlay on the Graph Analysis page (step 7), and Case Management actions (pin / add note /
+investigator link / note count) wired into the existing node details panel with a compact
+modal for the detail (step 8).
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -16,6 +18,7 @@ Layer*.
 - **§13** — Step 5 implementation log: "Pin node" (frontend, reuses the fcose layout).
 - **§14** — Step 6 implementation log: investigator links (suspected off-chain relations).
 - **§15** — Step 7 implementation log: investigator links on the Graph Analysis UI.
+- **§16** — Step 8 implementation log: Case Management actions in the node details panel.
 
 ---
 
@@ -1368,11 +1371,123 @@ them.
   - toggling the overlay off removes only the investigator-link edge; the tx edges remain;
   - after a link is deleted, re-rendering the overlay drops exactly that one edge.
 
-### 15.7 Not done yet (next steps)
+### 15.7 Not done yet (as of step 7)
 
-- Frontend for investigator **notes** (steps 3–4) — a Case Management view (notes on nodes
-  and on edges/transactions).
-- Creating / editing an investigator link *from the graph* (step 7 does display + click +
-  remove only, per the task). Currently links are created via the step-6 API.
+- Frontend for investigator **notes**, and **creating** links from the graph → done in
+  step 8, see §16.
 - Persist the selected investigation across navigation (component-local for now).
 - Author-or-admin restriction on deleting another investigator's link (§8 risk 6).
+
+---
+
+## 16. Step 8 — Case Management actions in the node details panel
+
+Date: 2026-09-08. Scope: put the investigator-layer actions **into the existing node
+details panel** on the Graph page — compact `[Pin] [Add Note] [Investigator Link]` chips
+plus a note-count summary — with the detail (notes list, add-note form, new-link form) in
+a small modal that opens only on an explicit click. **No new large panel, no new page. No
+backend changes. No change to Taint / Pathfinding / Behavioral / DEX code or to the node's
+on-chain `<dl>`.**
+
+### 16.1 What is in the inspector now
+
+The `<aside class="node-inspector">` gains, right under the address `<h3>` (the step-5
+`.pin-controls` row is replaced by this):
+
+```
+[📌 Zakači | 📌 Otkači]   [📝 Dodaj belešku]   [🔗 Istražiteljska veza]
+(hint line when no investigation is selected)
+
+ISTRAŽITELJSKE BELEŠKE   3 beleške   [Prikaži beleške]      ← only when count > 0
+```
+
+- **Pin** — the step-5 toggle, now one of the chips. Label flips to "📌 Otkači" and the
+  chip lights gold when the node is pinned (the required `[Unpin]` state).
+- **Add Note** / **Investigator Link** — open the modal (§16.2) on the "notes" / "link"
+  tab. Disabled (with a tooltip) until an investigation is picked in the step-7
+  "Istražiteljski sloj" selector — notes and links are investigation-scoped, and that
+  selector already exists on the page, so no new picker is added.
+- **Note-count summary** — shows only the **number** ("3 beleške", Serbian-pluralised),
+  never the note text. "Prikaži beleške" opens the modal on the notes tab. The count comes
+  from a `notes?address=` fetch on node-select / investigation-change (list length only).
+- The node's existing `<dl>` (ENS, risk score, cluster, flags, counterparties, …) is
+  **untouched** — none of it is repeated anywhere.
+
+### 16.2 The modal (`InvestigatorNodeDialogComponent`)
+
+One small modal, same overlay pattern as `CustodyAccessDialogComponent` (fixed backdrop,
+click-outside / ✕ to close, mounted behind `*ngIf` so each open is a fresh instance).
+Header = the address (as context only) + the investigation name. Two tabs:
+
+- **Beleške** — the notes for this address in this investigation: list (text, `author ·
+  created_at`, "izmenjeno" marker), per-note **Izmeni** (inline textarea → PATCH) and
+  **Obriši** (confirm → DELETE), and a "Nova beleška" textarea → **Dodaj belešku** (POST).
+  This is the *first frontend for investigator notes*.
+- **Nova veza** — create an investigator link **from this address**: source is fixed
+  (read-only) to the node's address, then target address, reason, evidence, and a
+  confidence `<select>` (Low/Medium/High). A disclaimer line states it is a suspected
+  off-chain relation, not a blockchain fact. **Kreiraj vezu** → POST; on success the modal
+  closes and the parent refreshes the step-7 link overlay so the new dashed-orange edge
+  appears.
+
+`@Output`s: `notesChanged` (parent re-reads the count), `linkCreated` (parent reloads the
+link overlay + closes), `closed`.
+
+### 16.3 Frontend files changed
+
+| File | Change |
+|---|---|
+| `frontend/src/app/features/investigator-node-dialog/` *(new — .ts / .html / .scss)* | `InvestigatorNodeDialogComponent` — the modal described in §16.2. Self-contained styles (component-encapsulated; nothing global to lean on), overlay pattern copied from the custody dialog. |
+| `frontend/src/app/models/blockchain-forensics.models.ts` | + `InvestigatorNote`, `InvestigatorNoteListResponse`, `InvestigatorNoteTargetType`. |
+| `frontend/src/app/core/services/api.service.ts` | + `getInvestigatorNotes(investigationId, address)`, `addInvestigatorNote(id, {address,text})`, `updateInvestigatorNote(id, noteId, {text})`, `deleteInvestigatorNote(id, noteId)`, `addInvestigatorLink(id, {source_address,target_address,reason,evidence,confidence})` — all hitting existing step-3/4/6 endpoints. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` | + state (`selectedNodeNoteCount`, `isNodeDialogOpen`, `nodeDialogMode`). + getters `selectedInvestigationName`, `selectedNodeAddress`, `noteCountLabel`. + `refreshSelectedNodeNoteCount()` (called on node-select and investigation-change — list length only), `openNodeDialog(mode)`, `closeNodeDialog()`, `onNodeDialogNotesChanged()`, `onNodeDialogLinkCreated()`. Imports + registers `InvestigatorNodeDialogComponent`. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.html` | `.pin-controls` → `.investigator-actions` (pin chip + Add Note + Investigator Link), + hint line, + note-count summary row; + `<app-investigator-node-dialog *ngIf="isNodeDialogOpen && selectedNode && selectedInvestigationId" …>` mounted next to the custody dialog. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.scss` | `.pin-controls` renamed to `.investigator-actions`; + `.action-chip`, `.investigator-actions-hint`, `.investigator-notes-summary` (+ its label / count / button). The gold `.pin-toggle.active` rule is kept. |
+
+### 16.4 Backend / API changes
+
+**None.** Every call the modal makes is an existing endpoint:
+
+| Modal action | Endpoint (step) |
+|---|---|
+| note count in the inspector / notes list | `GET /investigations/{id}/notes?address=` (step 4) |
+| add note | `POST /investigations/{id}/notes` `{address, text}` (step 3/4) |
+| edit note | `PATCH /investigations/{id}/notes/{noteId}` `{text}` (step 3) |
+| delete note | `DELETE /investigations/{id}/notes/{noteId}` (step 3) |
+| create link from node | `POST /investigations/{id}/links` (step 6) |
+
+### 16.5 Constraints honoured
+
+- **No new large panel** — the actions are three chips + a one-line summary inside the
+  existing `.node-inspector`; the detail is a modal (the app's established pattern, cf.
+  `CustodyAccessDialogComponent`), shown only on an explicit click.
+- **Existing node information stays visible and is not duplicated** — the on-chain `<dl>`
+  is untouched; the modal shows only the address, as context.
+- **Detailed notes only on explicit open** — the inspector shows the count; the text is
+  behind "Prikaži beleške" / "Dodaj belešku".
+- **Taint / Pathfinding / Behavioral / DEX untouched** — only the graph node inspector's
+  action area changed; the swap inspector, the node `<dl>`, and the other feature
+  components are not modified.
+
+### 16.6 Testing performed
+
+- **Frontend build** — `ng build --configuration development` before and after: both
+  succeed, **0 errors, 0 warnings** (full template type-check covers the new component).
+- **Backend suite** — `pytest backend/tests` → **242 passed** (no backend files touched).
+- **API integration** — `TestClient` smoke of the exact call sequence the modal issues:
+  `getInvestigatorNotes` count `0 → 1` after `addInvestigatorNote {address,text}` → count
+  reads `1`; `updateInvestigatorNote {text}` changes text and advances `updated_at`;
+  `addInvestigatorLink {source_address,target_address,reason,evidence,confidence}` creates
+  the link (`directed:false`, `confidence:High`) and it appears in the node's
+  `links?address=` fetch; `deleteInvestigatorNote` → `204`, count back to `0`; a
+  self-link (`A→A`) is `422` (backend guard; `canCreateLink` also blocks it client-side);
+  the five audit actions are written.
+
+### 16.7 Not done yet (next steps)
+
+- A standalone Case Management page (list all investigations / notes / links per
+  investigation, notes on transactions/edges). So far notes are reachable only via a graph
+  node.
+- Persist the selected investigation across navigation (component-local for now).
+- Author-or-admin restriction on editing/deleting another investigator's note/link
+  (§8 risk 6).

@@ -70,6 +70,19 @@
     (cancelled)="closeCustodyDialog()"
   ></app-custody-access-dialog>
 
+  <!-- Case Management akcije za izabrani čvor (beleške + nova veza) - modal, otvara se
+       tek na klik iz panela detalja. -->
+  <app-investigator-node-dialog
+    *ngIf="isNodeDialogOpen && selectedNode && selectedInvestigationId"
+    [investigationId]="selectedInvestigationId"
+    [investigationName]="selectedInvestigationName"
+    [address]="selectedNodeAddress"
+    [mode]="nodeDialogMode"
+    (notesChanged)="onNodeDialogNotesChanged()"
+    (linkCreated)="onNodeDialogLinkCreated()"
+    (closed)="closeNodeDialog()"
+  ></app-investigator-node-dialog>
+
   <div class="graph-header">
     <div>
       <p class="panel-kicker">Vizuelna analitika</p>
@@ -315,21 +328,49 @@
     <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
-      <!-- Istražiteljski "zakači čvor" - mala akcija u postojećem panelu detalja, ne nova
-           sekcija. Fiksira čvor na trenutnoj poziciji pri ponovnom raspoređivanju grafa
-           (koristi fcose fixedNodeConstraint + node.lock()). -->
-      <div class="pin-controls">
-        <span class="pin-badge" *ngIf="isSelectedNodePinned">📌 ZAKAČENO</span>
+
+      <!-- Case Management akcije - kompaktan red u POSTOJEĆEM panelu detalja, ne nova
+           sekcija/panel. Detalji (lista beleški, forme) su u modalu koji se otvara tek na
+           klik - vidi CASE-MANAGEMENT-IMPLEMENTATION.md §16. -->
+      <div class="investigator-actions">
         <button
           type="button"
-          class="ghost-button pin-toggle"
+          class="ghost-button action-chip pin-toggle"
           [class.active]="isSelectedNodePinned"
           (click)="togglePinSelectedNode()"
-          title="Označi čvor kao važan i zadrži ga na fiksnoj poziciji pri ponovnom raspoređivanju grafa"
+          title="Zadrži čvor na fiksnoj poziciji pri ponovnom raspoređivanju grafa"
         >
-          {{ isSelectedNodePinned ? '📌 Otkači čvor' : '📌 Zakači čvor' }}
+          {{ isSelectedNodePinned ? '📌 Otkači' : '📌 Zakači' }}
+        </button>
+        <button
+          type="button"
+          class="ghost-button action-chip"
+          (click)="openNodeDialog('notes')"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Dodaj istražiteljsku belešku za ovu adresu' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          📝 Dodaj belešku
+        </button>
+        <button
+          type="button"
+          class="ghost-button action-chip"
+          (click)="openNodeDialog('link')"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Kreiraj istražiteljsku vezu od ove adrese' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          🔗 Istražiteljska veza
         </button>
       </div>
+      <p class="investigator-actions-hint" *ngIf="!selectedInvestigationId">
+        Za beleške i veze izaberi istragu u „Istražiteljski sloj" iznad grafa.
+      </p>
+
+      <div class="investigator-notes-summary" *ngIf="selectedInvestigationId && selectedNodeNoteCount > 0">
+        <span class="notes-summary-label">Istražiteljske beleške</span>
+        <span class="notes-count">{{ selectedNodeNoteCount }} {{ noteCountLabel }}</span>
+        <button type="button" class="ghost-button small" (click)="openNodeDialog('notes')">Prikaži beleške</button>
+      </div>
+
       <dl>
         <div>
           <dt>ENS ime</dt>

@@ -26,11 +26,12 @@ import {
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
+import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent, InvestigatorNodeDialogComponent],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
@@ -90,6 +91,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected selectedInvestigatorLink: InvestigatorLink | null = null;
   protected isDeletingInvestigatorLink = false;
   protected investigatorLinkError: string | null = null;
+
+  // --- Case Management actions in the node details panel (CASE-MANAGEMENT-IMPLEMENTATION.md
+  // §16). Compact [Pin] / [Add Note] / [Investigator Link] buttons + a note-count summary
+  // in the existing inspector; the detail (notes list, add-note, new-link forms) lives in
+  // a modal that only opens on an explicit click. ---
+  protected selectedNodeNoteCount = 0;
+  protected isNodeDialogOpen = false;
+  protected nodeDialogMode: 'notes' | 'link' = 'notes';
 
   /** A node with hundreds of counterparties (e.g. a deposit hub) would otherwise render
    * hundreds of <dd> rows in the inspector panel, forcing the whole page to scroll past
@@ -163,6 +172,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.showAllRecipients = false;
       this.syncSelection();
       this.loadAddressEnrichment();
+      this.refreshSelectedNodeNoteCount();
     });
 
     // Investigations for the "which investigation's links to overlay" picker. Read-only,
@@ -301,6 +311,70 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.selectedInvestigatorLink = null;
     this.investigatorLinkError = null;
     this.loadInvestigatorLinks();
+    this.refreshSelectedNodeNoteCount();
+  }
+
+  // --- Case Management actions in the node details panel (CASE-MANAGEMENT-IMPLEMENTATION.md §16) ---
+
+  /** Name of the currently selected investigation - shown in the actions dialog header. */
+  protected get selectedInvestigationName(): string | null {
+    return this.investigations.find((inv) => inv.id === this.selectedInvestigationId)?.name ?? null;
+  }
+
+  /** The selected node's address as a plain string, for the notes/link dialog. */
+  protected get selectedNodeAddress(): string {
+    return String(this.selectedNode?.address ?? this.selectedNode?.id ?? '');
+  }
+
+  /** Serbian plural for the note count shown in the inspector summary. */
+  protected get noteCountLabel(): string {
+    const n = this.selectedNodeNoteCount;
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) {
+      return 'beleška';
+    }
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'beleške';
+    }
+    return 'beleški';
+  }
+
+  /** Fetches just the COUNT of investigator notes for the selected node's address in the
+   * selected investigation - the inspector only ever shows the number, never the note
+   * text (that needs an explicit "Prikaži beleške" click). No investigation selected, or
+   * no node selected -> 0. */
+  private refreshSelectedNodeNoteCount(): void {
+    this.selectedNodeNoteCount = 0;
+    const address = this.selectedNode?.address ?? this.selectedNode?.id;
+    if (!this.selectedInvestigationId || !address) {
+      return;
+    }
+    this.api.getInvestigatorNotes(this.selectedInvestigationId, String(address)).subscribe({
+      next: (res) => (this.selectedNodeNoteCount = res.notes.length),
+      error: () => (this.selectedNodeNoteCount = 0),
+    });
+  }
+
+  protected openNodeDialog(mode: 'notes' | 'link'): void {
+    if (!this.selectedInvestigationId || !this.selectedNode) {
+      return;
+    }
+    this.nodeDialogMode = mode;
+    this.isNodeDialogOpen = true;
+  }
+
+  protected closeNodeDialog(): void {
+    this.isNodeDialogOpen = false;
+  }
+
+  protected onNodeDialogNotesChanged(): void {
+    this.refreshSelectedNodeNoteCount();
+  }
+
+  protected onNodeDialogLinkCreated(): void {
+    this.loadInvestigatorLinks();
+    this.closeNodeDialog();
   }
 
   /** Fetches the chosen investigation's links and (re)draws the overlay. A failure only

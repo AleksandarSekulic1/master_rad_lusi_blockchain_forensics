@@ -24,7 +24,11 @@ import {
   DexSwapAnalysisResult,
   FetchOnchainRequest,
   Investigation,
+  InvestigatorLink,
+  InvestigatorLinkConfidence,
   InvestigatorLinkListResponse,
+  InvestigatorNote,
+  InvestigatorNoteListResponse,
   KnownEntity,
   NodeLinkGraphResponse,
   OnchainNetwork,
@@ -111,8 +115,46 @@ export class ApiService {
     );
   }
 
+  addInvestigatorLink(
+    investigationId: string,
+    body: {
+      source_address: string;
+      target_address: string;
+      reason: string;
+      evidence: string;
+      confidence: InvestigatorLinkConfidence;
+    },
+  ): Observable<InvestigatorLink> {
+    return this.http.post<InvestigatorLink>(`${this.apiUrl}/api/v1/investigations/${investigationId}/links`, body);
+  }
+
   deleteInvestigatorLink(investigationId: string, linkId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/links/${linkId}`);
+  }
+
+  /** Investigator notes for one address in an investigation (backend scopes ?address= to
+   * address/node notes only - see step 4). */
+  getInvestigatorNotes(investigationId: string, address: string): Observable<InvestigatorNoteListResponse> {
+    const params = new HttpParams().set('address', address);
+    return this.http.get<InvestigatorNoteListResponse>(
+      `${this.apiUrl}/api/v1/investigations/${investigationId}/notes`,
+      { params },
+    );
+  }
+
+  addInvestigatorNote(investigationId: string, body: { address: string; text: string }): Observable<InvestigatorNote> {
+    return this.http.post<InvestigatorNote>(`${this.apiUrl}/api/v1/investigations/${investigationId}/notes`, body);
+  }
+
+  updateInvestigatorNote(investigationId: string, noteId: string, body: { text: string }): Observable<InvestigatorNote> {
+    return this.http.patch<InvestigatorNote>(
+      `${this.apiUrl}/api/v1/investigations/${investigationId}/notes/${noteId}`,
+      body,
+    );
+  }
+
+  deleteInvestigatorNote(investigationId: string, noteId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/notes/${noteId}`);
   }
 
   exportCaseReportCsv(caseId: string): Observable<Blob> {

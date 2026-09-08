@@ -470,6 +470,30 @@ export interface InvestigatorLinkListResponse {
   links: InvestigatorLink[];
 }
 
+export type InvestigatorNoteTargetType = 'address' | 'transaction';
+
+/** An investigator's own observation attached to exactly one of an address/node or a
+ * transaction/edge. NOT a blockchain fact - stored only in the investigator layer. */
+export interface InvestigatorNote {
+  id: string;
+  investigation_id: string;
+  target_type: InvestigatorNoteTargetType;
+  address: string | null;
+  tx_id: string | null;
+  text: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestigatorNoteListResponse {
+  investigation_id: string;
+  address: string | null;
+  tx_id: string | null;
+  target_type: InvestigatorNoteTargetType | null;
+  notes: InvestigatorNote[];
+}
+
 export type UserRole = 'admin' | 'analyst';
 export type UserStatus = 'active' | 'blocked';
 
