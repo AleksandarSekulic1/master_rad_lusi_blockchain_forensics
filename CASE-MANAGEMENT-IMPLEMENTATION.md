@@ -1,11 +1,11 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4, 5, 6, 7, 8, 9 & 10 done.** All five Case Management categories
-(case, address notes, transaction notes, pinned nodes, investigator links) are now
-**persisted, case-scoped, and verified** to survive a reload and stay isolated between
-cases (step 10 — pinned nodes gained backend persistence here). Frontend integration:
-graph link overlay (step 7), node-details actions + modal (step 8), Case Overview panel
-(step 9).
+Status: **Steps 1, 3, 4, 5, 6, 7, 8, 9, 10 & 11 done.** All five Case Management categories
+(case, address notes, transaction notes, pinned nodes, investigator links) are persisted,
+case-scoped, and — as of the **step 11 focused test pass** — verified across the full
+checklist (CRUD, validation, very-long input, multiple pins, duplicate links, confidence
+values, restart persistence, case isolation) with the existing Graph / Taint / Pathfinding
+/ Behavioral / DEX analyses confirmed unaffected.
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -21,6 +21,7 @@ Layer*.
 - **§16** — Step 8 implementation log: Case Management actions in the node details panel.
 - **§17** — Step 9 implementation log: the compact Case Overview panel.
 - **§18** — Step 10: pinned-node persistence + the **final persistence model & verification**.
+- **§19** — Step 11: the **focused test pass** across the whole Case Management checklist.
 
 ---
 
@@ -1728,7 +1729,83 @@ is.
      investigator_pin_set, investigator_link_created}`. Nothing under `data/cases/` or
      `data/raw/` is touched.
 
-### 18.7 Not done yet (next steps)
+### 18.7 Not done yet (as of step 10)
+
+- A focused end-to-end test pass across the whole checklist → done in step 11, see §19.
+- A standalone Case Management route (create / rename / close investigations without going
+  through the Graph page).
+- Author-or-admin restriction on editing/deleting another investigator's note / pin / link
+  (§8 risk 6).
+
+---
+
+## 19. Step 11 — focused test pass for the whole Case Management functionality
+
+Date: 2026-09-08. A single deliberate pass over the entire step-11 checklist, plus a
+confirmation that the existing analyses still work. **Only one implementation fix was
+needed** (§19.3); everything else already behaved correctly.
+
+### 19.1 What was run
+
+| Check | How |
+|---|---|
+| Focused checklist pass | `backend/tests/test_case_management_full_pass.py` *(new, 19 tests)* — the checklist 1:1, through the real HTTP API (`TestClient`), isolated tmp store, "restart" = fresh `TestClient(app)` over the same files |
+| Pin render / re-layout | `frontend/scripts/pin-node-behavior-check.mjs` (headless cytoscape+fcose, 12 checks) |
+| Link graph overlay | `frontend/scripts/investigator-link-overlay-check.mjs` (headless, 12 checks) |
+| Everything else (regressions, analysis algorithms) | full `pytest backend/tests` (279 tests, incl. `test_taint_analysis`, `test_path_finding_bfs`, `test_behavioral_analysis`, `test_dex_swap_analysis`, `test_peel_chains`, `test_seed_suggestion`, custody, reports, …) + `ng build` |
+| Analyses end-to-end | `TestClient` smoke: seed a case with a 5-row CSV, then `GET /cases/{id}/graph`, `POST …/analytics/run`, `POST …/pathfinding`, `GET …/behavioral-analysis`, `GET …/dex-swap-analysis` |
+
+### 19.2 Results — checklist
+
+| Group | Item | Test | Result |
+|---|---|---|---|
+| **CASE** | create / load / update | `TestCase::test_create_load_update` (create → 200, `created_at==updated_at`; GET → 200; PATCH name + clear description; unknown id → 404) | ✅ |
+| **NOTES** | create / edit / delete node note | `TestNodeNotes::test_create_edit_delete` | ✅ |
+| | create / edit / delete transaction note | `TestTransactionNotes::test_create_edit_delete` (`target_type:"transaction"`, `address:null`) | ✅ |
+| | empty note validation | `TestNodeNotes::test_empty_note_validation` (missing `text` → 422; `"   "` → 422; blank on PATCH → 422) | ✅ |
+| | very long note handling | `TestNodeNotes::test_very_long_note_handling` (10 000 chars → 200 and round-trips intact; 10 001 → 422) | ✅ |
+| | exactly one target | `TestTransactionNotes::test_note_targets_exactly_one_of_address_or_tx` (neither → 422; both → 422) | ✅ |
+| **PINNING** | pin / unpin | `TestPinning::test_pin_and_unpin` (PUT → 200 with `x/y`; GET lists it; DELETE `?address=` → 204; unpin unknown → 404) | ✅ |
+| | graph re-layout | `pin-node-behavior-check.mjs` — pinned node stays at its position (< 1e-6 px) across one and repeated re-layouts; others still laid out around it; unpin frees it | ✅ 12/12 |
+| | multiple pinned nodes | `TestPinning::test_multiple_pinned_nodes_and_reload` (4 pins + one re-pinned = upsert, not a duplicate; all 4 survive a restart with the updated position) | ✅ |
+| **LINKS** | create / delete | `TestInvestigatorLinks::test_create_and_delete` (`directed:false`; DELETE → 204 → 404) | ✅ |
+| | same address source & target | `test_same_address_source_and_target_rejected` (`0xX` vs `" 0xX "` after trim → 422) | ✅ |
+| | duplicate links | `test_duplicate_links_are_allowed` (two links, same pair, different evidence → both kept, independent ids — by design) | ✅ |
+| | missing reason | `test_missing_reason_rejected` (field absent → 422; `"   "` → 422) | ✅ |
+| | missing evidence | `test_missing_evidence_rejected` (field absent → 422; `""` → 422) | ✅ |
+| | confidence values | `test_confidence_values` (`Low`/`Medium`/`High` → 200 and echoed; `low`/`Certain`/`Proven`/`""` → 422) + `test_long_reason_and_evidence_boundaries` (5 000 / 2 000 accepted, over → 422) | ✅ |
+| **PERSISTENCE** | reload frontend | `graph-visualization` restores the last-selected investigation from `localStorage` (step 10) → its notes / pins / links reload from the API; `ng build` clean | ✅ |
+| | restart backend | `TestPersistence::test_everything_survives_a_restart_and_is_on_disk` — a brand-new `TestClient(app)` returns the same case + 2 notes + 1 pin + 1 link; **the raw JSON files are also read straight off disk** and match | ✅ |
+| **ISOLATION** | Case A data not in Case B | `TestIsolation::test_case_a_data_not_visible_in_case_b` — B's notes/pins/links are all empty while A has 2/1/1; filtering B by an address that exists only in A returns nothing | ✅ |
+
+### 19.3 Existing analyses — unaffected
+
+- `TestExistingAnalysisEndpointsIntact` — the graph / analytics / pathfinding / behavioral
+  / dex-swap routes are still registered, and respond `404` (not `500`) for a missing case
+  (proves their route + dependency wiring is intact).
+- **End-to-end smoke on a seeded case** (5-row CSV):
+
+  | Analysis | Result |
+  |---|---|
+  | Graph (`GET /cases/{id}/graph`) | `200` — 5 nodes, 5 links |
+  | Taint (`POST …/analytics/run`) | `200` — full 7-plugin pipeline runs, `taint_analysis` present |
+  | Pathfinding (`POST …/pathfinding`) | `200` — path `0xHacker → 0xBinanceHot` found, 3 hops (correct) |
+  | Behavioral (`GET …/behavioral-analysis`) | `200` — 3 tx for `0xHacker`, most-active hour `09` (correct) |
+  | DEX Swap (`GET …/dex-swap-analysis`) | `200` — 1 candidate swap event detected (correct) |
+
+- Full `pytest backend/tests` → **279 passed** (was 260; +19 step-11 tests), 0 failures —
+  this run includes every analysis-algorithm test file, all still green.
+
+### 19.4 The one fix made
+
+**Frontend — `investigator-node-dialog.component.html`:** added `maxlength` to the note
+and link inputs (note textareas `10000`, link `reason` `5000`, `evidence` `2000`) so a
+"very long note / reason" is capped in the browser at the same limit the backend enforces,
+rather than being typed freely and then rejected with a generic error. Backend limits and
+validation were already correct — this is purely the client-side guard. No other issue was
+found.
+
+### 19.5 Not done yet (next steps)
 
 - A standalone Case Management route (create / rename / close investigations without going
   through the Graph page).
