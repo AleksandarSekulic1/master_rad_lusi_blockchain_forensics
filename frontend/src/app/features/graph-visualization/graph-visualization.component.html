@@ -153,10 +153,14 @@
       <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
     </div>
 
-    <!-- SWAP edge details take priority over a node selection - the two are already kept
-         mutually exclusive in the component (selecting one clears the other), see
-         graph-visualization.component.ts's tap handlers. -->
-    <aside class="node-inspector swap-inspector" *ngIf="selectedSwapEvent as swap">
+    <!-- One three-way chain (swap panel / node panel / empty placeholder), not two
+         separate *ngIf/else pairs that happen to share #noSelection - two independent
+         ngIf's each evaluate their OWN condition, so when a swap edge was selected, the
+         node aside's condition went false and fired ITS OWN else, rendering the empty
+         "Detalji čvora" placeholder ALONGSIDE the swap panel instead of being replaced by
+         it (see DEX-SWAP-ANALIZA.md #9.3 for the intended, now-actually-enforced, behavior). -->
+    <ng-container *ngIf="selectedSwapEvent as swap; else nodeOrEmpty">
+    <aside class="node-inspector swap-inspector">
       <p class="panel-kicker">SWAP događaj (heuristika)</p>
       <h3>{{ swap.user_address }} → {{ swap.dex_name }}</h3>
       <span class="swap-confidence-badge" [class]="'level-' + swapConfidenceLevel(swap).toLowerCase()">
@@ -221,10 +225,10 @@
         izlazni token.
       </p>
     </aside>
+    </ng-container>
 
-    <!-- selectedNode and selectedSwapEvent are kept mutually exclusive by the component
-         (every place either is set clears the other), so no extra guard is needed here. -->
-    <aside class="node-inspector" *ngIf="!selectedSwapEvent && selectedNode as node; else noSelection">
+    <ng-template #nodeOrEmpty>
+    <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
       <dl>
@@ -373,6 +377,7 @@
           detalje detektovane DEX razmene.
         </p>
       </aside>
+    </ng-template>
     </ng-template>
   </div>
 
