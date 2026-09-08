@@ -1,8 +1,8 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1 & 3 done** — backend: the investigation-case container plus investigator
-notes on addresses/nodes are implemented, built and tested. No frontend. Pinned nodes and
-off-chain links not started; notes on transactions/edges not started.
+Status: **Steps 1, 3 & 4 done** — backend: the investigation-case container plus
+investigator notes on **both** addresses/nodes **and** transactions/edges are implemented,
+built and tested. No frontend. Pinned nodes and off-chain links not started.
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -11,6 +11,7 @@ Layer*.
 - **§1–§9** — findings of the codebase analysis done before any implementation.
 - **§10** — Step 1 implementation log: the investigation-case container.
 - **§11** — Step 3 implementation log: investigator notes on blockchain addresses/nodes.
+- **§12** — Step 4 implementation log: extending notes to transactions/edges.
 
 ---
 
@@ -783,9 +784,159 @@ All under `/api/v1`, all require a valid bearer token, all JSON.
 
 ### 11.8 Not done yet (next steps)
 
-- Investigator notes on **transactions / edges** (would key off
-  `app/evidence/tx_identity.transaction_id` instead of an address — see §2.2 / §5.1).
+- Investigator notes on **transactions / edges** → done in step 4, see §12.
 - **Pinned nodes** and manual **off-chain links** between addresses.
 - Author-or-admin restriction on editing/deleting someone else's note (currently any
   authenticated user can; deferred decision from §8 risk 6).
+- Frontend.
+
+---
+
+## 12. Step 4 — notes on transactions / edges (backend)
+
+Date: 2026-09-08. Scope: extend the step-3 note feature so a note can target **either** an
+address/node **or** a transaction/edge, using the project's **existing** transaction
+identifier. No new identification mechanism. No frontend. No pinned nodes / links. No
+change to any Graph / Taint / Pathfinding / Behavioral / DEX code.
+
+Example the feature now also covers:
+
+> Transaction `0x123…` — Note: *"Transfer appears to be related to the initial laundering stage."*
+
+### 12.1 Design decisions taken
+
+- **One note = one target, of one of two kinds.** A note is attached to exactly one of
+  `address` or `tx_id`; the kind is recorded explicitly in a new `target_type` field
+  (`"address"` | `"transaction"`). Enforced by a model validator ("exactly one target")
+  and stored on every note, so the two kinds stay logically distinguishable even when the
+  `notes.json` file is read on its own.
+- **The transaction identifier is the project's existing `tx_id`** — *not* a new scheme.
+  It is the same identity the chain of custody uses (`app/evidence/tx_identity.py::transaction_id`):
+  the transaction hash when the evidence carries one, otherwise the deterministic
+  `row-<sha256(sender|recipient|amount|timestamp|evidence)[:16]>` fallback. This layer
+  never *computes* it (it has no transaction row) — it stores and matches whatever id
+  string the caller passes, verbatim, exactly the way it already treats an `address`. The
+  code does not import `tx_identity`; it only documents that `tx_id` means that.
+- **Additive, backward compatible.** The step-3 wire contract still works unchanged:
+  `POST …/notes { "address", "text" }` and `GET …/notes?address=…` behave exactly as
+  before and yield `target_type: "address"`. The model field `address` changed from
+  *required* to *optional* internally, but a body with `address` + `text` still validates.
+- **The target is immutable.** `PATCH` still changes only `text`; `target_type` /
+  `address` / `tx_id` cannot be edited (re-pointing a note would make its `created_at` /
+  `author` meaningless — delete and recreate).
+- **Explicit discriminator removes any ambiguity.** Filtering is scoped by `target_type`,
+  so the same literal string used once as an address and once as a `tx_id` produces two
+  independent notes that never cross over in retrieval (covered by a test).
+- **Same layering / conventions** as steps 1 & 3. Storage shape unchanged (one mutable
+  `notes.json` list per investigation) — the new keys are just more fields on each row.
+- **Legacy tolerance (defensive only).** `notes_service._coerce_row` fills in
+  `target_type` / `tx_id` for any note row written before this step; since there is no
+  persisted step-3 data, this only matters in principle — an old row loads as the address
+  note it always was.
+
+### 12.2 Files modified
+
+No new files. No new routes registered (the note routes already existed).
+
+| File | Change | Purpose |
+|---|---|---|
+| `backend/app/investigations/notes_models.py` | `InvestigatorNote` gains `target_type: "address" \| "transaction"` and `tx_id: str \| None` (added next to `address`), a `model_validator` that keeps `target_type` consistent with which id is set, and a `target_id` convenience property. `InvestigatorNoteCreate` now takes `address?` **and** `tx_id?` (each trimmed, blank→None) with a `model_validator` requiring **exactly one**; it exposes a derived `target_type`. New `TX_ID_MAX_LENGTH = 256` and `NoteTargetType` alias. `InvestigatorNoteUpdate` unchanged (`text` only). | model the two note kinds with an explicit discriminator; validate "exactly one target" |
+| `backend/app/investigations/notes_service.py` | `create_note` sets `target_type` / `address` / `tx_id` from the request. `list_notes` signature is now `list_notes(investigation_id, *, address=None, tx_id=None, target_type=None)` — filter by exact address (address notes only), by exact `tx_id` (transaction notes only), or by kind; none → all. Added `_coerce_row` for legacy rows; `_load_models` runs it. | retrieval by transaction/edge and by kind; keep the two kinds from crossing over |
+| `backend/app/api/routes/investigation_notes.py` | `GET …/notes` gains `tx_id` and `target_type` query params; rejects **>1** filter with `400`, and an unknown `target_type` value with `400`; the response echoes `address` / `tx_id` / `target_type`. `POST` request-model change is automatic (Pydantic returns `422` for zero or two targets). Audit-log `details` for create/update/delete now carry `target_type`, `address` and `tx_id` (via a shared `_audit_details` helper). | expose retrieval-by-transaction; validate filter combinations; keep the activity log self-describing |
+| `backend/tests/test_investigator_notes.py` | +8 tests: transaction-note create sets `target_type`/`tx_id`, `tx_id` trimmed & case-preserved, "exactly one target" rejection (neither / both), filter by `tx_id`, update+delete on a transaction note, same string as address vs `tx_id` stays distinct, filter by `target_type`, list-all returns both kinds each tagged. Existing address-note tests unchanged except one extra assertion (`target_type == 'address'`, `tx_id is None`). | lock in the new behaviour and the node/edge separation |
+
+Nothing else touched — no analytics / graph / taint / pathfinding / behavioral / DEX code,
+no other routes, `router.py` / `paths.py` / `repository.py` / step-1 files all unchanged.
+
+### 12.3 How node notes and edge/transaction notes are represented
+
+Both kinds are the **same `InvestigatorNote` record** in the **same store** (one
+`data/investigations/<investigation_id>/notes.json` list). They differ only in three
+fields:
+
+| | node note | transaction / edge note |
+|---|---|---|
+| `target_type` | `"address"` | `"transaction"` |
+| `address` | the graph-node id string | `null` |
+| `tx_id` | `null` | the transaction id string (tx hash, or `row-…` fallback — the chain-of-custody identity) |
+
+Every other field is identical in meaning: `id`, `investigation_id` (the "case ID"),
+`text`, `author`, `created_at`, `updated_at`.
+
+Full persisted shape:
+
+```jsonc
+// data/investigations/<investigation_id>/notes.json
+{
+  "notes": [
+    { "id": "…", "investigation_id": "…", "target_type": "address",
+      "address": "0xABC…", "tx_id": null,
+      "text": "Suspected cold wallet, pending confirmation.",
+      "author": "marko", "created_at": "…", "updated_at": "…" },
+
+    { "id": "…", "investigation_id": "…", "target_type": "transaction",
+      "address": null, "tx_id": "0x123…",
+      "text": "Transfer appears related to the initial laundering stage.",
+      "author": "marko", "created_at": "…", "updated_at": "…" }
+  ]
+}
+```
+
+**Association / matching** (extends §11.5):
+
+- A node note is keyed by `(investigation_id, target_type="address", address)`; a
+  transaction note by `(investigation_id, target_type="transaction", tx_id)`.
+- `tx_id` is the project's existing transaction identity (see
+  `app/evidence/tx_identity.py`), stored as an opaque string and matched **exactly**
+  (whitespace-trimmed, case preserved) — identical treatment to `address`, and identical
+  to how `custody_log` stores `tx_id`.
+- Matching is always scoped to the matching `target_type`, so `?address=X` never returns a
+  transaction note and `?tx_id=X` never returns a node note, even when `X` is the same
+  string in both.
+- Neither kind is ever written into the evidence case, the `networkx` graph, the node-link
+  JSON, or any analysis result — read only via `/investigations/{id}/notes`, stored only
+  under `data/investigations/`.
+
+### 12.4 API — what changed
+
+Same five endpoints as §11.6. Deltas:
+
+| Endpoint | Change |
+|---|---|
+| `POST /api/v1/investigations/{id}/notes` | body is now `{ "address"?: str, "tx_id"?: str, "text": str }` — **exactly one** of `address` / `tx_id` (zero or both → `422`). Response `InvestigatorNote` now includes `target_type` and `tx_id`. `POST { address, text }` still works exactly as in step 3. |
+| `GET /api/v1/investigations/{id}/notes` | new optional query params `tx_id` (exact transaction id) and `target_type` (`address` \| `transaction`); **at most one** of `address` / `tx_id` / `target_type` (more → `400`; bad `target_type` value → `400`). Response body now `{ investigation_id, address, tx_id, target_type, notes }`. |
+| `GET/PATCH/DELETE …/notes/{note_id}` | unchanged behaviour; responses now carry `target_type` / `tx_id`. |
+| audit log | `investigator_note_created` / `_updated` / `_deleted` `details` now `{ investigation_id, note_id, target_type, address, tx_id }`. |
+
+Retrieval by transaction/edge:
+
+```
+GET /api/v1/investigations/{id}/notes?tx_id=0x123…      -> notes on that transaction
+GET /api/v1/investigations/{id}/notes?target_type=transaction   -> every edge note
+GET /api/v1/investigations/{id}/notes?target_type=address       -> every node note
+GET /api/v1/investigations/{id}/notes                           -> all, each with target_type
+```
+
+### 12.5 Build / verification performed
+
+- `from app.main import app; app.openapi()` — app imports; `GET …/notes` now advertises
+  `address`, `tx_id`, `target_type` query params; `InvestigatorNoteCreate` props
+  `[address, tx_id, text]`; `InvestigatorNote` props include `target_type`, `tx_id`.
+- `pytest backend/tests/test_investigator_notes.py` — **25 passed** (17 → +8).
+- `pytest backend/tests` (whole suite) — **222 passed** (was 214; +8 new), 0 failures.
+  Only the pre-existing `datetime.utcnow()` deprecation warning in `graph_building.py`
+  (untouched).
+- End-to-end HTTP smoke via `TestClient`: create an address note and a transaction note
+  (padded `tx_id` trimmed); retrieve by `address`, by `tx_id`, by `target_type`, and all;
+  `422` for zero / two targets; `400` for two filters / bad `target_type`; `PATCH` a
+  transaction note keeps `tx_id` + `target_type`, changes `text`; `DELETE` → `204`; audit
+  rows carry `target_type`. All as expected.
+
+### 12.6 Not done yet (next steps)
+
+- **Pinned nodes** and manual **off-chain links** between addresses.
+- Author-or-admin restriction on editing/deleting someone else's note (§8 risk 6).
+- Optional: an aggregated-edge (`source→target` pair) note target, distinct from a single
+  transaction — only the transaction-level `tx_id` is supported now, matching the chain of
+  custody's granularity.
 - Frontend.

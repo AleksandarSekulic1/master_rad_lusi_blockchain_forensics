@@ -1,9 +1,11 @@
-"""Provera istražiteljskih beleški nad adresama/čvorovima (Case Management / Investigator Layer).
+"""Provera istražiteljskih beleški nad adresama/čvorovima i transakcijama/granama (Case Management / Investigator Layer).
 
-Beleška je zapažanje istražitelja o jednoj adresi (npr. „sumnja se da je ovo cold wallet").
-Ovi testovi pokrivaju: kreiranje (dodela ID-ja, autora, vremenskih pečata), da se adresa
-čuva DOSLOVNO (trimuje se razmak, veličina slova se ne dira - inače se beleška ne bi
-poklopila sa čvorom u grafu), filtriranje po adresi, izmenu koja pomera samo „updated_at",
+Beleška je zapažanje istražitelja, vezano za TAČNO JEDNO: adresu/čvor (address) ili
+transakciju/granu (tx_id - isti identifikator koji koristi i lanac dokaza,
+app/evidence/tx_identity.py). Ovi testovi pokrivaju: kreiranje (dodela ID-ja, autora,
+vremenskih pečata, target_type), da se identifikator čuva DOSLOVNO (trimuje se razmak,
+veličina slova se ne dira - inače se beleška ne bi poklopila sa čvorom/transakcijom),
+filtriranje po adresi / po tx_id / po vrsti, izmenu koja pomera samo „updated_at",
 brisanje, i da se beleške brišu zajedno sa istragom. Beleške se ne mešaju sa blockchain
 podacima i ne diraju nijedan postojeći algoritam.
 
@@ -44,6 +46,14 @@ def _add(investigation_id: str, address: str, text: str, author: str = 'inv1'):
     )
 
 
+def _add_tx(investigation_id: str, tx_id: str, text: str, author: str = 'inv1'):
+    return notes_service.create_note(
+        investigation_id,
+        InvestigatorNoteCreate(tx_id=tx_id, text=text),
+        author=author,
+    )
+
+
 class TestCreate:
     """Kreiranje beleške"""
 
@@ -56,7 +66,9 @@ class TestCreate:
 
         assert note.id
         assert note.investigation_id == investigation_id
+        assert note.target_type == 'address'
         assert note.address == '0xABC'
+        assert note.tx_id is None
         assert note.text == 'Sumnja se da je ovo cold wallet.'
         assert note.author == 'marko'
         assert note.created_at == note.updated_at
@@ -199,3 +211,93 @@ class TestSeparationAndScoping:
         assert notes_repository.load_notes(investigation_id) == []
         with pytest.raises(InvestigationCaseNotFoundError):
             notes_service.list_notes(investigation_id)
+
+
+class TestTransactionNotes:
+    """Beleške nad transakcijama/granama"""
+
+    def test_create_transaction_note_sets_target_type_and_tx_id(self, investigation_id):
+        """Beleška nad transakcijom dobija target_type „transaction" i tx_id, a address je prazan"""
+        note = _add_tx(
+            investigation_id,
+            '0x123abc',
+            'Transfer appears to be related to the initial laundering stage.',
+        )
+
+        assert note.target_type == 'transaction'
+        assert note.tx_id == '0x123abc'
+        assert note.address is None
+
+    def test_tx_id_is_trimmed_but_case_is_preserved(self, investigation_id):
+        """tx_id se trimuje ali se veličina slova ne dira
+
+        Isti identifikator koji koristi lanac dokaza poredi se doslovno.
+        """
+        note = _add_tx(investigation_id, '  0xAbC123  ', 'tekst')
+
+        assert note.tx_id == '0xAbC123'
+
+    def test_note_must_target_exactly_one_of_address_or_tx_id(self):
+        """Beleška mora imati tačno jedan cilj: ni bez, ni oba"""
+        with pytest.raises(ValueError):
+            InvestigatorNoteCreate(text='ni address ni tx_id')
+        with pytest.raises(ValueError):
+            InvestigatorNoteCreate(address='0xABC', tx_id='0x123', text='oba')
+
+    def test_filter_by_tx_id_returns_only_that_transactions_notes(self, investigation_id):
+        """Filtriranje po tx_id vraća samo beleške te transakcije"""
+        _add_tx(investigation_id, '0x111', 'o tx 111')
+        _add_tx(investigation_id, '0x222', 'o tx 222')
+        _add(investigation_id, '0x111', 'o adresi 0x111')  # ista niska kao tx, ali je adresa
+
+        for_tx = notes_service.list_notes(investigation_id, tx_id='0x111')
+        assert [note.text for note in for_tx] == ['o tx 111']
+        assert all(note.target_type == 'transaction' for note in for_tx)
+
+    def test_update_and_delete_work_on_transaction_notes(self, investigation_id):
+        """Izmena i brisanje rade i za beleške nad transakcijama"""
+        note = _add_tx(investigation_id, '0x123', 'v1')
+
+        updated = notes_service.update_note(investigation_id, note.id, InvestigatorNoteUpdate(text='v2'))
+        assert updated.text == 'v2'
+        assert updated.tx_id == '0x123'
+        assert updated.target_type == 'transaction'
+
+        notes_service.delete_note(investigation_id, note.id)
+        with pytest.raises(InvestigatorNoteNotFoundError):
+            notes_service.get_note(investigation_id, note.id)
+
+
+class TestNodeVsEdgeDistinguishable:
+    """Beleške nad čvorom i nad granom su jasno razdvojene"""
+
+    def test_same_identifier_string_does_not_cross_between_kinds(self, investigation_id):
+        """Ista niska kao adresa i kao tx_id se ne mešaju"""
+        _add(investigation_id, '0xSAME', 'beleška o adresi')
+        _add_tx(investigation_id, '0xSAME', 'beleška o transakciji')
+
+        by_address = notes_service.list_notes(investigation_id, address='0xSAME')
+        by_tx = notes_service.list_notes(investigation_id, tx_id='0xSAME')
+
+        assert [note.text for note in by_address] == ['beleška o adresi']
+        assert [note.text for note in by_tx] == ['beleška o transakciji']
+
+    def test_filter_by_target_type(self, investigation_id):
+        """Filtriranje po vrsti cilja vraća sve beleške te vrste"""
+        _add(investigation_id, '0xA', 'čvor A')
+        _add(investigation_id, '0xB', 'čvor B')
+        _add_tx(investigation_id, '0x1', 'tx 1')
+
+        node_notes = notes_service.list_notes(investigation_id, target_type='address')
+        edge_notes = notes_service.list_notes(investigation_id, target_type='transaction')
+
+        assert {note.text for note in node_notes} == {'čvor A', 'čvor B'}
+        assert {note.text for note in edge_notes} == {'tx 1'}
+
+    def test_list_all_returns_both_kinds_each_tagged(self, investigation_id):
+        """Listanje bez filtera vraća obe vrste, svaku sa svojim target_type"""
+        _add(investigation_id, '0xA', 'čvor')
+        _add_tx(investigation_id, '0x1', 'transakcija')
+
+        by_type = {note.target_type for note in notes_service.list_notes(investigation_id)}
+        assert by_type == {'address', 'transaction'}
