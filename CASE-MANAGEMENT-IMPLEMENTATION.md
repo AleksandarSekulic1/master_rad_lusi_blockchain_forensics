@@ -1,11 +1,11 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4, 5, 6, 7, 8 & 9 done.** Backend: investigation-case container;
-investigator notes on addresses/nodes **and** transactions/edges; investigator links
-(suspected off-chain relations). Frontend: "Pin node" (step 5), the investigator-link
-overlay on the Graph Analysis page (step 7), Case Management actions in the node details
-panel + a compact modal for the detail (step 8), and a compact Case Overview panel
-summarising the selected investigation's notes / pinned addresses / links (step 9).
+Status: **Steps 1, 3, 4, 5, 6, 7, 8, 9 & 10 done.** All five Case Management categories
+(case, address notes, transaction notes, pinned nodes, investigator links) are now
+**persisted, case-scoped, and verified** to survive a reload and stay isolated between
+cases (step 10 — pinned nodes gained backend persistence here). Frontend integration:
+graph link overlay (step 7), node-details actions + modal (step 8), Case Overview panel
+(step 9).
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -20,6 +20,7 @@ Layer*.
 - **§15** — Step 7 implementation log: investigator links on the Graph Analysis UI.
 - **§16** — Step 8 implementation log: Case Management actions in the node details panel.
 - **§17** — Step 9 implementation log: the compact Case Overview panel.
+- **§18** — Step 10: pinned-node persistence + the **final persistence model & verification**.
 
 ---
 
@@ -1588,10 +1589,148 @@ the graph component (select/centre the node, unpin, open the link inspector).
   `GET …/links` returns **2** — i.e. the panel would show "Beleške: 3 · Istražiteljske
   veze: 2", matching the requested format.
 
-### 17.7 Not done yet (next steps)
+### 17.7 Not done yet (as of step 9)
 
+- Pinned nodes were still component-local → **persisted in step 10, see §18**.
 - A standalone Case Management route (manage investigations themselves: create / rename /
   close). The investigator layer is currently reachable only from the Graph page.
-- Persist the selected investigation, and pins, across navigation (both component-local).
 - Author-or-admin restriction on editing/deleting another investigator's note/link
+  (§8 risk 6).
+
+---
+
+## 18. Step 10 — pinned-node persistence + final persistence model & verification
+
+Date: 2026-09-08. Goal: verify that **every** Case Management item is persisted and
+correctly bound to a case (investigation), survives an application reload, and never leaks
+between cases. The one gap was **pinned nodes** (component-local since step 5) — this step
+adds their backend persistence, then verifies the whole set. **No change to any
+blockchain analysis data** (`data/cases/`, `data/raw/`, the graph builder, analytics).
+
+### 18.1 What "case" means here
+
+Throughout the investigator layer the **case** is the **`InvestigationCase`** from step 1
+(`data/investigations/<investigation_id>/`), *not* the evidence `Case`
+(`data/cases/<case_id>/`). The evidence `Case` owns imported on-chain facts and their
+chain of custody; the investigation owns investigator-generated interpretation. Every
+note, pin and link carries its **`investigation_id`** and is stored inside that
+investigation's own directory.
+
+### 18.2 Final persistence model
+
+**No database. Flat JSON on disk, one directory per investigation.** Deleting an
+investigation `rmtree`s the directory, so every child item goes with it.
+
+```
+data/investigations/
+├── index.json                                  { "investigations": [ {id,name,description,created_at,updated_at}, … ] }
+└── <investigation_id>/                          ← the "case"
+    ├── investigation.json                       the InvestigationCase record
+    ├── notes.json      { "notes":        [ … ] }   address notes + transaction notes (target_type discriminates)
+    ├── pinned_nodes.json { "pinned_nodes": [ … ] }  ← NEW in step 10
+    └── links.json      { "links":        [ … ] }   investigator links (suspected off-chain relations)
+```
+
+| # | Category | Entity | Stored in | Key within the file | Belongs to a case via | Cascade on case delete |
+|---|---|---|---|---|---|---|
+| 1 | **Case** | `InvestigationCase` | `investigation.json` + `index.json` | `id` | *is* the case | n/a |
+| 2 | **Address note** | `InvestigatorNote` (`target_type:"address"`) | `<id>/notes.json` | `id` (12-hex); target = `address` (verbatim) | `investigation_id` field + directory | dir removed |
+| 3 | **Transaction note** | `InvestigatorNote` (`target_type:"transaction"`) | `<id>/notes.json` | `id`; target = `tx_id` (the chain-of-custody id) | `investigation_id` field + directory | dir removed |
+| 4 | **Pinned node** | `PinnedNode` | `<id>/pinned_nodes.json` | `address` (verbatim; upsert) — `x`,`y`,`pinned_by`,`pinned_at`,`updated_at` | `investigation_id` field + directory | dir removed |
+| 5 | **Investigator link** | `InvestigatorLink` | `<id>/links.json` | `id`; endpoints = `source_address`/`target_address` (undirected) | `investigation_id` field + directory | dir removed |
+
+Every write also appends one line to `logs/audit_log.jsonl`
+(`investigation_case_created` / `_updated` / `_deleted`, `investigator_note_*`,
+`investigator_pin_set` / `_cleared`, `investigator_link_*`), each carrying `user` and
+`details.investigation_id`.
+
+**Isolation is structural**, not just enforced in code: investigation A's items are
+physically under `data/investigations/A/` and B's under `data/investigations/B/`; every
+service call is scoped by `investigation_id` and every list endpoint reads only that one
+directory. A's data cannot appear under B.
+
+### 18.3 API surface (all case-scoped under `/api/v1/investigations/{investigation_id}`)
+
+| Category | Endpoints |
+|---|---|
+| Case | `GET/POST /investigations`, `GET/PATCH/DELETE /investigations/{id}` (§10.5) |
+| Notes (addr + tx) | `GET /…/notes` (`?address=` / `?tx_id=` / `?target_type=`), `POST /…/notes`, `GET/PATCH/DELETE /…/notes/{note_id}` (§11.6 / §12.4) |
+| **Pinned nodes** *(new)* | `GET /…/pins`, `PUT /…/pins` `{address, x?, y?}` (upsert), `DELETE /…/pins?address=` |
+| Investigator links | `GET /…/links` (`?address=`), `POST /…/links`, `GET/PATCH/DELETE /…/links/{link_id}` (§14.6) |
+
+### 18.4 Files added / modified in step 10
+
+| File | What |
+|---|---|
+| `backend/app/investigations/pins_models.py` *(new)* | `PinNodeRequest` (`address` + optional `x`/`y`), `PinnedNode` (`investigation_id, address, x, y, pinned_by, pinned_at, updated_at`). |
+| `backend/app/investigations/pins_repository.py` *(new)* | `load_pins` / `save_pins` for `<id>/pinned_nodes.json`, via `repository.investigation_dir()`. |
+| `backend/app/investigations/pins_service.py` *(new)* | `list_pins`, `set_pin` (**upsert by address** — re-pinning updates `x`/`y`/`updated_at`, keeps `pinned_at`), `clear_pin`. Verifies the parent investigation first. `PinnedNodeNotFoundError`. |
+| `backend/app/api/routes/investigation_pins.py` *(new)* | `GET` / `PUT` / `DELETE` on `/investigations/{id}/pins`; `write_audit_log` on writes. |
+| `backend/app/api/router.py` | registers `investigation_pins_router`. |
+| `backend/tests/test_investigator_pins.py` *(new)* | 11 unit tests (store address/position/author, upsert-not-duplicate, list, clear, per-investigation scope, cascade on delete). |
+| `backend/tests/test_case_management_persistence.py` *(new)* | 7 integration tests — the exact step-10 scenario end-to-end (see §18.6). |
+| `frontend/src/app/models/blockchain-forensics.models.ts` | + `PinnedNode`, `PinnedNodeListResponse`. |
+| `frontend/src/app/core/services/api.service.ts` | + `getInvestigatorPins`, `pinInvestigatorNode` (PUT), `unpinInvestigatorNode` (DELETE `?address=`). |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` | `togglePinSelectedNode()` / `unpinNodeById()` now also `PUT` / `DELETE` server-side; `loadInvestigatorPins()` fills the render cache from the API on investigation-select and re-applies; `clearPinnedNodesVisual()` on investigation switch; pinning now **requires a selected investigation**; the chosen investigation id is remembered in `localStorage` and re-selected after a reload so its notes / pins / links come straight back. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.html` | pin chip `[disabled]` + tooltip when no investigation is selected. |
+
+Pinning still uses the exact step-5 render mechanism (fcose `fixedNodeConstraint` +
+`node.lock()`); step 10 only adds the persistence round-trip and the per-investigation
+scoping. The evidence-case selection is still not persisted across reload (pre-existing
+app behaviour — the graph needs a case re-picked anyway); the investigation selection now
+is.
+
+### 18.5 Persistence status — all five categories
+
+| # | Category | Persisted? | Bound to case? | Survives reload? | Isolated between cases? |
+|---|---|---|---|---|---|
+| 1 | Case | ✅ `investigation.json` | — | ✅ | ✅ |
+| 2 | Address notes | ✅ `notes.json` | ✅ `investigation_id` + dir | ✅ | ✅ |
+| 3 | Transaction notes | ✅ `notes.json` | ✅ `investigation_id` + dir | ✅ | ✅ |
+| 4 | Pinned nodes | ✅ `pinned_nodes.json` *(step 10)* | ✅ `investigation_id` + dir | ✅ | ✅ |
+| 5 | Investigator links | ✅ `links.json` | ✅ `investigation_id` + dir | ✅ | ✅ |
+
+### 18.6 Verification performed
+
+- **Frontend build** — `ng build` before/after: **0 errors, 0 warnings**.
+- **Backend suite** — `pytest backend/tests` → **260 passed** (was 242; +18 in step 10),
+  0 failures. (The only warning is the pre-existing `datetime.utcnow()` one in
+  `graph_building.py`; the extra `TestClient`/JWT deprecation notes come from the new
+  integration test, not from project code.)
+- **Steps 5 & 7 headless smoke checks** re-run → **12/12 each** (pin render + link
+  overlay behaviour unchanged).
+- **`test_investigator_pins.py`** (11) — pin stores address/position/author/timestamps;
+  re-pinning the same address is an upsert (1 row, new position, `pinned_at` kept);
+  trimmed address, blank rejected; unknown investigation → not-found; list; clear removes
+  only that address; clear unknown → not-found; **per-investigation scope**; **cascade on
+  investigation delete**.
+- **`test_case_management_persistence.py`** (7) — the requested scenario, through the real
+  HTTP API, with a **fresh `TestClient(app)` instance = "reload application"**:
+  1. `test_case_and_all_investigator_items_persist_after_reload` — create case → add node
+     note → add transaction note → pin node (`x/y` stored) → create investigator link;
+     after the reload, **all five are still present**, with the same ids and the pin's
+     exact coordinates.
+  2. `test_every_item_carries_its_case_id` — every note/pin/link's `investigation_id`
+     equals the case id.
+  3. `test_items_are_written_under_the_case_directory` — `investigation.json`,
+     `notes.json`, `pinned_nodes.json`, `links.json` all exist under
+     `data/investigations/<case_id>/`.
+  4. `test_two_cases_keep_separate_notes_pins_links` — an item added to case A only
+     appears in A; A's and B's note texts are disjoint; their link ids differ.
+  5. `test_switching_between_cases_shows_the_right_data_each_time` — after a reload, open
+     A → B → A again; each time the data is that case's, never the other's.
+  6. `test_deleting_one_case_leaves_the_other_untouched` — `DELETE` case A → A returns
+     `404` at every layer (case / notes / pins / links) and its directory is gone; B is
+     fully intact.
+  7. `test_investigator_layer_never_writes_outside_data_investigations` — after the full
+     flow, the only things written are `data/investigations/` and the audit log; the
+     audit actions are exactly `{investigation_case_created, investigator_note_created,
+     investigator_pin_set, investigator_link_created}`. Nothing under `data/cases/` or
+     `data/raw/` is touched.
+
+### 18.7 Not done yet (next steps)
+
+- A standalone Case Management route (create / rename / close investigations without going
+  through the Graph page).
+- Author-or-admin restriction on editing/deleting another investigator's note / pin / link
   (§8 risk 6).

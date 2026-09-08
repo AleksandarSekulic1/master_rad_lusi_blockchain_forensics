@@ -35,6 +35,8 @@ import {
   PathfindingDestinationMode,
   PathFindingRequest,
   PathFindingResponse,
+  PinnedNode,
+  PinnedNodeListResponse,
   ReportVerificationResult,
   ResetLinkResponse,
   ScenarioRequest,
@@ -156,6 +158,24 @@ export class ApiService {
 
   deleteInvestigatorNote(investigationId: string, noteId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/notes/${noteId}`);
+  }
+
+  /** Pinned nodes for an investigation (persisted - step 10). */
+  getInvestigatorPins(investigationId: string): Observable<PinnedNodeListResponse> {
+    return this.http.get<PinnedNodeListResponse>(`${this.apiUrl}/api/v1/investigations/${investigationId}/pins`);
+  }
+
+  /** Pin an address (upsert - re-sending updates the stored position). */
+  pinInvestigatorNode(
+    investigationId: string,
+    body: { address: string; x?: number | null; y?: number | null },
+  ): Observable<PinnedNode> {
+    return this.http.put<PinnedNode>(`${this.apiUrl}/api/v1/investigations/${investigationId}/pins`, body);
+  }
+
+  unpinInvestigatorNode(investigationId: string, address: string): Observable<void> {
+    const params = new HttpParams().set('address', address);
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/pins`, { params });
   }
 
   exportCaseReportCsv(caseId: string): Observable<Blob> {

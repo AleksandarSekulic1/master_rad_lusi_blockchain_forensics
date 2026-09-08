@@ -494,6 +494,23 @@ export interface InvestigatorNoteListResponse {
   notes: InvestigatorNote[];
 }
 
+/** An address the investigator pinned on the graph. Persisted per investigation (step 10)
+ * so it survives a reload; `x`/`y` are the cytoscape model-coordinate position to restore. */
+export interface PinnedNode {
+  investigation_id: string;
+  address: string;
+  x: number | null;
+  y: number | null;
+  pinned_by: string;
+  pinned_at: string;
+  updated_at: string;
+}
+
+export interface PinnedNodeListResponse {
+  investigation_id: string;
+  pins: PinnedNode[];
+}
+
 export type UserRole = 'admin' | 'analyst';
 export type UserStatus = 'active' | 'blocked';
 

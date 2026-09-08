@@ -191,9 +191,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     });
 
     // Investigations for the "which investigation's links to overlay" picker. Read-only,
-    // independent of the evidence case; a failure just leaves the picker empty.
+    // independent of the evidence case; a failure just leaves the picker empty. Once
+    // loaded, re-select whatever investigation was active before a reload so its persisted
+    // notes / pins / links come straight back.
     this.api.listInvestigations().subscribe({
-      next: (response) => (this.investigations = response.investigations),
+      next: (response) => {
+        this.investigations = response.investigations;
+        this.restoreSelectedInvestigation();
+      },
       error: () => (this.investigations = []),
     });
 
@@ -323,11 +328,41 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * active case / evidence filter above. */
   protected onInvestigationSelected(investigationId: string): void {
     this.selectedInvestigationId = investigationId || null;
+    this.persistSelectedInvestigation();
     this.selectedInvestigatorLink = null;
     this.investigatorLinkError = null;
     this.loadInvestigatorLinks();
+    this.loadInvestigatorPins();
     this.refreshSelectedNodeNoteCount();
     this.loadCaseOverviewNotes();
+  }
+
+  /** The chosen investigation is remembered across a reload (localStorage) so all of its
+   * persisted notes / pins / links come straight back without re-picking it. */
+  private static readonly SELECTED_INVESTIGATION_KEY = 'lusi_selected_investigation';
+
+  private persistSelectedInvestigation(): void {
+    try {
+      if (this.selectedInvestigationId) {
+        localStorage.setItem(GraphVisualizationComponent.SELECTED_INVESTIGATION_KEY, this.selectedInvestigationId);
+      } else {
+        localStorage.removeItem(GraphVisualizationComponent.SELECTED_INVESTIGATION_KEY);
+      }
+    } catch {
+      // localStorage unavailable - not fatal, the selection is just not remembered.
+    }
+  }
+
+  private restoreSelectedInvestigation(): void {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(GraphVisualizationComponent.SELECTED_INVESTIGATION_KEY);
+    } catch {
+      stored = null;
+    }
+    if (stored && this.investigations.some((inv) => inv.id === stored)) {
+      this.onInvestigationSelected(stored);
+    }
   }
 
   // --- Case Management actions in the node details panel (CASE-MANAGEMENT-IMPLEMENTATION.md §16) ---
@@ -433,7 +468,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   /** Unpin a node by address, from the overview panel. Mirrors togglePinSelectedNode()'s
-   * unpin branch. */
+   * unpin branch (visual release + server-side delete). */
   protected unpinNodeById(address: string): void {
     if (!this.pinnedNodePositions.has(address)) {
       return;
@@ -443,6 +478,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (element && element.nonempty()) {
       element.unlock();
       element.removeClass('pinned');
+    }
+    if (this.selectedInvestigationId) {
+      this.api.unpinInvestigatorNode(this.selectedInvestigationId, address).subscribe({ error: () => undefined });
     }
   }
 
@@ -861,9 +899,11 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.applyVisibilityFilters();
   }
 
-  // --- Investigator "pin node" (see CASE-MANAGEMENT-IMPLEMENTATION.md §13). Reuses the
-  // existing fcose layout (its `fixedNodeConstraint` option) plus cytoscape's own
-  // `node.lock()` - no separate positioning system. ---
+  // --- Investigator "pin node" (see CASE-MANAGEMENT-IMPLEMENTATION.md §13 / §18). Reuses
+  // the existing fcose layout (its `fixedNodeConstraint` option) plus cytoscape's own
+  // `node.lock()` - no separate positioning system. Since step 10 the pin set is PERSISTED
+  // per investigation (data/investigations/<id>/pinned_nodes.json), so it survives a
+  // reload; pinning therefore requires an investigation to be selected. ---
 
   /** Whether the currently selected node is investigator-pinned - drives the badge and
    * button label in the node details panel. */
@@ -876,17 +916,54 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     return this.pinnedNodePositions.size;
   }
 
-  /** Pin/unpin the selected node, straight from the node details panel. Pinning records
-   * the node's CURRENT position (wherever fcose placed it, or wherever it was dragged),
-   * locks it there and marks it `.pinned`; unpinning releases it back to normal layout.
-   * The pin set is replayed into fcose's `fixedNodeConstraint` and re-locked on every
-   * subsequent re-layout (renderGraph -> reapplyPinnedNodes), so the existing layout does
-   * the actual "stay put" work. Does NOT trigger a re-layout itself - the rest of the
-   * graph is left exactly where it is. */
-  togglePinSelectedNode(): void {
-    if (!this.cy || !this.selectedNode) {
+  /** Loads the selected investigation's persisted pins and applies them to the graph. */
+  private loadInvestigatorPins(): void {
+    this.clearPinnedNodesVisual();
+    this.pinnedNodePositions.clear();
+    if (!this.selectedInvestigationId) {
       return;
     }
+    this.api.getInvestigatorPins(this.selectedInvestigationId).subscribe({
+      next: (res) => {
+        this.pinnedNodePositions.clear();
+        for (const pin of res.pins) {
+          const stored = pin.x != null && pin.y != null ? { x: pin.x, y: pin.y } : this.cy?.$id(pin.address).position();
+          this.pinnedNodePositions.set(pin.address, stored ? { ...stored } : { x: 0, y: 0 });
+        }
+        this.reapplyPinnedNodes();
+      },
+      error: () => this.pinnedNodePositions.clear(),
+    });
+  }
+
+  /** Unlocks + unmarks every currently-pinned node on the live graph (without deleting
+   * anything server-side) - used when switching investigations before loading the new
+   * one's pins. */
+  private clearPinnedNodesVisual(): void {
+    if (!this.cy) {
+      return;
+    }
+    for (const id of this.pinnedNodePositions.keys()) {
+      const element = this.cy.$id(id);
+      if (element.nonempty()) {
+        element.unlock();
+        element.removeClass('pinned');
+      }
+    }
+  }
+
+  /** Pin/unpin the selected node, straight from the node details panel. Pinning records
+   * the node's CURRENT position, locks it, marks it `.pinned`, and PERSISTS it to the
+   * selected investigation; unpinning releases it and deletes it server-side. The pin set
+   * is replayed into fcose's `fixedNodeConstraint` and re-locked on every re-layout
+   * (renderGraph -> reapplyPinnedNodes), so the existing layout does the "stay put" work.
+   * Does NOT trigger a re-layout itself. Requires an investigation (button is disabled
+   * otherwise). */
+  togglePinSelectedNode(): void {
+    if (!this.cy || !this.selectedNode || !this.selectedInvestigationId) {
+      return;
+    }
+    const investigationId = this.selectedInvestigationId;
     const id = String(this.selectedNode.id);
     const element = this.cy.$id(id);
     if (element.empty()) {
@@ -897,10 +974,15 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.pinnedNodePositions.delete(id);
       element.unlock();
       element.removeClass('pinned');
+      this.api.unpinInvestigatorNode(investigationId, id).subscribe({ error: () => undefined });
     } else {
-      this.pinnedNodePositions.set(id, { ...element.position() });
+      const position = { ...element.position() };
+      this.pinnedNodePositions.set(id, position);
       element.lock();
       element.addClass('pinned');
+      this.api
+        .pinInvestigatorNode(investigationId, { address: id, x: position.x, y: position.y })
+        .subscribe({ error: () => undefined });
     }
   }
 

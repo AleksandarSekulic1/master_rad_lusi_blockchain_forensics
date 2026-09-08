@@ -354,7 +354,8 @@
           class="ghost-button action-chip pin-toggle"
           [class.active]="isSelectedNodePinned"
           (click)="togglePinSelectedNode()"
-          title="Zadrži čvor na fiksnoj poziciji pri ponovnom raspoređivanju grafa"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Zadrži čvor na fiksnoj poziciji; čuva se uz istragu i ostaje posle osvežavanja' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
         >
           {{ isSelectedNodePinned ? '📌 Otkači' : '📌 Zakači' }}
         </button>
