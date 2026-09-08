@@ -428,6 +428,48 @@ export interface CreateCaseRequest {
   description?: string | null;
 }
 
+// --- Investigator layer (see CASE-MANAGEMENT-IMPLEMENTATION.md). An investigation is a
+// container for investigator-generated conclusions, kept separate from the evidence Case
+// above. ---
+
+/** The investigator-layer container (backend: InvestigationCase). Not the evidence Case. */
+export interface Investigation {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InvestigatorLinkConfidence = 'Low' | 'Medium' | 'High';
+
+/** A manually recorded SUSPECTED RELATION between two blockchain addresses, based on
+ * OFF-CHAIN evidence - an "investigator association". NOT a proven fact and NOT a
+ * transaction-graph edge: it is drawn on the graph only as a visually distinct overlay,
+ * never as a real transaction edge. `directed` is always false (undirected association);
+ * `source_address`/`target_address` order carries no meaning. */
+export interface InvestigatorLink {
+  id: string;
+  investigation_id: string;
+  source_address: string;
+  target_address: string;
+  directed: boolean;
+  reason: string;
+  evidence: string;
+  confidence: InvestigatorLinkConfidence;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestigatorLinkListResponse {
+  investigation_id: string;
+  address: string | null;
+  /** Render this alongside the links - they are not blockchain facts. */
+  disclaimer: string;
+  links: InvestigatorLink[];
+}
+
 export type UserRole = 'admin' | 'analyst';
 export type UserStatus = 'active' | 'blocked';
 

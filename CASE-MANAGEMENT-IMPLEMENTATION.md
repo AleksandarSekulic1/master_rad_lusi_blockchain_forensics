@@ -1,10 +1,9 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4, 5 & 6 done.** Backend: investigation-case container; investigator
-notes on addresses/nodes **and** transactions/edges; investigator links (suspected
-off-chain relations between two addresses). Frontend: a "Pin node" action on the graph
-page (step 5). All five investigator-layer capabilities from the analysis now have a
-backend; frontend for notes and links is still pending.
+Status: **Steps 1, 3, 4, 5, 6 & 7 done.** Backend: investigation-case container;
+investigator notes on addresses/nodes **and** transactions/edges; investigator links
+(suspected off-chain relations). Frontend: "Pin node" (step 5) and the investigator-link
+overlay on the Graph Analysis page (step 7). Frontend for notes is still pending.
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -16,6 +15,7 @@ Layer*.
 - **§12** — Step 4 implementation log: extending notes to transactions/edges.
 - **§13** — Step 5 implementation log: "Pin node" (frontend, reuses the fcose layout).
 - **§14** — Step 6 implementation log: investigator links (suspected off-chain relations).
+- **§15** — Step 7 implementation log: investigator links on the Graph Analysis UI.
 
 ---
 
@@ -1251,12 +1251,128 @@ All under `/api/v1`, all require a valid bearer token, all JSON.
   `DELETE` → `204` → `404`; deleting the investigation → links `404`; the three audit
   actions were written.
 
-### 14.8 Not done yet (next steps)
+### 14.8 Not done yet (as of step 6)
 
-- Frontend for investigator **notes** (steps 3–4) and **links** (step 6) — a Case
-  Management view, and a distinct, clearly-labelled overlay on the graph for links
-  (never drawn as a transaction edge).
+- Frontend for investigator **links** on the graph → done in step 7, see §15.
+- Frontend for investigator **notes** (steps 3–4) — a Case Management view.
 - Author-or-admin restriction on editing/deleting another investigator's note/link
   (§8 risk 6).
 - Optional: link investigator conclusions into the case report export as a separate,
   clearly-headed "Investigator conclusions (not blockchain facts)" section.
+
+---
+
+## 15. Step 7 — investigator links on the Graph Analysis UI
+
+Date: 2026-09-08. Scope: draw the step-6 investigator links on the existing Graph
+Analysis page as a **visually distinct overlay** (never a transaction edge), with a click
+inspector and a remove action. Minimal, reuses the existing DEX-swap overlay mechanism.
+**No backend changes. No change to the blockchain graph, its transaction edges, or any
+Graph / Taint / Pathfinding / Behavioral / DEX code.**
+
+### 15.1 The scoping problem, and how it is solved minimally
+
+The Graph page is scoped to an **evidence `Case`** (`AnalysisStateService.selectedCase$`).
+Investigator links belong to an **investigation** (`investigation_id`). There is no link
+between the two entities. So the page needs to know *which investigation's* links to show.
+
+Solution: **one `<select>`** in the picker row, styled exactly like the adjacent evidence
+`<select>`, with an amber left accent so it reads as "the investigator layer". Not a new
+page, not a new panel — one dropdown ("Istražiteljski sloj — istraga") plus its
+show/hide toggle. The selection is component-local (lost on navigation/reload), matching
+the step-5 pin decision; persisting it would mean wiring the graph page to an investigation
+in shared state, which is deferred.
+
+### 15.2 Visual distinction (the core requirement)
+
+An investigator link is drawn as a cytoscape edge with class `investigator-link`, styled
+to be unmistakable against every real edge:
+
+| | real transaction edge | DEX swap overlay edge | **investigator link** |
+|---|---|---|---|
+| line | **solid** blue `#6ea8fe` | dashed purple `#c084fc` | **dashed orange `#fb923c`**, tight `[4,4]` dash |
+| arrowhead | triangle (directed transfer) | triangle | **none** (undirected association) |
+| label | `#<rank> · <amount>` | `SWAP · … → …` | **`◆ INVESTIGATOR LINK · <confidence>`** |
+| confidence | — | opacity/width step | opacity/width step; `Low` also switches to **dotted** |
+| click inspector | node panel | swap panel | **investigator-link panel** (§15.3) |
+
+So: different colour, different line style, **no arrowhead**, a leading `◆` glyph, and an
+explicit "INVESTIGATOR LINK" label — four independent signals. The panel kicker and the
+inspector disclaimer both say "nije blockchain činjenica".
+
+The real `edge` / `edge.swap-*` / `edge.bridge-edge` style rules are **not modified** —
+`edge.investigator-link` is a new, additional selector block. The overlay is added/removed
+with `cy.remove('edge.investigator-link')` + `cy.add(...)` on the live instance (no
+re-layout), the same mechanism `renderSwapOverlay()` uses; `buildElements()` also includes
+them so a full `renderGraph()` (case/evidence switch) keeps them.
+
+### 15.3 Clicking a link, and removing it
+
+Clicking an `edge.investigator-link` opens an inspector panel (reuses `.node-inspector`
+layout wholesale, like the swap panel) showing exactly the requested fields:
+**source address, target address, reason, evidence, confidence, created timestamp**
+(plus `author`), an amber confidence badge, and the disclaimer. It carries a
+**"Ukloni vezu"** button → `window.confirm` → `DELETE /investigations/{id}/links/{link_id}`
+→ the link is dropped from the overlay (no re-layout). The inspector is the outermost
+branch of the existing `investigator-link → swap → node → empty` else-chain, so exactly
+one panel ever shows.
+
+Links whose endpoints are not both present in the current evidence graph are **not
+drawn** (same defensive skip the swap overlay uses) but are still counted — the toggle
+shows `(drawn/total)` when they differ, so nothing looks silently dropped.
+
+### 15.4 Frontend files changed
+
+**No new components. No new route. No new page.**
+
+| File | Change |
+|---|---|
+| `frontend/src/app/models/blockchain-forensics.models.ts` | + `Investigation`, `InvestigatorLink`, `InvestigatorLinkConfidence`, `InvestigatorLinkListResponse` interfaces. |
+| `frontend/src/app/core/services/api.service.ts` | + `listInvestigations()`, `getInvestigatorLinks(investigationId, address?)`, `deleteInvestigatorLink(investigationId, linkId)` — hitting step 6's existing endpoints. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` | + state (`investigations`, `selectedInvestigationId`, `investigatorLinks`, `investigatorLinkOverlayEnabled`, `selectedInvestigatorLink`, …). + `onInvestigationSelected`, `loadInvestigatorLinks`, `toggleInvestigatorLinkOverlay`, `renderInvestigatorLinkOverlay`, `buildInvestigatorLinkEdgeElements`, `visibleInvestigatorLinkCount`, `removeSelectedInvestigatorLink`. `ngOnInit` loads the investigation list. `renderGraph()`: new `edge.investigator-link*` style rules (after `edge.swap-tainted`), a delegated `cy.on('tap', 'edge.investigator-link', …)` handler, and clearing `selectedInvestigatorLink` in the node/swap tap handlers. `buildElements()` appends investigator-link edges. `applyVisibilityFilters()` treats `investigator-link` edges as overlay (always visible, not timeline-bound), same as `swap-edge`. `loadActiveCaseGraph()` clears `selectedInvestigatorLink`. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.html` | + one `.investigator-layer-picker` row (investigation `<select>` + overlay toggle with `(drawn/total)` count); + the investigator-link inspector `<aside>` as the outermost branch of the inspector else-chain (`#swapNodeOrEmpty` wraps the former top-level content); + one legend row; empty-state text mentions the orange link. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.scss` | + `.investigator-layer-picker` (amber left accent), `.investigator-link-inspector .panel-kicker`, scoped amber `.investigator-link-inspector .swap-confidence-badge.level-*` (DEX swap badges keep their own purple), `.node-inspector .danger-ghost` (the remove button), `.legend-line.investigator-link` (dashed-orange marker). ~45 lines, all new selectors. |
+| `frontend/scripts/investigator-link-overlay-check.mjs` *(new)* | Headless smoke check (mirrors §15.5). |
+
+### 15.5 Backend / API changes
+
+**None.** Step 6 already exposes everything the graph integration needs:
+
+| Used for | Endpoint (from step 6 / step 1) |
+|---|---|
+| populate the investigation `<select>` | `GET /api/v1/investigations` |
+| load the chosen investigation's links | `GET /api/v1/investigations/{id}/links` (list carries the `disclaimer`) |
+| "Ukloni vezu" | `DELETE /api/v1/investigations/{id}/links/{link_id}` |
+
+The graph endpoints (`GET /cases/{id}/graph`, `POST /cases/{id}/analytics/run`), the graph
+builder, and the case exports are untouched — investigator links are never merged into
+them.
+
+### 15.6 Testing performed
+
+- **Frontend build** — `ng build --configuration development` before and after: both
+  succeed, **0 errors, 0 warnings**.
+- **Backend suite** — `pytest backend/tests` → **242 passed** (no backend files touched;
+  regression guard).
+- **Overlay behaviour** — `node frontend/scripts/investigator-link-overlay-check.mjs`,
+  headless against the bundled cytoscape, **all 12 checks pass**:
+  - exactly one `edge.investigator-link` is added for two links (the one with an
+    off-graph endpoint is skipped);
+  - the edge carries the full link object + `isInvestigatorLink` flag and the
+    `◆ INVESTIGATOR LINK · High` label, connecting the two link addresses;
+  - resolved style: **dashed**, **`target/source-arrow-shape: none`**, colour `#fb923c` —
+    distinct from a real tx edge (solid, triangle, `#6ea8fe`) and a swap edge (`#c084fc`);
+  - the real tx edge's resolved style is unchanged (solid + triangle);
+  - **no transaction edge is added, removed, or modified** by adding *or* removing the
+    overlay;
+  - toggling the overlay off removes only the investigator-link edge; the tx edges remain;
+  - after a link is deleted, re-rendering the overlay drops exactly that one edge.
+
+### 15.7 Not done yet (next steps)
+
+- Frontend for investigator **notes** (steps 3–4) — a Case Management view (notes on nodes
+  and on edges/transactions).
+- Creating / editing an investigator link *from the graph* (step 7 does display + click +
+  remove only, per the task). Currently links are created via the step-6 API.
+- Persist the selected investigation across navigation (component-local for now).
+- Author-or-admin restriction on deleting another investigator's link (§8 risk 6).

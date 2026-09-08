@@ -23,6 +23,8 @@ import {
   CustodyTransactionSummary,
   DexSwapAnalysisResult,
   FetchOnchainRequest,
+  Investigation,
+  InvestigatorLinkListResponse,
   KnownEntity,
   NodeLinkGraphResponse,
   OnchainNetwork,
@@ -89,6 +91,28 @@ export class ApiService {
 
   deleteCase(caseId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/api/v1/cases/${caseId}`);
+  }
+
+  // --- Investigator layer: investigations + investigator links (see
+  // CASE-MANAGEMENT-IMPLEMENTATION.md). Separate from the evidence-Case endpoints above;
+  // links are an additional forensic layer, never a blockchain fact. ---
+
+  listInvestigations(): Observable<{ investigations: Investigation[] }> {
+    return this.http.get<{ investigations: Investigation[] }>(`${this.apiUrl}/api/v1/investigations`);
+  }
+
+  /** Every investigator link in an investigation (optionally only those touching one
+   * address - either endpoint, the association is undirected). */
+  getInvestigatorLinks(investigationId: string, address?: string | null): Observable<InvestigatorLinkListResponse> {
+    const params = address ? new HttpParams().set('address', address) : undefined;
+    return this.http.get<InvestigatorLinkListResponse>(
+      `${this.apiUrl}/api/v1/investigations/${investigationId}/links`,
+      { params },
+    );
+  }
+
+  deleteInvestigatorLink(investigationId: string, linkId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/links/${linkId}`);
   }
 
   exportCaseReportCsv(caseId: string): Observable<Blob> {

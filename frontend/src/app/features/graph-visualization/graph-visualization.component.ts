@@ -15,6 +15,8 @@ import {
   AddressType,
   CaseSummary,
   DexSwapEvent,
+  Investigation,
+  InvestigatorLink,
   KnownEntityCategory,
   EvidenceEntry,
   GraphLinkData,
@@ -75,6 +77,19 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected dexSwapEvents: DexSwapEvent[] = [];
   protected dexSwapOverlayEnabled = true;
   protected selectedSwapEvent: DexSwapEvent | null = null;
+
+  // --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15). Investigator
+  // links belong to an INVESTIGATION - a separate entity from the evidence case this
+  // graph shows - so the investigator picks which investigation's links to overlay. They
+  // are drawn as a distinct dashed / orange / no-arrow / labelled edge, never as a
+  // transaction edge, and the real blockchain edges are never touched. ---
+  protected investigations: Investigation[] = [];
+  protected selectedInvestigationId: string | null = null;
+  protected investigatorLinks: InvestigatorLink[] = [];
+  protected investigatorLinkOverlayEnabled = true;
+  protected selectedInvestigatorLink: InvestigatorLink | null = null;
+  protected isDeletingInvestigatorLink = false;
+  protected investigatorLinkError: string | null = null;
 
   /** A node with hundreds of counterparties (e.g. a deposit hub) would otherwise render
    * hundreds of <dd> rows in the inspector panel, forcing the whole page to scroll past
@@ -143,10 +158,18 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
       this.selectedSwapEvent = null;
+      this.selectedInvestigatorLink = null;
       this.showAllSenders = false;
       this.showAllRecipients = false;
       this.syncSelection();
       this.loadAddressEnrichment();
+    });
+
+    // Investigations for the "which investigation's links to overlay" picker. Read-only,
+    // independent of the evidence case; a failure just leaves the picker empty.
+    this.api.listInvestigations().subscribe({
+      next: (response) => (this.investigations = response.investigations),
+      error: () => (this.investigations = []),
     });
 
     this.state.selectedCase$
@@ -199,12 +222,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.caseGraphError = null;
       this.dexSwapEvents = [];
       this.selectedSwapEvent = null;
+      this.selectedInvestigatorLink = null;
       return;
     }
 
     this.isLoadingCaseGraph = true;
     this.caseGraphError = null;
     this.selectedSwapEvent = null;
+    this.selectedInvestigatorLink = null;
 
     this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph) => {
@@ -264,6 +289,121 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected toggleDexSwapOverlay(): void {
     this.dexSwapOverlayEnabled = !this.dexSwapOverlayEnabled;
     this.renderSwapOverlay();
+  }
+
+  // --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15) --------------
+
+  /** Picks which investigation's links to draw over the graph. Investigator links are
+   * investigation-scoped, not evidence-scoped, so this selection is independent of the
+   * active case / evidence filter above. */
+  protected onInvestigationSelected(investigationId: string): void {
+    this.selectedInvestigationId = investigationId || null;
+    this.selectedInvestigatorLink = null;
+    this.investigatorLinkError = null;
+    this.loadInvestigatorLinks();
+  }
+
+  /** Fetches the chosen investigation's links and (re)draws the overlay. A failure only
+   * means no dashed orange links are shown - it never blocks or errors the graph. */
+  private loadInvestigatorLinks(): void {
+    if (!this.selectedInvestigationId) {
+      this.investigatorLinks = [];
+      this.renderInvestigatorLinkOverlay();
+      return;
+    }
+    this.api.getInvestigatorLinks(this.selectedInvestigationId).subscribe({
+      next: (result) => {
+        this.investigatorLinks = result.links;
+        this.renderInvestigatorLinkOverlay();
+      },
+      error: () => {
+        this.investigatorLinks = [];
+        this.renderInvestigatorLinkOverlay();
+      },
+    });
+  }
+
+  protected toggleInvestigatorLinkOverlay(): void {
+    this.investigatorLinkOverlayEnabled = !this.investigatorLinkOverlayEnabled;
+    this.renderInvestigatorLinkOverlay();
+  }
+
+  /** Same mechanism as renderSwapOverlay(): add/remove just the investigator-link edges
+   * on the existing cytoscape instance, WITHOUT re-running the layout. buildElements()
+   * also includes these, for the case where renderGraph() runs after the links are
+   * already loaded (case/evidence switch). */
+  private renderInvestigatorLinkOverlay(): void {
+    if (!this.cy || !this.graph) {
+      return;
+    }
+    this.cy.remove('edge.investigator-link');
+    if (this.investigatorLinkOverlayEnabled) {
+      const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+      this.cy.add(this.buildInvestigatorLinkEdgeElements(nodeIds));
+    }
+    this.applyVisibilityFilters();
+  }
+
+  private buildInvestigatorLinkEdgeElements(nodeIds: Set<string>): ElementDefinition[] {
+    const elements: ElementDefinition[] = [];
+    this.investigatorLinks.forEach((link) => {
+      // Only drawn when BOTH endpoints are nodes in the graph currently on screen. A link
+      // to an address outside this evidence view is kept in the list (and counted on the
+      // toggle) but not rendered - same defensive skip the DEX swap overlay uses.
+      if (!nodeIds.has(link.source_address) || !nodeIds.has(link.target_address)) {
+        return;
+      }
+      elements.push({
+        data: {
+          id: `invlink__${link.id}`,
+          source: link.source_address,
+          target: link.target_address,
+          label: `◆ INVESTIGATOR LINK · ${link.confidence}`,
+          isInvestigatorLink: true,
+          investigatorLink: link,
+        },
+        classes: `investigator-link investigator-link-${link.confidence.toLowerCase()}`,
+      } as ElementDefinition);
+    });
+    return elements;
+  }
+
+  /** How many links are actually drawn (both endpoints present) vs. how many exist -
+   * shown on the toggle so a link to an off-view address never looks silently dropped. */
+  protected get visibleInvestigatorLinkCount(): number {
+    if (!this.graph) {
+      return 0;
+    }
+    const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+    return this.investigatorLinks.filter(
+      (link) => nodeIds.has(link.source_address) && nodeIds.has(link.target_address),
+    ).length;
+  }
+
+  /** Removes the currently selected investigator link (from the graph inspector). Deletes
+   * it via the API, then drops it from the overlay - no graph re-layout. */
+  protected removeSelectedInvestigatorLink(): void {
+    const link = this.selectedInvestigatorLink;
+    if (!link || !this.selectedInvestigationId || this.isDeletingInvestigatorLink) {
+      return;
+    }
+    if (!window.confirm(`Ukloniti istražiteljsku vezu ${link.source_address} ↔ ${link.target_address}?`)) {
+      return;
+    }
+    this.isDeletingInvestigatorLink = true;
+    this.investigatorLinkError = null;
+    this.api.deleteInvestigatorLink(this.selectedInvestigationId, link.id).subscribe({
+      next: () => {
+        this.investigatorLinks = this.investigatorLinks.filter((item) => item.id !== link.id);
+        this.selectedInvestigatorLink = null;
+        this.isDeletingInvestigatorLink = false;
+        this.renderInvestigatorLinkOverlay();
+      },
+      error: () => {
+        this.isDeletingInvestigatorLink = false;
+        this.investigatorLinkError = 'Neuspešno uklanjanje istražiteljske veze.';
+      },
+    });
   }
 
   /** Confidence as shown in the overlay/inspector: a 3-level read (High/Medium/Low) over
@@ -698,11 +838,11 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       node.style('display', timelineVisible && !hiddenAsDeadEnd && !hiddenAsFundingSource ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {
-      if (edge.hasClass('swap-edge')) {
-        // Overlay annotation, not part of the graph's own chronology (it has no
-        // chronoRank) - shown/hidden purely by the DEX swap toggle above, never by
-        // timeline position. A hidden endpoint node still hides it via cytoscape's own
-        // node->edge display cascade, same as any other edge.
+      if (edge.hasClass('swap-edge') || edge.hasClass('investigator-link')) {
+        // Overlay annotations (DEX swap / investigator link) - not part of the graph's
+        // own chronology (no chronoRank), shown/hidden purely by their own toggle, never
+        // by timeline position. A hidden endpoint node still hides them via cytoscape's
+        // own node->edge display cascade, same as any other edge.
         edge.style('display', 'element');
         return;
       }
@@ -1237,6 +1377,43 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'underlay-padding': 4,
         },
       },
+      // Investigator link (CASE-MANAGEMENT-IMPLEMENTATION.md §15) - a manually recorded
+      // SUSPECTED off-chain relation, NOT a blockchain transaction. Deliberately unlike
+      // every real edge: orange, dashed with a tight dash, and NO arrowheads (it is an
+      // undirected association, not a directed transfer), plus a "◆ INVESTIGATOR LINK"
+      // label. Also distinct from edge.swap-edge (purple, dashed, WITH an arrow).
+      {
+        selector: 'edge.investigator-link',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [4, 4],
+          'line-color': '#fb923c',
+          'target-arrow-shape': 'none',
+          'source-arrow-shape': 'none',
+          'curve-style': 'bezier',
+          width: 3,
+          opacity: 0.92,
+          label: 'data(label)',
+          'font-size': 9,
+          'min-zoomed-font-size': 7,
+          color: '#fed7aa',
+          'text-background-color': '#07111f',
+          'text-background-opacity': 0.85,
+          'text-background-padding': '3px',
+        },
+      },
+      // Confidence steps the emphasis, same idea as the swap-* rules above.
+      { selector: 'edge.investigator-link-low', style: { opacity: 0.6, 'line-style': 'dotted' } },
+      { selector: 'edge.investigator-link-medium', style: { opacity: 0.85 } },
+      { selector: 'edge.investigator-link-high', style: { opacity: 1, width: 4 } },
+      {
+        selector: 'edge.investigator-link:selected',
+        style: {
+          'overlay-opacity': 0.22,
+          'overlay-color': '#fdba74',
+          width: 5,
+        },
+      },
     ];
 
     // Investigator-pinned nodes -> fcose's OWN fixed-position constraint, so a re-layout
@@ -1287,6 +1464,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       const nodeData = event.target.data() as GraphNodeData;
       this.selectedNode = nodeData;
       this.selectedSwapEvent = null;
+      this.selectedInvestigatorLink = null;
       this.state.setSelectedNode(nodeData);
     });
 
@@ -1295,6 +1473,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.cy.on('tap', 'edge.swap-edge', (event) => {
       this.selectedSwapEvent = (event.target.data('swapEvent') as DexSwapEvent) ?? null;
       this.selectedNode = null;
+      this.selectedInvestigatorLink = null;
+    });
+
+    // Same delegated pattern for investigator-link edges added by renderInvestigatorLinkOverlay().
+    this.cy.on('tap', 'edge.investigator-link', (event) => {
+      this.selectedInvestigatorLink = (event.target.data('investigatorLink') as InvestigatorLink) ?? null;
+      this.selectedNode = null;
+      this.selectedSwapEvent = null;
     });
 
     this.reapplyPinnedNodes();
@@ -1406,8 +1592,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     // common "swap data lands after the graph already rendered" case is handled by
     // renderSwapOverlay() adding these same elements directly, without a full rebuild.
     const swapEdges = this.dexSwapOverlayEnabled ? this.buildSwapEdgeElements(new Set(nodeById.keys())) : [];
+    // Same "already-known at build time" case for investigator links (e.g. re-rendering
+    // after an evidence switch while an investigation is selected).
+    const investigatorLinkEdges = this.investigatorLinkOverlayEnabled
+      ? this.buildInvestigatorLinkEdgeElements(new Set(nodeById.keys()))
+      : [];
 
-    return [...nodes, ...links, ...swapEdges];
+    return [...nodes, ...links, ...swapEdges, ...investigatorLinkEdges];
   }
 
   /** Chronological rank (1 = earliest) of each link by its first-seen timestamp, so the

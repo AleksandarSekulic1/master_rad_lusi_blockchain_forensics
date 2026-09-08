@@ -442,6 +442,54 @@ h3 {
   box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.22);
 }
 
+/* --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15). One picker row
+   styled like .evidence-picker with an amber left accent so it reads as "the investigator
+   layer", plus an inspector panel that reuses .node-inspector wholesale. --- */
+.investigator-layer-picker {
+  border-left: 3px solid rgba(251, 146, 60, 0.55);
+  padding-left: 0.85rem;
+}
+
+.investigator-link-inspector .panel-kicker {
+  color: #fdba74;
+}
+
+/* Amber confidence badge, scoped so the DEX swap inspector keeps its own purple .level-* */
+.investigator-link-inspector .swap-confidence-badge.level-low {
+  color: #d5e0f6;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.investigator-link-inspector .swap-confidence-badge.level-medium {
+  color: #ffedd5;
+  background: rgba(251, 146, 60, 0.24);
+  border: 1px solid rgba(251, 146, 60, 0.45);
+}
+
+.investigator-link-inspector .swap-confidence-badge.level-high {
+  color: #7c2d12;
+  background: linear-gradient(135deg, #fb923c, #fdba74);
+}
+
+.node-inspector .danger-ghost {
+  margin-top: 1rem;
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.node-inspector .danger-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fecaca;
+}
+
+/* Legend marker - dashed orange, matching the actual line-dash-pattern of edge.investigator-link */
+.legend-line.investigator-link {
+  background: repeating-linear-gradient(90deg, #fb923c 0, #fb923c 4px, transparent 4px, transparent 8px);
+  border-radius: 0;
+}
+
 .node-inspector .blacklist-warning {
   padding: 0.65rem 0.8rem;
   border-radius: 0.75rem;
