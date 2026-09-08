@@ -1,8 +1,10 @@
 # Case Management / Investigator Layer — Implementation Log
 
-Status: **Steps 1, 3, 4 & 5 done.** Backend: investigation-case container + investigator
-notes on addresses/nodes **and** transactions/edges. Frontend: a "Pin node" action on the
-graph page (step 5 — the first frontend work). Off-chain links not started.
+Status: **Steps 1, 3, 4, 5 & 6 done.** Backend: investigation-case container; investigator
+notes on addresses/nodes **and** transactions/edges; investigator links (suspected
+off-chain relations between two addresses). Frontend: a "Pin node" action on the graph
+page (step 5). All five investigator-layer capabilities from the analysis now have a
+backend; frontend for notes and links is still pending.
 Date started: 2026-09-08
 
 This file is the running implementation log for the new *Case Management / Investigator
@@ -13,6 +15,7 @@ Layer*.
 - **§11** — Step 3 implementation log: investigator notes on blockchain addresses/nodes.
 - **§12** — Step 4 implementation log: extending notes to transactions/edges.
 - **§13** — Step 5 implementation log: "Pin node" (frontend, reuses the fcose layout).
+- **§14** — Step 6 implementation log: investigator links (suspected off-chain relations).
 
 ---
 
@@ -1065,13 +1068,195 @@ unchanged since commit `fd20888`.)
     between two runs — expected fcose determinism on a trivial graph, unrelated to
     pinning; the check accounts for it by looking at a spread of runs.
 
-### 13.6 Not done yet (next steps)
+### 13.6 Not done yet (as of step 5)
 
-- Manual **off-chain links** between addresses (the last of the five investigator-layer
-  capabilities).
-- Frontend for investigator **notes** (steps 3–4 are backend-only so far).
+- Manual **off-chain links** between addresses → done in step 6, see §14.
+- Frontend for investigator **notes** and **links** (backend-only so far).
 - If cross-navigation / cross-reload pin persistence is wanted: scope the graph page to an
   investigation and store pins under `data/investigations/<id>/pinned_nodes.json` via the
   investigator layer.
 - Optional: let a pinned node be dragged to fine-tune its position (currently `lock()`
   disables dragging — re-position by unpin → drag → re-pin).
+
+---
+
+## 14. Step 6 — investigator links (suspected off-chain relations)
+
+Date: 2026-09-08. Scope: backend model / repository / service / API / validation for a
+manually recorded **suspected relation** between two blockchain addresses, based on
+**off-chain** evidence. No frontend. **No change to the blockchain graph, its edges, or
+any Graph / Taint / Pathfinding / Behavioral / DEX code.**
+
+Example the feature records:
+
+> Address A `0xABC…` — Address B `0xDEF…`
+> Reason: *"IP address from server logs connects both addresses."*
+> Evidence: *"Server log #42"* — Confidence: **High**
+
+### 14.1 Design decisions
+
+- **It is a *suspected relation*, never a proven fact.** Enforced structurally, not just
+  in prose:
+  - the entity is `InvestigatorLink`; the route is `…/links`; the audit actions are
+    `investigator_link_*`; every list response carries a `disclaimer` string ("… suspected
+    relation / investigator association … NIJE dokazana blockchain činjenica i NIJE grana
+    transakcionog grafa") — the same "ship the disclaimer with the data" pattern the DEX
+    swap and behavioral endpoints already use;
+  - there is **no `relationship_type` enum**. The model deliberately does not offer values
+    like `same_owner` / `same_person` / `proven` (which the earlier analysis §5.1 had
+    sketched). The *nature* of the suspected relation is the investigator's own free-text
+    `reason` / `evidence`. If they want to assert "same person", they write exactly that
+    there — which the spec explicitly allows — and it is then plainly their statement, not
+    a system label;
+  - `confidence` is `Low` / `Medium` / `High` only — never "Certain" / "Proven".
+- **Undirected association.** The spec: *directional only if the existing investigation
+  model requires direction*. The step-1 `InvestigationCase` is a bare container and the
+  notes (steps 3–4) attach to a single address or a single transaction — **nothing in the
+  model consumes a from/to ordering**. So a link is undirected: the record carries an
+  explicit `directed: false`, `source_address` / `target_address` are just "the two
+  addresses" with no significance to their order, and retrieval by address matches
+  **either** endpoint. (`directed` is a stored field, not settable via the API, so
+  `links.json` is self-describing and a directed variant could be added later without a
+  migration.)
+- **Additional forensic layer, blockchain graph untouched.** Links live only in
+  `data/investigations/<id>/links.json`. `links_repository.py` / `links_service.py` /
+  `investigation_links.py` import **nothing** from `app.analytics` / graph code. Links are
+  never merged into `build_transaction_graph`, the node-link JSON, `case_graph`, or the
+  case exports.
+- **Same conventions and layering as steps 1/3/4.** 12-hex id, UTC ISO timestamps,
+  `author` from the auth token (immutable; edits attributed via the activity log),
+  `updated_at` that advances on edit and never touches `created_at`, mutable per-file JSON
+  list, `FileNotFoundError` subclass → HTTP 404, `write_audit_log` on every write, and the
+  `models → repository → service → route` split. Retrieval identifiers (`source_address`,
+  `target_address`, the `?address=` filter) are matched **exactly**, whitespace-trimmed,
+  case preserved — identical to how notes treat `address`.
+- **All create fields required.** `source_address`, `target_address`, `reason`,
+  `evidence`, `confidence` — an off-chain association with no stated reason or evidence
+  reference is not worth recording. `source_address == target_address` (after trim) is
+  rejected (`422`).
+- **Editable: `reason` / `evidence` / `confidence`** (refine wording, or raise/lower
+  confidence as more off-chain evidence arrives). The two addresses are immutable —
+  re-pointing a link makes a different association, so delete + create.
+- **Duplicates allowed.** Two links between the same pair are legitimate (two independent
+  pieces of off-chain evidence), so no dedupe / reverse-pair check.
+
+### 14.2 Files created
+
+| File | Purpose |
+|---|---|
+| `backend/app/investigations/links_models.py` | Pydantic v2 models. `InvestigatorLink` (persisted): `id`, `investigation_id`, `source_address`, `target_address`, `directed` (always `False`), `reason`, `evidence`, `confidence`, `author`, `created_at`, `updated_at`, plus an `involves(address)` helper for the undirected match. `InvestigatorLinkCreate` (all 5 fields required; validators trim & reject blank; a model validator rejects equal endpoints). `InvestigatorLinkUpdate` (`reason?` / `evidence?` / `confidence?`). `LinkConfidence = Literal['Low','Medium','High']`, `LINK_CONFIDENCE_VALUES`, `ADDRESS_MAX_LENGTH=256`, `REASON_MAX_LENGTH=5000`, `EVIDENCE_MAX_LENGTH=2000`. |
+| `backend/app/investigations/links_repository.py` | Storage: one file `data/investigations/<id>/links.json` shaped `{ "links": [ … ] }`. `load_links` / `save_links`, pure dict I/O. Locates the file via `repository.investigation_dir()` (added in step 4), so redirecting the investigations root in tests also redirects the links. |
+| `backend/app/investigations/links_service.py` | Orchestration: `list_links(investigation_id, *, address=None)`, `get_link`, `create_link(…, author=…)`, `update_link`, `delete_link`. Every call first runs step 1's `get_investigation(...)` (→ `InvestigationCaseNotFoundError` → 404). `create` stamps `created_at == updated_at`; `update` is partial (`exclude_unset`), moves `updated_at` only, and is a no-op on an empty body. Defines `InvestigatorLinkNotFoundError(FileNotFoundError)`. Imports nothing from analytics/graph. |
+| `backend/app/api/routes/investigation_links.py` | `APIRouter(prefix='/investigations/{investigation_id}/links')` — list (with optional `?address=`), create, get-one, update, delete. List response carries a fixed `disclaimer`. Each write calls `write_audit_log` (`investigator_link_created` / `_updated` / `_deleted`, `details = { investigation_id, link_id, source_address, target_address, confidence }`). Missing investigation **or** missing link → HTTP 404; `confidence` outside Low/Medium/High or equal endpoints → `422` (Pydantic). |
+| `backend/tests/test_investigator_links.py` | 20 service-layer tests: all minimum fields on create + `directed is False` + equal timestamps; addresses trimmed, case preserved; blank fields rejected; equal endpoints rejected; confidence must be exactly Low/Medium/High; create against unknown investigation → 404-class; **undirected retrieval — a link is found from either endpoint** and not from an unrelated address; list-all; newest-first ordering; update changes reason/evidence/confidence and advances only `updated_at`; empty update is a no-op; update/delete unknown link → error; delete removes only that link; links scoped per investigation; deleting the investigation removes its links; links stored in their own `links.json` (no `notes.json` created). Isolated via `monkeypatch.setattr(repository, '_root', …)`. |
+
+### 14.3 Files modified
+
+| File | Change | Why |
+|---|---|---|
+| `backend/app/api/router.py` | `import … investigation_links_router`; `include_router(investigation_links_router, dependencies=authenticated)` right after the notes router | expose the link routes under `/api/v1`, same "any authenticated user" access as the rest of the investigator layer |
+
+Nothing else was touched. No analytics / graph / taint / pathfinding / behavioral / DEX
+code; no other routes, models, or tests; `paths.py` / `repository.py` / step-1/3/4/5
+files all unchanged.
+
+### 14.4 Model / storage structure
+
+**Entity — `InvestigatorLink`** (`app/investigations/links_models.py`):
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `str` | 12-char hex, generated, unique within the investigation |
+| `investigation_id` | `str` | the "case ID" — the step-1 `InvestigationCase` this link belongs to (never the evidence `Case`) |
+| `source_address` | `str` | one of the two addresses, 1–256 chars, trimmed, **case preserved** — order carries no meaning |
+| `target_address` | `str` | the other address, same rules; must differ from `source_address` |
+| `directed` | `bool` | always `false` — an **undirected** investigator association (not settable via the API) |
+| `reason` | `str` | free-text "why", 1–5000 chars, trimmed, non-blank |
+| `evidence` | `str` | free-text off-chain evidence / reference, 1–2000 chars, trimmed, non-blank |
+| `confidence` | `"Low" \| "Medium" \| "High"` | the investigator's confidence in the suspected relation |
+| `author` | `str` | username of the creator; set server-side; immutable |
+| `created_at` | `str` | UTC ISO-8601, set once |
+| `updated_at` | `str` | UTC ISO-8601, equals `created_at` on create, advances on every edit |
+
+**Request models:** `InvestigatorLinkCreate { source_address, target_address, reason,
+evidence, confidence }` (all required); `InvestigatorLinkUpdate { reason?, evidence?,
+confidence? }`.
+
+**On disk** (no database; mutable JSON, same style as `case.json` / `notes.json`):
+
+```
+data/investigations/<investigation_id>/
+├── investigation.json     (step 1)
+├── notes.json             (steps 3–4)
+└── links.json             { "links": [ { id, investigation_id, source_address,
+                                          target_address, directed:false, reason,
+                                          evidence, confidence, author,
+                                          created_at, updated_at }, ... ] }
+```
+
+`logs/audit_log.jsonl` gains rows with
+`action ∈ { investigator_link_created, investigator_link_updated, investigator_link_deleted }`,
+each carrying `user` and `details = { investigation_id, link_id, source_address,
+target_address, confidence }`.
+
+### 14.5 How a link relates two addresses (and why it is not a graph edge)
+
+- A link stores **two plain address strings** (`source_address`, `target_address`) and an
+  explicit `directed: false`. There is no reference to a graph node or a graph edge — the
+  transaction graph is recomputed from evidence on every request and has no persistent
+  edge table (§2.1).
+- The association key is the **unordered pair** `{source_address, target_address}` within
+  one `investigation_id`. `GET …/links?address=X` returns every link where `X` equals
+  `source_address` **or** `target_address` exactly (trimmed, case-sensitive) — you reach
+  the association from either side.
+- It is **not** an edge in `build_transaction_graph`'s `DiGraph`, not in the node-link
+  JSON, not in `case_graph`, not in the GraphML/GEXF/CSV/PDF case exports. A separate
+  endpoint set, a separate file, a separate subsystem with no import of graph code. A
+  frontend that draws these later must render them as a visually distinct overlay
+  (dashed / labelled "investigator link", no amount, no arrow unless `directed`), never
+  as a transaction edge — noted for the frontend step.
+- A link may reference an address **not present in any current graph view** (different
+  evidence filter, or evidence not imported) — it is independent of graph state.
+- Deleting the investigation cascades (its directory is `rmtree`-d), removing its links.
+
+### 14.6 API endpoints introduced
+
+All under `/api/v1`, all require a valid bearer token, all JSON.
+
+| Method & path | Body | Success | Errors | Notes |
+|---|---|---|---|---|
+| `GET /api/v1/investigations/{id}/links` | — (optional `?address=<exact>`) | `200 { investigation_id, address, disclaimer, links: [InvestigatorLink, …] }` | `401`, `404` (investigation) | with `address`: links where it is **either** endpoint (undirected); without: every link. Newest-created first. |
+| `POST /api/v1/investigations/{id}/links` | `{ source_address, target_address, reason, evidence, confidence }` | `200 InvestigatorLink` | `401`, `404` (investigation), `422` (blank/too-long field, equal endpoints, `confidence` not Low/Medium/High) | `author` from the token; `directed:false`; `created_at == updated_at`. Audit: `investigator_link_created`. |
+| `GET /api/v1/investigations/{id}/links/{link_id}` | — | `200 InvestigatorLink` | `401`, `404` (investigation or link) | |
+| `PATCH /api/v1/investigations/{id}/links/{link_id}` | `{ reason?, evidence?, confidence? }` | `200 InvestigatorLink` | `401`, `404`, `422` | edits the given fields only; advances `updated_at`; `id`/addresses/`author`/`created_at`/`directed` unchanged; empty body → unchanged. Audit: `investigator_link_updated`. |
+| `DELETE /api/v1/investigations/{id}/links/{link_id}` | — | `204` no content | `401`, `404` | Audit: `investigator_link_deleted`. |
+
+### 14.7 Build / verification performed
+
+- `from app.main import app; app.openapi()` — app imports; the five link routes appear
+  under `/api/v1/investigations/{investigation_id}/links`; `InvestigatorLinkCreate`
+  requires all 5 fields; `confidence` is the enum `["Low","Medium","High"]`;
+  `InvestigatorLink` carries `directed`.
+- `pytest backend/tests/test_investigator_links.py` — **20 passed**.
+- `pytest backend/tests` (whole suite) — **242 passed** (was 222; +20 new), 0 failures.
+  Only the pre-existing `datetime.utcnow()` deprecation warning in `graph_building.py`
+  (untouched).
+- End-to-end HTTP smoke via `TestClient`, using the spec's example
+  (`0xABC`/`0xDEF`, "IP address from server logs…", "Server log #42", High): create (padded
+  address trimmed, `directed:false`); **retrieve by address A and by address B — both
+  return the link** (undirected), unrelated address returns none; list response contains
+  the `disclaimer`; `PATCH` confidence `High → Medium` + reason, addresses unchanged,
+  `updated_at` advanced; `422` for equal endpoints / blank reason / missing evidence / bad
+  confidence; `404` for unknown investigation / unknown link; `401` without a token;
+  `DELETE` → `204` → `404`; deleting the investigation → links `404`; the three audit
+  actions were written.
+
+### 14.8 Not done yet (next steps)
+
+- Frontend for investigator **notes** (steps 3–4) and **links** (step 6) — a Case
+  Management view, and a distinct, clearly-labelled overlay on the graph for links
+  (never drawn as a transaction edge).
+- Author-or-admin restriction on editing/deleting another investigator's note/link
+  (§8 risk 6).
+- Optional: link investigator conclusions into the case report export as a separate,
+  clearly-headed "Investigator conclusions (not blockchain facts)" section.
