@@ -69,7 +69,7 @@
           class="case-card"
           *ngFor="let caseEntry of pagedCases"
           [class.selected]="isSelected(caseEntry)"
-          (click)="selectCase(caseEntry)"
+          (click)="onCaseClick(caseEntry)"
         >
           <span class="case-status-dot" [class.closed]="caseEntry.status === 'closed'" aria-hidden="true"></span>
 
@@ -78,6 +78,9 @@
               <strong>{{ caseEntry.name }}</strong>
               <span class="status-pill" [class.closed]="caseEntry.status === 'closed'">
                 {{ caseEntry.status === 'open' ? t('Otvoren', 'Open') : t('Zatvoren', 'Closed') }}
+              </span>
+              <span class="active-badge" *ngIf="isSelected(caseEntry)">
+                {{ t('Aktivan — klik za deaktivaciju', 'Active — click to deactivate') }}
               </span>
             </div>
             <span class="case-id">{{ caseEntry.id }}</span>

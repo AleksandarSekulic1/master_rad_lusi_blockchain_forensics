@@ -90,7 +90,12 @@ def _save_index(cases: list[dict[str, object]]) -> None:
 
 def list_cases(search: str | None = None) -> list[dict[str, object]]:
     index = _load_index()
+
+    # Open cases first, then closed; most recently updated first WITHIN each group. Two
+    # passes because Python's sort is stable: the second sort only regroups by status and
+    # keeps the updated_at ordering the first sort established.
     cases = sorted(index['cases'], key=lambda item: str(item.get('updated_at', '')), reverse=True)
+    cases = sorted(cases, key=lambda item: item.get('status') != 'open')
 
     needle = (search or '').strip().casefold()
     if needle:

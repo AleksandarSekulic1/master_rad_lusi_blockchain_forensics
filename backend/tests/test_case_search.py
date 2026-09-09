@@ -38,3 +38,11 @@ def test_blank_search_is_ignored():
 
 def test_search_with_no_match_returns_empty():
     assert case_management.list_cases(search='nepostojeci-slucaj') == []
+
+
+def test_open_cases_are_listed_before_closed():
+    by_name = {case['name']: case['id'] for case in case_management.list_cases()}
+    case_management.set_case_status(by_name['Hakovanje berze Q3'], 'closed')
+
+    statuses = [case['status'] for case in case_management.list_cases()]
+    assert statuses == ['open', 'open', 'closed']

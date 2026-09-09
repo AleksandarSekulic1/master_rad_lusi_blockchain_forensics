@@ -135,7 +135,12 @@ export class CasesComponent implements OnInit {
         if (selectedId) {
           const stillExists = this.cases.find((entry) => entry.id === selectedId);
           if (stillExists) {
-            this.selectCase(stillExists);
+            // keep it active across refreshes; just re-hydrate the evidence panel
+            this.loadCaseDetail(stillExists);
+          } else if (!query) {
+            // it was deleted while we were away (a filtered list is not proof of that)
+            this.state.setSelectedCase(null);
+            this.selectedCase = null;
           }
         }
       },
@@ -178,8 +183,26 @@ export class CasesComponent implements OnInit {
       });
   }
 
+  /** User click on a card: a second click on the already-active case clears the selection;
+   * only ever one case active at a time. Programmatic (re)selection uses selectCase(). */
+  onCaseClick(caseSummary: CaseSummary): void {
+    if (this.isSelected(caseSummary)) {
+      this.state.setSelectedCase(null);
+      this.selectedCase = null;
+      return;
+    }
+    this.selectCase(caseSummary);
+  }
+
+  /** Marks a case as the active one and loads its evidence locker. Always selects (never
+   * toggles) - used on click-to-select, after create, and to re-hydrate the detail panel
+   * on (re)load. */
   selectCase(caseSummary: CaseSummary): void {
     this.state.setSelectedCase(caseSummary);
+    this.loadCaseDetail(caseSummary);
+  }
+
+  private loadCaseDetail(caseSummary: CaseSummary): void {
     this.api.getCase(caseSummary.id).subscribe({
       next: (caseDetail) => {
         this.selectedCase = caseDetail;

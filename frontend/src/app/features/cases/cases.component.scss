@@ -386,6 +386,19 @@ h2 {
   background: linear-gradient(135deg, #f87171, #dc2626);
 }
 
+.active-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-strong);
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+}
+
 .case-meta {
   display: flex;
   flex-wrap: wrap;

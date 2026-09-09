@@ -9,6 +9,8 @@ import {
   UploadCsvResponse,
 } from '../../models/blockchain-forensics.models';
 
+const SELECTED_CASE_KEY = 'lusi_selected_case';
+
 @Injectable({
   providedIn: 'root',
 })
@@ -17,7 +19,9 @@ export class AnalysisStateService {
   private readonly graphSubject = new BehaviorSubject<NodeLinkGraphResponse | null>(null);
   private readonly analyticsSubject = new BehaviorSubject<AnalyticsResponse | null>(null);
   private readonly selectedNodeSubject = new BehaviorSubject<GraphNodeData | null>(null);
-  private readonly selectedCaseSubject = new BehaviorSubject<CaseSummary | null>(null);
+  // Restored from localStorage so the active case survives a page refresh - it stays
+  // active until the user clicks it again or picks another one.
+  private readonly selectedCaseSubject = new BehaviorSubject<CaseSummary | null>(this.readStoredCase());
 
   readonly upload$ = this.uploadSubject.asObservable();
   readonly graph$ = this.graphSubject.asObservable();
@@ -55,6 +59,24 @@ export class AnalysisStateService {
 
   setSelectedCase(caseSummary: CaseSummary | null): void {
     this.selectedCaseSubject.next(caseSummary);
+    try {
+      if (caseSummary) {
+        localStorage.setItem(SELECTED_CASE_KEY, JSON.stringify(caseSummary));
+      } else {
+        localStorage.removeItem(SELECTED_CASE_KEY);
+      }
+    } catch {
+      /* storage unavailable - selection just won't survive a refresh */
+    }
+  }
+
+  private readStoredCase(): CaseSummary | null {
+    try {
+      const raw = localStorage.getItem(SELECTED_CASE_KEY);
+      return raw ? (JSON.parse(raw) as CaseSummary) : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Lets a panel grab a PNG of the live transaction graph without importing
