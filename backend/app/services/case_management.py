@@ -88,9 +88,15 @@ def _save_index(cases: list[dict[str, object]]) -> None:
     _write_json(_index_path(), {'cases': sorted_cases})
 
 
-def list_cases() -> list[dict[str, object]]:
+def list_cases(search: str | None = None) -> list[dict[str, object]]:
     index = _load_index()
-    return sorted(index['cases'], key=lambda item: str(item.get('updated_at', '')), reverse=True)
+    cases = sorted(index['cases'], key=lambda item: str(item.get('updated_at', '')), reverse=True)
+
+    needle = (search or '').strip().casefold()
+    if needle:
+        cases = [case for case in cases if needle in str(case.get('name', '')).casefold()]
+
+    return cases
 
 
 def get_case(case_id: str) -> dict[str, object]:

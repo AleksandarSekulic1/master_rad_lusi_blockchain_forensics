@@ -81,8 +81,10 @@ class RunAnalyticsRequest(BaseModel):
 
 
 @router.get('')
-def get_cases() -> dict[str, object]:
-    return {'cases': list_cases()}
+def get_cases(
+    search: str | None = Query(default=None, description='Filter po nazivu slučaja (bez razlike u veličini slova).'),
+) -> dict[str, object]:
+    return {'cases': list_cases(search=search)}
 
 
 @router.post('')

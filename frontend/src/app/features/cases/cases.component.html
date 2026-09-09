@@ -44,6 +44,25 @@
       </button>
     </div>
 
+    <div class="search-bar">
+      <span class="search-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </span>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (ngModelChange)="onSearchChange($event)"
+        [placeholder]="t('Pretraži po nazivu slučaja...', 'Search by case name...')"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button *ngIf="searchQuery" type="button" class="search-clear" (click)="clearSearch()"
+              [attr.aria-label]="t('Obriši pretragu', 'Clear search')">×</button>
+    </div>
+
     <ng-container *ngIf="cases.length > 0; else emptyCases">
       <div class="case-list">
         <article
@@ -115,10 +134,16 @@
     </ng-container>
 
     <ng-template #emptyCases>
-      <p class="empty-state">
-        {{ t('Još uvek nema slučajeva. Kreirajte jedan levo da biste započeli istragu.',
-              'No cases yet. Create one on the left to start an investigation.') }}
+      <p class="empty-state" *ngIf="searchQuery; else noCasesAtAll">
+        {{ t('Nijedan slučaj ne odgovara pretrazi', 'No case matches') }} “{{ searchQuery }}”.
+        <button type="button" class="link-button" (click)="clearSearch()">{{ t('Obriši pretragu', 'Clear search') }}</button>
       </p>
+      <ng-template #noCasesAtAll>
+        <p class="empty-state">
+          {{ t('Još uvek nema slučajeva. Kreirajte jedan levo da biste započeli istragu.',
+                'No cases yet. Create one on the left to start an investigation.') }}
+        </p>
+      </ng-template>
     </ng-template>
   </article>
 

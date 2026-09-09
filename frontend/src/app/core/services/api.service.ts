@@ -80,8 +80,10 @@ export class ApiService {
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/onchain/fetch`, request);
   }
 
-  listCases(): Observable<{ cases: CaseSummary[] }> {
-    return this.http.get<{ cases: CaseSummary[] }>(`${this.apiUrl}/api/v1/cases`);
+  listCases(search?: string | null): Observable<{ cases: CaseSummary[] }> {
+    const trimmed = search?.trim();
+    const params = trimmed ? new HttpParams().set('search', trimmed) : undefined;
+    return this.http.get<{ cases: CaseSummary[] }>(`${this.apiUrl}/api/v1/cases`, { params });
   }
 
   createCase(request: CreateCaseRequest): Observable<Case> {

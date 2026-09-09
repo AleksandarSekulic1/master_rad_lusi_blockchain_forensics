@@ -1,6 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, DestroyRef, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
@@ -27,12 +29,20 @@ export class CasesComponent implements OnInit {
   protected readonly pageSize = 5;
   protected currentPage = 1;
 
+  protected searchQuery = '';
+  private readonly searchChanges = new Subject<string>();
+
   constructor(
     private readonly api: ApiService,
     protected readonly state: AnalysisStateService,
     public readonly settings: SettingsService,
+    destroyRef: DestroyRef,
   ) {
     this.statusMessage = () => this.t('Učitavanje slučajeva...', 'Loading cases...');
+
+    this.searchChanges
+      .pipe(debounceTime(250), distinctUntilChanged(), takeUntilDestroyed(destroyRef))
+      .subscribe((term) => this.fetchCases(term));
   }
 
   protected t(sr: string, en: string): string {
@@ -41,6 +51,18 @@ export class CasesComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadCases();
+  }
+
+  onSearchChange(term: string): void {
+    this.searchChanges.next(term);
+  }
+
+  clearSearch(): void {
+    if (!this.searchQuery) {
+      return;
+    }
+    this.searchQuery = '';
+    this.fetchCases('');
   }
 
   get totalPages(): number {
@@ -80,17 +102,31 @@ export class CasesComponent implements OnInit {
     return `${stamp.slice(0, 10)} ${stamp.slice(11, 16)} UTC`;
   }
 
+  /** Re-fetches with the current search term (used by the Refresh button and after every
+   * mutation). The debounced search box goes through fetchCases() directly. */
   loadCases(): void {
+    this.fetchCases(this.searchQuery);
+  }
+
+  private fetchCases(term: string): void {
+    const query = term.trim();
     this.isLoading = true;
-    this.api.listCases().subscribe({
+    this.api.listCases(query).subscribe({
       next: (response) => {
         this.cases = response.cases;
         this.currentPage = Math.min(this.currentPage, this.totalPages);
         this.isLoading = false;
-        this.statusMessage =
-          this.cases.length > 0
-            ? () => `${this.cases.length} ${this.t('slučaj(eva) u evidenciji.', 'case(s) on record.')}`
-            : () => this.t('Još uvek nema slučajeva. Kreirajte jedan da biste počeli.', 'No cases yet. Create one to get started.');
+        this.statusMessage = () => {
+          const count = this.cases.length;
+          if (count === 0) {
+            return query
+              ? `${this.t('Nema rezultata za', 'No results for')} “${query}”.`
+              : this.t('Još uvek nema slučajeva. Kreirajte jedan da biste počeli.', 'No cases yet. Create one to get started.');
+          }
+          return query
+            ? `${count} ${this.t('rezultat(a) za', 'result(s) for')} “${query}”.`
+            : `${count} ${this.t('slučaj(eva) u evidenciji.', 'case(s) on record.')}`;
+        };
 
         const selectedId = this.state.selectedCaseSnapshot?.id;
         if (selectedId) {
@@ -126,6 +162,9 @@ export class CasesComponent implements OnInit {
           this.newCaseName = '';
           this.newCaseDescription = '';
           this.statusMessage = () => `${this.t('Slučaj', 'Case')} "${createdCase.name}" ${this.t('je kreiran.', 'was created.')}`;
+          // clear any active filter so the just-created case is actually visible in the list
+          this.searchQuery = '';
+          this.currentPage = 1;
           this.loadCases();
           this.selectCase(createdCase);
         },
