@@ -904,3 +904,13 @@ h3 {
   align-items: flex-end;
   gap: 0.6rem 0.8rem;
 }
+
+.gc-inv-row .ghost-button.danger-ghost {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+
+.gc-inv-row .ghost-button.danger-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.6);
+}

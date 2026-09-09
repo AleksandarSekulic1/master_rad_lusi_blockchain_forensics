@@ -379,6 +379,32 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Deletes the currently selected investigation (and all of its notes / pins / links).
+   * The evidence case is untouched. */
+  protected deleteSelectedInvestigation(): void {
+    const id = this.selectedInvestigationId;
+    if (!id) {
+      return;
+    }
+    const name = this.investigations.find((inv) => inv.id === id)?.name ?? id;
+    const confirmed = window.confirm(
+      this.t(
+        `Obrisati istragu „${name}"? Sve beleške, zakačeni čvorovi i istražiteljske veze u njoj se trajno brišu. Dokazni slučaj se ne dira.`,
+        `Delete investigation “${name}”? All of its notes, pinned nodes and investigator links are permanently removed. The evidence case is untouched.`,
+      ),
+    );
+    if (!confirmed) {
+      return;
+    }
+    this.api.deleteInvestigation(id).subscribe({
+      next: () => {
+        this.investigations = this.investigations.filter((inv) => inv.id !== id);
+        this.onInvestigationSelected('');
+      },
+      error: () => window.alert(this.t('Neuspešno brisanje istrage.', 'Failed to delete the investigation.')),
+    });
+  }
+
   /** The chosen investigation is remembered across a reload (localStorage) so all of its
    * persisted notes / pins / links come straight back without re-picking it. */
   private static readonly SELECTED_INVESTIGATION_KEY = 'lusi_selected_investigation';

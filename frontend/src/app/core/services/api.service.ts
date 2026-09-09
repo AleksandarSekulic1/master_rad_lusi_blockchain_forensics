@@ -120,6 +120,12 @@ export class ApiService {
     return this.http.post<Investigation>(`${this.apiUrl}/api/v1/investigations`, body);
   }
 
+  /** Permanently removes an investigation and everything in it (notes, pinned nodes,
+   * investigator links). Does not touch the evidence case. */
+  deleteInvestigation(investigationId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}`);
+  }
+
   /** Every investigator link in an investigation (optionally only those touching one
    * address - either endpoint, the association is undirected). */
   getInvestigatorLinks(investigationId: string, address?: string | null): Observable<InvestigatorLinkListResponse> {

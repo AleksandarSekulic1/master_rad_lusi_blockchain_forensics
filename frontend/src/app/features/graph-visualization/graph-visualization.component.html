@@ -70,6 +70,15 @@
         </button>
         <button
           type="button"
+          class="ghost-button danger-ghost"
+          (click)="deleteSelectedInvestigation()"
+          [disabled]="!selectedInvestigationId"
+          [title]="t('Trajno obriši izabranu istragu i sve u njoj (beleške, zakačene čvorove, veze)', 'Permanently delete the selected investigation and everything in it (notes, pinned nodes, links)')"
+        >
+          🗑 {{ t('Obriši istragu', 'Delete investigation') }}
+        </button>
+        <button
+          type="button"
           class="ghost-button"
           [class.active]="investigatorLinkOverlayEnabled"
           (click)="toggleInvestigatorLinkOverlay()"
