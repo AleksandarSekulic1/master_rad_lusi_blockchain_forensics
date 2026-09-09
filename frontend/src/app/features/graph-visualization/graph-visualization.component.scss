@@ -704,3 +704,7 @@ h3 {
     grid-template-columns: 1fr;
   }
 }
+/* Compact embed (Dashboard): no inspector column, canvas spans the row. */
+.graph-shell.compact .graph-content {
+  grid-template-columns: minmax(0, 1fr);
+}

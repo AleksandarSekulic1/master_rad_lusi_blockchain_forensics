@@ -1,4 +1,5 @@
-<div class="graph-shell">
+<div class="graph-shell" [class.compact]="mode === 'compact'">
+  <ng-container *ngIf="mode === 'full'">
   <div class="active-case-banner">
     <div *ngIf="activeCase; else noCase">
       <span class="panel-kicker">Aktivan slučaj</span>
@@ -108,6 +109,7 @@
     (linkCreated)="onNodeDialogLinkCreated()"
     (closed)="closeNodeDialog()"
   ></app-investigator-node-dialog>
+  </ng-container>
 
   <div class="graph-header">
     <div>
@@ -219,6 +221,7 @@
       <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
     </div>
 
+    <ng-container *ngIf="mode === 'full'">
     <!-- Inspector chain: investigator link -> swap event -> node -> empty. One nested
          else-chain (not independent *ngIf's) so exactly one panel ever shows - see the
          DEX-SWAP note below for why. -->
@@ -550,9 +553,10 @@
     </ng-template>
     </ng-template>
     </ng-template>
+    </ng-container>
   </div>
 
-  <div class="graph-legend">
+  <div class="graph-legend" *ngIf="mode === 'full'">
     <p class="panel-kicker">Legenda — zašto je čvor obojen tako</p>
     <div class="legend-items">
       <div class="legend-item">

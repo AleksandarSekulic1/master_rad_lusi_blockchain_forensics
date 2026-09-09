@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, Input, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -45,6 +45,14 @@ import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/inv
   styleUrl: './graph-visualization.component.scss',
 })
 export class GraphVisualizationComponent implements OnInit, OnDestroy {
+  /**
+   * 'full'    - the standalone /graph page: evidence picker, investigator layer, custody
+   *             dialog, node inspector, legend, everything.
+   * 'compact' - embedded on the Dashboard: just the header, the toolbar buttons and the
+   *             canvas, so the dashboard stays a quick overview.
+   */
+  @Input() mode: 'full' | 'compact' = 'full';
+
   @ViewChild('graphCanvas', { static: true })
   protected graphCanvas!: ElementRef<HTMLDivElement>;
 
@@ -168,6 +176,12 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Let the dashboard's report-export panel snapshot the live graph for its PDF, without
+    // a hard import of this component. Cleared in ngOnDestroy.
+    this.state.registerGraphImageProvider(() =>
+      this.cy ? this.cy.png({ full: true, scale: 2, bg: '#0a1425' }) : null,
+    );
+
     // Rendered from graph$: the plain /graph response has no blacklist/risk/anomaly/
     // peel-chain data (that's only computed by the analytics pipeline), so it renders
     // uncoloured by default - a deliberate "Analiziraj graf" click (see
@@ -807,6 +821,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.state.registerGraphImageProvider(null);
     this.cy?.destroy();
     this.cy = null;
     if (this.layoutIndicatorTimer !== null) {
