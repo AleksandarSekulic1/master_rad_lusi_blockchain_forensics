@@ -1402,6 +1402,83 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     return flags;
   }
 
+  /** Each active flag with a plain-language explanation of what it is and how it bears on
+   * the transaction / the investigation - shown in the "Zašto je čvor sumnjiv" row and as
+   * the tooltip on the verdict chips. */
+  protected get selectedNodeFlagDetails(): Array<{ label: string; detail: string }> {
+    return this.selectedNodeFlags.map((flag) => ({ label: this.flagLabel(flag), detail: this.flagExplanation(flag) }));
+  }
+
+  protected flagLabel(flag: string): string {
+    switch (flag) {
+      case 'Crna lista':
+        return this.t('Crna lista', 'Blacklisted');
+      case 'Visok rizik':
+        return this.t('Visok rizik', 'High risk');
+      case 'Peel lanac':
+        return this.t('Peel lanac', 'Peel chain');
+      case 'Skok lanca':
+        return this.t('Skok lanca', 'Chain hop');
+      case 'Anomalija':
+        return this.t('Anomalija', 'Anomaly');
+      default:
+        return flag;
+    }
+  }
+
+  protected flagExplanation(flag: string): string {
+    switch (flag) {
+      case 'Crna lista':
+        return this.t(
+          'Adresa je u bazi poznatih zlonamernih ili sankcionisanih adresa (npr. OFAC). Sredstva koja prođu kroz nju '
+            + 'smatraju se zaprljanim — svaki primalac nizvodno nasleđuje taj rizik, a berze takva sredstva mogu odbiti '
+            + 'ili zamrznuti. Direktna veza sa ovom adresom je najjači pojedinačni pokazatelj u analizi.',
+          'The address is in a database of known malicious or sanctioned addresses (e.g. OFAC). Funds passing through it '
+            + 'are treated as tainted — every downstream recipient inherits that risk, and exchanges may reject or freeze '
+            + 'such funds. A direct link to this address is the single strongest signal in the analysis.',
+        );
+      case 'Visok rizik':
+        return this.t(
+          'Zbirni skor rizika je ≥ 70 — kombinacija blizine crnoj listi, obrazaca pranja i sumnjivog porekla sredstava. '
+            + 'Ne dokazuje krivicu, ali označava čvor kao prioritet: svaku vezu koja iz njega izlazi treba proveriti, a '
+            + 'čvor je dobar kandidat za taint i pathfinding analizu.',
+          'The aggregate risk score is ≥ 70 — a mix of proximity to the blacklist, laundering patterns and suspicious '
+            + 'fund origin. It does not prove wrongdoing, but marks the node as a priority: review every outgoing edge, '
+            + 'and treat the node as a good candidate for taint and pathfinding analysis.',
+        );
+      case 'Peel lanac':
+        return this.t(
+          'Čvor je deo „peel chain" obrasca: velika suma se kreće kroz niz adresa i na svakom koraku se odvaja mali deo '
+            + 'ka strani (najčešće ka berzi radi unovčavanja), dok ostatak ide dalje. Klasična tehnika pranja koja '
+            + 'razbija tok na mnogo malih delova; svaki „odlomljeni" iznos je kandidat za tačku izlaska sredstava.',
+          'The node is part of a peel-chain pattern: a large sum moves through a series of addresses and at each hop a '
+            + 'small slice is peeled off to the side (usually an exchange for cash-out) while the remainder moves on. A '
+            + 'classic laundering technique that splits the flow into many small parts; each peeled amount is a candidate '
+            + 'cash-out point.',
+        );
+      case 'Skok lanca':
+        return this.t(
+          'Sredstva su prešla između različitih blokčejn mreža ili kroz most (bridge). Direktno on-chain praćenje se '
+            + 'ovde prekida — na drugoj mreži transakcija izgleda kao nov priliv bez istorije. Ulazni i izlazni krak '
+            + 'mosta treba ručno spojiti po iznosu i vremenu da bi se trag nastavio.',
+          'Funds crossed between different blockchain networks or through a bridge. Direct on-chain tracing breaks here — '
+            + 'on the other network the transaction looks like a fresh inflow with no history. The bridge’s in and out '
+            + 'legs must be matched manually by amount and time to continue the trail.',
+        );
+      case 'Anomalija':
+        return this.t(
+          'Statistički neuobičajen obrazac za ovu adresu — nagli skok u broju ili iznosu transakcija, aktivacija posle '
+            + 'dugog mirovanja, ili mnogo protivstrana u kratkom roku. Sam po sebi nije dokaz, ali je signal da '
+            + 'vremenski i iznosni kontekst transakcija oko ovog čvora zaslužuje pregled.',
+          'A statistically unusual pattern for this address — a sudden spike in transaction count or volume, reactivation '
+            + 'after a long dormancy, or many counterparties in a short window. Not evidence on its own, but a signal '
+            + 'that the timing and amount context around this node deserves a look.',
+        );
+      default:
+        return '';
+    }
+  }
+
   /** Same criteria as selectedNodeFlags (crna lista/visok rizik/anomalija/peel lanac/
    * skok lanca) but as a plain predicate, for scanning every node while building the
    * timeline's suspicious-rank index rather than just the currently selected one. */

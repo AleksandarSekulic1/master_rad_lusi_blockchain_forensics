@@ -425,7 +425,7 @@
         <div class="ni-verdict-body">
           <span class="ni-blacklist" *ngIf="node.blacklist_flag">⚠ {{ t('Na crnoj listi', 'Blacklisted') }}</span>
           <div class="ni-flags" *ngIf="selectedNodeFlags.length > 0; else niClean">
-            <span class="ni-flag" *ngFor="let flag of selectedNodeFlags">{{ flag }}</span>
+            <span class="ni-flag" *ngFor="let flag of selectedNodeFlags" [title]="flagExplanation(flag)">{{ flagLabel(flag) }}</span>
           </div>
           <ng-template #niClean>
             <span class="ni-ok">{{ t('Nema detektovanih upozorenja', 'No warnings detected') }}</span>
@@ -438,7 +438,13 @@
         <dl>
           <div [class.blacklist-warning]="selectedNodeFlags.length > 0">
             <dt>{{ selectedNodeFlags.length > 0 ? '⚠ ' : '' }}{{ t('Zašto je čvor sumnjiv', 'Why the node is suspicious') }}</dt>
-            <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : t('Nema — čvor nije označen', 'None — the node is not flagged') }}</dd>
+            <dd *ngIf="selectedNodeFlags.length === 0">{{ t('Nema — čvor nije označen', 'None — the node is not flagged') }}</dd>
+            <dd *ngIf="selectedNodeFlags.length > 0" class="ni-flag-explain">
+              <div class="ni-flag-explain-item" *ngFor="let f of selectedNodeFlagDetails">
+                <strong>{{ f.label }}</strong>
+                <p>{{ f.detail }}</p>
+              </div>
+            </dd>
           </div>
           <div>
             <dt>{{ t('Crne liste', 'Blacklists') }}</dt>
@@ -616,67 +622,108 @@
   </div>
 
   <div class="graph-legend" *ngIf="mode === 'full'">
-    <p class="panel-kicker">{{ t('Legenda — zašto je čvor obojen tako', 'Legend — why a node is colored the way it is') }}</p>
-    <div class="legend-items">
-      <div class="legend-item">
-        <span class="legend-swatch normal"></span>
-        {{ t('Normalno — bez detektovanih upozorenja', 'Normal — no warnings detected') }}
+    <div class="legend-head">
+      <p class="panel-kicker">{{ t('Legenda', 'Legend') }}</p>
+      <p class="legend-sub">
+        {{ t('Boja = najozbiljnije upozorenje; oblik i ivica čuvaju ostala. Prsten klastera je nezavisan. Kliknite na čvor za tačan razlog.',
+              'Color = the most severe warning; shape and border carry the rest. The cluster ring is independent. Click a node for the exact reason.') }}
+      </p>
+    </div>
+
+    <div class="legend-cols">
+      <div class="legend-col">
+        <span class="legend-group-title">{{ t('Čvorovi — boja i oblik', 'Nodes — color & shape') }}</span>
+
+        <div class="legend-item">
+          <span class="legend-swatch normal"></span>
+          <div class="legend-text">
+            <strong>{{ t('Normalno', 'Normal') }}</strong>
+            <span>{{ t('bez detektovanih upozorenja', 'no warnings detected') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch blacklisted"></span>
+          <div class="legend-text">
+            <strong>{{ t('Na crnoj listi', 'Blacklisted') }}</strong>
+            <span>{{ t('potvrđeno zlonamerna adresa', 'confirmed malicious address') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch high-risk"></span>
+          <div class="legend-text">
+            <strong>{{ t('Visok rizik', 'High risk') }}</strong>
+            <span>{{ t('skor rizika ≥ 70', 'risk score ≥ 70') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch anomaly"></span>
+          <div class="legend-text">
+            <strong>{{ t('Anomalija', 'Anomaly') }}</strong>
+            <span>{{ t('zlatna puna ivica · neuobičajen obrazac transakcija', 'solid gold border · unusual transaction pattern') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch chain-hop"></span>
+          <div class="legend-text">
+            <strong>{{ t('Skok lanca', 'Chain hop') }}</strong>
+            <span>{{ t('šestougao · prelaz između mreža / mostova', 'hexagon · crosses networks / bridges') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch peel-chain"></span>
+          <div class="legend-text">
+            <strong>{{ t('Peel lanac', 'Peel chain') }}</strong>
+            <span>{{ t('dijamant · „guljenje" manjih iznosa iz glavne sume', 'diamond · peeling small amounts off a main sum') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch clustered"></span>
+          <div class="legend-text">
+            <strong>{{ t('Klaster', 'Cluster') }}</strong>
+            <span>{{ t('tirkizni isprekidani prsten · verovatno ista osoba iza više adresa', 'teal dashed ring · likely one owner of several addresses') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch pinned"></span>
+          <div class="legend-text">
+            <strong>{{ t('Zakačen čvor', 'Pinned node') }}</strong>
+            <span>{{ t('zlatna dvostruka ivica · fiksna pozicija pri re-rasporedu', 'gold double border · fixed position on re-layout') }}</span>
+          </div>
+        </div>
       </div>
-      <div class="legend-item">
-        <span class="legend-swatch anomaly"></span>
-        {{ t('Anomalija —', 'Anomaly —') }} <strong>{{ t('zlatna puna ivica', 'solid gold border') }}</strong>; {{ t('neuobičajen obrazac transakcija', 'unusual transaction pattern') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-swatch chain-hop"></span>
-        {{ t('Skok lanca (šestougao) — sredstva prelaze između različitih mostova/mreža', 'Chain hop (hexagon) — funds move between different bridges/networks') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-swatch high-risk"></span>
-        {{ t('Visok skor rizika (≥ 70)', 'High risk score (≥ 70)') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-swatch peel-chain"></span>
-        {{ t('Peel lanac (dijamant) — postepeno „guljenje" manjih iznosa iz glavne sume', 'Peel chain (diamond) — gradual “peeling” of small amounts off a main sum') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-swatch blacklisted"></span>
-        {{ t('Na crnoj listi — potvrđeno zlonamerna adresa', 'Blacklisted — confirmed malicious address') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-swatch clustered"></span>
-        {{ t('Deo klastera —', 'Part of a cluster —') }} <strong>{{ t('tirkizan isprekidan prsten', 'teal dashed ring') }}</strong>
-        {{ t('odvojen od čvora; verovatno ista osoba/grupa iza više adresa', 'separated from the node; likely the same person/group behind several addresses') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-line first-transaction"></span>
-        {{ t('Prva transakcija hronološki (najranija u ovom prikazu)', 'First transaction chronologically (earliest in this view)') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-line last-transaction"></span>
-        {{ t('Poslednja transakcija hronološki (najskorija u ovom prikazu)', 'Last transaction chronologically (most recent in this view)') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-line swap-edge"></span>
-        {{ t('DEX SWAP (heuristika) —', 'DEX SWAP (heuristic) —') }} <strong>{{ t('isprekidana ljubičasta veza', 'dashed purple edge') }}</strong>;
-        {{ t('kliknite za DEX, iznose, hash i pouzdanost', 'click for the DEX, amounts, hash and confidence') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-swatch pinned"></span>
-        {{ t('Zakačen čvor (istražitelj) —', 'Pinned node (investigator) —') }} <strong>{{ t('zlatna dvostruka ivica', 'gold double border') }}</strong>;
-        {{ t('ostaje na fiksnoj poziciji pri ponovnom raspoređivanju grafa', 'stays at a fixed position when the graph is re-laid-out') }}
-      </div>
-      <div class="legend-item">
-        <span class="legend-line investigator-link"></span>
-        {{ t('Istražiteljska veza (off-chain) —', 'Investigator link (off-chain) —') }}
-        <strong>{{ t('isprekidana narandžasta linija bez strelice', 'dashed orange line with no arrow') }}</strong>;
-        {{ t('ručno zabeležena pretpostavljena veza,', 'a manually recorded suspected relation,') }}
-        <strong>{{ t('nije blockchain transakcija', 'not a blockchain transaction') }}</strong>;
-        {{ t('kliknite za razlog, dokaz, pouzdanost i uklanjanje', 'click for the reason, evidence, confidence and removal') }}
+
+      <div class="legend-col">
+        <span class="legend-group-title">{{ t('Veze i linije', 'Edges & lines') }}</span>
+
+        <div class="legend-item">
+          <span class="legend-line first-transaction"></span>
+          <div class="legend-text">
+            <strong>{{ t('Prva transakcija', 'First transaction') }}</strong>
+            <span>{{ t('najranija u ovom prikazu', 'earliest in this view') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-line last-transaction"></span>
+          <div class="legend-text">
+            <strong>{{ t('Poslednja transakcija', 'Last transaction') }}</strong>
+            <span>{{ t('najskorija u ovom prikazu', 'most recent in this view') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-line swap-edge"></span>
+          <div class="legend-text">
+            <strong>{{ t('DEX SWAP', 'DEX SWAP') }}</strong>
+            <span>{{ t('isprekidana ljubičasta · klik za DEX, iznose, hash, pouzdanost', 'dashed purple · click for DEX, amounts, hash, confidence') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-line investigator-link"></span>
+          <div class="legend-text">
+            <strong>{{ t('Istražiteljska veza', 'Investigator link') }}</strong>
+            <span>{{ t('isprekidana narandžasta, bez strelice · ručna off-chain pretpostavka, nije blockchain', 'dashed orange, no arrow · manual off-chain assumption, not blockchain') }}</span>
+          </div>
+        </div>
       </div>
     </div>
-    <p class="legend-hint">
-      {{ t('Kliknite na čvor da vidite tačno zbog čega je označen kao sumnjiv. Čvor može imati više upozorenja odjednom — boja uvek prikazuje najozbiljnije, dok oblik i ivica čuvaju ostale. Klaster (prsten) je nezavisan od boje/oblika.',
-            'Click a node to see exactly why it was flagged as suspicious. A node can carry several warnings at once — the color always shows the most severe, while the shape and border keep the rest. The cluster (ring) is independent of color/shape.') }}
-    </p>
   </div>
 </div>

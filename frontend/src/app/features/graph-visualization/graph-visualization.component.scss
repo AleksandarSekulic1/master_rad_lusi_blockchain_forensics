@@ -635,31 +635,78 @@ h3 {
 }
 
 .graph-legend {
-  padding: 1rem;
+  padding: 1.1rem 1.2rem;
   border-radius: 1rem;
   border: 1px solid var(--gv-border);
   background: var(--gv-surface);
 }
 
-.legend-items {
+.legend-head {
+  margin-bottom: 0.9rem;
+}
+
+.legend-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--gv-text-dim);
+  max-width: 60rem;
+}
+
+.legend-cols {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.6rem 1.5rem;
-  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1.2rem 2rem;
+}
+
+.legend-col {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+}
+
+.legend-group-title {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gv-kicker);
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid var(--gv-border);
 }
 
 .legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-columns: 1.15rem 1fr;
+  align-items: start;
+  gap: 0.65rem;
   font-size: 0.85rem;
   color: var(--gv-text);
+}
+
+.legend-text {
+  display: grid;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.legend-text strong {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--gv-heading);
+}
+
+.legend-text span {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--gv-text-dim);
 }
 
 .legend-swatch {
   flex: none;
   width: 1rem;
   height: 1rem;
+  margin-top: 0.15rem;
   border-radius: 50%;
   border: 2px solid transparent;
 }
@@ -709,8 +756,9 @@ h3 {
 
 .legend-line {
   flex: none;
-  width: 1.5rem;
+  width: 1.15rem;
   height: 3px;
+  margin-top: 0.6rem;
   border-radius: 999px;
 }
 
@@ -1071,4 +1119,26 @@ h3 {
 .ni-group dl {
   margin: 0 0 0.7rem;
   padding-left: 1.2rem;
+}
+
+/* node-details: per-flag explanations in "Zašto je čvor sumnjiv" */
+.ni-flag-explain {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.2rem 0 0;
+}
+
+.ni-flag-explain-item strong {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.ni-flag-explain-item p {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--gv-text);
+  overflow-wrap: anywhere;
 }
