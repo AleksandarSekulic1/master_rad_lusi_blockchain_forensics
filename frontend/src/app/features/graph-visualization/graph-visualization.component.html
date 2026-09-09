@@ -30,9 +30,11 @@
     </button>
   </div>
 
-  <!-- Istražiteljski sloj: čije istrage veze se iscrtavaju preko grafa. Jedan <select>,
-       istog oblika kao gornji izbor evidencije - nije nova sekcija/stranica. -->
-  <div class="evidence-picker investigator-layer-picker" *ngIf="investigations.length > 0">
+  <!-- Istražiteljski sloj: koja istraga (slučaj istražitelja) je aktivna. Jedan <select>,
+       istog oblika kao gornji izbor evidencije - nije nova sekcija/stranica. Uvek vidljiv:
+       ovde se istraga i pravi (dugme „Nova istraga") - bez toga ceo sloj je nedostupan
+       dok istraga ne postoji. -->
+  <div class="evidence-picker investigator-layer-picker">
     <label>
       Istražiteljski sloj — istraga
       <select [ngModel]="selectedInvestigationId ?? ''" (ngModelChange)="onInvestigationSelected($event)">
@@ -40,6 +42,14 @@
         <option *ngFor="let inv of investigations" [value]="inv.id">{{ inv.name }}</option>
       </select>
     </label>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="createInvestigation()"
+      title="Napravi novu istragu (slučaj istražitelja) i odmah je izaberi"
+    >
+      ➕ Nova istraga
+    </button>
     <button
       type="button"
       class="ghost-button"

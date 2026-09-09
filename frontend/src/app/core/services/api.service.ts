@@ -107,6 +107,10 @@ export class ApiService {
     return this.http.get<{ investigations: Investigation[] }>(`${this.apiUrl}/api/v1/investigations`);
   }
 
+  createInvestigation(body: { name: string; description?: string | null }): Observable<Investigation> {
+    return this.http.post<Investigation>(`${this.apiUrl}/api/v1/investigations`, body);
+  }
+
   /** Every investigator link in an investigation (optionally only those touching one
    * address - either endpoint, the association is undirected). */
   getInvestigatorLinks(investigationId: string, address?: string | null): Observable<InvestigatorLinkListResponse> {

@@ -169,9 +169,9 @@ izoluju skladište preko `monkeypatch.setattr(repository, '_root', …)`.
 | Fajl | Uloga |
 |---|---|
 | `models/blockchain-forensics.models.ts` | *(izmenjeno)* + `Investigation`, `InvestigatorLink(+Confidence, +ListResponse)`, `InvestigatorNote(+TargetType, +ListResponse)`, `PinnedNode(+ListResponse)` |
-| `core/services/api.service.ts` | *(izmenjeno)* + `listInvestigations`; beleške `get/add/update/delete`; veze `get/add/delete`; zakačivanje `get/pin/unpin` |
-| `features/graph-visualization/…component.ts` | *(izmenjeno)* `<select>` za istragu + `localStorage` restore; overlay veza (build/render/toggle/select/remove); stanje zakačenih čvorova učitano iz API-ja i sinhronizovano; povezivanje modala + broj beleški; podaci za „Pregled slučaja" + handleri „na graf / otkači / detalji" |
-| `features/graph-visualization/…component.html` | *(izmenjeno)* red sa `<select>`-om za istragu; toggle za overlay veza; panel detalja veze (`<aside>`); razdvojen blok istražiteljskih akcija u panelu čvora; montiranje panela „Pregled slučaja"; dva reda legende |
+| `core/services/api.service.ts` | *(izmenjeno)* + `listInvestigations` / `createInvestigation`; beleške `get/add/update/delete`; veze `get/add/delete`; zakačivanje `get/pin/unpin` |
+| `features/graph-visualization/…component.ts` | *(izmenjeno)* `<select>` za istragu + `createInvestigation()` (dugme „Nova istraga") + `localStorage` restore; overlay veza (build/render/toggle/select/remove); stanje zakačenih čvorova učitano iz API-ja i sinhronizovano; povezivanje modala + broj beleški; podaci za „Pregled slučaja" + handleri „na graf / otkači / detalji" |
+| `features/graph-visualization/…component.html` | *(izmenjeno)* red sa `<select>`-om za istragu (uvek vidljiv) + dugme **„➕ Nova istraga"**; toggle za overlay veza; panel detalja veze (`<aside>`); razdvojen blok istražiteljskih akcija u panelu čvora; montiranje panela „Pregled slučaja"; dva reda legende |
 | `features/graph-visualization/…component.scss` | *(izmenjeno)* narandžasti akcenat istražiteljskog sloja, panel veze + „amber" badge pouzdanosti, `.danger-ghost`, akcioni „chip"-ovi, markeri legende |
 | `features/investigator-node-dialog/` *(novo, .ts/.html/.scss)* | `InvestigatorNodeDialogComponent` — modal: tab „Beleške" (lista + dodaj + izmeni + obriši) i tab „Nova veza", otvara se iz panela čvora |
 | `features/case-overview-panel/` *(novo, .ts/.html/.scss)* | `CaseOverviewPanelComponent` — kompaktan pregled slučaja: naziv/opis + brojevi beleški / zakačenih adresa / veza, svaki proširiv |
@@ -269,7 +269,7 @@ grafa, postojećih grana ili drugih analiza:
 
 | Element | Gde | Šta ponovo koristi |
 |---|---|---|
-| **`<select>` za istragu** („Istražiteljski sloj") | red ispod izbora evidencije | markup/stil `<select>`-a za evidenciju; narandžasti levi akcenat da se čita kao „istražiteljski sloj" |
+| **`<select>` za istragu + „➕ Nova istraga"** („Istražiteljski sloj") | red ispod izbora evidencije (uvek vidljiv) | markup/stil `<select>`-a za evidenciju; narandžasti levi akcenat. „Nova istraga" (`window.prompt` → `POST /investigations` → auto-izbor) je jedini način da se sloj uopšte pokrene iz UI-ja |
 | **Overlay istražiteljskih veza** | isprekidana **narandžasta**, bez strelica, natpis `◆ INVESTIGATOR LINK · <conf>`, pouzdanost menja providnost/debljinu | mehanizam DEX-swap overlay-a (`cy.remove`/`cy.add`, bez re-layout-a); nov `edge.investigator-link*` stil — pravila `edge` / `edge.swap-*` / `edge.bridge-edge` su netaknuta |
 | **Panel detalja veze** | najspoljašnja grana lanca `veza → swap → čvor → prazno`: izvor/cilj/razlog/dokaz/pouzdanost/kreirano/autor + disclaimer + „Ukloni vezu" | layout `.node-inspector` |
 | **Zakačeni čvorovi** | zlatna dvostruka ivica + zlatni „glow"; fcose `fixedNodeConstraint` + `node.lock()` pri re-layout-u | fcose layout koji već postoji — nema zasebnog sistema za pozicioniranje; učitano iz / sinhronizovano sa API-jem |
@@ -471,92 +471,93 @@ uklonjena ni izmenjena** pri uključivanju/isključivanju overlay-a.
 
 ---
 
-### 13.3 Ručno testiranje na postojećem demo slučaju
+### 13.3 Ručno testiranje kroz UI — korak po korak
 
-Testira se nad slučajem koji **već postoji u sistemu**:
-**„Demo: Sumnjiva laundering sema (hakovan novcanik)"** (id `46ae7f91db9b`, status
-*otvoren*, 8 dokaza — namerno pokriva sve heuristike). Njegov graf sadrži, između
-ostalih, ove **stvarne čvorove** (koristićemo ih u koracima):
+**Sve se radi na jednoj stranici: „Graf" (`/graph`).** Nijedan `curl` ni Swagger nije
+potreban.
 
-| Adresa (čvor) | Šta je u demo grafu |
-|---|---|
-| `0xVictimWallet` | žrtva, prvi u lancu |
-| `0xPeelSeed`, `0xPeelRelay1`, `0xPeelRelay2` | peel lanac (oblik dijamanta) |
-| `0xMuleWallet1`, `0xMuleWallet2` | mule novčanici |
-| `0xbad0000000000000000000000000000000000001` | **crna lista / OFAC** (crven čvor) |
-| `0xBridgeRouterHop` | skok lanca / most (šestougao) |
-| `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` | **stvarna Ethereum adresa** na kraju lanca |
-| `0xInvestorWallet`, `0xUniswapRouter`, `0xSushiRouter` | DEX swap deo |
+- **Prijava:** bilo koji nalog — `admin / admin123` ili `aco / aco123` (oba rade;
+  istražiteljski sloj ne traži admina).
+- **Evidencijski slučaj za test:** **„Demo: Sumnjiva laundering sema (hakovan
+  novcanik)"** — otvoren, 8 dokaza, graf ima ~34 čvora, pokriva sve heuristike.
+- **Čvorovi koje ćemo koristiti** (stvarni iz tog grafa):
 
-Stvaran `tx_hash` iz dokaza (za belešku na transakciji): **`0xswap0001`**
-(krak `0xInvestorWallet → 0xUniswapRouter`) ili **`0xtaintseed`**.
+  | Čvor | Šta je |
+  |---|---|
+  | `0xbad0000000000000000000000000000000000001` (na grafu `0xbad0…0001`) | crna lista / OFAC — **crven** čvor |
+  | `0xUniswapRouter` (na grafu `0xUnis…uter`) | DEX ruter — **zelen šestougao** |
+  | `0xVictimWallet` | žrtva, prvi u lancu |
+  | `0xMuleWallet1`, `0xMuleWallet2` | dva mule novčanika |
+  | `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` | stvarna Ethereum adresa na kraju lanca |
 
-#### Priprema
+**Pokretanje** (ako već ne radi): `docker compose up` iz korena repozitorijuma, ili
+`uvicorn app.main:app --reload` u `backend/` + `npm start` u `frontend/`. Otvori
+`http://localhost:4200`.
 
-```bash
-# Terminal 1 - backend  (iz master_rad_lusi_blockchain_forensics/backend)
-../../.venv/Scripts/python -m uvicorn app.main:app --reload      # -> http://localhost:8000
-# Terminal 2 - frontend  (iz master_rad_lusi_blockchain_forensics/frontend)
-npm start                                                        # -> http://localhost:4200
-```
-
-(ili `docker compose up` iz korena repozitorijuma). Otvori `http://localhost:4200`,
-prijavi se kao **admin / admin123**.
-
-**Jednokratno — napravi istragu** (nema UI ekrana za to; koristi Swagger na
-`http://localhost:8000/docs` → `Authorize` tokenom → `POST /api/v1/investigations`, ili
-`curl`):
-
-```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123"}' | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
-
-curl -s -X POST http://localhost:8000/api/v1/investigations \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"Istraga: Demo laundering sema","description":"Test istrazivackog sloja"}'
-```
-
-#### Koraci u pretraživaču
+#### Koraci
 
 | # | Radnja | Očekivano |
 |---|---|---|
-| 1 | **Slučajevi** → izaberi *„Demo: Sumnjiva laundering sema (hakovan novcanik)"* → otvori **Graf**. | graf se iscrta (20+ čvorova; crven = crna lista, dijamant = peel, šestougao = skok lanca) |
-| 2 | U redu **„Istražiteljski sloj — istraga"** izaberi *„Istraga: Demo laundering sema"*. | ispod se pojavi panel **„Istražiteljski pregled slučaja"**: `Beleške: 0 · Zakačene adrese: 0 · Istražiteljske veze: 0`; dugmad u panelu čvora (`📌`, `📝`, `🔗`) više nisu siva/onemogućena |
-| 3 | **Beleška na čvoru** — klikni crveni čvor **`0xbad0…0001`** → desno **📝 Dodaj belešku** → u modalu (tab „Beleške") upiši *„OFAC sankcionisana adresa — primalac iz peel lanca."* → **Dodaj belešku**. | beleška u listi; `Beleške: 1`; u panelu čvora „1 beleška · Prikaži beleške" |
-| 4 | **Izmena** — u modalu **Izmeni** na toj belešci → dopuni tekst → **Sačuvaj**. | tekst ažuriran; ispod „· izmenjeno" |
-| 5 | **Brisanje** — **Obriši** → potvrdi. | `Beleške: 0`; red „N beleški" u panelu čvora nestane |
-| 6 | **Beleška na transakciji** (nema UI — preko Swagger-a / `curl`): `POST /api/v1/investigations/{iid}/notes` sa telom `{"tx_id":"0xswap0001","text":"Ulazni krak swap-a; pratiti izlaz u USDC."}`. | `200`, `target_type:"transaction"`. U UI-ju: **„Pregled slučaja" → „Beleške: 1"** → proširi → red sa oznakom **„transakcija"** i tekstom (nema „na graf →" jer nije čvor) |
-| 7 | **Zakači čvor** — klikni **`0xVictimWallet`** → **📌 Zakači** → povuci taj čvor mišem malo u stranu → promeni „Prikaz transakcija" (izaberi jedan dokaz pa vrati „Sve transakcije") da se graf ponovo rasporedi. | zakačen čvor **ostaje na svojoj poziciji** dok se ostatak preraspoređuje; ima **zlatnu dvostruku ivicu**; dugme sada piše **📌 Otkači**; `Zakačene adrese: 1` |
-| 8 | Zakači još i **`0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045`** i **`0xBridgeRouterHop`**. Otvori **„Pregled slučaja" → „Zakačene adrese: 3"**. | lista sve tri adrese; **„na graf →"** bira i centrira čvor, **„otkači"** ga oslobađa (broj padne) |
-| 9 | **Istražiteljska veza** — klikni **`0xMuleWallet1`** → **🔗 Istražiteljska veza** → u modalu (tab „Nova veza"): *Ciljna adresa* `0xMuleWallet2`, *Razlog* „Ista IP adresa u logovima servera u periodu transfera.", *Dokaz* „Server log #42, #57", *Pouzdanost* **Medium** → **Kreiraj vezu**. | modal se zatvori; na grafu **isprekidana narandžasta linija bez strelice** `◆ INVESTIGATOR LINK · Medium` između te dve mule adrese; `Istražiteljske veze: 1` |
-| 10 | Klikni tu **narandžastu liniju**. | panel „Istražiteljska veza — nije blockchain činjenica": izvor/cilj/razlog/dokaz/pouzdanost/kreirano/autor + disclaimer + dugme **Ukloni vezu**. (Da je transakciona grana — bila bi puna plava sa strelicom; jasno se razlikuje.) |
+| 1 | **Slučajevi** (gornja navigacija) → klik na *„Demo: Sumnjiva laundering sema (hakovan novcanik)"* → **Graf**. | graf se iscrta; naslov piše npr. „34 čvorova, 34 veza" |
+| 2 | **Napravi istragu.** U redu **„Istražiteljski sloj — istraga"** (iznad grafa) klikni **➕ Nova istraga** → u prozorčiću upiši `Test istraga` → OK. | istraga se **odmah izabere** u `<select>`-u; ispod se pojavi panel **„Istražiteljski pregled slučaja"** sa `Beleške: 0 · Zakačene adrese: 0 · Istražiteljske veze: 0`; dugmad u panelu čvora (**📌 Zakači**, **📝 Dodaj belešku**, **🔗 Istražiteljska veza**) **više nisu siva** |
+| 3 | **Beleška na čvoru** — klikni crveni čvor **`0xbad0…0001`** → u panelu desno **📝 Dodaj belešku** → u modalu (tab „Beleške") upiši `OFAC sankcionisana adresa; primalac sredstava iz peel lanca.` → **Dodaj belešku**. | beleška se pojavi u listi; „Pregled slučaja" → `Beleške: 1`; u panelu čvora se pojavi red **„1 beleška · Prikaži beleške"** |
+| 4 | **Izmeni belešku** — u istom modalu klikni **Izmeni** na toj belešci → dopuni tekst → **Sačuvaj**. | tekst se ažurira; ispod stoji **„· izmenjeno"** |
+| 5 | **Obriši belešku** — **Obriši** → potvrdi. | `Beleške: 0`; red „1 beleška…" u panelu čvora nestane |
+| 6 | **Zakači čvor** — klikni **`0xUnis…uter`** (Uniswap ruter) → **📌 Zakači** → povuci taj čvor mišem malo u stranu → onda promeni „Prikaz transakcija" (izaberi jedan dokazni fajl pa vrati na „Sve transakcije") da se graf ponovo rasporedi. | zakačen čvor **ostaje tačno gde si ga ostavio** dok se ceo ostatak grafa preraspoređuje; ima **zlatnu isprekidanu ivicu**; dugme sada piše **📌 Otkači**; `Zakačene adrese: 1` |
+| 7 | Zakači još **`0xVictimWallet`** i **`0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045`**. U panelu **„Istražiteljski pregled slučaja"** klikni na broj kod **„Zakačene adrese: 3"**. | proširi se lista sve tri adrese; **„na graf →"** bira i centrira taj čvor, **„otkači"** ga oslobađa (broj padne na 2) |
+| 8 | **Osveži stranicu (F5).** Vrati se na isti slučaj → **Graf**. | istraga *„Test istraga"* je **već izabrana** (pamti se); zakačeni čvorovi su i dalje **zlatni i na istim pozicijama**; brojevi u „Pregledu slučaja" isti |
+| 9 | **Istražiteljska veza** — klikni **`0xMuleWallet1`** → **🔗 Istražiteljska veza** → u modalu (tab „Nova veza"): *Ciljna adresa* `0xMuleWallet2`, *Razlog* `Ista IP adresa u logovima servera u periodu transfera.`, *Dokaz* `Server log #42, #57`, *Pouzdanost* **Medium** → **Kreiraj vezu**. | modal se zatvori; na grafu se pojavi **isprekidana NARANDŽASTA linija BEZ strelice** sa natpisom `◆ INVESTIGATOR LINK · Medium` između te dve mule adrese; `Istražiteljske veze: 1` |
+| 10 | Klikni na tu **narandžastu liniju**. | u panelu desno: **„Istražiteljska veza — nije blockchain činjenica"** — izvor/cilj/razlog/dokaz/pouzdanost/kreirano/autor + upozorenje + dugme **Ukloni vezu**. (Transakciona grana je puna plava sa strelicom — jasno drugačija.) |
 | 11 | U tom panelu klikni **Ukloni vezu** → potvrdi. | narandžasta linija nestaje; `Istražiteljske veze: 0` |
-| 12 | Iz **„Pregled slučaja"** klikni **„na graf →"** na nekoj belešci čvora (ako si je zadržao). | taj čvor se izabere i centrira u grafu |
+| 12 | **Izolacija.** Klikni **➕ Nova istraga** → `Istraga B` → OK. | automatski se izabere; „Pregled slučaja" pokaže `0 · 0 · 0`; **nema zlatnih čvorova ni narandžastih linija** — ništa iz „Test istrage" se ne vidi |
+| 13 | Dodaj belešku na `0xVictimWallet` u ovoj (drugoj) istrazi. Zatim u `<select>`-u **„Istražiteljski sloj — istraga"** vrati na **„Test istraga"**. | podaci „Test istrage" se vrate; beleška sa `0xVictimWallet` iz „Istrage B" se **ne vidi** |
 
-> Napomena: donja linija i kicker **„Istražiteljski sloj — nije blockchain podatak"** u
-> panelu čvora odvajaju istražiteljske akcije od on-chain podataka (`<dl>` ispod: ENS,
-> skor rizika, klaster, oznake…). Istražiteljski podaci nikad nisu u tom `<dl>`-u.
+> **Odvajanje od blockchain podataka:** u panelu čvora, iznad linije i kicker-a
+> **„ISTRAŽITELJSKI SLOJ — NIJE BLOCKCHAIN PODATAK"** stoje samo istražiteljske akcije;
+> ispod linije (`<dl>`: ENS ime, tip adrese, skor rizika, klaster, oznake…) su isključivo
+> automatski izvedeni on-chain podaci. Istražiteljski podaci nikad nisu u tom `<dl>`-u.
+
+#### Opciono — beleška na transakciji (nema UI)
+
+Modal pravi samo beleške na **adresama/čvorovima**. Beleška na **transakciji** (`tx_id`)
+za sad se pravi kroz `POST /api/v1/investigations/{id}/notes` sa telom
+`{"tx_id":"0xswap0001","text":"..."}` (npr. preko `http://localhost:8000/docs`). U
+aplikaciji se onda vidi u **„Istražiteljski pregled slučaja" → „Beleške"** kao red sa
+oznakom **„transakcija"**. (`0xswap0001` je stvaran `tx_hash` iz dokaza ovog demo
+slučaja.)
+
+#### Zašto su dugmad bila siva (i zašto ranije nisi mogao ništa da uradiš)
+
+Dugmad **📌 / 📝 / 🔗** u panelu čvora su onemogućena dok **istraga nije izabrana**
+(`[disabled]="!selectedInvestigationId"`) — svaka istražiteljska stavka **mora** da
+pripadne nekom slučaju (istrazi). Ranije je red **„Istražiteljski sloj — istraga"** bio
+sakriven ako **nijedna istraga ne postoji** (`*ngIf="investigations.length > 0"`), a
+**nije bilo načina da se istraga napravi iz UI-ja** → sve je ostajalo sivo, bez izlaza.
+**Popravka:** red je sada uvek vidljiv i ima dugme **➕ Nova istraga** (poziva
+`POST /api/v1/investigations` i odmah je izabere). Prvi korak svakog testa je zato „➕
+Nova istraga".
 
 ---
 
 ### 13.4 Provera trajnosti (osvežavanje pretraživača + restart backenda)
 
-1. Uradi korake 3, 7 i 9 iz §13.3 (ostave se: 1 beleška na čvoru, 1 zakačen čvor, 1 veza).
-2. **Osveži stranicu (F5).** Ponovo izaberi isti evidencijski slučaj i otvori **Graf**.
-   → Istraga je **već izabrana** (`localStorage`); „Pregled slučaja" i dalje pokazuje iste
+1. Ostavi 1 belešku na čvoru, 1 zakačen čvor i 1 vezu (koraci 3, 6, 9 iz §13.3).
+2. **Osveži stranicu (F5).** Vrati se na isti evidencijski slučaj → **Graf**.
+   → Istraga je **već izabrana** (`localStorage`); „Pregled slučaja" pokazuje iste
    brojeve; zakačen čvor je i dalje zlatan i na istoj poziciji; narandžasta veza je i
    dalje tu.
 3. **Ugasi `uvicorn` (Ctrl+C) i pokreni ga ponovo.** Osveži stranicu.
-   → Sve je i dalje tu (čita se iz JSON fajlova na disku, ništa nije bilo samo u memoriji).
-4. Direktno na disku proveri (bez aplikacije):
+   → Sve je i dalje tu (čita se iz JSON fajlova na disku — ništa nije bilo samo u
+   memoriji).
+4. (Za tezu / dokaz) direktno na disku:
    ```
-   data/investigations/<iid>/investigation.json
-   data/investigations/<iid>/notes.json          -> { "notes":        [ 1 (ili 2 sa tx belеškom) ] }
-   data/investigations/<iid>/pinned_nodes.json   -> { "pinned_nodes": [ 1 sa x,y ] }
-   data/investigations/<iid>/links.json          -> { "links":        [ 1, "directed": false ] }
+   data/investigations/<id>/investigation.json
+   data/investigations/<id>/notes.json          -> { "notes":        [ 1 stavka, "investigation_id": "<id>" ] }
+   data/investigations/<id>/pinned_nodes.json   -> { "pinned_nodes": [ 1 stavka sa x,y ] }
+   data/investigations/<id>/links.json          -> { "links":        [ 1 stavka, "directed": false ] }
    ```
-   Ništa nije upisano u `data/cases/` ni `data/raw/` — samo u `data/investigations/` (+ red
-   u `logs/audit_log.jsonl` sa akcijom `investigator_*`).
+   U `data/cases/` i `data/raw/` **ništa nije promenjeno** — samo `data/investigations/`
+   (+ red u `logs/audit_log.jsonl` sa akcijom `investigator_*`).
 
 Automatizovana verzija: `backend/tests/test_case_management_persistence.py` — „restart" je
 tamo nova `TestClient(app)` instanca nad istim fajlovima.
@@ -565,20 +566,10 @@ tamo nova `TestClient(app)` instanca nad istim fajlovima.
 
 ### 13.5 Provera izolacije između slučajeva
 
-1. Napravi **drugu istragu** (Swagger / `curl`, kao u §13.3):
-   `POST /api/v1/investigations {"name":"Istraga: Predmet B"}`.
-2. Ostani na istom evidencijskom slučaju i grafu; u `<select>`-u **„Istražiteljski sloj —
-   istraga"** prebaci na *„Istraga: Predmet B"*.
-   → „Pregled slučaja" pokaže `Beleške: 0 · Zakačene adrese: 0 · Istražiteljske veze: 0`;
-   nijedna beleška / zakačen čvor / veza iz prve istrage se **NE vidi** (nema zlatnih
-   čvorova, nema narandžastih linija).
-3. Dodaj belešku na `0xPeelSeed` u ovoj (drugoj) istrazi.
-4. Prebaci `<select>` **nazad na prvu istragu**.
-   → Podaci prve istrage se ponovo pojave; beleška sa `0xPeelSeed` iz druge istrage se
-   **ne vidi**.
-5. (Opciono) Obriši drugu istragu: `DELETE /api/v1/investigations/{iid2}` → `204`. Prva
-   istraga i njeni podaci ostaju netaknuti; direktorijum `data/investigations/<iid2>/` je
-   nestao.
+Pokriveno korakom **12–13** u §13.3: **➕ Nova istraga** „Istraga B" → „Pregled slučaja"
+`0 · 0 · 0`, nema zlatnih čvorova ni narandžastih linija; beleška dodata u „Istrazi B" se
+ne vidi u „Test istrazi" i obrnuto. Prebacivanje ide preko `<select>`-a **„Istražiteljski
+sloj — istraga"**.
 
 Automatizovano: `test_case_management_persistence.py::TestCaseIsolation` i
 `test_case_management_full_pass.py::TestIsolation`.
@@ -638,9 +629,10 @@ Swaps-u). Istražiteljski sloj ih ni na koji način ne menja.
 
 ## 15. Poznata ograničenja
 
-- **Nema zasebne Case Management stranice.** Istrage se u UI-ju mogu samo *listati /
-  birati*; **pravljenje / preimenovanje / zatvaranje** zahteva direktan API poziv
-  (endpoint-i postoje). Ceo sloj je dostupan samo sa `/graf`.
+- **Nema zasebne Case Management stranice.** Istrage se u UI-ju mogu **napraviti**
+  (dugme „➕ Nova istraga" u redu „Istražiteljski sloj — istraga" na stranici „Graf") i
+  **izabrati**; **preimenovanje / zatvaranje / brisanje** i dalje zahteva direktan API
+  poziv (endpoint-i postoje). Ceo sloj je dostupan samo sa `/graph`.
 - **Gustina UI-ja na stranici „Graf".** Ona sad nosi `<select>` za istragu, toggle
   overlay-a, panel „Pregled slučaja", blok akcija u panelu čvora, dva modala i dva reda
   legende, povrh sopstvenih kontrola. Svaki dodatak je kompaktan, ali je stranica gusta —
@@ -713,6 +705,7 @@ raniji).
 | **10** | **Trajno čuvanje zakačenih čvorova**: `pins_models/repository/service` + rute `/pins` (`GET` / `PUT` upsert / `DELETE ?address=`). Frontend sada učitava/sinhronizuje zakačivanje sa API-jem; zakačivanje zahteva izabranu istragu; izabrana istraga se pamti u `localStorage`. Verifikovana finalna persistencija svih 5 kategorija. |
 | **11** | **Fokusirani test-prolaz** kroz celu čeklistu (`test_case_management_full_pass.py`, 19 testova) + provera da Graf/Taint/Pathfinding/Behavioral/DEX rade. Jedina ispravka: `maxlength` na poljima modala. |
 | **12** | **Finalni pregled**: dva mala refaktora bez promene ponašanja (deljeni JSON helperi u `repository.py`; razdvojen `.investigator-block` sa kicker-om) + ova konsolidovana referenca. |
+| **12a** | **Ispravka blokera pri ručnom testiranju**: red „Istražiteljski sloj — istraga" je uvek vidljiv i dobio je dugme **„➕ Nova istraga"** (`api.createInvestigation` → `POST /investigations` → auto-izbor). Ranije: bez ijedne istrage red je bio sakriven, a nije bilo načina da se napravi iz UI-ja → sve akcije trajno sive. + §13.3 prepisan kao čist UI test korak-po-korak. |
 
 ---
 

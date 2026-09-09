@@ -337,6 +337,23 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.loadCaseOverviewNotes();
   }
 
+  /** Create a new investigation straight from the picker row (the investigator layer is
+   * otherwise unreachable until one exists, and there is no other UI for it). Prompts for
+   * a name, POSTs it, then selects it so the node-details actions become usable. */
+  protected createInvestigation(): void {
+    const name = window.prompt('Naziv nove istrage:')?.trim();
+    if (!name) {
+      return;
+    }
+    this.api.createInvestigation({ name }).subscribe({
+      next: (created) => {
+        this.investigations = [...this.investigations, created];
+        this.onInvestigationSelected(created.id);
+      },
+      error: () => window.alert('Neuspešno kreiranje istrage.'),
+    });
+  }
+
   /** The chosen investigation is remembered across a reload (localStorage) so all of its
    * persisted notes / pins / links come straight back without re-picking it. */
   private static readonly SELECTED_INVESTIGATION_KEY = 'lusi_selected_investigation';
