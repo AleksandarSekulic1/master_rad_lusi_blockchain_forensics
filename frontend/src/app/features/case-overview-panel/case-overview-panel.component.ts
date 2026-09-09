@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
+import { SettingsService } from '../../core/services/settings.service';
 import { InvestigatorLink, InvestigatorNote } from '../../models/blockchain-forensics.models';
 
 /** Compact "Case Overview / Investigator Case" summary for the currently selected
@@ -33,6 +34,12 @@ export class CaseOverviewPanelComponent {
   @Output() readonly showLink = new EventEmitter<InvestigatorLink>();
 
   protected open: 'notes' | 'pins' | 'links' | null = null;
+
+  constructor(public readonly settings: SettingsService) {}
+
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   protected toggle(category: 'notes' | 'pins' | 'links'): void {
     this.open = this.open === category ? null : category;

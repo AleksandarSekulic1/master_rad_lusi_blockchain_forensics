@@ -1,3 +1,29 @@
+:host {
+  --nd-bg: #0b1526;
+  --nd-border: rgba(148, 163, 184, 0.24);
+  --nd-heading: #eef4ff;
+  --nd-text: #dbe6fb;
+  --nd-text-2: #cdd9ef;
+  --nd-dim: #9db1cf;
+  --nd-muted: #8ea6c7;
+  --nd-field-bg: rgba(255, 255, 255, 0.03);
+  --nd-chip-bg: rgba(255, 255, 255, 0.02);
+  --nd-kicker: #7dd3fc;
+}
+
+:host-context([data-theme='light']) {
+  --nd-bg: #ffffff;
+  --nd-border: rgba(15, 23, 42, 0.14);
+  --nd-heading: #16233b;
+  --nd-text: #26344c;
+  --nd-text-2: #26344c;
+  --nd-dim: #55658c;
+  --nd-muted: #55658c;
+  --nd-field-bg: #f6f8fc;
+  --nd-chip-bg: rgba(15, 23, 42, 0.03);
+  --nd-kicker: #2563eb;
+}
+
 /* Same overlay pattern as custody-access-dialog. Self-contained (component styles are
    view-encapsulated, nothing global to lean on). */
 .inv-overlay {
@@ -18,10 +44,10 @@
   overflow-y: auto;
   padding: 1.2rem 1.3rem 1.4rem;
   border-radius: 1.1rem;
-  background: #0b1526;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: var(--nd-bg);
+  border: 1px solid var(--nd-border);
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
-  color: #dbe6fb;
+  color: var(--nd-text);
 }
 
 .inv-header {
@@ -36,7 +62,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: var(--nd-kicker);
 }
 
 .inv-address {
@@ -44,7 +70,7 @@
   font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
   font-size: 0.86rem;
   line-height: 1.5;
-  color: #eef4ff;
+  color: var(--nd-heading);
   overflow-wrap: anywhere;
 }
 
@@ -53,14 +79,14 @@
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 0.6rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(255, 255, 255, 0.03);
-  color: #d9e6ff;
+  border: 1px solid var(--nd-border);
+  background: var(--nd-field-bg);
+  color: var(--nd-text-2);
   cursor: pointer;
 }
 
 .inv-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--nd-border);
 }
 
 .inv-tabs {
@@ -72,17 +98,17 @@
 .inv-tabs button {
   padding: 0.42rem 0.8rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(255, 255, 255, 0.02);
-  color: #b9c8e4;
+  border: 1px solid var(--nd-border);
+  background: var(--nd-chip-bg);
+  color: var(--nd-text-2);
   font-size: 0.8rem;
   cursor: pointer;
 }
 
 .inv-tabs button.active {
-  border-color: rgba(125, 211, 252, 0.6);
+  border-color: var(--nd-kicker);
   background: rgba(125, 211, 252, 0.16);
-  color: #eaf7ff;
+  color: var(--nd-heading);
 }
 
 .inv-section {
@@ -94,7 +120,7 @@
 .inv-muted {
   margin: 0;
   font-size: 0.82rem;
-  color: #8ea6c7;
+  color: var(--nd-muted);
 }
 
 .inv-error {
@@ -107,11 +133,11 @@
   margin: 0;
   font-size: 0.78rem;
   line-height: 1.5;
-  color: #8ea6c7;
+  color: var(--nd-muted);
 }
 
 .inv-hint strong {
-  color: #cdd9ef;
+  color: var(--nd-text-2);
 }
 
 .inv-note-list {
@@ -126,15 +152,15 @@
 .inv-note-list li {
   padding: 0.6rem 0.7rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--nd-border);
+  background: var(--nd-chip-bg);
 }
 
 .inv-note-text {
   margin: 0 0 0.3rem;
   font-size: 0.86rem;
   line-height: 1.5;
-  color: #eef4ff;
+  color: var(--nd-heading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -142,7 +168,7 @@
 .inv-note-meta {
   margin: 0;
   font-size: 0.72rem;
-  color: #8296b5;
+  color: var(--nd-muted);
 }
 
 .inv-note-actions {
@@ -156,7 +182,7 @@
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.78rem;
-  color: #9db1cf;
+  color: var(--nd-dim);
 }
 
 .inv-field input,
@@ -164,9 +190,9 @@
 .inv-field select {
   padding: 0.55rem 0.7rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(255, 255, 255, 0.03);
-  color: #eef4ff;
+  border: 1px solid var(--nd-border);
+  background: var(--nd-field-bg);
+  color: var(--nd-heading);
   font: inherit;
   font-size: 0.85rem;
   resize: vertical;
@@ -176,7 +202,7 @@
 .inv-field textarea:focus,
 .inv-field select:focus {
   outline: none;
-  border-color: rgba(125, 211, 252, 0.55);
+  border-color: var(--nd-kicker);
 }
 
 .inv-field input[readonly] {
@@ -203,9 +229,9 @@
 .inv-btn {
   padding: 0.5rem 0.9rem;
   border-radius: 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(255, 255, 255, 0.03);
-  color: #d9e6ff;
+  border: 1px solid var(--nd-border);
+  background: var(--nd-field-bg);
+  color: var(--nd-text-2);
   font: inherit;
   font-size: 0.82rem;
   cursor: pointer;
@@ -213,7 +239,7 @@
 }
 
 .inv-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--nd-border);
 }
 
 .inv-btn.small {

@@ -10,6 +10,7 @@ import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   AddressEnrichment,
   AddressType,
@@ -103,6 +104,10 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   // transaction edge, and the real blockchain edges are never touched. ---
   protected investigations: Investigation[] = [];
   protected selectedInvestigationId: string | null = null;
+  /** The investigator layer (investigation picker + case overview) is collapsed by default
+   * so the intro doesn't crowd the page; it opens on demand, or automatically when an
+   * investigation is already active. */
+  protected investigatorLayerOpen = false;
   protected investigatorLinks: InvestigatorLink[] = [];
   protected investigatorLinkOverlayEnabled = true;
   protected selectedInvestigatorLink: InvestigatorLink | null = null;
@@ -171,8 +176,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {
     ensureCytoscapeExtensionsRegistered();
+  }
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
   }
 
   ngOnInit(): void {
@@ -284,7 +295,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isLoadingCaseGraph = false;
-        this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
+        this.caseGraphError = this.t('Neuspešno učitavanje grafa za izabrani slučaj.', 'Failed to load the graph for the selected case.');
       },
     });
 
@@ -355,7 +366,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * otherwise unreachable until one exists, and there is no other UI for it). Prompts for
    * a name, POSTs it, then selects it so the node-details actions become usable. */
   protected createInvestigation(): void {
-    const name = window.prompt('Naziv nove istrage:')?.trim();
+    const name = window.prompt(this.t('Naziv nove istrage:', 'New investigation name:'))?.trim();
     if (!name) {
       return;
     }
@@ -364,7 +375,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         this.investigations = [...this.investigations, created];
         this.onInvestigationSelected(created.id);
       },
-      error: () => window.alert('Neuspešno kreiranje istrage.'),
+      error: () => window.alert(this.t('Neuspešno kreiranje istrage.', 'Failed to create the investigation.')),
     });
   }
 
@@ -393,6 +404,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
     if (stored && this.investigations.some((inv) => inv.id === stored)) {
       this.onInvestigationSelected(stored);
+      this.investigatorLayerOpen = true;
     }
   }
 
@@ -620,7 +632,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isDeletingInvestigatorLink = false;
-        this.investigatorLinkError = 'Neuspešno uklanjanje istražiteljske veze.';
+        this.investigatorLinkError = this.t('Neuspešno uklanjanje istražiteljske veze.', 'Failed to remove the investigator link.');
       },
     });
   }
@@ -815,7 +827,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         // Shown INSIDE the dialog (still open) rather than caseGraphError, which sits
         // above the canvas and would not be visible behind the overlay - nothing typed/
         // signed is lost, the analyst can just retry.
-        this.custodyDialogError = 'Neuspešno pokretanje analize.';
+        this.custodyDialogError = this.t('Neuspešno pokretanje analize.', 'Failed to start the analysis.');
       },
     });
   }
@@ -1286,10 +1298,16 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
   get graphSummary(): string {
     if (!this.graph) {
-      return 'Čekanje na podatke grafa sa servera.';
+      return this.t('Čekanje na podatke grafa sa servera.', 'Waiting for graph data from the server.');
     }
 
-    return `${this.graph.nodes.length} čvorova, ${this.graph.links.length} veza, generisano ${this.graph.generated_at ?? 'n/a'}`;
+    const nodes = this.graph.nodes.length;
+    const edges = this.graph.links.length;
+    const generated = this.graph.generated_at ?? 'n/a';
+    return this.t(
+      `${nodes} čvorova, ${edges} veza, generisano ${generated}`,
+      `${nodes} nodes, ${edges} edges, generated ${generated}`,
+    );
   }
 
   get nodeCount(): number {

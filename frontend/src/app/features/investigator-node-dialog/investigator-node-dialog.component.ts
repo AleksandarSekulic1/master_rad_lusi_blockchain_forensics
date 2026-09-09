@@ -3,6 +3,7 @@ import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { InvestigatorLinkConfidence, InvestigatorNote } from '../../models/blockchain-forensics.models';
 
 /** Compact modal launched from the graph node-details panel (CASE-MANAGEMENT-IMPLEMENTATION.md
@@ -56,7 +57,14 @@ export class InvestigatorNodeDialogComponent implements OnInit {
   protected isCreatingLink = false;
   protected linkError: string | null = null;
 
-  constructor(private readonly api: ApiService) {}
+  constructor(
+    private readonly api: ApiService,
+    public readonly settings: SettingsService,
+  ) {}
+
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.activeTab = this.mode;
@@ -72,7 +80,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
         this.isLoadingNotes = false;
       },
       error: () => {
-        this.notesError = 'Neuspešno učitavanje beleški.';
+        this.notesError = this.t('Neuspešno učitavanje beleški.', 'Failed to load notes.');
         this.isLoadingNotes = false;
       },
     });
@@ -98,7 +106,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
           this.notesChanged.emit();
         },
         error: () => {
-          this.notesError = 'Neuspešno dodavanje beleške.';
+          this.notesError = this.t('Neuspešno dodavanje beleške.', 'Failed to add the note.');
           this.isAddingNote = false;
         },
       });
@@ -129,13 +137,13 @@ export class InvestigatorNodeDialogComponent implements OnInit {
       },
       error: () => {
         this.isSavingNote = false;
-        this.notesError = 'Neuspešna izmena beleške.';
+        this.notesError = this.t('Neuspešna izmena beleške.', 'Failed to edit the note.');
       },
     });
   }
 
   protected deleteNote(note: InvestigatorNote): void {
-    if (!window.confirm('Obrisati ovu belešku?')) {
+    if (!window.confirm(this.t('Obrisati ovu belešku?', 'Delete this note?'))) {
       return;
     }
     this.api.deleteInvestigatorNote(this.investigationId, note.id).subscribe({
@@ -143,7 +151,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
         this.loadNotes();
         this.notesChanged.emit();
       },
-      error: () => (this.notesError = 'Neuspešno brisanje beleške.'),
+      error: () => (this.notesError = this.t('Neuspešno brisanje beleške.', 'Failed to delete the note.')),
     });
   }
 
@@ -179,8 +187,10 @@ export class InvestigatorNodeDialogComponent implements OnInit {
         },
         error: () => {
           this.isCreatingLink = false;
-          this.linkError =
-            'Neuspešno kreiranje veze. Proverite da su adrese različite i da su svi podaci uneti.';
+          this.linkError = this.t(
+            'Neuspešno kreiranje veze. Proverite da su adrese različite i da su svi podaci uneti.',
+            'Failed to create the link. Check that the addresses are different and all fields are filled in.',
+          );
         },
       });
   }
