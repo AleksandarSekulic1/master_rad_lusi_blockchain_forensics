@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { Case, CaseSummary } from '../../models/blockchain-forensics.models';
 
 @Component({
@@ -20,15 +21,63 @@ export class CasesComponent implements OnInit {
   protected newCaseDescription = '';
   protected isLoading = false;
   protected isCreating = false;
-  protected statusMessage = 'Učitavanje slučajeva...';
+  /** Held as a thunk so the message re-renders in the active language after a toggle. */
+  protected statusMessage: () => string = () => '';
+
+  protected readonly pageSize = 5;
+  protected currentPage = 1;
 
   constructor(
     private readonly api: ApiService,
     protected readonly state: AnalysisStateService,
-  ) {}
+    public readonly settings: SettingsService,
+  ) {
+    this.statusMessage = () => this.t('Učitavanje slučajeva...', 'Loading cases...');
+  }
+
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.loadCases();
+  }
+
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.cases.length / this.pageSize));
+  }
+
+  get pagedCases(): CaseSummary[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.cases.slice(start, start + this.pageSize);
+  }
+
+  get pageNumbers(): number[] {
+    return Array.from({ length: this.totalPages }, (_, index) => index + 1);
+  }
+
+  get rangeStart(): number {
+    return this.cases.length === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1;
+  }
+
+  get rangeEnd(): number {
+    return Math.min(this.currentPage * this.pageSize, this.cases.length);
+  }
+
+  goToPage(page: number): void {
+    this.currentPage = Math.min(Math.max(1, page), this.totalPages);
+  }
+
+  formatDate(iso: string | null | undefined): string {
+    if (!iso) {
+      return 'n/a';
+    }
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return String(iso);
+    }
+    const stamp = date.toISOString();
+    return `${stamp.slice(0, 10)} ${stamp.slice(11, 16)} UTC`;
   }
 
   loadCases(): void {
@@ -36,8 +85,12 @@ export class CasesComponent implements OnInit {
     this.api.listCases().subscribe({
       next: (response) => {
         this.cases = response.cases;
+        this.currentPage = Math.min(this.currentPage, this.totalPages);
         this.isLoading = false;
-        this.statusMessage = this.cases.length > 0 ? `${this.cases.length} slučaj(eva) u evidenciji.` : 'Još uvek nema slučajeva. Kreirajte jedan da biste počeli.';
+        this.statusMessage =
+          this.cases.length > 0
+            ? () => `${this.cases.length} ${this.t('slučaj(eva) u evidenciji.', 'case(s) on record.')}`
+            : () => this.t('Još uvek nema slučajeva. Kreirajte jedan da biste počeli.', 'No cases yet. Create one to get started.');
 
         const selectedId = this.state.selectedCaseSnapshot?.id;
         if (selectedId) {
@@ -49,7 +102,7 @@ export class CasesComponent implements OnInit {
       },
       error: () => {
         this.isLoading = false;
-        this.statusMessage = 'Neuspešno učitavanje slučajeva.';
+        this.statusMessage = () => this.t('Neuspešno učitavanje slučajeva.', 'Failed to load cases.');
       },
     });
   }
@@ -57,7 +110,7 @@ export class CasesComponent implements OnInit {
   createCase(): void {
     const name = this.newCaseName.trim();
     if (!name) {
-      this.statusMessage = 'Naziv slučaja je obavezan.';
+      this.statusMessage = () => this.t('Naziv slučaja je obavezan.', 'A case name is required.');
       return;
     }
 
@@ -72,13 +125,13 @@ export class CasesComponent implements OnInit {
           this.isCreating = false;
           this.newCaseName = '';
           this.newCaseDescription = '';
-          this.statusMessage = `Slučaj "${createdCase.name}" je kreiran.`;
+          this.statusMessage = () => `${this.t('Slučaj', 'Case')} "${createdCase.name}" ${this.t('je kreiran.', 'was created.')}`;
           this.loadCases();
           this.selectCase(createdCase);
         },
         error: () => {
           this.isCreating = false;
-          this.statusMessage = 'Neuspešno kreiranje slučaja.';
+          this.statusMessage = () => this.t('Neuspešno kreiranje slučaja.', 'Failed to create the case.');
         },
       });
   }
@@ -90,7 +143,8 @@ export class CasesComponent implements OnInit {
         this.selectedCase = caseDetail;
       },
       error: () => {
-        this.statusMessage = `Neuspešno učitavanje depoa dokaza za slučaj ${caseSummary.id}.`;
+        this.statusMessage = () =>
+          `${this.t('Neuspešno učitavanje depoa dokaza za slučaj', 'Failed to load the evidence locker for case')} ${caseSummary.id}.`;
       },
     });
   }
@@ -103,21 +157,27 @@ export class CasesComponent implements OnInit {
     const nextStatus = caseSummary.status === 'open' ? 'closed' : 'open';
     this.api.setCaseStatus(caseSummary.id, nextStatus).subscribe({
       next: () => {
-        this.statusMessage = `Slučaj "${caseSummary.name}" je sada ${nextStatus === 'open' ? 'otvoren' : 'zatvoren'}.`;
+        this.statusMessage = () =>
+          `${this.t('Slučaj', 'Case')} "${caseSummary.name}" ${this.t('je sada', 'is now')} ` +
+          `${nextStatus === 'open' ? this.t('otvoren', 'open') : this.t('zatvoren', 'closed')}.`;
         if (nextStatus === 'closed' && this.state.selectedCaseSnapshot?.id === caseSummary.id) {
           this.state.setSelectedCase(null);
         }
         this.loadCases();
       },
       error: () => {
-        this.statusMessage = `Neuspešna promena statusa za slučaj "${caseSummary.name}".`;
+        this.statusMessage = () =>
+          `${this.t('Neuspešna promena statusa za slučaj', 'Failed to change status for case')} "${caseSummary.name}".`;
       },
     });
   }
 
   removeCase(caseSummary: CaseSummary): void {
     const confirmed = window.confirm(
-      `Da li si siguran da želiš da obrišeš slučaj "${caseSummary.name}"? Ova akcija se ne može opozvati.`,
+      this.t(
+        `Da li si siguran da želiš da obrišeš slučaj "${caseSummary.name}"? Ova akcija se ne može opozvati.`,
+        `Are you sure you want to delete case "${caseSummary.name}"? This action cannot be undone.`,
+      ),
     );
     if (!confirmed) {
       return;
@@ -125,7 +185,7 @@ export class CasesComponent implements OnInit {
 
     this.api.deleteCase(caseSummary.id).subscribe({
       next: () => {
-        this.statusMessage = `Slučaj "${caseSummary.name}" je obrisan.`;
+        this.statusMessage = () => `${this.t('Slučaj', 'Case')} "${caseSummary.name}" ${this.t('je obrisan.', 'was deleted.')}`;
         if (this.state.selectedCaseSnapshot?.id === caseSummary.id) {
           this.state.setSelectedCase(null);
           this.selectedCase = null;
@@ -133,7 +193,7 @@ export class CasesComponent implements OnInit {
         this.loadCases();
       },
       error: () => {
-        this.statusMessage = `Neuspešno brisanje slučaja "${caseSummary.name}".`;
+        this.statusMessage = () => `${this.t('Neuspešno brisanje slučaja', 'Failed to delete case')} "${caseSummary.name}".`;
       },
     });
   }
