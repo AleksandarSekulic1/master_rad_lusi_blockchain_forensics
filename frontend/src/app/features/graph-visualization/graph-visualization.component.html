@@ -416,143 +416,189 @@
       </div>
       </div>
 
-      <dl>
-        <div>
-          <dt>{{ t('ENS ime', 'ENS name') }}</dt>
-          <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.ens_name ?? t('Nema', 'None')) }}</dd>
+      <!-- VERDICT: the forensic conclusion first, so the analyst reads it without scrolling -->
+      <div class="ni-verdict" [class]="'band-' + selectedNodeRiskBand">
+        <div class="ni-score">
+          <span class="ni-score-num">{{ node.risk_score ?? 0 }}</span>
+          <span class="ni-score-cap">{{ t('rizik', 'risk') }}</span>
         </div>
-        <div>
-          <dt>{{ t('Tip adrese', 'Address type') }}</dt>
-          <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : addressTypeLabel }}</dd>
+        <div class="ni-verdict-body">
+          <span class="ni-blacklist" *ngIf="node.blacklist_flag">⚠ {{ t('Na crnoj listi', 'Blacklisted') }}</span>
+          <div class="ni-flags" *ngIf="selectedNodeFlags.length > 0; else niClean">
+            <span class="ni-flag" *ngFor="let flag of selectedNodeFlags">{{ flag }}</span>
+          </div>
+          <ng-template #niClean>
+            <span class="ni-ok">{{ t('Nema detektovanih upozorenja', 'No warnings detected') }}</span>
+          </ng-template>
         </div>
-        <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
-          <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}{{ t('Poznat entitet', 'Known entity') }}</dt>
-          <dd>
-            {{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.known_entity ?? t('Nepoznat', 'Unknown')) }}
-            <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
-          </dd>
-        </div>
-        <div>
-          <dt>{{ t('Trenutni balans', 'Current balance') }}</dt>
-          <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Ukupan promet (u ovom slučaju)', 'Total volume (in this case)') }}</dt>
-          <dd>
-            {{ t('primljeno', 'received') }} {{ node.total_received ?? 0 | number : '1.2-6' }} · {{ t('poslato', 'sent') }} {{ node.total_sent ?? 0 | number : '1.2-6' }}
-          </dd>
-        </div>
-        <div>
-          <dt>{{ t('Pošiljaoci u ovom slučaju', 'Senders in this case') }}</dt>
-          <dd *ngIf="caseIncomingSenders.length === 0">{{ t('Nema — čvor nije primio sredstva u ovom slučaju', 'None — the node received no funds in this case') }}</dd>
-          <dd *ngFor="let sender of visibleIncomingSenders">
-            <span class="mono-address">{{ sender.address }}</span> ({{ sender.amount | number : '1.2-6' }})
-          </dd>
-          <button type="button" class="show-more-button" *ngIf="hiddenSendersCount > 0" (click)="toggleShowAllSenders()">
-            {{ showAllSenders ? t('Prikaži manje', 'Show less') : t('Prikaži još', 'Show') + ' ' + hiddenSendersCount + (settings.lang() === 'sr' ? '' : ' more') }}
-          </button>
-        </div>
-        <div>
-          <dt>{{ t('Primaoci u ovom slučaju', 'Recipients in this case') }}</dt>
-          <dd *ngIf="caseOutgoingRecipients.length === 0">{{ t('Nema — čvor nije poslao sredstva u ovom slučaju', 'None — the node sent no funds in this case') }}</dd>
-          <dd *ngFor="let recipient of visibleOutgoingRecipients">
-            <span class="mono-address">{{ recipient.address }}</span> ({{ recipient.amount | number : '1.2-6' }})
-          </dd>
-          <button type="button" class="show-more-button" *ngIf="hiddenRecipientsCount > 0" (click)="toggleShowAllRecipients()">
-            {{ showAllRecipients ? t('Prikaži manje', 'Show less') : t('Prikaži još', 'Show') + ' ' + hiddenRecipientsCount + (settings.lang() === 'sr' ? '' : ' more') }}
-          </button>
-        </div>
-        <div>
-          <dt>{{ t('Prva aktivnost na lancu', 'First on-chain activity') }}</dt>
-          <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Poslednja aktivnost na lancu', 'Last on-chain activity') }}</dt>
-          <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Izvor sredstava (prva ikada on-chain transakcija)', 'Funding source (first-ever on-chain transaction)') }}</dt>
-          <dd>
-            {{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.funding_source ?? t('n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog slučaja', 'n/a — this address’s first on-chain transaction was not an inbound transfer, or is out of scope for this case')) }}
-            <span *ngIf="addressEnrichment?.funding_amount_eth != null">
-              ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
-            </span>
-          </dd>
-        </div>
-        <div>
-          <dt>{{ t('Tip izvora sredstava', 'Funding source type') }}</dt>
-          <dd>
-            {{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
-            <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
-          </dd>
-        </div>
-        <div
-          *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
-          [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
-        >
-          <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}{{ t('Poznat entitet izvora', 'Known entity of the source') }}</dt>
-          <dd>
-            {{ addressEnrichment!.funding_source_entity ?? t('Nepoznat', 'Unknown') }}
-            <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
-          </dd>
-        </div>
-        <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
-          <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}{{ t('Sumnjivo mali iznos finansiranja („dust")', 'Suspiciously small funding amount (“dust”)') }}</dt>
-          <dd *ngIf="isEnrichingAddress">{{ t('Učitavanje...', 'Loading...') }}</dd>
-          <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
-          <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">{{ t('Ne', 'No') }}</dd>
-          <dd *ngIf="!isEnrichingAddress && isDustFunding">
-            {{ t('Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.',
-                  'Yes — a common pattern for activating a mule/burner wallet before it receives the real illicit funds.') }}
-          </dd>
-        </div>
-        <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
-          <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}{{ t('Direktna veza sa crnom listom', 'Direct link to the blacklist') }}</dt>
-          <dd *ngIf="isEnrichingAddress">{{ t('Učitavanje...', 'Loading...') }}</dd>
-          <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">{{ t('Ne', 'No') }}</dd>
-          <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
-            {{ t('Izvor sredstava je na crnoj listi u ovom slučaju:', 'The funding source is blacklisted in this case:') }} {{ flaggedSource.blacklist_label ?? t('Nema opisa', 'No description') }}
-            <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
-          </dd>
-        </div>
-        <div>
-          <dt>{{ t('ERC-20 tokeni', 'ERC-20 tokens') }}</dt>
-          <dd *ngIf="!isEnrichingAddress">
-            <ng-container *ngIf="addressEnrichment?.tokens?.length; else noTokens">
-              {{ addressEnrichment!.tokens.join(', ') }}
-              <span *ngIf="addressEnrichment!.tokens_total_count > addressEnrichment!.tokens.length">
-                (+{{ addressEnrichment!.tokens_total_count - addressEnrichment!.tokens.length }} {{ t('više', 'more') }})
+      </div>
+
+      <details class="ni-group" open>
+        <summary>{{ t('Rizik i oznake', 'Risk & flags') }}</summary>
+        <dl>
+          <div [class.blacklist-warning]="selectedNodeFlags.length > 0">
+            <dt>{{ selectedNodeFlags.length > 0 ? '⚠ ' : '' }}{{ t('Zašto je čvor sumnjiv', 'Why the node is suspicious') }}</dt>
+            <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : t('Nema — čvor nije označen', 'None — the node is not flagged') }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Crne liste', 'Blacklists') }}</dt>
+            <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Peel uloga', 'Peel role') }}</dt>
+            <dd>{{ node.peel_chain_role ?? 'n/a' }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Skok lanca', 'Chain hop') }}</dt>
+            <dd>{{ node.chain_hop_type ?? 'n/a' }}</dd>
+          </div>
+        </dl>
+      </details>
+
+      <details class="ni-group">
+        <summary>
+          {{ t('Identitet i klaster', 'Identity & cluster') }}
+          <span class="ni-warn-dot" *ngIf="identityGroupHasWarning" aria-hidden="true"></span>
+        </summary>
+        <dl>
+          <div>
+            <dt>{{ t('ENS ime', 'ENS name') }}</dt>
+            <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.ens_name ?? t('Nema', 'None')) }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Tip adrese', 'Address type') }}</dt>
+            <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : addressTypeLabel }}</dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
+            <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}{{ t('Poznat entitet', 'Known entity') }}</dt>
+            <dd>
+              {{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.known_entity ?? t('Nepoznat', 'Unknown')) }}
+              <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t('Klaster', 'Cluster') }}</dt>
+            <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
+          </div>
+        </dl>
+      </details>
+
+      <details class="ni-group">
+        <summary>{{ t('Sredstva u ovom slučaju', 'Funds in this case') }}</summary>
+        <dl>
+          <div>
+            <dt>{{ t('Ukupan promet', 'Total volume') }}</dt>
+            <dd>
+              {{ t('primljeno', 'received') }} {{ node.total_received ?? 0 | number : '1.2-6' }} · {{ t('poslato', 'sent') }} {{ node.total_sent ?? 0 | number : '1.2-6' }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t('Pošiljaoci', 'Senders') }}</dt>
+            <dd *ngIf="caseIncomingSenders.length === 0">{{ t('Nema — čvor nije primio sredstva u ovom slučaju', 'None — the node received no funds in this case') }}</dd>
+            <dd *ngFor="let sender of visibleIncomingSenders">
+              <span class="mono-address">{{ sender.address }}</span> ({{ sender.amount | number : '1.2-6' }})
+            </dd>
+            <button type="button" class="show-more-button" *ngIf="hiddenSendersCount > 0" (click)="toggleShowAllSenders()">
+              {{ showAllSenders ? t('Prikaži manje', 'Show less') : t('Prikaži još', 'Show') + ' ' + hiddenSendersCount + (settings.lang() === 'sr' ? '' : ' more') }}
+            </button>
+          </div>
+          <div>
+            <dt>{{ t('Primaoci', 'Recipients') }}</dt>
+            <dd *ngIf="caseOutgoingRecipients.length === 0">{{ t('Nema — čvor nije poslao sredstva u ovom slučaju', 'None — the node sent no funds in this case') }}</dd>
+            <dd *ngFor="let recipient of visibleOutgoingRecipients">
+              <span class="mono-address">{{ recipient.address }}</span> ({{ recipient.amount | number : '1.2-6' }})
+            </dd>
+            <button type="button" class="show-more-button" *ngIf="hiddenRecipientsCount > 0" (click)="toggleShowAllRecipients()">
+              {{ showAllRecipients ? t('Prikaži manje', 'Show less') : t('Prikaži još', 'Show') + ' ' + hiddenRecipientsCount + (settings.lang() === 'sr' ? '' : ' more') }}
+            </button>
+          </div>
+        </dl>
+      </details>
+
+      <details class="ni-group">
+        <summary>
+          {{ t('Poreklo sredstava', 'Funding origin') }}
+          <span class="ni-warn-dot" *ngIf="fundingGroupHasWarning" aria-hidden="true"></span>
+        </summary>
+        <dl>
+          <div>
+            <dt>{{ t('Izvor sredstava (prva ikada on-chain transakcija)', 'Funding source (first-ever on-chain transaction)') }}</dt>
+            <dd>
+              {{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.funding_source ?? t('n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog slučaja', 'n/a — this address’s first on-chain transaction was not an inbound transfer, or is out of scope for this case')) }}
+              <span *ngIf="addressEnrichment?.funding_amount_eth != null">
+                ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
               </span>
-            </ng-container>
-            <ng-template #noTokens>{{ t('Nema', 'None') }}</ng-template>
-          </dd>
-          <dd *ngIf="isEnrichingAddress">{{ t('Učitavanje...', 'Loading...') }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Skor rizika', 'Risk score') }}</dt>
-          <dd>{{ node.risk_score ?? 0 }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Klaster', 'Cluster') }}</dt>
-          <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
-        </div>
-        <div [class.blacklist-warning]="selectedNodeFlags.length > 0">
-          <dt>{{ selectedNodeFlags.length > 0 ? '⚠ ' : '' }}{{ t('Zašto je čvor sumnjiv (oznake)', 'Why the node is suspicious (flags)') }}</dt>
-          <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : t('Nema — čvor nije označen', 'None — the node is not flagged') }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Crne liste', 'Blacklists') }}</dt>
-          <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Peel uloga', 'Peel role') }}</dt>
-          <dd>{{ node.peel_chain_role ?? 'n/a' }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Skok lanca', 'Chain hop') }}</dt>
-          <dd>{{ node.chain_hop_type ?? 'n/a' }}</dd>
-        </div>
-      </dl>
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t('Tip izvora sredstava', 'Funding source type') }}</dt>
+            <dd>
+              {{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
+              <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
+            </dd>
+          </div>
+          <div
+            *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
+            [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
+          >
+            <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}{{ t('Poznat entitet izvora', 'Known entity of the source') }}</dt>
+            <dd>
+              {{ addressEnrichment!.funding_source_entity ?? t('Nepoznat', 'Unknown') }}
+              <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+            </dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
+            <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}{{ t('Sumnjivo mali iznos finansiranja („dust")', 'Suspiciously small funding amount (“dust”)') }}</dt>
+            <dd *ngIf="isEnrichingAddress">{{ t('Učitavanje...', 'Loading...') }}</dd>
+            <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
+            <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">{{ t('Ne', 'No') }}</dd>
+            <dd *ngIf="!isEnrichingAddress && isDustFunding">
+              {{ t('Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.',
+                    'Yes — a common pattern for activating a mule/burner wallet before it receives the real illicit funds.') }}
+            </dd>
+          </div>
+          <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
+            <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}{{ t('Direktna veza sa crnom listom', 'Direct link to the blacklist') }}</dt>
+            <dd *ngIf="isEnrichingAddress">{{ t('Učitavanje...', 'Loading...') }}</dd>
+            <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">{{ t('Ne', 'No') }}</dd>
+            <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
+              {{ t('Izvor sredstava je na crnoj listi u ovom slučaju:', 'The funding source is blacklisted in this case:') }} {{ flaggedSource.blacklist_label ?? t('Nema opisa', 'No description') }}
+              <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
+            </dd>
+          </div>
+        </dl>
+      </details>
+
+      <details class="ni-group">
+        <summary>{{ t('On-chain kontekst', 'On-chain context') }}</summary>
+        <dl>
+          <div>
+            <dt>{{ t('Trenutni balans', 'Current balance') }}</dt>
+            <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Prva aktivnost na lancu', 'First on-chain activity') }}</dt>
+            <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Poslednja aktivnost na lancu', 'Last on-chain activity') }}</dt>
+            <dd>{{ isEnrichingAddress ? t('Učitavanje...', 'Loading...') : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('ERC-20 tokeni', 'ERC-20 tokens') }}</dt>
+            <dd *ngIf="!isEnrichingAddress">
+              <ng-container *ngIf="addressEnrichment?.tokens?.length; else noTokens">
+                {{ addressEnrichment!.tokens.join(', ') }}
+                <span *ngIf="addressEnrichment!.tokens_total_count > addressEnrichment!.tokens.length">
+                  (+{{ addressEnrichment!.tokens_total_count - addressEnrichment!.tokens.length }} {{ t('više', 'more') }})
+                </span>
+              </ng-container>
+              <ng-template #noTokens>{{ t('Nema', 'None') }}</ng-template>
+            </dd>
+            <dd *ngIf="isEnrichingAddress">{{ t('Učitavanje...', 'Loading...') }}</dd>
+          </div>
+        </dl>
+      </details>
     </aside>
 
     <ng-template #noSelection>

@@ -1322,6 +1322,40 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Coarse risk band for the node-details verdict header - blacklist always wins. */
+  protected get selectedNodeRiskBand(): 'high' | 'medium' | 'low' | 'none' {
+    const node = this.selectedNode;
+    if (!node) {
+      return 'none';
+    }
+    if (node.blacklist_flag) {
+      return 'high';
+    }
+    const score = Number(node.risk_score ?? 0);
+    if (score >= 70) {
+      return 'high';
+    }
+    if (score >= 40) {
+      return 'medium';
+    }
+    return score > 0 ? 'low' : 'none';
+  }
+
+  /** True when the "Poreklo sredstava" group holds at least one warning - drives the dot
+   * on its (collapsed) summary so the analyst knows to open it. */
+  protected get fundingGroupHasWarning(): boolean {
+    return (
+      !this.isEnrichingAddress &&
+      (this.isDustFunding ||
+        Boolean(this.fundingSourceBlacklistMatch) ||
+        this.addressEnrichment?.funding_source_entity_category === 'sanctioned')
+    );
+  }
+
+  protected get identityGroupHasWarning(): boolean {
+    return !this.isEnrichingAddress && this.addressEnrichment?.known_entity_category === 'sanctioned';
+  }
+
   get graphSummary(): string {
     if (!this.graph) {
       return this.t('Čekanje na podatke grafa sa servera.', 'Waiting for graph data from the server.');
