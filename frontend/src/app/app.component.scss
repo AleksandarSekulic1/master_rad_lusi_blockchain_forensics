@@ -1,4 +1,4 @@
-﻿.app-shell {
+.app-shell {
   min-height: 100vh;
   padding: 1.5rem;
   color: #ecf2ff;
@@ -10,10 +10,9 @@
 
 .topbar {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-end;
-  padding: 1.25rem 1.5rem;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1rem 1.4rem;
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 1.5rem;
   background: rgba(8, 15, 29, 0.68);
@@ -21,40 +20,75 @@
   box-shadow: 0 24px 60px rgba(4, 10, 20, 0.36);
 }
 
+.topbar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.brand-mark {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* the source PNG sits on solid black; "screen" drops the black
+     and lets the cat melt into the dark navbar background */
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 4px 12px rgba(4, 10, 20, 0.5));
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 58%, transparent 78%);
+  mask-image: radial-gradient(circle at 50% 45%, #000 58%, transparent 78%);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
 .workspace {
   margin-top: 1.25rem;
 }
 
 .eyebrow {
-  margin: 0 0 0.3rem;
+  margin: 0 0 0.2rem;
   text-transform: uppercase;
   letter-spacing: 0.24em;
   color: #8db4ff;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-size: clamp(1.25rem, 2.2vw, 1.7rem);
   letter-spacing: -0.03em;
 }
 
-.subtitle {
-  margin: 0.45rem 0 0;
-  max-width: 48rem;
-  color: #b3c3df;
+.session {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .topbar-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.4rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .topbar-nav a {
-  padding: 0.65rem 1rem;
+  padding: 0.42rem 0.8rem;
   border-radius: 999px;
   color: #cdd9ef;
+  font-size: 0.82rem;
   text-decoration: none;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.03);
@@ -71,19 +105,20 @@ h1 {
 .user-chip {
   display: inline-flex;
   align-items: center;
-  padding: 0.65rem 1rem;
+  padding: 0.5rem 0.9rem;
   border-radius: 999px;
   color: #7bd6ff;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   background: rgba(255, 255, 255, 0.03);
 }
 
 .logout-button {
-  padding: 0.65rem 1rem;
+  padding: 0.5rem 0.9rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.03);
   color: #cdd9ef;
+  font-size: 0.82rem;
   cursor: pointer;
 }
 
@@ -93,8 +128,7 @@ h1 {
 }
 
 @media (max-width: 768px) {
-  .topbar {
-    align-items: stretch;
-    flex-direction: column;
+  .topbar-top {
+    align-items: flex-start;
   }
 }
