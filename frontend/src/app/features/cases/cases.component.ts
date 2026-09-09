@@ -7,7 +7,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { SettingsService } from '../../core/services/settings.service';
-import { Case, CaseSummary } from '../../models/blockchain-forensics.models';
+import { Case, CaseSummary, EvidenceEntry } from '../../models/blockchain-forensics.models';
 
 @Component({
   selector: 'app-cases',
@@ -31,6 +31,9 @@ export class CasesComponent implements OnInit {
 
   protected searchQuery = '';
   private readonly searchChanges = new Subject<string>();
+
+  /** stored_name of evidence entries whose removal request is in flight (per-row spinner). */
+  protected readonly removingEvidence = new Set<string>();
 
   constructor(
     private readonly api: ApiService,
@@ -190,6 +193,37 @@ export class CasesComponent implements OnInit {
 
   isSelected(caseSummary: CaseSummary): boolean {
     return this.state.selectedCaseSnapshot?.id === caseSummary.id;
+  }
+
+  removeEvidence(evidence: EvidenceEntry): void {
+    const detail = this.selectedCase;
+    if (!detail || this.removingEvidence.has(evidence.stored_name)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      this.t(
+        `Ukloniti dokaz "${evidence.file_name}" iz slučaja? Fajl se briše i naredne analize će se promeniti.`,
+        `Remove evidence "${evidence.file_name}" from this case? The file is deleted and later analyses will change.`,
+      ),
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    this.removingEvidence.add(evidence.stored_name);
+    this.api.removeCaseEvidence(detail.id, evidence.stored_name).subscribe({
+      next: (updatedCase) => {
+        this.removingEvidence.delete(evidence.stored_name);
+        this.selectedCase = updatedCase;
+        this.statusMessage = () => `${this.t('Dokaz', 'Evidence')} "${evidence.file_name}" ${this.t('je uklonjen.', 'was removed.')}`;
+        this.loadCases();
+      },
+      error: () => {
+        this.removingEvidence.delete(evidence.stored_name);
+        this.statusMessage = () => `${this.t('Neuspešno uklanjanje dokaza', 'Failed to remove evidence')} "${evidence.file_name}".`;
+      },
+    });
   }
 
   toggleCaseStatus(caseSummary: CaseSummary): void {

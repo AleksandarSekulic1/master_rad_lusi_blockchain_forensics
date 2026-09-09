@@ -201,6 +201,31 @@ def append_evidence(
     return evidence_entry | {'case': _case_summary(updated_case)}
 
 
+def remove_evidence(case_id: str, stored_name: str) -> dict[str, object]:
+    """Drops one evidence file from a case: removes its index entry, re-normalizes the case
+    (counts / total size / last import), and best-effort deletes the stored copy under the
+    case's own evidence directory.
+
+    The case record is the source of truth - a leftover file on disk is harmless, but a
+    missing file must never block removing the record.
+    """
+    case = get_case(case_id)
+    evidence = [entry for entry in case.get('evidence', []) if isinstance(entry, dict)]
+    remaining = [entry for entry in evidence if str(entry.get('stored_name')) != stored_name]
+    if len(remaining) == len(evidence):
+        raise FileNotFoundError(f'Evidence {stored_name} not found in case {case_id}')
+
+    case['evidence'] = remaining
+    case['updated_at'] = _timestamp()
+    updated_case = update_case(case)
+
+    stored_path = _case_dir(case_id) / 'evidence' / stored_name
+    if stored_path.exists():
+        stored_path.unlink(missing_ok=True)
+
+    return updated_case
+
+
 def store_case_evidence(case_id: str, source_path: Path, stored_name: str) -> Path:
     case_storage = _case_dir(case_id) / 'evidence'
     case_storage.mkdir(parents=True, exist_ok=True)

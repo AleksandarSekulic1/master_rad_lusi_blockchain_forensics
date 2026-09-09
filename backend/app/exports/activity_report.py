@@ -36,6 +36,7 @@ _CARD_BG = (243, 247, 252)
 
 ACTION_LABELS: dict[str, str] = {
     'csv_upload': 'Otpremljena CSV evidencija',
+    'evidence_removed': 'Uklonjena evidencija iz slučaja',
     'analytics_run': 'Pokrenuta analiza',
     'path_finding': 'Pretraga putanja',
     'dex_swap_analysis_run': 'Pokrenuta DEX swap analiza',
@@ -85,7 +86,7 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_CASE
     if action in ('analytics_run', 'path_finding', 'dex_swap_analysis_run'):
         return _GROUP_ANALYSIS
-    if action == 'csv_upload' or action.startswith('onchain_fetch'):
+    if action in ('csv_upload', 'evidence_removed') or action.startswith('onchain_fetch'):
         return _GROUP_EVIDENCE
     if action == 'activity_report_exported':
         return _GROUP_REPORT
