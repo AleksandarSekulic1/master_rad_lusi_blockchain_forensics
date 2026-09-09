@@ -164,6 +164,12 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Let the dashboard's "Izvoz izveštaja" panel snapshot the live graph for its PDF,
+    // without a hard import of this component. Cleared in ngOnDestroy.
+    this.state.registerGraphImageProvider(() =>
+      this.cy ? this.cy.png({ full: true, scale: 2, bg: '#0a1425' }) : null,
+    );
+
     // Rendered from graph$: the plain /graph response has no blacklist/risk/anomaly/
     // peel-chain data (that's only computed by the analytics pipeline), so it renders
     // uncoloured by default - a deliberate "Analiziraj graf" click (see
@@ -803,6 +809,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.state.registerGraphImageProvider(null);
     this.cy?.destroy();
     this.cy = null;
     if (this.layoutIndicatorTimer !== null) {

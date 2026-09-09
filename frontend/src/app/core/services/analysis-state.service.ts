@@ -57,6 +57,24 @@ export class AnalysisStateService {
     this.selectedCaseSubject.next(caseSummary);
   }
 
+  /** Lets a panel grab a PNG of the live transaction graph without importing
+   * GraphVisualizationComponent. The graph component registers a closure over its own
+   * cytoscape instance while mounted and clears it on destroy; callers get `null` when the
+   * graph isn't currently on screen. */
+  private graphImageProvider: (() => string | null) | null = null;
+
+  registerGraphImageProvider(provider: (() => string | null) | null): void {
+    this.graphImageProvider = provider;
+  }
+
+  captureGraphImage(): string | null {
+    try {
+      return this.graphImageProvider?.() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   get uploadSnapshot(): UploadCsvResponse | null {
     return this.uploadSubject.value;
   }

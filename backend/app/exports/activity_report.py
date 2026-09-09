@@ -58,6 +58,7 @@ _REPORT_TYPE_LABELS: dict[str, str] = {
     'taint': 'Taint izveštaj',
     'pathfinding': 'Pathfinding izveštaj',
     'dex_swap': 'DEX Swap izveštaj',
+    'case_triage': 'Izveštaj za trijažu',
 }
 
 
@@ -226,6 +227,8 @@ def _report_signed_summary(details: dict[str, Any]) -> str:
         extra = f' · {details.get("hops", 0)} skokova'
     elif report_type == 'dex_swap':
         extra = f' · {details.get("total_events", 0)} događaja'
+    elif report_type == 'case_triage':
+        extra = f' · {details.get("nodes", 0)} čvorova, {details.get("edges", 0)} veza, {details.get("blacklisted", 0)} na crnoj listi'
 
     return f'{type_label} · {code}{extra}'
 

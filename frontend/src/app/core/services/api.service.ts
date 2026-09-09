@@ -12,6 +12,7 @@ import {
   BehavioralAnalysisResult,
   Case,
   CasePathfindingResult,
+  CaseReportContext,
   CaseStatus,
   CaseSummary,
   CreateCaseRequest,
@@ -188,6 +189,13 @@ export class ApiService {
 
   exportCaseReportPdf(caseId: string): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/report.pdf`, { responseType: 'blob' });
+  }
+
+  /** Full case analysis context (case metadata, summary, evidence locker + contribution
+   * breakdown, audit log). The dashboard's "Izvoz izveštaja" panel renders its own signed,
+   * bilingual triage PDF from this on the client. */
+  getCaseReportContext(caseId: string): Observable<CaseReportContext> {
+    return this.http.get<CaseReportContext>(`${this.apiUrl}/api/v1/exports/cases/${caseId}/report-context`);
   }
 
   exportCaseGraphml(caseId: string): Observable<Blob> {

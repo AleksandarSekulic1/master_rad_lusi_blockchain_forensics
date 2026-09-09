@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from app.evidence.audit_log import load_audit_log_entries
-from app.exports.service import build_case_artifacts_from_evidence
+from app.exports.service import build_case_artifacts_from_evidence, build_case_report_context
 from app.services.case_management import get_case, get_case_evidence_paths
 
 
@@ -17,7 +17,7 @@ def _download_response(content: str | bytes, media_type: str, file_name: str) ->
     return Response(content=payload, media_type=media_type, headers=headers)
 
 
-def _case_artifacts(case_id: str) -> tuple[dict[str, object], dict[str, str | bytes]]:
+def _load_case_and_evidence(case_id: str) -> tuple[dict[str, object], list, list[dict[str, object]]]:
     try:
         case = get_case(case_id)
     except FileNotFoundError as exc:
@@ -29,8 +29,27 @@ def _case_artifacts(case_id: str) -> tuple[dict[str, object], dict[str, str | by
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     audit_entries = load_audit_log_entries(case_id=case_id)
+    return case, evidence_paths, audit_entries
+
+
+def _case_artifacts(case_id: str) -> tuple[dict[str, object], dict[str, str | bytes]]:
+    case, evidence_paths, audit_entries = _load_case_and_evidence(case_id)
     artifacts = build_case_artifacts_from_evidence(case=case, evidence_paths=evidence_paths, audit_entries=audit_entries)
     return case, artifacts
+
+
+@router.get('/cases/{case_id}/report-context')
+def export_case_report_context(case_id: str) -> JSONResponse:
+    """Full case analysis context as JSON - the frontend renders its own signed, bilingual
+    PDF from this (so the numbers and the evidence-contribution breakdown stay computed in
+    one place, on the server)."""
+    case, evidence_paths, audit_entries = _load_case_and_evidence(case_id)
+    context, _graph = build_case_report_context(
+        case=case,
+        evidence_paths=evidence_paths,
+        audit_entries=audit_entries,
+    )
+    return JSONResponse(content=context)
 
 
 @router.get('/cases/{case_id}/report.csv')

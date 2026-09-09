@@ -1,41 +1,87 @@
 <div class="export-shell">
   <div class="export-header">
     <div>
-      <p class="panel-kicker">Prezentacija dokaza</p>
-      <h2>Izvoz izveštaja</h2>
-      <p>Izvoz jednim klikom u CSV, PDF, GraphML i GEXF format.</p>
+      <p class="panel-kicker">{{ t('Prezentacija dokaza', 'Evidence presentation') }}</p>
+      <h2>{{ t('Izvoz izveštaja', 'Report export') }}</h2>
+      <p class="export-subtitle">
+        {{ t('Potpisan izveštaj za trijažu — priprema za odluku o daljoj analizi transakcija.',
+              'Signed triage report — the basis for deciding on further transaction analysis.') }}
+      </p>
     </div>
-    <span class="pill" *ngIf="activeCaseId; else noCase">Slučaj {{ activeCaseId }}</span>
+    <span class="pill" *ngIf="activeCaseId; else noCase">{{ t('Slučaj', 'Case') }} {{ activeCaseId }}</span>
     <ng-template #noCase>
-      <span class="pill muted">Slučaj nije izabran</span>
+      <span class="pill muted">{{ t('Slučaj nije izabran', 'No case selected') }}</span>
     </ng-template>
   </div>
 
   <div class="export-actions">
-    <button type="button" class="primary-button" (click)="exportCsvReport()" [disabled]="!activeCaseId || isExporting">Izvezi CSV</button>
-    <button type="button" class="primary-button" (click)="exportPdfReport()" [disabled]="!activeCaseId || isExporting">Izvezi PDF</button>
-    <button type="button" class="ghost-button" (click)="exportGraphMl()" [disabled]="!activeCaseId || isExporting">Izvezi GraphML</button>
-    <button type="button" class="ghost-button" (click)="exportGexf()" [disabled]="!activeCaseId || isExporting">Izvezi GEXF</button>
+    <button type="button" class="primary-button" (click)="openSigning()" [disabled]="!activeCaseId || isExporting">
+      {{ isExporting ? t('Izrada...', 'Generating...') : t('Generiši PDF izveštaj', 'Generate PDF report') }}
+    </button>
   </div>
 
   <p class="export-error" *ngIf="exportError">{{ exportError }}</p>
+</div>
 
-  <div class="export-summary" *ngIf="graph">
-    <article>
-      <span>Izvorni fajl</span>
-      <strong>{{ sourceLabel }}</strong>
-    </article>
-    <article>
-      <span>Čvorovi</span>
-      <strong>{{ graph.nodes.length }}</strong>
-    </article>
-    <article>
-      <span>Veze</span>
-      <strong>{{ graph.links.length }}</strong>
-    </article>
-    <article>
-      <span>Visok rizik</span>
-      <strong>{{ analyticsSummary?.['high_risk_nodes'] ?? 0 }}</strong>
-    </article>
+<div class="signing-overlay" *ngIf="isSigningOpen" (click)="closeSigning()">
+  <div class="signing-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+    <h3>{{ t('Potpis i izrada izveštaja', 'Sign & generate report') }}</h3>
+
+    <p class="signing-intro">
+      {{ t('Izveštaj napušta aplikaciju kao samostalan dokument, pa nosi potpis forenzičara koji za njega jamči i ' +
+            'kontrolni broj za kasniju proveru. Radnja se beleži u dnevnik aktivnosti.',
+            'The report leaves the app as a standalone document, so it carries the examiner’s signature vouching for ' +
+            'it and a verification code for later checking. The action is written to the activity log.') }}
+    </p>
+
+    <p class="loading-line" *ngIf="isLoadingContext">{{ t('Učitavanje podataka slučaja...', 'Loading case data...') }}</p>
+
+    <fieldset class="lang-choice" [disabled]="isExporting">
+      <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+      <label>
+        <input type="radio" name="reportLang" value="sr" [(ngModel)]="reportLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="reportLang" value="en" [(ngModel)]="reportLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+      <p class="lang-hint">
+        {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+        <strong>{{ reportLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+      </p>
+    </fieldset>
+
+    <label class="signing-field">
+      {{ t('Ime i prezime forenzičara', 'Examiner full name') }}
+      <input type="text" [(ngModel)]="examinerName" name="examinerName" [disabled]="isExporting"
+             [placeholder]="t('Ime i prezime', 'Full name')" />
+    </label>
+
+    <p class="signing-signature-label">{{ t('Potpis', 'Signature') }}</p>
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signing-declaration">
+      <input type="checkbox" [(ngModel)]="declarationAccepted" name="declarationAccepted" [disabled]="isExporting" />
+      <span>
+        {{ reportLang === 'sr'
+            ? 'Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za ' +
+              'trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.'
+            : 'I confirm that I have reviewed the collected evidence for the stated case and that this triage report ' +
+              'was produced to decide on further transaction analysis. The signature above is mine.' }}
+      </span>
+    </label>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signing-actions">
+      <button type="button" class="ghost-button" (click)="closeSigning()" [disabled]="isExporting">
+        {{ t('Odustani', 'Cancel') }}
+      </button>
+      <button type="button" class="primary-button" (click)="confirmAndExport()" [disabled]="!canConfirm">
+        {{ isExporting ? t('Izrada...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign & export PDF') }}
+      </button>
+    </div>
   </div>
 </div>

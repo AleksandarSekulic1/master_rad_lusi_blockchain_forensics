@@ -172,5 +172,39 @@
       "address": "0xInvestorWallet"
     },
     "registered_at": "2026-09-08T15:18:20.307924+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-D334-7QN7",
+    "content_hash": "2fc2cd27b74ba7b84921f9c38ccb7aeeb9f139a494f8f90b17b80c188e863773",
+    "case_id": "c23db4afd0f3",
+    "case_name": "Moj slucaj",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 1010,
+      "nodes": 176,
+      "edges": 175,
+      "blacklisted": 0,
+      "high_risk": 0,
+      "clusters": 0
+    },
+    "registered_at": "2026-09-09T13:59:42.641653+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-NFL2-QA54",
+    "content_hash": "a9d415356327dba6bae13ef613088938eca2904776303e95bee2b06216d22861",
+    "case_id": "c23db4afd0f3",
+    "case_name": "Moj slucaj",
+    "analyst": "admin",
+    "declaration": "I confirm that I have reviewed the collected evidence for the stated case and that this triage report was produced to decide on further transaction analysis. The signature above is mine.",
+    "summary": {
+      "rows": 1010,
+      "nodes": 176,
+      "edges": 175,
+      "blacklisted": 0,
+      "high_risk": 0,
+      "clusters": 0
+    },
+    "registered_at": "2026-09-09T14:01:42.577626+00:00"
   }
 ]
