@@ -871,3 +871,56 @@ export interface CaseReportContext {
   evidence_contributions: EvidenceContribution[];
   generated_at: string;
 }
+
+/** One flagged node summarised for the Graph analysis PDF. */
+export interface GraphReportFlaggedNode {
+  address: string;
+  risk: number;
+  flags: string[];
+  blacklist: string;
+}
+
+/** One investigator (off-chain) link summarised for the Graph analysis PDF. */
+export interface GraphReportInvestigatorLink {
+  source: string;
+  target: string;
+  confidence: string;
+  reason: string;
+}
+
+/** Graph-specific payload the /graph page hands to ReportExportComponent so its PDF is a
+ * graph-analysis report (findings, flagged nodes, focused node, investigator layer) rather
+ * than the Dashboard's pre-analysis triage document. */
+export interface GraphReportData {
+  /** "Sve transakcije (kombinovano)" or the scoped evidence file name. */
+  scope: string;
+  /** Whether the risk/blacklist analytics pipeline was run (coloured graph) or it is a raw view. */
+  analyzed: boolean;
+  generatedAt: string;
+  counts: {
+    nodes: number;
+    edges: number;
+    blacklisted: number;
+    highRisk: number;
+    peel: number;
+    chainHop: number;
+    clusters: number;
+    dexSwaps: number;
+  };
+  /** Human-readable filters/overlays active at export time - for reproducibility. */
+  activeFilters: string[];
+  flaggedNodes: GraphReportFlaggedNode[];
+  focusedNode: {
+    address: string;
+    risk: number;
+    flags: string[];
+    blacklistSources: string;
+    cluster: string;
+  } | null;
+  investigator: {
+    name: string;
+    notes: number;
+    pinned: number;
+    links: GraphReportInvestigatorLink[];
+  } | null;
+}

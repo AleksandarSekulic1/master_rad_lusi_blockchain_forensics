@@ -1,3 +1,11 @@
 {
-  "investigations": []
+  "investigations": [
+    {
+      "id": "804444a9ad1b",
+      "name": "idemo",
+      "description": null,
+      "created_at": "2026-09-09T21:33:40.745870+00:00",
+      "updated_at": "2026-09-09T21:33:40.745870+00:00"
+    }
+  ]
 }

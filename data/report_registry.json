@@ -308,5 +308,40 @@
       "clusters": 4
     },
     "registered_at": "2026-09-09T21:14:53.716578+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZN6N-U4HT",
+    "content_hash": "0d68875b106a07460941aa4451370ada281821c973e35ca5e1d9f13184f52197",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "I confirm that I have reviewed the transaction graph of the stated case and that this report faithfully presents the graph and the analytic findings as the application computed them at export time. The signature above is mine.",
+    "summary": {
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4,
+      "flagged_nodes": 12,
+      "analyzed": true
+    },
+    "registered_at": "2026-09-09T21:31:15.748344+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-23R2-ZA8R",
+    "content_hash": "f83ed8587b5666557cce2348c67df8b9897a10192aeac01311a4235a7cb44e51",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T21:31:47.785519+00:00"
   }
 ]

@@ -23,6 +23,7 @@ import {
   EvidenceEntry,
   GraphLinkData,
   GraphNodeData,
+  GraphReportData,
   NodeLinkGraphResponse,
   TaintAnalysisResult,
   TransactionCustodyEntry,
@@ -1322,6 +1323,111 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       default:
         return category;
     }
+  }
+
+  private nodeFlagKeys(node: GraphNodeData): string[] {
+    const flags: string[] = [];
+    if (node.blacklist_flag) {
+      flags.push('Crna lista');
+    }
+    if (node.peel_chain_flag) {
+      flags.push('Peel lanac');
+    }
+    if (Number(node.risk_score ?? 0) >= 70) {
+      flags.push('Visok rizik');
+    }
+    if (node.chain_hop_flag) {
+      flags.push('Skok lanca');
+    }
+    if (node.anomaly_flag) {
+      flags.push('Anomalija');
+    }
+    return flags;
+  }
+
+  /** Graph-specific payload for ReportExportComponent so its PDF is a graph-analysis
+   * report (findings, flagged nodes, focused node, investigator layer) rather than the
+   * Dashboard's triage document. Null until a graph is loaded. */
+  protected get graphReportData(): GraphReportData | null {
+    const graph = this.graph;
+    if (!graph) {
+      return null;
+    }
+    const nodes = graph.nodes;
+
+    const scope = this.selectedEvidence
+      ? this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? this.selectedEvidence
+      : this.t('Sve transakcije (kombinovano)', 'All transactions (combined)');
+
+    const filters: string[] = [];
+    if (this.deadEndFilterEnabled) {
+      filters.push(this.t('sakriveni čvorovi bez odliva', 'sink-only nodes hidden'));
+    }
+    if (this.fundingSourceFilterEnabled) {
+      filters.push(this.t('sakriveni čvorovi bez priliva', 'source-only nodes hidden'));
+    }
+    if (!this.dexSwapOverlayEnabled) {
+      filters.push(this.t('DEX swap veze sakrivene', 'DEX swap edges hidden'));
+    }
+    if (this.timelineEnabled) {
+      filters.push(`${this.t('vremenska traka', 'timeline')} ${this.timelinePosition}/${this.timelineMaxRank}`);
+    }
+
+    const flaggedNodes = nodes
+      .map((node) => ({ node, keys: this.nodeFlagKeys(node) }))
+      .filter((entry) => entry.keys.length > 0)
+      .sort((a, b) => Number(b.node.risk_score ?? 0) - Number(a.node.risk_score ?? 0))
+      .map((entry) => ({
+        address: String(entry.node.address ?? entry.node.id),
+        risk: Number(entry.node.risk_score ?? 0),
+        flags: entry.keys,
+        blacklist: (entry.node.blacklist_sources ?? []).join(', '),
+      }));
+
+    const selected = this.selectedNode;
+    const focusedNode = selected
+      ? {
+          address: String(selected.address ?? selected.id),
+          risk: Number(selected.risk_score ?? 0),
+          flags: this.nodeFlagKeys(selected),
+          blacklistSources: (selected.blacklist_sources ?? []).join(', '),
+          cluster: String(selected.cluster_id ?? ''),
+        }
+      : null;
+
+    const investigator = this.selectedInvestigationId
+      ? {
+          name: this.selectedInvestigationName ?? '',
+          notes: this.caseOverviewNotes.length,
+          pinned: this.pinnedNodeIds.length,
+          links: this.investigatorLinks.map((link) => ({
+            source: link.source_address,
+            target: link.target_address,
+            confidence: String(link.confidence),
+            reason: link.reason,
+          })),
+        }
+      : null;
+
+    return {
+      scope,
+      analyzed: this.hasAnalytics,
+      generatedAt: graph.generated_at ?? '',
+      counts: {
+        nodes: nodes.length,
+        edges: graph.links.length,
+        blacklisted: nodes.filter((node) => node.blacklist_flag).length,
+        highRisk: nodes.filter((node) => Number(node.risk_score ?? 0) >= 70).length,
+        peel: nodes.filter((node) => node.peel_chain_flag).length,
+        chainHop: nodes.filter((node) => node.chain_hop_flag).length,
+        clusters: new Set(nodes.map((node) => node.cluster_id).filter(Boolean)).size,
+        dexSwaps: this.dexSwapEvents.length,
+      },
+      activeFilters: filters,
+      flaggedNodes,
+      focusedNode,
+      investigator,
+    };
   }
 
   /** Coarse risk band for the node-details verdict header - blacklist always wins. */

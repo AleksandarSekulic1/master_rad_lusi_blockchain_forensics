@@ -11,7 +11,7 @@ import { AnalysisStateService } from '../../core/services/analysis-state.service
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import { CaseReportContext } from '../../models/blockchain-forensics.models';
+import { CaseReportContext, GraphReportData } from '../../models/blockchain-forensics.models';
 
 type Rgb = [number, number, number];
 
@@ -39,6 +39,11 @@ export class ReportExportComponent {
   /** 'card' - the standalone panel (Dashboard). 'button' - just a compact trigger to drop
    * into a toolbar (the graph page's button row); the signing dialog is the same. */
   @Input() variant: 'card' | 'button' = 'card';
+
+  /** When set (the /graph page passes it), the PDF is a graph-analysis report - findings,
+   * flagged nodes, focused node, investigator layer - instead of the Dashboard's
+   * pre-analysis triage document. */
+  @Input() graphReport: GraphReportData | null = null;
 
   protected isExporting = false;
   protected exportError: string | null = null;
@@ -155,21 +160,32 @@ export class ReportExportComponent {
       const signatureImage = this.signaturePad!.getDataUrl();
       const declaration = this.declarationText();
 
+      const gr = this.graphReport;
       const registration = await firstValueFrom(
         this.api.registerReport({
           case_id: caseId,
           case_name: context.case.name ?? '',
           declaration,
           content: this.reportContentPayload(context),
-          summary: {
-            rows: context.rows,
-            nodes: context.nodes,
-            edges: context.edges,
-            blacklisted: context.summary.blacklisted_nodes ?? 0,
-            high_risk: context.summary.high_risk_nodes ?? 0,
-            clusters: context.summary.clusters ?? 0,
-          },
-          report_type: 'case_triage',
+          summary: gr
+            ? {
+                nodes: gr.counts.nodes,
+                edges: gr.counts.edges,
+                blacklisted: gr.counts.blacklisted,
+                high_risk: gr.counts.highRisk,
+                clusters: gr.counts.clusters,
+                flagged_nodes: gr.flaggedNodes.length,
+                analyzed: gr.analyzed,
+              }
+            : {
+                rows: context.rows,
+                nodes: context.nodes,
+                edges: context.edges,
+                blacklisted: context.summary.blacklisted_nodes ?? 0,
+                high_risk: context.summary.high_risk_nodes ?? 0,
+                clusters: context.summary.clusters ?? 0,
+              },
+          report_type: gr ? 'graph_analysis' : 'case_triage',
         }),
       );
 
@@ -184,6 +200,15 @@ export class ReportExportComponent {
   }
 
   private declarationText(): string {
+    if (this.graphReport) {
+      return this.L(
+        'Potvrđujem da sam pregledao transakcioni graf navedenog predmeta i da ovaj izveštaj verno prikazuje graf i ' +
+          'analitičke nalaze onakve kakve je aplikacija izračunala u trenutku izvoza. Potpis iznad je moj.',
+        'I confirm that I have reviewed the transaction graph of the stated case and that this report faithfully ' +
+          'presents the graph and the analytic findings as the application computed them at export time. The signature ' +
+          'above is mine.',
+      );
+    }
     return this.L(
       'Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu ' +
         'izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.',
@@ -195,6 +220,21 @@ export class ReportExportComponent {
   /** The stable figures a reader could dispute - altering any of them in the exported
    * document makes /verify-report fail. */
   private reportContentPayload(context: CaseReportContext): Record<string, unknown> {
+    const gr = this.graphReport;
+    if (gr) {
+      return {
+        case_id: context.case.id,
+        report: 'graph_analysis',
+        scope: gr.scope,
+        analyzed: gr.analyzed,
+        generated_at: gr.generatedAt,
+        counts: gr.counts,
+        flagged_nodes: gr.flaggedNodes
+          .map((n) => ({ address: n.address, risk: n.risk, flags: [...n.flags].sort() }))
+          .sort((a, b) => a.address.localeCompare(b.address)),
+        focused_node: gr.focusedNode?.address ?? null,
+      };
+    }
     return {
       case_id: context.case.id,
       evidence_sha256: context.case.evidence.map((entry) => entry.sha256).sort(),
@@ -206,6 +246,23 @@ export class ReportExportComponent {
       clusters: context.summary.clusters ?? 0,
       generated_at: context.generated_at,
     };
+  }
+
+  private graphFlagLabel(flag: string): string {
+    switch (flag) {
+      case 'Crna lista':
+        return this.L('Crna lista', 'Blacklisted');
+      case 'Visok rizik':
+        return this.L('Visok rizik', 'High risk');
+      case 'Peel lanac':
+        return this.L('Peel lanac', 'Peel chain');
+      case 'Skok lanca':
+        return this.L('Skok lanca', 'Chain hop');
+      case 'Anomalija':
+        return this.L('Anomalija', 'Anomaly');
+      default:
+        return flag;
+    }
   }
 
   // --- PDF ---------------------------------------------------------------------------
@@ -320,7 +377,15 @@ export class ReportExportComponent {
 
     doc.setTextColor(...WHITE);
     setF('bold', 15);
-    doc.text(tx(this.L('Lusi v1.0 — Izveštaj za trijažu predmeta', 'Lusi v1.0 — Case triage report')), titleX, 11);
+    doc.text(
+      tx(
+        this.graphReport
+          ? this.L('Lusi v1.0 — Izveštaj analize grafa', 'Lusi v1.0 — Graph analysis report')
+          : this.L('Lusi v1.0 — Izveštaj za trijažu predmeta', 'Lusi v1.0 — Case triage report'),
+      ),
+      titleX,
+      11,
+    );
     setF('normal', 10);
     const subtitleLines = doc.splitTextToSize(
       tx(`${this.L('Predmet', 'Case')}: ${context.case.name ?? ''}`),
@@ -331,17 +396,27 @@ export class ReportExportComponent {
 
     y = barHeight + 6;
 
-    // --- 2. Triage note --------------------------------------------------------------
+    // --- 2. Intro note -------------------------------------------------------------
     const noteLines = doc.splitTextToSize(
       tx(
-        this.L(
-          'Ovaj dokument je procena prikupljenih dokaza pre analize. Služi da se, na osnovu obima grafa i početnih ' +
-            'pokazatelja rizika, odluči da li je potrebna dublja analiza transakcija (taint, pathfinding, DEX). Ne sadrži ' +
-            'zaključke analize niti detalje pojedinačnih čvorova.',
-          'This document is a pre-analysis assessment of the collected evidence. It supports the decision — based on the ' +
-            'size of the graph and initial risk indicators — of whether a deeper transaction analysis (taint, ' +
-            'pathfinding, DEX) is needed. It contains no analysis conclusions and no per-node detail.',
-        ),
+        this.graphReport
+          ? this.L(
+              'Ovaj dokument je snimak transakcionog grafa i analitičkih nalaza u trenutku izvoza. Sadrži ključne ' +
+                'brojeve, listu označenih čvorova i — ako je bio izabran — fokusirani čvor. Istražiteljski sloj je ručno ' +
+                'unet i nije blockchain činjenica. Slika grafa odgovara prikazu na ekranu, uključujući aktivne filtere.',
+              'This document is a snapshot of the transaction graph and the analytic findings at export time. It ' +
+                'contains the key figures, the list of flagged nodes and — if one was selected — the focused node. The ' +
+                'investigator layer is manually entered and is not a blockchain fact. The graph image matches the ' +
+                'on-screen view, including any active filters.',
+            )
+          : this.L(
+              'Ovaj dokument je procena prikupljenih dokaza pre analize. Služi da se, na osnovu obima grafa i početnih ' +
+                'pokazatelja rizika, odluči da li je potrebna dublja analiza transakcija (taint, pathfinding, DEX). Ne ' +
+                'sadrži zaključke analize niti detalje pojedinačnih čvorova.',
+              'This document is a pre-analysis assessment of the collected evidence. It supports the decision — based on ' +
+                'the size of the graph and initial risk indicators — of whether a deeper transaction analysis (taint, ' +
+                'pathfinding, DEX) is needed. It contains no analysis conclusions and no per-node detail.',
+            ),
       ),
       usableWidth - 8,
     ) as string[];
@@ -365,6 +440,153 @@ export class ReportExportComponent {
     kv(this.L('KREIRAN', 'CREATED AT'), context.case.created_at ?? '');
     kv(this.L('IZMENJEN', 'UPDATED AT'), context.case.updated_at ?? '');
     kv(this.L('GENERISANO', 'GENERATED AT'), context.generated_at ?? '');
+
+    if (this.graphReport) {
+      const gr = this.graphReport;
+
+      sectionTitle(this.L('Obim i uslovi analize', 'Analysis scope & conditions'));
+      kv(this.L('OBIM', 'SCOPE'), gr.scope);
+      kv(
+        this.L('ANALITIKA', 'ANALYTICS'),
+        gr.analyzed
+          ? this.L('Da — graf obojen po riziku', 'Yes — graph colored by risk')
+          : this.L('Ne — sirov prikaz', 'No — raw view'),
+      );
+      kv(this.L('GRAF GENERISAN', 'GRAPH GENERATED'), gr.generatedAt || 'n/a');
+      kv(
+        this.L('AKTIVNI FILTERI', 'ACTIVE FILTERS'),
+        gr.activeFilters.length ? gr.activeFilters.join('; ') : this.L('nijedan', 'none'),
+      );
+
+      sectionTitle(this.L('Ključni nalazi', 'Key findings'));
+      drawSummaryCards([
+        [this.L('Čvorova', 'Nodes'), gr.counts.nodes, ACCENT],
+        [this.L('Veza', 'Edges'), gr.counts.edges, ACCENT],
+        [this.L('Na crnoj listi', 'Blacklisted'), gr.counts.blacklisted, gr.counts.blacklisted ? RED : TEXT_GRAY],
+        [this.L('Visok rizik', 'High-risk'), gr.counts.highRisk, gr.counts.highRisk ? AMBER : TEXT_GRAY],
+      ]);
+      drawSummaryCards([
+        [this.L('Peel lanac', 'Peel chain'), gr.counts.peel, gr.counts.peel ? AMBER : TEXT_GRAY],
+        [this.L('Skok lanca', 'Chain hop'), gr.counts.chainHop, gr.counts.chainHop ? AMBER : TEXT_GRAY],
+        [this.L('Klastera', 'Clusters'), gr.counts.clusters, ACCENT],
+        [this.L('DEX swap', 'DEX swaps'), gr.counts.dexSwaps, ACCENT],
+      ]);
+
+      sectionTitle(this.L('Prikaz grafa', 'Graph view'));
+      if (signing.graphImage) {
+        try {
+          const size = await this.imageSize(signing.graphImage);
+          const maxHeight = 150;
+          let renderWidth = usableWidth;
+          let renderHeight = (size.height / size.width) * renderWidth;
+          if (renderHeight > maxHeight) {
+            renderHeight = maxHeight;
+            renderWidth = (size.width / size.height) * renderHeight;
+          }
+          ensureSpace(renderHeight + 8);
+          const imgX = marginX + (usableWidth - renderWidth) / 2;
+          doc.setFillColor(...GRAPH_BG);
+          doc.rect(imgX, y, renderWidth, renderHeight, 'F');
+          doc.addImage(signing.graphImage, 'PNG', imgX, y, renderWidth, renderHeight);
+          y += renderHeight + 5;
+        } catch {
+          signing.graphImage = null;
+        }
+      }
+      if (!signing.graphImage) {
+        ensureSpace(10);
+        setF('italic', 9);
+        doc.setTextColor(...TEXT_GRAY);
+        doc.text(
+          tx(this.L('Graf nije bio učitan u trenutku izrade izveštaja.', 'The graph was not loaded when this report was produced.')),
+          marginX,
+          y,
+        );
+        y += 6;
+        doc.setTextColor(...TEXT_DARK);
+      }
+
+      sectionTitle(this.L('Označeni čvorovi', 'Flagged nodes'));
+      if (gr.flaggedNodes.length === 0) {
+        setF('normal', 9);
+        doc.setTextColor(...TEXT_GRAY);
+        doc.text(tx(this.L('Nema označenih čvorova u ovom prikazu.', 'No flagged nodes in this view.')), marginX, y);
+        y += 6;
+        doc.setTextColor(...TEXT_DARK);
+      } else {
+        table(
+          [this.L('Adresa', 'Address'), this.L('Rizik', 'Risk'), this.L('Oznake', 'Flags'), this.L('Crne liste', 'Blacklists')],
+          gr.flaggedNodes.slice(0, 30).map((n) => [
+            n.address,
+            String(n.risk),
+            n.flags.map((f) => this.graphFlagLabel(f)).join(', '),
+            n.blacklist || 'n/a',
+          ]),
+          { 0: { cellWidth: 76 }, 1: { cellWidth: 14 }, 2: { cellWidth: 44 } },
+        );
+        if (gr.flaggedNodes.length > 30) {
+          setF('italic', 8);
+          doc.setTextColor(...TEXT_GRAY);
+          doc.text(
+            tx(
+              this.L(
+                `… i još ${gr.flaggedNodes.length - 30} označenih čvorova`,
+                `… and ${gr.flaggedNodes.length - 30} more flagged nodes`,
+              ),
+            ),
+            marginX,
+            y,
+          );
+          y += 6;
+          doc.setTextColor(...TEXT_DARK);
+        }
+      }
+
+      if (gr.focusedNode) {
+        sectionTitle(this.L('Fokusirani čvor', 'Focused node'));
+        kv(this.L('ADRESA', 'ADDRESS'), gr.focusedNode.address);
+        kv(this.L('SKOR RIZIKA', 'RISK SCORE'), String(gr.focusedNode.risk));
+        kv(
+          this.L('OZNAKE', 'FLAGS'),
+          gr.focusedNode.flags.length
+            ? gr.focusedNode.flags.map((f) => this.graphFlagLabel(f)).join(', ')
+            : this.L('nema', 'none'),
+        );
+        kv(this.L('CRNE LISTE', 'BLACKLISTS'), gr.focusedNode.blacklistSources || 'n/a');
+        kv(this.L('KLASTER', 'CLUSTER'), gr.focusedNode.cluster || 'n/a');
+      }
+
+      if (gr.investigator) {
+        sectionTitle(this.L('Istražiteljski sloj (ručno — nije blockchain)', 'Investigator layer (manual — not blockchain)'));
+        kv(this.L('ISTRAGA', 'INVESTIGATION'), gr.investigator.name || 'n/a');
+        kv(this.L('BELEŠKE', 'NOTES'), String(gr.investigator.notes));
+        kv(this.L('ZAKAČENI ČVOROVI', 'PINNED NODES'), String(gr.investigator.pinned));
+        if (gr.investigator.links.length > 0) {
+          table(
+            [this.L('Izvor', 'Source'), this.L('Cilj', 'Target'), this.L('Pouzdanost', 'Confidence'), this.L('Razlog', 'Reason')],
+            gr.investigator.links.map((l) => [l.source, l.target, l.confidence, l.reason]),
+            { 0: { cellWidth: 54 }, 1: { cellWidth: 54 }, 2: { cellWidth: 20 } },
+          );
+        }
+        setF('italic', 8);
+        doc.setTextColor(...TEXT_GRAY);
+        doc.text(
+          doc.splitTextToSize(
+            tx(
+              this.L(
+                'Istražiteljske veze su ručno unete pretpostavke na osnovu vanlančanih dokaza — nisu dokazane blockchain transakcije.',
+                'Investigator links are manually entered assumptions based on off-chain evidence — they are not proven blockchain transactions.',
+              ),
+            ),
+            usableWidth,
+          ) as string[],
+          marginX,
+          y,
+        );
+        y += 8;
+        doc.setTextColor(...TEXT_DARK);
+      }
+    } else {
 
     // --- 4. Analysis summary -----------------------------------------------------------
     const blacklisted = context.summary.blacklisted_nodes ?? 0;
@@ -504,7 +726,9 @@ export class ReportExportComponent {
       { 0: { cellWidth: 40 }, 1: { cellWidth: 28 }, 3: { cellWidth: 22 } },
     );
 
-    // --- 9. Examiner sign-off ------------------------------------------------------
+    }
+
+    // --- Examiner sign-off -------------------------------------------------------------
     doc.addPage();
     y = 16;
     sectionTitle(this.L('Potpis i overa', 'Signature and certification'));
@@ -606,7 +830,14 @@ export class ReportExportComponent {
       );
     }
 
-    doc.save(`${context.case.id}_${this.reportLang === 'sr' ? 'izvestaj_trijaza' : 'triage_report'}.pdf`);
+    const stem = this.graphReport
+      ? this.reportLang === 'sr'
+        ? 'izvestaj_analize_grafa'
+        : 'graph_analysis_report'
+      : this.reportLang === 'sr'
+        ? 'izvestaj_trijaza'
+        : 'triage_report';
+    doc.save(`${context.case.id}_${stem}.pdf`);
   }
 
   // --- helpers ---------------------------------------------------------------------
