@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import cytoscape, { Core, ElementDefinition } from 'cytoscape';
@@ -26,21 +25,12 @@ import {
   TaintAnalysisResult,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
-import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
-import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
-import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
+import { SettingsService } from '../../core/services/settings.service';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    RouterLink,
-    CustodyAccessDialogComponent,
-    InvestigatorNodeDialogComponent,
-    CaseOverviewPanelComponent,
-  ],
+  imports: [CommonModule, FormsModule],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
@@ -163,8 +153,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {
     ensureCytoscapeExtensionsRegistered();
+  }
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
   }
 
   ngOnInit(): void {
@@ -1271,10 +1267,16 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
   get graphSummary(): string {
     if (!this.graph) {
-      return 'Čekanje na podatke grafa sa servera.';
+      return this.t('Čekanje na podatke grafa sa servera.', 'Waiting for graph data from the server.');
     }
 
-    return `${this.graph.nodes.length} čvorova, ${this.graph.links.length} veza, generisano ${this.graph.generated_at ?? 'n/a'}`;
+    const nodes = this.graph.nodes.length;
+    const edges = this.graph.links.length;
+    const generated = this.graph.generated_at ?? 'n/a';
+    return this.t(
+      `${nodes} čvorova, ${edges} veza, generisano ${generated}`,
+      `${nodes} nodes, ${edges} edges, generated ${generated}`,
+    );
   }
 
   get nodeCount(): number {

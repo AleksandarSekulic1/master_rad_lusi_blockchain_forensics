@@ -130,43 +130,6 @@
     </div>
   </article>
 
-  <article class="panel details-panel" *ngIf="state.selectedNodeSnapshot as node">
-    <div class="panel-heading">
-      <div>
-        <p class="panel-kicker">{{ t('Fokusirani entitet', 'Focused entity') }}</p>
-        <h2>{{ node.address ?? node.id }}</h2>
-      </div>
-      <span class="pill">{{ t('Rizik', 'Risk') }} {{ node.risk_score ?? 0 }}</span>
-    </div>
-
-    <dl class="details-grid">
-      <div>
-        <dt>{{ t('Klaster', 'Cluster') }}</dt>
-        <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
-      </div>
-      <div>
-        <dt>{{ t('Na crnoj listi', 'Blacklisted') }}</dt>
-        <dd>{{ node.blacklist_flag ? t('Da', 'Yes') : t('Ne', 'No') }}</dd>
-      </div>
-      <div>
-        <dt>{{ t('Anomalija', 'Anomaly') }}</dt>
-        <dd>{{ node.anomaly_flag ? t('Da', 'Yes') : t('Ne', 'No') }}</dd>
-      </div>
-      <div>
-        <dt>{{ t('Peel lanac', 'Peel chain') }}</dt>
-        <dd>{{ node.peel_chain_flag ? node.peel_chain_role ?? t('Da', 'Yes') : t('Ne', 'No') }}</dd>
-      </div>
-      <div>
-        <dt>{{ t('Skok lanca', 'Chain hop') }}</dt>
-        <dd>{{ node.chain_hop_flag ? node.chain_hop_type ?? t('Da', 'Yes') : t('Ne', 'No') }}</dd>
-      </div>
-      <div>
-        <dt>{{ t('Izvori', 'Sources') }}</dt>
-        <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
-      </div>
-    </dl>
-  </article>
-
   <section class="panel graph-panel">
     <app-graph-visualization></app-graph-visualization>
   </section>
