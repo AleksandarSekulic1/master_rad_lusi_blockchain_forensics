@@ -1,40 +1,153 @@
-:host {
-  --panel-border: rgba(148, 163, 184, 0.18);
-  --kicker: #7bd6ff;
-  --heading: #f4f7fe;
-  --text-dim: #9ab1d0;
-  --chip-bg: rgba(255, 255, 255, 0.03);
-  --btn-bg: rgba(255, 255, 255, 0.02);
-  --btn-text: #d9e6ff;
-  --btn-hover-bg: rgba(125, 211, 252, 0.1);
-  --btn-hover-border: rgba(125, 211, 252, 0.45);
-  --btn-active-bg: rgba(125, 211, 252, 0.22);
-  --btn-active-border: rgba(125, 211, 252, 0.6);
-  --panel-2-bg: rgba(4, 9, 18, 0.78);
-  --canvas-bg: #0a1425;
-  --accent: #7dd3fc;
-}
-
-:host-context([data-theme='light']) {
-  --panel-border: rgba(15, 23, 42, 0.12);
-  --kicker: #2563eb;
-  --heading: #16233b;
-  --text-dim: #55658c;
-  --chip-bg: rgba(15, 23, 42, 0.04);
-  --btn-bg: rgba(15, 23, 42, 0.03);
-  --btn-text: #223049;
-  --btn-hover-bg: rgba(37, 99, 235, 0.1);
-  --btn-hover-border: rgba(37, 99, 235, 0.4);
-  --btn-active-bg: rgba(37, 99, 235, 0.14);
-  --btn-active-border: rgba(37, 99, 235, 0.5);
-  --panel-2-bg: rgba(15, 23, 42, 0.03);
-  --canvas-bg: #0f1b30;
-  --accent: #2563eb;
-}
-
 .graph-shell {
   display: grid;
   gap: 1rem;
+}
+
+.active-case-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(125, 211, 252, 0.06);
+}
+
+.active-case-banner strong {
+  display: block;
+  color: #f4f7fe;
+}
+
+.active-case-banner .muted {
+  color: #8ea6c7;
+  font-size: 0.9rem;
+}
+
+.active-case-banner .muted a {
+  color: #7bd6ff;
+}
+
+.ghost-button {
+  padding: 0.65rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+  color: #d9e6ff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.ghost-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.45);
+  background: rgba(125, 211, 252, 0.1);
+  color: #ffffff;
+}
+
+.ghost-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ghost-button:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.6);
+  outline-offset: 2px;
+}
+
+.ghost-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/** A filter/playback toggle that's currently "on" - a lit, filled state so it reads at a
+ * glance as active rather than blending in with the other buttons in the row. */
+.ghost-button.active {
+  border-color: rgba(125, 211, 252, 0.6);
+  background: rgba(125, 211, 252, 0.22);
+  color: #eaf7ff;
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.25) inset;
+}
+
+.ghost-button.active:hover:not(:disabled) {
+  background: rgba(125, 211, 252, 0.3);
+}
+
+.case-graph-error {
+  margin: 0;
+  color: #fca5a5;
+}
+
+.evidence-picker {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.evidence-picker label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.analysis-status {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.9rem;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  white-space: nowrap;
+}
+
+.analysis-status.done {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.primary-button {
+  padding: 0.65rem 1.1rem;
+  border: none;
+  border-radius: 0.9rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+  transition: transform 0.14s ease, opacity 0.14s ease;
+  white-space: nowrap;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.evidence-picker select {
+  width: 100%;
+  padding: 0.8rem 0.95rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.evidence-picker select option {
+  color: #0b1526;
+  background: #ffffff;
 }
 
 .graph-header {
@@ -45,106 +158,67 @@
   flex-wrap: wrap;
 }
 
+.graph-header p,
+.node-inspector p,
+.node-inspector dt,
+.stats span {
+  color: #9ab1d0;
+}
+
 .panel-kicker {
   margin: 0 0 0.15rem;
   font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--kicker);
+  color: #7bd6ff;
 }
 
-h2 {
+h2,
+h3 {
   margin: 0;
-  color: var(--heading);
-  font-size: 1.2rem;
-}
-
-.graph-summary {
-  margin: 0.35rem 0 0;
-  color: var(--text-dim);
-  font-size: 0.85rem;
 }
 
 .stats {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  align-items: center;
 }
 
 .stats span {
-  padding: 0.5rem 0.8rem;
+  padding: 0.55rem 0.8rem;
   border-radius: 999px;
-  background: var(--chip-bg);
-  color: var(--text-dim);
-  font-size: 0.82rem;
-}
-
-.ghost-button {
-  padding: 0.55rem 0.9rem;
-  border-radius: 0.8rem;
-  border: 1px solid var(--panel-border);
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
-}
-
-.ghost-button:hover:not(:disabled) {
-  border-color: var(--btn-hover-border);
-  background: var(--btn-hover-bg);
-}
-
-.ghost-button:focus-visible {
-  outline: 2px solid var(--btn-active-border);
-  outline-offset: 2px;
-}
-
-.ghost-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ghost-button.active {
-  border-color: var(--btn-active-border);
-  background: var(--btn-active-bg);
-  color: var(--heading);
-  box-shadow: inset 0 0 0 1px var(--btn-active-border);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .timeline-panel {
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  flex-wrap: wrap;
   padding: 0.75rem 1rem;
   border-radius: 1rem;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-2-bg);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(4, 9, 18, 0.78);
 }
 
 .timeline-slider {
-  flex: 1 1 12rem;
-  accent-color: var(--accent);
+  flex: 1;
+  accent-color: #7bd6ff;
 }
 
 .timeline-position {
   flex: none;
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: #9ab1d0;
   white-space: nowrap;
 }
 
 .timeline-speed {
   flex: none;
   padding: 0.5rem 0.7rem;
-  border-radius: 0.7rem;
-  border: 1px solid var(--panel-border);
-  color: var(--btn-text);
-  background: var(--btn-bg);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .timeline-speed option {
@@ -152,58 +226,65 @@ h2 {
   background: #ffffff;
 }
 
-.timeline-subtitles-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: none;
-  font-size: 0.82rem;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
-.timeline-subtitle,
-.timeline-cumulative,
-.timeline-gap-note {
+.timeline-cumulative {
   margin: 0;
   padding: 0.6rem 1rem;
   border-radius: 0.75rem;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-2-bg);
-  color: var(--heading);
-  font-size: 0.88rem;
+  border: 1px solid rgba(134, 239, 172, 0.3);
+  background: rgba(134, 239, 172, 0.08);
+  color: #86efac;
+  font-size: 0.9rem;
   text-align: center;
-  word-break: break-word;
-}
-
-.timeline-cumulative {
-  border-color: rgba(134, 239, 172, 0.35);
-  background: rgba(134, 239, 172, 0.1);
-  color: #16a34a;
 }
 
 .timeline-gap-note {
-  border-color: rgba(251, 191, 36, 0.4);
-  background: rgba(251, 191, 36, 0.12);
-  color: #b45309;
+  margin: 0;
+  padding: 0.55rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  font-size: 0.85rem;
+  text-align: center;
 }
 
 .graph-content {
   display: grid;
   gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) 23rem;
+}
+
+/* A fixed, viewport-relative height (not min-height) on both columns: previously they
+   only had a min-height and relied on the grid's default row-stretch to match each
+   other, so a node with hundreds of counterparties (a deposit hub, say) grew the
+   inspector panel to match, which stretched the canvas along with it and pushed the
+   graph far down the page. Capping both the same way means the inspector's own content
+   scrolls internally (see overflow-y below) instead of ever growing the row. */
+.graph-canvas-wrap,
+.node-inspector {
+  height: min(70vh, 46rem);
+}
+
+.graph-canvas,
+.node-inspector {
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(4, 9, 18, 0.78);
+}
+
+.graph-canvas {
+  overflow: hidden;
+  height: 100%;
 }
 
 .graph-canvas-wrap {
   position: relative;
-  height: min(70vh, 46rem);
 }
 
-.graph-canvas {
-  height: 100%;
-  overflow: hidden;
-  border-radius: 1rem;
-  border: 1px solid var(--panel-border);
-  background: var(--canvas-bg);
+.node-inspector {
+  position: sticky;
+  top: 1rem;
+  overflow-y: auto;
 }
 
 .layout-status {
@@ -213,15 +294,413 @@ h2 {
   transform: translateX(-50%);
   padding: 0.5rem 1rem;
   border-radius: 999px;
-  background: var(--panel-2-bg);
-  border: 1px solid var(--btn-active-border);
-  color: var(--accent);
+  background: rgba(7, 17, 31, 0.9);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  color: #7dd3fc;
   font-size: 0.8rem;
   pointer-events: none;
 }
 
-@media (max-width: 640px) {
-  .graph-canvas-wrap {
-    height: 60vh;
+.timeline-subtitle {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(4, 9, 18, 0.78);
+  color: #f4f7fe;
+  font-size: 0.9rem;
+  text-align: center;
+  word-break: break-all;
+}
+
+.timeline-subtitles-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  font-size: 0.82rem;
+  color: #9ab1d0;
+  white-space: nowrap;
+}
+
+.node-inspector {
+  padding: 1rem;
+}
+
+/* Pinned inside the panel's own scroll area (not the page) - so the address a long
+   counterparty list belongs to stays visible while scrolling past it, instead of
+   scrolling out of sight along with the list itself. */
+.node-inspector .panel-kicker,
+.node-inspector h3 {
+  position: sticky;
+  top: 0;
+  background: rgba(4, 9, 18, 0.95);
+  z-index: 1;
+}
+
+.node-inspector .panel-kicker {
+  padding-top: 0.2rem;
+}
+
+.node-inspector h3 {
+  padding-bottom: 0.6rem;
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.node-inspector dl {
+  display: grid;
+  gap: 0.9rem;
+  margin: 1rem 0 0;
+}
+
+.node-inspector dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* overflow-wrap alone (no word-break: break-all) wraps at word/space boundaries first,
+   only breaking inside a token when that token alone doesn't fit a line - so ordinary
+   sentences no longer get chopped mid-word, and only genuinely unbroken tokens (a 42-char
+   hex address, say) fall back to breaking inside themselves because they have no spaces
+   to wrap at in the first place. */
+.node-inspector dd {
+  margin: 0.2rem 0 0;
+  color: #f4f7fe;
+  overflow-wrap: anywhere;
+}
+
+/* Hex addresses in the counterparty lists - monospace and a touch smaller so a full
+   42-char address needs fewer wrapped lines and reads as a technical value rather than
+   prose. */
+.node-inspector dd .mono-address {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.82rem;
+  letter-spacing: -0.01em;
+}
+
+.show-more-button {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  background: rgba(125, 211, 252, 0.08);
+  color: #7dd6ff;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.show-more-button:hover {
+  background: rgba(125, 211, 252, 0.16);
+  border-color: rgba(125, 211, 252, 0.5);
+}
+
+/* --- Case Management block inside the existing node details panel - compact
+   [Pin] / [Add Note] / [Investigator Link] chips + a note-count summary, deliberately not
+   a new section/panel. Delimited from the on-chain <dl> below by a bottom rule + an
+   "investigator layer, not blockchain data" kicker (see §13 / §16 / §20). --- */
+.investigator-block {
+  margin-top: 0.55rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.investigator-block > .notes-summary-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fdba74;
+}
+
+.investigator-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.investigator-actions .action-chip {
+  font-size: 0.76rem;
+  padding: 0.38rem 0.6rem;
+}
+
+.investigator-actions-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.74rem;
+  color: #8ea6c7;
+}
+
+.investigator-notes-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.investigator-notes-summary .notes-summary-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7bd6ff;
+}
+
+.investigator-notes-summary .notes-count {
+  font-size: 0.82rem;
+  color: #f4f7fe;
+}
+
+.investigator-notes-summary .ghost-button.small {
+  margin-left: auto;
+  font-size: 0.74rem;
+  padding: 0.34rem 0.6rem;
+}
+
+.ghost-button.pin-toggle.active {
+  border-color: rgba(250, 204, 21, 0.6);
+  background: rgba(250, 204, 21, 0.18);
+  color: #fde68a;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.28) inset;
+}
+
+.ghost-button.pin-toggle.active:hover:not(:disabled) {
+  background: rgba(250, 204, 21, 0.26);
+}
+
+.legend-swatch.pinned {
+  background: #4f8cff;
+  border: 2px solid #fde047;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.22);
+}
+
+/* --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15). One picker row
+   styled like .evidence-picker with an amber left accent so it reads as "the investigator
+   layer", plus an inspector panel that reuses .node-inspector wholesale. --- */
+.investigator-layer-picker {
+  border-left: 3px solid rgba(251, 146, 60, 0.55);
+  padding-left: 0.85rem;
+}
+
+.investigator-link-inspector .panel-kicker {
+  color: #fdba74;
+}
+
+/* Amber confidence badge, scoped so the DEX swap inspector keeps its own purple .level-* */
+.investigator-link-inspector .swap-confidence-badge.level-low {
+  color: #d5e0f6;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.investigator-link-inspector .swap-confidence-badge.level-medium {
+  color: #ffedd5;
+  background: rgba(251, 146, 60, 0.24);
+  border: 1px solid rgba(251, 146, 60, 0.45);
+}
+
+.investigator-link-inspector .swap-confidence-badge.level-high {
+  color: #7c2d12;
+  background: linear-gradient(135deg, #fb923c, #fdba74);
+}
+
+.node-inspector .danger-ghost {
+  margin-top: 1rem;
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.node-inspector .danger-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fecaca;
+}
+
+/* Legend marker - dashed orange, matching the actual line-dash-pattern of edge.investigator-link */
+.legend-line.investigator-link {
+  background: repeating-linear-gradient(90deg, #fb923c 0, #fb923c 4px, transparent 4px, transparent 8px);
+  border-radius: 0;
+}
+
+.node-inspector .blacklist-warning {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.node-inspector .blacklist-warning dt {
+  color: #fca5a5;
+}
+
+.node-inspector .blacklist-warning dd {
+  color: #fecaca;
+}
+
+.node-inspector.empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+/* --- DEX Swap overlay inspector (see DEX-SWAP-ANALIZA.md) - reuses .node-inspector's
+   own layout/typography (padding, sticky header, dl/dt/dd) wholesale; only the badge and
+   disclaimer below are new. --- */
+
+.swap-confidence-badge {
+  display: inline-block;
+  margin-top: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.swap-confidence-badge.level-high {
+  color: #04111f;
+  background: linear-gradient(135deg, #c084fc, #e9d5ff);
+}
+
+.swap-confidence-badge.level-medium {
+  color: #f3e8ff;
+  background: rgba(192, 132, 252, 0.28);
+  border: 1px solid rgba(192, 132, 252, 0.45);
+}
+
+.swap-confidence-badge.level-low {
+  color: #d5e0f6;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.node-inspector .muted-inline {
+  color: #8ea6c7;
+  font-size: 0.78rem;
+}
+
+.swap-disclaimer {
+  margin: 1rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: #8ea6c7;
+}
+
+.graph-legend {
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(4, 9, 18, 0.78);
+}
+
+.legend-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.6rem 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: #d5e0f6;
+}
+
+.legend-swatch {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.legend-swatch.normal {
+  background: #4f8cff;
+  border-color: #9bd1ff;
+}
+
+/* Solid gold, matching the graph - dashed is reserved for the cluster ring so the two
+   cannot be mistaken for one another. */
+.legend-swatch.anomaly {
+  background: #c98500;
+  border-color: #ffd479;
+  border-style: solid;
+  border-width: 3px;
+}
+
+.legend-swatch.chain-hop {
+  background: #199e70;
+  border-color: #6ee7c4;
+  border-radius: 0.2rem;
+  transform: rotate(45deg);
+}
+
+.legend-swatch.high-risk {
+  background: #d95926;
+  border-color: #ffab7a;
+}
+
+.legend-swatch.peel-chain {
+  background: #9085e9;
+  border-color: #c4bdf7;
+  border-radius: 0.15rem;
+  transform: rotate(45deg) scale(0.85);
+}
+
+.legend-swatch.blacklisted {
+  background: #e66767;
+  border-color: #f8a8a8;
+}
+
+.legend-swatch.clustered {
+  background: transparent;
+  border: 2px dashed #22d3ee;
+}
+
+.legend-line {
+  flex: none;
+  width: 1.5rem;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.legend-line.first-transaction {
+  background: #4ade80;
+}
+
+.legend-line.last-transaction {
+  background: #fbbf24;
+}
+
+/* Dashed look via a repeating gradient (a plain background can't be dashed) - matches
+   the actual 'line-dash-pattern' used for edge.swap-edge on the graph itself. */
+.legend-line.swap-edge {
+  background: repeating-linear-gradient(90deg, #c084fc 0, #c084fc 6px, transparent 6px, transparent 10px);
+  border-radius: 0;
+}
+
+.legend-hint {
+  margin: 0.9rem 0 0;
+  font-size: 0.78rem;
+  color: #8ea6c7;
+}
+
+@media (max-width: 980px) {
+  .graph-content {
+    grid-template-columns: 1fr;
   }
 }

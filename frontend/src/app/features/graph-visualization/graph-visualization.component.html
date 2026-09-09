@@ -1,13 +1,123 @@
 <div class="graph-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+    <button type="button" class="ghost-button" (click)="loadActiveCaseGraph()" [disabled]="!activeCase || isLoadingCaseGraph">
+      {{ isLoadingCaseGraph ? 'Učitavanje...' : 'Osveži graf slučaja' }}
+    </button>
+  </div>
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+
+    <span class="analysis-status" [class.done]="hasAnalytics">
+      {{ hasAnalytics ? '✓ Analizirano (boje po riziku)' : 'Sirov prikaz — bez analize' }}
+    </span>
+    <button type="button" class="primary-button" (click)="openCustodyDialog()" [disabled]="!hasLoadedGraph || isAnalyzing">
+      {{ isAnalyzing ? 'Analiziranje...' : hasAnalytics ? 'Ponovo analiziraj graf' : 'Analiziraj graf' }}
+    </button>
+  </div>
+
+  <!-- Istražiteljski sloj: koja istraga (slučaj istražitelja) je aktivna. Jedan <select>,
+       istog oblika kao gornji izbor evidencije - nije nova sekcija/stranica. Uvek vidljiv:
+       ovde se istraga i pravi (dugme „Nova istraga") - bez toga ceo sloj je nedostupan
+       dok istraga ne postoji. -->
+  <div class="evidence-picker investigator-layer-picker">
+    <label>
+      Istražiteljski sloj — istraga
+      <select [ngModel]="selectedInvestigationId ?? ''" (ngModelChange)="onInvestigationSelected($event)">
+        <option value="">— bez istražiteljskog sloja —</option>
+        <option *ngFor="let inv of investigations" [value]="inv.id">{{ inv.name }}</option>
+      </select>
+    </label>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="createInvestigation()"
+      title="Napravi novu istragu (slučaj istražitelja) i odmah je izaberi"
+    >
+      ➕ Nova istraga
+    </button>
+    <button
+      type="button"
+      class="ghost-button"
+      [class.active]="investigatorLinkOverlayEnabled"
+      (click)="toggleInvestigatorLinkOverlay()"
+      [disabled]="!selectedInvestigationId"
+      title="Prikaži/sakrij istražiteljske veze (ručno zabeležene, pretpostavljene off-chain relacije) preko grafa — nisu blockchain transakcije"
+    >
+      {{ investigatorLinkOverlayEnabled ? 'Sakrij istražiteljske veze' : 'Prikaži istražiteljske veze' }}
+      <ng-container *ngIf="selectedInvestigationId"
+        >({{ visibleInvestigatorLinkCount
+        }}<ng-container *ngIf="visibleInvestigatorLinkCount !== investigatorLinks.length">/{{ investigatorLinks.length }}</ng-container
+        >)</ng-container
+      >
+    </button>
+  </div>
+
+  <!-- Case Overview: kompaktan pregled zapažanja i zaključaka istražitelja za izabranu
+       istragu (beleške / zakačene adrese / veze). Bez analitike - vidi §17. -->
+  <app-case-overview-panel
+    *ngIf="selectedInvestigationId"
+    [investigationName]="selectedInvestigationName ?? ''"
+    [description]="selectedInvestigationDescription"
+    [notes]="caseOverviewNotes"
+    [pinnedAddresses]="pinnedNodeIds"
+    [links]="investigatorLinks"
+    [graphAddresses]="currentGraphAddresses"
+    (focusNode)="focusNodeById($event)"
+    (unpinNode)="unpinNodeById($event)"
+    (showLink)="showInvestigatorLinkDetails($event)"
+  ></app-case-overview-panel>
+
+  <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
+
+  <!-- Lanac dokaza: razlog pristupa i potpis pre SVAKOG pokretanja analize -->
+  <app-custody-access-dialog
+    *ngIf="isCustodyDialogOpen && activeCase"
+    [caseId]="activeCase.id"
+    [caseName]="activeCase.name"
+    [evidenceFileName]="selectedEvidenceFileName"
+    [isSubmitting]="isAnalyzing"
+    [submitError]="custodyDialogError"
+    (confirmed)="confirmCustodyAndAnalyze($event)"
+    (cancelled)="closeCustodyDialog()"
+  ></app-custody-access-dialog>
+
+  <!-- Case Management akcije za izabrani čvor (beleške + nova veza) - modal, otvara se
+       tek na klik iz panela detalja. -->
+  <app-investigator-node-dialog
+    *ngIf="isNodeDialogOpen && selectedNode && selectedInvestigationId"
+    [investigationId]="selectedInvestigationId"
+    [investigationName]="selectedInvestigationName"
+    [address]="selectedNodeAddress"
+    [mode]="nodeDialogMode"
+    (notesChanged)="onNodeDialogNotesChanged()"
+    (linkCreated)="onNodeDialogLinkCreated()"
+    (closed)="closeNodeDialog()"
+  ></app-investigator-node-dialog>
+
   <div class="graph-header">
     <div>
-      <p class="panel-kicker">{{ t('Vizuelna analitika', 'Visual analytics') }}</p>
-      <h2>{{ t('Interaktivni graf transakcija', 'Interactive transaction graph') }}</h2>
-      <p class="graph-summary">{{ graphSummary }}</p>
+      <p class="panel-kicker">Vizuelna analitika</p>
+      <h2>Interaktivni graf transakcija</h2>
+      <p>{{ graphSummary }}</p>
     </div>
     <div class="stats">
-      <span>{{ nodeCount }} {{ t('čvorova', 'nodes') }}</span>
-      <span>{{ edgeCount }} {{ t('veza', 'edges') }}</span>
+      <span>{{ nodeCount }} čvorova</span>
+      <span>{{ edgeCount }} veza</span>
       <button
         type="button"
         class="ghost-button"
@@ -15,28 +125,28 @@
         (click)="toggleTimeline()"
         [disabled]="!hasLoadedGraph || timelineMaxRank === 0"
       >
-        {{ timelineEnabled ? t('Isključi vremensku traku', 'Hide timeline') : t('Vremenska traka', 'Timeline') }}
+        {{ timelineEnabled ? 'Isključi vremensku traku' : 'Vremenska traka' }}
       </button>
       <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!hasLoadedGraph">
-        {{ t('Prikaži ceo graf', 'Fit whole graph') }}
+        Prikaži ceo graf
       </button>
       <button
         type="button"
         class="ghost-button"
         [class.active]="deadEndFilterEnabled"
         (click)="toggleDeadEndFilter()"
+        title="Sakrij čvorove koji su samo primili sredstva i nisu ih dalje prosledili, a nisu već označeni kao sumnjivi"
       >
-        {{ deadEndFilterEnabled ? t('Prikaži čvorove bez odliva', 'Show sink-only nodes') : t('Sakrij čvorove bez odliva', 'Hide sink-only nodes') }}
-        ({{ deadEndNodeCount }})
+        {{ deadEndFilterEnabled ? 'Prikaži čvorove bez odliva' : 'Sakrij čvorove bez odliva' }} ({{ deadEndNodeCount }})
       </button>
       <button
         type="button"
         class="ghost-button"
         [class.active]="fundingSourceFilterEnabled"
         (click)="toggleFundingSourceFilter()"
+        title="Sakrij čvorove koji su samo slali sredstva i nikada ih nisu primili, a nisu već označeni kao sumnjivi"
       >
-        {{ fundingSourceFilterEnabled ? t('Prikaži čvorove bez priliva', 'Show source-only nodes') : t('Sakrij čvorove bez priliva', 'Hide source-only nodes') }}
-        ({{ fundingSourceNodeCount }})
+        {{ fundingSourceFilterEnabled ? 'Prikaži čvorove bez priliva' : 'Sakrij čvorove bez priliva' }} ({{ fundingSourceNodeCount }})
       </button>
       <button
         type="button"
@@ -44,24 +154,25 @@
         [class.active]="dexSwapOverlayEnabled"
         (click)="toggleDexSwapOverlay()"
         [disabled]="!hasLoadedGraph"
+        title="Heuristička DEX swap detekcija, iscrtana kao isprekidane veze preko postojećeg grafa — vidi DEX-SWAP-ANALIZA.md"
       >
-        {{ dexSwapOverlayEnabled ? t('Sakrij DEX swap veze', 'Hide DEX swap edges') : t('Prikaži DEX swap veze', 'Show DEX swap edges') }}
-        ({{ dexSwapEvents.length }})
+        {{ dexSwapOverlayEnabled ? 'Sakrij DEX swap veze' : 'Prikaži DEX swap veze' }} ({{ dexSwapEvents.length }})
       </button>
     </div>
   </div>
 
   <div class="timeline-panel" *ngIf="timelineEnabled">
     <button type="button" class="ghost-button" [class.active]="isTimelinePlaying" (click)="toggleTimelinePlay()">
-      {{ isTimelinePlaying ? t('⏸ Pauza', '⏸ Pause') : t('▶ Pusti', '▶ Play') }}
+      {{ isTimelinePlaying ? '⏸ Pauza' : '▶ Pusti' }}
     </button>
     <button
       type="button"
       class="ghost-button"
       (click)="skipToNextSuspiciousTransaction()"
       [disabled]="!hasNextSuspiciousTransaction"
+      title="Preskoči na sledeću transakciju koja uključuje označen (sumnjiv) čvor"
     >
-      {{ t('⏭ Sledeća sumnjiva', '⏭ Next suspicious') }}
+      ⏭ Sledeća sumnjiva
     </button>
     <input
       type="range"
@@ -72,31 +183,31 @@
       class="timeline-slider"
     />
     <span class="timeline-position">
-      {{ t('Transakcija', 'Transaction') }} {{ timelinePosition }} / {{ timelineMaxRank }}
+      Transakcija {{ timelinePosition }} / {{ timelineMaxRank }}
       <ng-container *ngIf="timelineCurrentDate"> — {{ timelineCurrentDate }}</ng-container>
     </span>
     <select
       class="timeline-speed"
       [ngModel]="timelineSpeed"
       (ngModelChange)="onTimelineSpeedChange($event)"
-      [title]="t('Brzina reprodukcije', 'Playback speed')"
+      title="Brzina reprodukcije"
     >
       <option *ngFor="let speed of timelineSpeedOptions" [ngValue]="speed">{{ speed }}x</option>
     </select>
     <label class="timeline-subtitles-toggle">
       <input type="checkbox" [ngModel]="timelineSubtitlesEnabled" (ngModelChange)="toggleTimelineSubtitles()" />
-      {{ t('Titlovi', 'Subtitles') }}
+      Titlovi
     </label>
     <label class="timeline-subtitles-toggle">
       <input type="checkbox" [ngModel]="timelineFollowEnabled" (ngModelChange)="toggleTimelineFollow()" />
-      {{ t('Prati kameru', 'Follow camera') }}
+      Prati kameru
     </label>
   </div>
   <p class="timeline-subtitle" *ngIf="timelineEnabled && timelineSubtitlesEnabled && timelineCurrentCaption">
     {{ timelineCurrentCaption }}
   </p>
   <p class="timeline-cumulative" *ngIf="timelineEnabled && timelineCurrentCumulativeTotal !== null">
-    {{ t('Ukupno preneto do sada', 'Total transferred so far') }}: {{ timelineCurrentCumulativeTotal | number: '1.2-2' }}
+    Ukupno preneto do sada: {{ timelineCurrentCumulativeTotal | number: '1.2-2' }}
   </p>
   <p class="timeline-gap-note" *ngIf="timelineEnabled && timelineCurrentGapNote">
     {{ timelineCurrentGapNote }}
@@ -105,7 +216,402 @@
   <div class="graph-content">
     <div class="graph-canvas-wrap">
       <div #graphCanvas class="graph-canvas"></div>
-      <div class="layout-status" *ngIf="isLayoutRunning">{{ t('Raspoređivanje čvorova...', 'Arranging nodes...') }}</div>
+      <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
     </div>
+
+    <!-- Inspector chain: investigator link -> swap event -> node -> empty. One nested
+         else-chain (not independent *ngIf's) so exactly one panel ever shows - see the
+         DEX-SWAP note below for why. -->
+    <ng-container *ngIf="selectedInvestigatorLink as link; else swapNodeOrEmpty">
+    <aside class="node-inspector investigator-link-inspector">
+      <p class="panel-kicker">Istražiteljska veza — nije blockchain činjenica</p>
+      <h3>{{ link.source_address }} ↔ {{ link.target_address }}</h3>
+      <span class="swap-confidence-badge" [class]="'level-' + link.confidence.toLowerCase()">
+        Pouzdanost: {{ link.confidence }}
+      </span>
+      <dl>
+        <div>
+          <dt>Izvorna adresa</dt>
+          <dd><span class="mono-address">{{ link.source_address }}</span></dd>
+        </div>
+        <div>
+          <dt>Ciljna adresa</dt>
+          <dd><span class="mono-address">{{ link.target_address }}</span></dd>
+        </div>
+        <div>
+          <dt>Razlog</dt>
+          <dd>{{ link.reason }}</dd>
+        </div>
+        <div>
+          <dt>Dokaz / referenca</dt>
+          <dd>{{ link.evidence }}</dd>
+        </div>
+        <div>
+          <dt>Pouzdanost</dt>
+          <dd>{{ link.confidence }}</dd>
+        </div>
+        <div>
+          <dt>Kreirano</dt>
+          <dd>{{ link.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</dd>
+        </div>
+        <div>
+          <dt>Uneo</dt>
+          <dd>{{ link.author }}</dd>
+        </div>
+      </dl>
+      <p class="swap-disclaimer">
+        Istražiteljska veza (investigator link / suspected relation) je ručno zabeležena, pretpostavljena veza na osnovu
+        vanlančanih (off-chain) dokaza — nije dokazana blockchain činjenica i nije grana transakcionog grafa.
+      </p>
+      <button
+        type="button"
+        class="ghost-button danger-ghost"
+        (click)="removeSelectedInvestigatorLink()"
+        [disabled]="isDeletingInvestigatorLink"
+      >
+        {{ isDeletingInvestigatorLink ? 'Uklanjanje...' : 'Ukloni vezu' }}
+      </button>
+      <p class="case-graph-error" *ngIf="investigatorLinkError">{{ investigatorLinkError }}</p>
+    </aside>
+    </ng-container>
+
+    <ng-template #swapNodeOrEmpty>
+    <!-- One three-way chain (swap panel / node panel / empty placeholder), not two
+         separate *ngIf/else pairs that happen to share #noSelection - two independent
+         ngIf's each evaluate their OWN condition, so when a swap edge was selected, the
+         node aside's condition went false and fired ITS OWN else, rendering the empty
+         "Detalji čvora" placeholder ALONGSIDE the swap panel instead of being replaced by
+         it (see DEX-SWAP-ANALIZA.md #9.3 for the intended, now-actually-enforced, behavior). -->
+    <ng-container *ngIf="selectedSwapEvent as swap; else nodeOrEmpty">
+    <aside class="node-inspector swap-inspector">
+      <p class="panel-kicker">SWAP događaj (heuristika)</p>
+      <h3>{{ swap.user_address }} → {{ swap.dex_name }}</h3>
+      <span class="swap-confidence-badge" [class]="'level-' + swapConfidenceLevel(swap).toLowerCase()">
+        {{ swapConfidenceLevel(swap) }}
+      </span>
+      <dl>
+        <div>
+          <dt>DEX</dt>
+          <dd>{{ swap.dex_name }} <span class="mono-address">({{ swap.dex_address }})</span></dd>
+        </div>
+        <div>
+          <dt>Input</dt>
+          <dd>{{ swap.input_amount | number : '1.0-6' }} {{ swap.input_token ?? '?' }}</dd>
+        </div>
+        <div>
+          <dt>Output</dt>
+          <dd>{{ swap.output_amount | number : '1.0-6' }} {{ swap.output_token ?? '?' }}</dd>
+        </div>
+        <div>
+          <dt>Timestamp</dt>
+          <dd
+            >{{ swap.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container *ngIf="swap.time_gap_seconds > 0"
+              >, izlaz {{ swap.time_gap_seconds }}s kasnije</ng-container
+            ></dd
+          >
+        </div>
+        <div>
+          <dt>Transaction hash</dt>
+          <dd *ngFor="let line of swapTxHashLines(swap)"><span class="mono-address">{{ line.label }}: {{ line.hash }}</span></dd>
+          <dd *ngIf="swapTxHashLines(swap).length === 0">n/a</dd>
+        </div>
+        <div>
+          <dt>Confidence</dt>
+          <dd>{{ swapConfidenceLevel(swap) }} <span class="muted-inline">({{ swap.confidence }} · {{ swap.dex_match_basis }})</span></dd>
+        </div>
+        <div
+          *ngIf="swapCarriedTaint(swap) as carried"
+          [class.blacklist-warning]="carried.available && (carried.percentage ?? 0) > 0"
+        >
+          <dt>Taint (preneto sa ulaznog kraka)</dt>
+          <dd *ngIf="!carried.available">
+            Taint analiza nije pokrenuta — klikni „Analiziraj graf" da vidiš da li je ovaj swap deo zaprljanog toka.
+          </dd>
+          <dd *ngIf="carried.available && carried.percentage === 0">0% — čista transakcija</dd>
+          <dd *ngIf="carried.available && (carried.percentage ?? 0) > 0">
+            {{ carried.percentage }}%
+            <span class="muted-inline"
+              >(preneto iz stanja pošiljaoca u trenutku ulaska u swap — nije nezavisno izračunato za DEX čvor ni za izlazni
+              token)</span
+            >
+          </dd>
+          <ng-container *ngIf="carried.available && swapTaintBreakdown(carried).length > 1">
+            <dd *ngFor="let entry of swapTaintBreakdown(carried)">
+              <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+            </dd>
+          </ng-container>
+        </div>
+      </dl>
+      <p class="swap-disclaimer">
+        Heuristička detekcija zasnovana na adresnom obrascu i vremenskoj bliskosti — nije kriptografski dokaz swap transakcije.
+        Preneti taint procenat je vezan za ulazni krak (pre swap-a) — ne tvrdi da je nezavisno izmeren za DEX kontrakt ili
+        izlazni token.
+      </p>
+    </aside>
+    </ng-container>
+
+    <ng-template #nodeOrEmpty>
+    <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
+      <p class="panel-kicker">Detalji čvora</p>
+      <h3>{{ node.address ?? node.id }}</h3>
+
+      <!-- Case Management akcije - kompaktan blok u POSTOJEĆEM panelu detalja, jasno
+           odvojen od on-chain podataka ispod (<dl>). Detalji su u modalu koji se otvara
+           tek na klik - vidi CASE-MANAGEMENT-IMPLEMENTATION.md §16 / §20. -->
+      <div class="investigator-block">
+      <span class="notes-summary-label">Istražiteljski sloj — nije blockchain podatak</span>
+      <div class="investigator-actions">
+        <button
+          type="button"
+          class="ghost-button action-chip pin-toggle"
+          [class.active]="isSelectedNodePinned"
+          (click)="togglePinSelectedNode()"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Zadrži čvor na fiksnoj poziciji; čuva se uz istragu i ostaje posle osvežavanja' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          {{ isSelectedNodePinned ? '📌 Otkači' : '📌 Zakači' }}
+        </button>
+        <button
+          type="button"
+          class="ghost-button action-chip"
+          (click)="openNodeDialog('notes')"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Dodaj istražiteljsku belešku za ovu adresu' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          📝 Dodaj belešku
+        </button>
+        <button
+          type="button"
+          class="ghost-button action-chip"
+          (click)="openNodeDialog('link')"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Kreiraj istražiteljsku vezu od ove adrese' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          🔗 Istražiteljska veza
+        </button>
+      </div>
+      <p class="investigator-actions-hint" *ngIf="!selectedInvestigationId">
+        Za beleške i veze izaberi istragu u „Istražiteljski sloj" iznad grafa.
+      </p>
+
+      <div class="investigator-notes-summary" *ngIf="selectedInvestigationId && selectedNodeNoteCount > 0">
+        <span class="notes-summary-label">Istražiteljske beleške</span>
+        <span class="notes-count">{{ selectedNodeNoteCount }} {{ noteCountLabel }}</span>
+        <button type="button" class="ghost-button small" (click)="openNodeDialog('notes')">Prikaži beleške</button>
+      </div>
+      </div>
+
+      <dl>
+        <div>
+          <dt>ENS ime</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.ens_name ?? 'Nema') }}</dd>
+        </div>
+        <div>
+          <dt>Tip adrese</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : addressTypeLabel }}</dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned'">
+          <dt>{{ !isEnrichingAddress && addressEnrichment?.known_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.known_entity ?? 'Nepoznat') }}
+            <span *ngIf="addressEnrichment?.known_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Trenutni balans</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.balance_eth != null ? (addressEnrichment!.balance_eth | number : '1.2-6') + ' ETH' : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Ukupan promet (u ovom slučaju)</dt>
+          <dd>
+            primljeno {{ node.total_received ?? 0 | number : '1.2-6' }} · poslato {{ node.total_sent ?? 0 | number : '1.2-6' }}
+          </dd>
+        </div>
+        <div>
+          <dt>Pošiljaoci u ovom slučaju</dt>
+          <dd *ngIf="caseIncomingSenders.length === 0">Nema — čvor nije primio sredstva u ovom slučaju</dd>
+          <dd *ngFor="let sender of visibleIncomingSenders">
+            <span class="mono-address">{{ sender.address }}</span> ({{ sender.amount | number : '1.2-6' }})
+          </dd>
+          <button type="button" class="show-more-button" *ngIf="hiddenSendersCount > 0" (click)="toggleShowAllSenders()">
+            {{ showAllSenders ? 'Prikaži manje' : 'Prikaži još ' + hiddenSendersCount }}
+          </button>
+        </div>
+        <div>
+          <dt>Primaoci u ovom slučaju</dt>
+          <dd *ngIf="caseOutgoingRecipients.length === 0">Nema — čvor nije poslao sredstva u ovom slučaju</dd>
+          <dd *ngFor="let recipient of visibleOutgoingRecipients">
+            <span class="mono-address">{{ recipient.address }}</span> ({{ recipient.amount | number : '1.2-6' }})
+          </dd>
+          <button type="button" class="show-more-button" *ngIf="hiddenRecipientsCount > 0" (click)="toggleShowAllRecipients()">
+            {{ showAllRecipients ? 'Prikaži manje' : 'Prikaži još ' + hiddenRecipientsCount }}
+          </button>
+        </div>
+        <div>
+          <dt>Prva aktivnost na lancu</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.first_seen_onchain ? (addressEnrichment!.first_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Poslednja aktivnost na lancu</dt>
+          <dd>{{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.last_seen_onchain ? (addressEnrichment!.last_seen_onchain | date : 'medium') : 'n/a') }}</dd>
+        </div>
+        <div>
+          <dt>Izvor sredstava (prva ikada on-chain transakcija)</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ?? 'n/a — prva on-chain transakcija ove adrese nije bila prijem sredstava, ili je van dometa ovog slučaja') }}
+            <span *ngIf="addressEnrichment?.funding_amount_eth != null">
+              ({{ addressEnrichment!.funding_amount_eth | number : '1.2-6' }} ETH)
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Tip izvora sredstava</dt>
+          <dd>
+            {{ isEnrichingAddress ? 'Učitavanje...' : (addressEnrichment?.funding_source ? fundingSourceTypeLabel : 'n/a') }}
+            <span *ngIf="addressEnrichment?.funding_source_ens as ens"> · {{ ens }}</span>
+          </dd>
+        </div>
+        <div
+          *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source"
+          [class.blacklist-warning]="addressEnrichment!.funding_source_entity_category === 'sanctioned'"
+        >
+          <dt>{{ addressEnrichment!.funding_source_entity_category === 'sanctioned' ? '⚠ ' : '' }}Poznat entitet izvora</dt>
+          <dd>
+            {{ addressEnrichment!.funding_source_entity ?? 'Nepoznat' }}
+            <span *ngIf="addressEnrichment!.funding_source_entity_category as cat"> ({{ entityCategoryLabel(cat) }})</span>
+          </dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && isDustFunding">
+          <dt>{{ !isEnrichingAddress && isDustFunding ? '⚠ ' : '' }}Sumnjivo mali iznos finansiranja ("dust")</dt>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+          <dd *ngIf="!isEnrichingAddress && !addressEnrichment?.funding_source">n/a</dd>
+          <dd *ngIf="!isEnrichingAddress && addressEnrichment?.funding_source && !isDustFunding">Ne</dd>
+          <dd *ngIf="!isEnrichingAddress && isDustFunding">
+            Da — čest obrazac za aktiviranje mule/burner novčanika pre nego što primi pravi nelegalni novac.
+          </dd>
+        </div>
+        <div [class.blacklist-warning]="!isEnrichingAddress && fundingSourceBlacklistMatch">
+          <dt>{{ !isEnrichingAddress && fundingSourceBlacklistMatch ? '⚠ ' : '' }}Direktna veza sa crnom listom</dt>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+          <dd *ngIf="!isEnrichingAddress && !fundingSourceBlacklistMatch">Ne</dd>
+          <dd *ngIf="!isEnrichingAddress && fundingSourceBlacklistMatch as flaggedSource">
+            Izvor sredstava je na crnoj listi u ovom slučaju: {{ flaggedSource.blacklist_label ?? 'Nema opisa' }}
+            <ng-container *ngIf="flaggedSource.blacklist_sources?.length"> ({{ flaggedSource.blacklist_sources!.join(', ') }})</ng-container>
+          </dd>
+        </div>
+        <div>
+          <dt>ERC-20 tokeni</dt>
+          <dd *ngIf="!isEnrichingAddress">
+            <ng-container *ngIf="addressEnrichment?.tokens?.length; else noTokens">
+              {{ addressEnrichment!.tokens.join(', ') }}
+              <span *ngIf="addressEnrichment!.tokens_total_count > addressEnrichment!.tokens.length">
+                (+{{ addressEnrichment!.tokens_total_count - addressEnrichment!.tokens.length }} više)
+              </span>
+            </ng-container>
+            <ng-template #noTokens>Nema</ng-template>
+          </dd>
+          <dd *ngIf="isEnrichingAddress">Učitavanje...</dd>
+        </div>
+        <div>
+          <dt>Skor rizika</dt>
+          <dd>{{ node.risk_score ?? 0 }}</dd>
+        </div>
+        <div>
+          <dt>Klaster</dt>
+          <dd>{{ node.cluster_id ?? 'n/a' }}</dd>
+        </div>
+        <div [class.blacklist-warning]="selectedNodeFlags.length > 0">
+          <dt>{{ selectedNodeFlags.length > 0 ? '⚠ ' : '' }}Zašto je čvor sumnjiv (oznake)</dt>
+          <dd>{{ selectedNodeFlags.length > 0 ? selectedNodeFlags.join(', ') : 'Nema — čvor nije označen' }}</dd>
+        </div>
+        <div>
+          <dt>Crne liste</dt>
+          <dd>{{ node.blacklist_sources?.join(', ') || 'n/a' }}</dd>
+        </div>
+        <div>
+          <dt>Peel uloga</dt>
+          <dd>{{ node.peel_chain_role ?? 'n/a' }}</dd>
+        </div>
+        <div>
+          <dt>Skok lanca</dt>
+          <dd>{{ node.chain_hop_type ?? 'n/a' }}</dd>
+        </div>
+      </dl>
+    </aside>
+
+    <ng-template #noSelection>
+      <aside class="node-inspector empty">
+        <p class="panel-kicker">Detalji čvora</p>
+        <p>
+          Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake — isprekidanu SWAP vezu za detalje
+          detektovane DEX razmene — ili isprekidanu narandžastu istražiteljsku vezu za pretpostavljenu off-chain relaciju.
+        </p>
+      </aside>
+    </ng-template>
+    </ng-template>
+    </ng-template>
+  </div>
+
+  <div class="graph-legend">
+    <p class="panel-kicker">Legenda — zašto je čvor obojen tako</p>
+    <div class="legend-items">
+      <div class="legend-item">
+        <span class="legend-swatch normal"></span>
+        Normalno — bez detektovanih upozorenja
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch anomaly"></span>
+        Anomalija — <strong>zlatna puna ivica</strong>; neuobičajen obrazac transakcija
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch chain-hop"></span>
+        Skok lanca (šestougao) — sredstva prelaze između različitih mostova/mreža
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch high-risk"></span>
+        Visok skor rizika (≥ 70)
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch peel-chain"></span>
+        Peel lanac (dijamant) — postepeno "guljenje" manjih iznosa iz glavne sume
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch blacklisted"></span>
+        Na crnoj listi — potvrđeno zlonamerna adresa
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch clustered"></span>
+        Deo klastera — <strong>tirkizan isprekidan prsten</strong> odvojen od čvora; verovatno ista osoba/grupa iza više
+        adresa
+      </div>
+      <div class="legend-item">
+        <span class="legend-line first-transaction"></span>
+        Prva transakcija hronološki (najranija u ovom prikazu)
+      </div>
+      <div class="legend-item">
+        <span class="legend-line last-transaction"></span>
+        Poslednja transakcija hronološki (najskorija u ovom prikazu)
+      </div>
+      <div class="legend-item">
+        <span class="legend-line swap-edge"></span>
+        DEX SWAP (heuristika) — <strong>isprekidana ljubičasta veza</strong>; kliknite za DEX, iznose, hash i pouzdanost
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch pinned"></span>
+        Zakačen čvor (istražitelj) — <strong>zlatna dvostruka ivica</strong>; ostaje na fiksnoj poziciji pri ponovnom
+        raspoređivanju grafa
+      </div>
+      <div class="legend-item">
+        <span class="legend-line investigator-link"></span>
+        Istražiteljska veza (off-chain) — <strong>isprekidana narandžasta linija bez strelice, „◆ INVESTIGATOR LINK"</strong>;
+        ručno zabeležena pretpostavljena veza, <strong>nije blockchain transakcija</strong>; kliknite za razlog, dokaz,
+        pouzdanost i uklanjanje
+      </div>
+    </div>
+    <p class="legend-hint">
+      Kliknite na čvor da vidite tačno zbog čega je označen kao sumnjiv (polje "Zašto je čvor sumnjiv" u panelu desno).
+      Čvor može imati više upozorenja odjednom — boja uvek prikazuje najozbiljnije, dok oblik i ivica čuvaju ostale.
+      Klaster (prsten) je nezavisan od boje/oblika i može se pojaviti uz bilo koje upozorenje.
+    </p>
   </div>
 </div>
