@@ -58,3 +58,31 @@ select,
 textarea {
   font: inherit;
 }
+
+/* --- Light-theme overrides for the app shell / topbar ---
+   These live in the global stylesheet on purpose: component-scoped
+   `:root[data-theme='light'] …` rules do not reliably win against the
+   base component rules under emulated view encapsulation. */
+:root[data-theme='light'] .brand-mark {
+  mix-blend-mode: normal;
+  background: radial-gradient(circle at 50% 38%, #1c2b47, #0b1526);
+  border-radius: 50%;
+  padding: 6px;
+  filter: none;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
+}
+
+:root[data-theme='light'] .topbar-nav a.active {
+  color: #ffffff;
+  font-weight: 600;
+  background: linear-gradient(180deg, #1e3a8a, #17306e);
+  border-color: #142a63;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 0 1px rgba(23, 48, 110, 0.4),
+    0 8px 18px rgba(23, 48, 110, 0.4);
+}
+
+:root[data-theme='light'] .topbar-nav a.active::after {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.5), #ffffff);
+}

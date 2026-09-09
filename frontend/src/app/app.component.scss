@@ -44,16 +44,6 @@
   mask-image: radial-gradient(circle at 50% 45%, #000 58%, transparent 78%);
 }
 
-:root[data-theme='light'] .brand-mark {
-  /* screen blending washes the art out on a light ground, so on the
-     light theme we sit the cat on a small dark medallion instead */
-  mix-blend-mode: normal;
-  background: #0b1526;
-  border-radius: 50%;
-  padding: 5px;
-  filter: none;
-}
-
 .brand-text {
   display: flex;
   flex-direction: column;
@@ -171,12 +161,6 @@ h1 {
     0 6px 18px rgba(37, 99, 235, 0.28);
 }
 
-:root[data-theme='light'] .topbar-nav a.active {
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  border-color: rgba(37, 99, 235, 0.55);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.28);
-}
-
 .topbar-nav a.active::after {
   content: "";
   position: absolute;
@@ -186,10 +170,6 @@ h1 {
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(90deg, #60a5fa, #7bd6ff);
-}
-
-:root[data-theme='light'] .topbar-nav a.active::after {
-  background: linear-gradient(90deg, #bfdbfe, #ffffff);
 }
 
 .user-chip {
