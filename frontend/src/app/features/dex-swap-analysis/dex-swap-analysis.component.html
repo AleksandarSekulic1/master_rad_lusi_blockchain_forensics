@@ -1,0 +1,165 @@
+<div class="dex-swap-shell">
+  <div class="active-case-banner">
+    <div *ngIf="activeCase; else noCase">
+      <span class="panel-kicker">Aktivan slučaj</span>
+      <strong>{{ activeCase.name }}</strong>
+    </div>
+    <ng-template #noCase>
+      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+    </ng-template>
+  </div>
+
+  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
+    <label>
+      Prikaz transakcija
+      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+        <option value="">Sve transakcije (kombinovano)</option>
+        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+        </option>
+      </select>
+    </label>
+  </div>
+
+  <div class="dex-swap-header">
+    <p class="panel-kicker">DEX Swap Analysis</p>
+    <h2>DEX SWAPS</h2>
+    <p>Heuristička detekcija swap događaja — adresa šalje jedan token na DEX kontrakt i ubrzo prima drugi token nazad.</p>
+  </div>
+
+  <div class="address-form">
+    <label class="address-field">
+      Address
+      <input
+        type="text"
+        [(ngModel)]="address"
+        placeholder="0x..."
+        (keydown.enter)="openCustodyDialog()"
+        [disabled]="!activeCase"
+      />
+    </label>
+    <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
+      {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
+    </button>
+  </div>
+
+  <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+
+  <ng-container *ngIf="result">
+    <div class="result-meta">
+      <span class="tx-count-pill">{{ result.total_events }} swap{{ result.total_events === 1 ? '' : 's' }} detected</span>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="openSignatureDialog()"
+        [disabled]="isExportingPdf"
+        title="Izvezi PDF izveštaj sa trenutnim nalazima, potpisan i sa kontrolnim brojem za proveru"
+      >
+        {{ isExportingPdf ? 'Generisanje PDF-a...' : 'Izvezi PDF izveštaj' }}
+      </button>
+    </div>
+
+    <p class="data-note" *ngIf="!result.data_completeness.currency_declared">{{ result.data_completeness.note }}</p>
+
+    <div class="swap-list" *ngIf="result.events.length > 0; else noSwaps">
+      <article class="swap-card" *ngFor="let event of result.events">
+        <span
+          class="confidence-badge"
+          [class.confidence-detected]="event.confidence === 'Detected'"
+          [class.confidence-potential]="event.confidence === 'Potential'"
+        >
+          {{ event.label }}
+        </span>
+
+        <p class="swap-route">{{ event.user_address }} → {{ event.dex_name }}</p>
+
+        <p class="swap-headline">
+          <span class="amount">{{ event.input_amount | number : '1.0-6' }}</span>
+          <span class="token" [class.token-unknown]="!event.input_token" [title]="tokenTitle(event.input_token)">{{
+            tokenLabel(event.input_token)
+          }}</span>
+          <span class="arrow">→</span>
+          <span class="dex-name">{{ event.dex_name }}</span>
+          <span class="arrow">→</span>
+          <span class="amount">{{ event.output_amount | number : '1.0-6' }}</span>
+          <span class="token" [class.token-unknown]="!event.output_token" [title]="tokenTitle(event.output_token)">{{
+            tokenLabel(event.output_token)
+          }}</span>
+        </p>
+
+        <div class="swap-footer">
+          <span
+            >Time: {{ event.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
+              *ngIf="event.time_gap_seconds > 0"
+            >
+              · gap {{ event.time_gap_seconds }}s</ng-container
+            ></span
+          >
+          <span *ngFor="let line of txHashLines(event)">{{ line.label }}: {{ line.hash }}</span>
+        </div>
+      </article>
+    </div>
+
+    <ng-template #noSwaps>
+      <p class="empty-hint">No DEX swaps detected for this address.</p>
+    </ng-template>
+
+    <p class="disclaimer-note">{{ result.disclaimer }}</p>
+  </ng-container>
+
+  <p class="empty-hint" *ngIf="!result && !analysisError">
+    Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.
+  </p>
+</div>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre same DEX swap analize (isti deljeni
+     dijalog kao Taint/Pathfinding/Graf — vidi LANAC-DOKAZA.md i DEX-SWAP-ANALIZA.md #12) -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isAnalyzing"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndAnalyze($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>
+
+<!-- Isti obrazac potpisa/pečata/kontrolnog broja kao Taint Analysis (vidi
+     DEX-SWAP-ANALIZA.md #11) - odvojen overlay, ne deo glavnog .dex-swap-shell, da bi
+     ostao ispravno pozicioniran (position: fixed) bez obzira na skrol glavnog sadržaja. -->
+<div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
+  <div class="signature-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">Overa izveštaja</p>
+    <h3>Potpis analitičara</h3>
+
+    <p class="signature-intro">
+      Potpišite se mišem u polju ispod. Uz potpis se generiše <strong>pečat aplikacije Lusi</strong> sa kontrolnim brojem
+      i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.
+    </p>
+
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signature-declaration">
+      <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
+      <span>
+        Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi
+        kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.
+      </span>
+    </label>
+
+    <p class="signature-limit">
+      Napomena: potpis je <strong>izjava</strong>, a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni
+      dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.
+    </p>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signature-actions">
+      <button type="button" class="ghost-button" (click)="closeSignatureDialog()">Odustani</button>
+      <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
+        {{ isExportingPdf ? 'Generisanje...' : 'Potpiši i izvezi PDF' }}
+      </button>
+    </div>
+  </div>
+</div>

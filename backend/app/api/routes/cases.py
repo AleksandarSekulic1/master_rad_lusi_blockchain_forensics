@@ -4,10 +4,13 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.analytics.behavioral_analysis import analyze_time_of_day
 from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
+from app.analytics.dex_swap_analysis import DEFAULT_MAX_GAP_SECONDS, MAX_MAX_GAP_SECONDS, MIN_MAX_GAP_SECONDS, detect_dex_swaps
+from app.analytics.timezone_heuristics import estimate_timezone_compatibility
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
 from app.analytics.plugins.manager import run_plugin_pipeline
@@ -176,6 +179,156 @@ def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, objec
     payload['rows'] = int(len(combined_frame))
     payload['generated_at'] = datetime.now(timezone.utc).isoformat()
     return payload
+
+
+@router.get('/{case_id}/behavioral-analysis')
+def get_case_behavioral_analysis(
+    case_id: str,
+    address: str = Query(min_length=1),
+    evidence: str | None = None,
+) -> dict[str, object]:
+    """Behavioral / Time-of-Day Analysis: UTC hour-of-day and day-of-week transaction
+    pattern for one address, from the case's transaction graph (combined evidence, or one
+    file via ?evidence=). First version - UTC only, no timezone/continent inference.
+
+    Read-only, same as get_case_graph/get_seed_suggestions above: this only re-reads the
+    case's own already-built graph structure (no new analytics pipeline run), so there is
+    no custody dialog and no write_audit_log call here, unlike the deliberate-access
+    endpoints below (analytics/run, pathfinding).
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+
+    _, graph = build_case_graph(evidence_paths)
+
+    try:
+        result = analyze_time_of_day(graph, address.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # Heuristic UTC-offset/region compatibility estimate, layered on top of the raw
+    # hourly_distribution analyze_time_of_day() already computed - see
+    # timezone_heuristics.py's module docstring for what this claim is (and is not).
+    result['timezone_estimate'] = estimate_timezone_compatibility(result['hourly_distribution'], result['total_transactions'])
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+@router.get('/{case_id}/dex-swap-analysis')
+def get_case_dex_swap_analysis(
+    case_id: str,
+    address: str | None = Query(default=None),
+    evidence: str | None = None,
+    max_gap_seconds: int = Query(default=DEFAULT_MAX_GAP_SECONDS, ge=MIN_MAX_GAP_SECONDS, le=MAX_MAX_GAP_SECONDS),
+) -> dict[str, object]:
+    """DEX Swap Analysis: best-effort detection of "wallet -> known/likely DEX contract,
+    then that same contract -> the same wallet" pairs in the case's combined, cleaned
+    evidence, flagged as a 'Detected' or 'Potential' swap depending on how strong the
+    match is (see dex_swap_analysis.py and DEX-SWAP-ANALIZA.md). `address` is optional -
+    omitted, every candidate swap in the evidence is returned; given, the result is
+    scoped to that one address (and a 404 if it never appears in the evidence at all).
+
+    Reads the case's cleaned per-transaction DataFrame directly (NOT the shared
+    transaction graph) because the shared graph deliberately does not carry a
+    per-transaction currency/token field - see DEX-SWAP-ANALIZA.md #2.
+
+    Read-only, same treatment as get_case_graph/get_case_behavioral_analysis above: only
+    re-reads already-cleaned evidence, no new custody dialog, no audit log entry. Used by
+    the Graph page's passive DEX swap overlay (see graph-visualization.component.ts) -
+    the DEX Swap Analysis page's own ANALYZE button goes through the deliberate variant
+    below instead.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip() if address else None
+
+    try:
+        result = detect_dex_swaps(combined_frame, target_address=normalized_address, max_gap_seconds=max_gap_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+class DexSwapAnalysisRunRequest(BaseModel):
+    address: str | None = None
+    max_gap_seconds: int = Field(default=DEFAULT_MAX_GAP_SECONDS, ge=MIN_MAX_GAP_SECONDS, le=MAX_MAX_GAP_SECONDS)
+    # Same "all fields or none" custody gate as RunAnalyticsRequest.custody /
+    # CasePathfindingRequest.custody - optional at the API level, but the DEX Swap
+    # Analysis page's own ANALYZE button always supplies one, since scanning the case's
+    # evidence for swap pairs is the same kind of deliberate access to it as "Pokreni
+    # taint analizu"/"FIND PATH"/"Analiziraj graf" (see LANAC-DOKAZA.md).
+    custody: TransactionCustodyEntry | None = None
+
+
+@router.post('/{case_id}/dex-swap-analysis/run')
+def run_case_dex_swap_analysis(
+    case_id: str,
+    request: DexSwapAnalysisRunRequest,
+    evidence: str | None = None,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    """Deliberate variant of GET .../dex-swap-analysis above: identical detection, but
+    treated as a deliberate access to every transaction in the evidence scope (like
+    "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf" - see LANAC-DOKAZA.md), so it
+    accepts an optional `custody` entry and, when present, records it in both chains of
+    custody (`_record_custody_access`) before returning. The read-only GET route stays as
+    the passive variant, used by the Graph page's DEX swap overlay.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    # Built from the per-evidence-file frames (like run_case_analytics/run_case_pathfinding)
+    # rather than via combine_frames(clean_evidence_frames(...)) alone, so each row can be
+    # tagged with the specific evidence file it came from for the custody log.
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
+
+    normalized_address = request.address.strip() if request.address else None
+
+    try:
+        result = detect_dex_swaps(combined_frame, target_address=normalized_address, max_gap_seconds=request.max_gap_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    has_custody = bool(request.custody)
+    write_audit_log(
+        action='dex_swap_analysis_run',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        details={
+            'address': normalized_address,
+            'evidence_scope': evidence or 'combined',
+            'max_gap_seconds': request.max_gap_seconds,
+            'total_events': result['total_events'],
+            'detected_count': result['detected_count'],
+            'potential_count': result['potential_count'],
+            'custody_recorded': has_custody,
+            'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
+            'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,
+        },
+    )
+
+    if request.custody:
+        _record_custody_access(
+            case=case,
+            per_evidence_frames=per_evidence_frames,
+            custody=request.custody,
+            user=str(current_user['username']),
+        )
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
 
 
 @router.get('/{case_id}/seed-suggestions')

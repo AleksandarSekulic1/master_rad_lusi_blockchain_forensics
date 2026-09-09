@@ -400,6 +400,138 @@ h3 {
   border-color: rgba(125, 211, 252, 0.5);
 }
 
+/* --- Case Management block inside the existing node details panel - compact
+   [Pin] / [Add Note] / [Investigator Link] chips + a note-count summary, deliberately not
+   a new section/panel. Delimited from the on-chain <dl> below by a bottom rule + an
+   "investigator layer, not blockchain data" kicker (see §13 / §16 / §20). --- */
+.investigator-block {
+  margin-top: 0.55rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.investigator-block > .notes-summary-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fdba74;
+}
+
+.investigator-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.investigator-actions .action-chip {
+  font-size: 0.76rem;
+  padding: 0.38rem 0.6rem;
+}
+
+.investigator-actions-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.74rem;
+  color: #8ea6c7;
+}
+
+.investigator-notes-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.investigator-notes-summary .notes-summary-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7bd6ff;
+}
+
+.investigator-notes-summary .notes-count {
+  font-size: 0.82rem;
+  color: #f4f7fe;
+}
+
+.investigator-notes-summary .ghost-button.small {
+  margin-left: auto;
+  font-size: 0.74rem;
+  padding: 0.34rem 0.6rem;
+}
+
+.ghost-button.pin-toggle.active {
+  border-color: rgba(250, 204, 21, 0.6);
+  background: rgba(250, 204, 21, 0.18);
+  color: #fde68a;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.28) inset;
+}
+
+.ghost-button.pin-toggle.active:hover:not(:disabled) {
+  background: rgba(250, 204, 21, 0.26);
+}
+
+.legend-swatch.pinned {
+  background: #4f8cff;
+  border: 2px solid #fde047;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.22);
+}
+
+/* --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15). One picker row
+   styled like .evidence-picker with an amber left accent so it reads as "the investigator
+   layer", plus an inspector panel that reuses .node-inspector wholesale. --- */
+.investigator-layer-picker {
+  border-left: 3px solid rgba(251, 146, 60, 0.55);
+  padding-left: 0.85rem;
+}
+
+.investigator-link-inspector .panel-kicker {
+  color: #fdba74;
+}
+
+/* Amber confidence badge, scoped so the DEX swap inspector keeps its own purple .level-* */
+.investigator-link-inspector .swap-confidence-badge.level-low {
+  color: #d5e0f6;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.investigator-link-inspector .swap-confidence-badge.level-medium {
+  color: #ffedd5;
+  background: rgba(251, 146, 60, 0.24);
+  border: 1px solid rgba(251, 146, 60, 0.45);
+}
+
+.investigator-link-inspector .swap-confidence-badge.level-high {
+  color: #7c2d12;
+  background: linear-gradient(135deg, #fb923c, #fdba74);
+}
+
+.node-inspector .danger-ghost {
+  margin-top: 1rem;
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.node-inspector .danger-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fecaca;
+}
+
+/* Legend marker - dashed orange, matching the actual line-dash-pattern of edge.investigator-link */
+.legend-line.investigator-link {
+  background: repeating-linear-gradient(90deg, #fb923c 0, #fb923c 4px, transparent 4px, transparent 8px);
+  border-radius: 0;
+}
+
 .node-inspector .blacklist-warning {
   padding: 0.65rem 0.8rem;
   border-radius: 0.75rem;
@@ -419,6 +551,51 @@ h3 {
   display: grid;
   place-items: center;
   text-align: center;
+}
+
+/* --- DEX Swap overlay inspector (see DEX-SWAP-ANALIZA.md) - reuses .node-inspector's
+   own layout/typography (padding, sticky header, dl/dt/dd) wholesale; only the badge and
+   disclaimer below are new. --- */
+
+.swap-confidence-badge {
+  display: inline-block;
+  margin-top: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.swap-confidence-badge.level-high {
+  color: #04111f;
+  background: linear-gradient(135deg, #c084fc, #e9d5ff);
+}
+
+.swap-confidence-badge.level-medium {
+  color: #f3e8ff;
+  background: rgba(192, 132, 252, 0.28);
+  border: 1px solid rgba(192, 132, 252, 0.45);
+}
+
+.swap-confidence-badge.level-low {
+  color: #d5e0f6;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.node-inspector .muted-inline {
+  color: #8ea6c7;
+  font-size: 0.78rem;
+}
+
+.swap-disclaimer {
+  margin: 1rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: #8ea6c7;
 }
 
 .graph-legend {
@@ -507,6 +684,13 @@ h3 {
 
 .legend-line.last-transaction {
   background: #fbbf24;
+}
+
+/* Dashed look via a repeating gradient (a plain background can't be dashed) - matches
+   the actual 'line-dash-pattern' used for edge.swap-edge on the graph itself. */
+.legend-line.swap-edge {
+  background: repeating-linear-gradient(90deg, #c084fc 0, #c084fc 6px, transparent 6px, transparent 10px);
+  border-radius: 0;
 }
 
 .legend-hint {

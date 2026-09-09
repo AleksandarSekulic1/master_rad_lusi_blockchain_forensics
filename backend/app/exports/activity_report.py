@@ -38,6 +38,7 @@ ACTION_LABELS: dict[str, str] = {
     'csv_upload': 'Otpremljena CSV evidencija',
     'analytics_run': 'Pokrenuta analiza',
     'path_finding': 'Pretraga putanja',
+    'dex_swap_analysis_run': 'Pokrenuta DEX swap analiza',
     'case_created': 'Kreiran slučaj',
     'case_status_changed': 'Promenjen status slučaja',
     'case_deleted': 'Obrisan slučaj',
@@ -48,6 +49,15 @@ ACTION_LABELS: dict[str, str] = {
     'test_scenario_deleted': 'Obrisan validacioni scenario',
     'activity_report_exported': 'Izvezen izveštaj aktivnosti',
     'custody_pdf_exported': 'Izvezen lanac dokaza (PDF)',
+    'report_signed': 'Izvezen potpisan izveštaj (PDF)',
+}
+
+# Report type (see reports.py's RegisterReportRequest.report_type) -> human label, shared
+# between action_label-adjacent summarize_details below and the frontend's own copy.
+_REPORT_TYPE_LABELS: dict[str, str] = {
+    'taint': 'Taint izveštaj',
+    'pathfinding': 'Pathfinding izveštaj',
+    'dex_swap': 'DEX Swap izveštaj',
 }
 
 
@@ -72,7 +82,7 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_TEST
     if action.startswith('case_'):
         return _GROUP_CASE
-    if action in ('analytics_run', 'path_finding'):
+    if action in ('analytics_run', 'path_finding', 'dex_swap_analysis_run'):
         return _GROUP_ANALYSIS
     if action == 'csv_upload' or action.startswith('onchain_fetch'):
         return _GROUP_EVIDENCE
@@ -80,6 +90,8 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_REPORT
     if action == 'custody_pdf_exported':
         return _GROUP_CUSTODY
+    if action == 'report_signed':
+        return _GROUP_REPORT
     return _GROUP_OTHER
 
 
@@ -156,6 +168,16 @@ def summarize_details(entry: dict[str, Any]) -> str:
             evidence_files = details.get('custody_evidence_files', 0)
             summary += f' · lanac dokaza: {tx_rows} transakcija, {evidence_files} fajl(ova)'
         return summary
+    if action == 'dex_swap_analysis_run':
+        address = details.get('address') or 'sve adrese'
+        scope = details.get('evidence_scope', 'combined')
+        scope_text = 'sva evidencija (kombinovano)' if scope == 'combined' else str(scope)
+        summary = f'{address} · {scope_text} · {details.get("total_events", 0)} dogadjaja'
+        if details.get('custody_recorded'):
+            tx_rows = details.get('custody_transaction_rows', 0)
+            evidence_files = details.get('custody_evidence_files', 0)
+            summary += f' · lanac dokaza: {tx_rows} transakcija, {evidence_files} fajl(ova)'
+        return summary
     if action == 'test_suite_run':
         return f'{details.get("passed", 0)}/{details.get("total", 0)} testova prošlo'
     if action == 'test_scenarios_run':
@@ -182,7 +204,30 @@ def summarize_details(entry: dict[str, Any]) -> str:
         target = details.get('tx_id') or details.get('evidence_stored_name') or '?'
         scope_text = 'transakcija' if scope == 'transaction' else 'dokazni fajl'
         return f'{scope_text}: {target} · {details.get("entry_count", 0)} zapisa'
+    if action == 'report_signed':
+        return _report_signed_summary(details)
     return str(entry.get('file_name') or '')
+
+
+def _report_signed_summary(details: dict[str, Any]) -> str:
+    """Every registerReport() caller (Taint/Pathfinding/DEX Swap) sends its own free-form
+    `summary` dict alongside report_type - this picks out the one or two numbers that
+    actually distinguish one signed report from another of the same kind, the same way
+    each page's own on-screen summary does. Falls back to just the type + code for an
+    unrecognized/missing report_type, rather than guessing at unfamiliar summary keys."""
+    report_type = str(details.get('report_type') or '')
+    type_label = _REPORT_TYPE_LABELS.get(report_type, 'Izveštaj')
+    code = str(details.get('verification_code') or '?')
+
+    extra = ''
+    if report_type == 'taint':
+        extra = f' · {details.get("tainted_addresses", 0)} zaprljanih adresa, {details.get("cash_out_points", 0)} tačaka unovčavanja'
+    elif report_type == 'pathfinding':
+        extra = f' · {details.get("hops", 0)} skokova'
+    elif report_type == 'dex_swap':
+        extra = f' · {details.get("total_events", 0)} događaja'
+
+    return f'{type_label} · {code}{extra}'
 
 
 def _short_period(date_from: Any, date_to: Any) -> str:

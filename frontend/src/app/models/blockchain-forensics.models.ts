@@ -225,6 +225,131 @@ export interface CasePathfindingResult {
   message?: string | null;
 }
 
+/** Busiest single (day, hour) cell in BehavioralAnalysisResult.hour_by_day_distribution -
+ * a more specific claim than "most active hour" (summed across all days) or "most active
+ * day" (summed across all hours) alone. Null when the address has no timestamped
+ * transactions at all. */
+export interface BehavioralAnalysisPeakPeriod {
+  day: string;
+  hour: string;
+  count: number;
+  label: string;
+}
+
+export interface BehavioralAnalysisStats {
+  most_active_hour: string | null;
+  most_active_hour_count: number;
+  most_active_day: string | null;
+  most_active_day_count: number;
+  peak_period: BehavioralAnalysisPeakPeriod | null;
+  total_analyzed_transactions: number;
+}
+
+/** Heuristic UTC-offset-range / broad-region compatibility estimate, layered on top of
+ * BehavioralAnalysisResult.hourly_distribution. NEVER a location claim - see `disclaimer`,
+ * which is present on every `available: true` result and MUST be rendered alongside it.
+ * `available: false` covers two distinct backend reasons (too few transactions, or enough
+ * transactions but no offset's pattern clears the compatibility bar) that both surface the
+ * same `message` - the UI only ever needs to branch on `available`. */
+export interface TimezoneEstimate {
+  available: boolean;
+  /** Only present when `available` is true. */
+  utc_offset_min?: number;
+  utc_offset_max?: number;
+  /** Pre-formatted "UTC+5 – UTC+8" (or "UTC+6" alone when the range is a single offset) - render as-is, do not reformat. */
+  utc_offset_range_label?: string;
+  /** Broad regions only (continent-level) - never a country, never phrased as "located in". */
+  possible_regions?: string[];
+  confidence?: 'Low' | 'Medium' | 'High';
+  /** Always present when `available` is true - render verbatim beneath the estimate. */
+  disclaimer?: string;
+  /** Only present when `available` is false - e.g. "Insufficient data for reliable timezone inference." */
+  message?: string;
+}
+
+/** Result of the case-scoped Behavioral / Time-of-Day Analysis endpoint
+ * (GET /cases/{id}/behavioral-analysis) - first version, UTC only, no timezone/continent
+ * inference. `hourly_distribution` and `day_of_week_distribution` are always fully
+ * zero-filled (all 24 hour keys "00".."23", all 7 day names Monday..Sunday), and
+ * `hour_by_day_distribution` is the same 7x24 grid nested by day then hour - exactly what
+ * the heatmap renders. */
+export interface BehavioralAnalysisResult {
+  case_id: string;
+  evidence: string | null;
+  address: string;
+  timezone_estimate: TimezoneEstimate;
+  total_transactions: number;
+  hourly_distribution: Record<string, number>;
+  day_of_week_distribution: Record<string, number>;
+  hour_by_day_distribution: Record<string, Record<string, number>>;
+  stats: BehavioralAnalysisStats;
+  generated_at: string;
+}
+
+// --- DEX Swap Analysis (see DEX-SWAP-ANALIZA.md) - a heuristic, not a proof. Every event
+// carries an explicit `confidence` ('Detected' when both legs share the same real
+// transaction hash, 'Potential' when matched only by DEX address + a short time window),
+// and the result always carries `disclaimer`, which the UI must render, not just the
+// per-event data. ---
+
+/** One candidate swap: `user_address` sent `input_token`/`input_amount` to `dex_address`,
+ * then received `output_token`/`output_amount` back from that same address. Token fields
+ * are null when the evidence never declared a currency for that leg - render that as
+ * "unknown", never guess a symbol (see `data_completeness` below). */
+export interface DexSwapEvent {
+  type: 'SWAP';
+  confidence: 'Detected' | 'Potential';
+  label: string;
+  user_address: string;
+  dex_address: string;
+  dex_name: string;
+  dex_match_basis: string;
+  input_token: string | null;
+  input_amount: number;
+  input_transaction_hash: string | null;
+  input_timestamp: string;
+  output_token: string | null;
+  output_amount: number;
+  output_transaction_hash: string | null;
+  output_timestamp: string;
+  time_gap_seconds: number;
+  match_basis: 'shared_transaction_hash' | 'time_window';
+  reasons: string[];
+}
+
+export interface DexSwapNodeConsidered {
+  address: string;
+  name: string;
+  match_basis: string;
+}
+
+/** Whether ANY transaction in the analyzed evidence declared a currency/token at all -
+ * false means every event's input_token/output_token is null, and the UI should explain
+ * why rather than silently showing blanks. */
+export interface DexSwapDataCompleteness {
+  currency_declared: boolean;
+  note: string;
+}
+
+/** Result of the case-scoped DEX Swap Analysis endpoint (GET
+ * /cases/{id}/dex-swap-analysis). `address` on the request is optional server-side, but
+ * this app's page always supplies one (see dex-swap-analysis.component.ts) - `address` on
+ * the response mirrors back whatever was requested (null when omitted). */
+export interface DexSwapAnalysisResult {
+  case_id: string;
+  evidence: string | null;
+  address: string | null;
+  total_events: number;
+  detected_count: number;
+  potential_count: number;
+  events: DexSwapEvent[];
+  dex_nodes_considered: DexSwapNodeConsidered[];
+  data_completeness: DexSwapDataCompleteness;
+  max_gap_seconds: number;
+  disclaimer: string;
+  generated_at: string;
+}
+
 export interface AnalyticsResponse extends NodeLinkGraphResponse {
   analytics: Record<string, unknown>;
   summary: {
@@ -301,6 +426,89 @@ export interface Case extends CaseSummary {
 export interface CreateCaseRequest {
   name: string;
   description?: string | null;
+}
+
+// --- Investigator layer (see CASE-MANAGEMENT-IMPLEMENTATION.md). An investigation is a
+// container for investigator-generated conclusions, kept separate from the evidence Case
+// above. ---
+
+/** The investigator-layer container (backend: InvestigationCase). Not the evidence Case. */
+export interface Investigation {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InvestigatorLinkConfidence = 'Low' | 'Medium' | 'High';
+
+/** A manually recorded SUSPECTED RELATION between two blockchain addresses, based on
+ * OFF-CHAIN evidence - an "investigator association". NOT a proven fact and NOT a
+ * transaction-graph edge: it is drawn on the graph only as a visually distinct overlay,
+ * never as a real transaction edge. `directed` is always false (undirected association);
+ * `source_address`/`target_address` order carries no meaning. */
+export interface InvestigatorLink {
+  id: string;
+  investigation_id: string;
+  source_address: string;
+  target_address: string;
+  directed: boolean;
+  reason: string;
+  evidence: string;
+  confidence: InvestigatorLinkConfidence;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestigatorLinkListResponse {
+  investigation_id: string;
+  address: string | null;
+  /** Render this alongside the links - they are not blockchain facts. */
+  disclaimer: string;
+  links: InvestigatorLink[];
+}
+
+export type InvestigatorNoteTargetType = 'address' | 'transaction';
+
+/** An investigator's own observation attached to exactly one of an address/node or a
+ * transaction/edge. NOT a blockchain fact - stored only in the investigator layer. */
+export interface InvestigatorNote {
+  id: string;
+  investigation_id: string;
+  target_type: InvestigatorNoteTargetType;
+  address: string | null;
+  tx_id: string | null;
+  text: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestigatorNoteListResponse {
+  investigation_id: string;
+  address: string | null;
+  tx_id: string | null;
+  target_type: InvestigatorNoteTargetType | null;
+  notes: InvestigatorNote[];
+}
+
+/** An address the investigator pinned on the graph. Persisted per investigation (step 10)
+ * so it survives a reload; `x`/`y` are the cytoscape model-coordinate position to restore. */
+export interface PinnedNode {
+  investigation_id: string;
+  address: string;
+  x: number | null;
+  y: number | null;
+  pinned_by: string;
+  pinned_at: string;
+  updated_at: string;
+}
+
+export interface PinnedNodeListResponse {
+  investigation_id: string;
+  pins: PinnedNode[];
 }
 
 export type UserRole = 'admin' | 'analyst';

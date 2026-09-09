@@ -14,19 +14,33 @@ import {
   AddressEnrichment,
   AddressType,
   CaseSummary,
+  DexSwapEvent,
+  Investigation,
+  InvestigatorLink,
+  InvestigatorNote,
   KnownEntityCategory,
   EvidenceEntry,
   GraphLinkData,
   GraphNodeData,
   NodeLinkGraphResponse,
+  TaintAnalysisResult,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
+import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
+import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
 
 @Component({
   selector: 'app-graph-visualization',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    CustodyAccessDialogComponent,
+    InvestigatorNodeDialogComponent,
+    CaseOverviewPanelComponent,
+  ],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
@@ -66,6 +80,41 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected showAllSenders = false;
   protected showAllRecipients = false;
 
+  // --- DEX Swap overlay (see DEX-SWAP-ANALIZA.md) - a heuristic annotation drawn OVER
+  // this same graph, not a new graph. Fetched from its own read-only endpoint,
+  // independent of the plain/analytics graph above; a failure here only means no dashed
+  // SWAP edges are drawn, it never blocks or errors out the graph itself. ---
+  protected dexSwapEvents: DexSwapEvent[] = [];
+  protected dexSwapOverlayEnabled = true;
+  protected selectedSwapEvent: DexSwapEvent | null = null;
+
+  // --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15). Investigator
+  // links belong to an INVESTIGATION - a separate entity from the evidence case this
+  // graph shows - so the investigator picks which investigation's links to overlay. They
+  // are drawn as a distinct dashed / orange / no-arrow / labelled edge, never as a
+  // transaction edge, and the real blockchain edges are never touched. ---
+  protected investigations: Investigation[] = [];
+  protected selectedInvestigationId: string | null = null;
+  protected investigatorLinks: InvestigatorLink[] = [];
+  protected investigatorLinkOverlayEnabled = true;
+  protected selectedInvestigatorLink: InvestigatorLink | null = null;
+  protected isDeletingInvestigatorLink = false;
+  protected investigatorLinkError: string | null = null;
+
+  // --- Case Management actions in the node details panel (CASE-MANAGEMENT-IMPLEMENTATION.md
+  // §16). Compact [Pin] / [Add Note] / [Investigator Link] buttons + a note-count summary
+  // in the existing inspector; the detail (notes list, add-note, new-link forms) lives in
+  // a modal that only opens on an explicit click. ---
+  protected selectedNodeNoteCount = 0;
+  protected isNodeDialogOpen = false;
+  protected nodeDialogMode: 'notes' | 'link' = 'notes';
+
+  // --- Case Overview panel (CASE-MANAGEMENT-IMPLEMENTATION.md §17). Compact summary of
+  // the selected investigation's investigator-generated info - notes, pinned addresses,
+  // links. No analytics. `investigatorLinks` (from step 7) and `pinnedNodePositions`
+  // (from step 5) are reused directly; only the full note list needs its own fetch. ---
+  protected caseOverviewNotes: InvestigatorNote[] = [];
+
   /** A node with hundreds of counterparties (e.g. a deposit hub) would otherwise render
    * hundreds of <dd> rows in the inspector panel, forcing the whole page to scroll past
    * the graph canvas just to reach the rest of a single node's details - previewing the
@@ -82,6 +131,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * and aren't flagged as suspicious - common in single-address "deposits only" evidence,
    * where every counterparty is a one-way funding source rather than a forwarding hop. */
   private fundingSourceNodeIds = new Set<string>();
+  /** Investigator-pinned nodes: node id -> the position it was pinned at. Kept in the
+   * component, NOT persisted: nothing about graph presentation is persisted in this
+   * project (fcose re-randomizes positions on every load by design), so there is no
+   * durable thing to hang a position off of - see CASE-MANAGEMENT-IMPLEMENTATION.md §13.
+   * These positions are replayed into fcose's own `fixedNodeConstraint` on every
+   * re-layout and the nodes are `lock()`-ed, so a pin survives every in-page re-layout
+   * (case/evidence switch, "Analiziraj graf") for as long as the page stays open. */
+  private pinnedNodePositions = new Map<string, { x: number; y: number }>();
   private layoutIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
   private timelinePlayTimer: ReturnType<typeof setInterval> | null = null;
   /** Index 0 = the label for rank 1, etc. - so the slider can show "do transakcije #N
@@ -124,10 +181,25 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
     this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
+      this.selectedSwapEvent = null;
+      this.selectedInvestigatorLink = null;
       this.showAllSenders = false;
       this.showAllRecipients = false;
       this.syncSelection();
       this.loadAddressEnrichment();
+      this.refreshSelectedNodeNoteCount();
+    });
+
+    // Investigations for the "which investigation's links to overlay" picker. Read-only,
+    // independent of the evidence case; a failure just leaves the picker empty. Once
+    // loaded, re-select whatever investigation was active before a reload so its persisted
+    // notes / pins / links come straight back.
+    this.api.listInvestigations().subscribe({
+      next: (response) => {
+        this.investigations = response.investigations;
+        this.restoreSelectedInvestigation();
+      },
+      error: () => (this.investigations = []),
     });
 
     this.state.selectedCase$
@@ -178,11 +250,16 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.state.setGraph(null);
       this.state.setAnalytics(null);
       this.caseGraphError = null;
+      this.dexSwapEvents = [];
+      this.selectedSwapEvent = null;
+      this.selectedInvestigatorLink = null;
       return;
     }
 
     this.isLoadingCaseGraph = true;
     this.caseGraphError = null;
+    this.selectedSwapEvent = null;
+    this.selectedInvestigatorLink = null;
 
     this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph) => {
@@ -196,6 +273,484 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
       },
     });
+
+    this.loadDexSwapOverlay(caseId);
+  }
+
+  /** Fetches every candidate DEX swap for the case's currently scoped evidence (no
+   * `address` filter - see ApiService.getDexSwapAnalysis) and draws them as dashed
+   * overlay edges on the ALREADY-rendered graph. Runs independently of, and in parallel
+   * with, the plain graph fetch above - on error it just leaves the overlay empty rather
+   * than surfacing caseGraphError, since this is supplementary information, not the
+   * graph itself. */
+  private loadDexSwapOverlay(caseId: string): void {
+    this.api.getDexSwapAnalysis(caseId, null, this.selectedEvidence).subscribe({
+      next: (result) => {
+        this.dexSwapEvents = result.events;
+        this.renderSwapOverlay();
+      },
+      error: () => {
+        this.dexSwapEvents = [];
+        this.renderSwapOverlay();
+      },
+    });
+  }
+
+  /** Adds/removes just the dashed SWAP overlay edges on top of whatever cytoscape
+   * instance already exists, WITHOUT touching real nodes/edges or re-running the
+   * (randomized) layout. DEX swap data arrives from its own request, usually shortly
+   * after the plain graph already rendered - a full renderGraph() at that point would
+   * needlessly re-layout the whole graph the analyst may already be looking at.
+   * buildElements() below includes these same edges too, for the case where
+   * renderGraph() runs AFTER dexSwapEvents is already populated (e.g. switching
+   * evidence) - so this method only has to handle "the graph is already on screen". */
+  private renderSwapOverlay(): void {
+    if (!this.cy || !this.graph) {
+      return;
+    }
+    this.cy.remove('edge.swap-edge');
+    if (this.dexSwapOverlayEnabled) {
+      const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+      this.cy.add(this.buildSwapEdgeElements(nodeIds));
+    }
+    this.applyVisibilityFilters();
+  }
+
+  protected toggleDexSwapOverlay(): void {
+    this.dexSwapOverlayEnabled = !this.dexSwapOverlayEnabled;
+    this.renderSwapOverlay();
+  }
+
+  // --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15) --------------
+
+  /** Picks which investigation's links to draw over the graph. Investigator links are
+   * investigation-scoped, not evidence-scoped, so this selection is independent of the
+   * active case / evidence filter above. */
+  protected onInvestigationSelected(investigationId: string): void {
+    this.selectedInvestigationId = investigationId || null;
+    this.persistSelectedInvestigation();
+    this.selectedInvestigatorLink = null;
+    this.investigatorLinkError = null;
+    this.loadInvestigatorLinks();
+    this.loadInvestigatorPins();
+    this.refreshSelectedNodeNoteCount();
+    this.loadCaseOverviewNotes();
+  }
+
+  /** Create a new investigation straight from the picker row (the investigator layer is
+   * otherwise unreachable until one exists, and there is no other UI for it). Prompts for
+   * a name, POSTs it, then selects it so the node-details actions become usable. */
+  protected createInvestigation(): void {
+    const name = window.prompt('Naziv nove istrage:')?.trim();
+    if (!name) {
+      return;
+    }
+    this.api.createInvestigation({ name }).subscribe({
+      next: (created) => {
+        this.investigations = [...this.investigations, created];
+        this.onInvestigationSelected(created.id);
+      },
+      error: () => window.alert('Neuspešno kreiranje istrage.'),
+    });
+  }
+
+  /** The chosen investigation is remembered across a reload (localStorage) so all of its
+   * persisted notes / pins / links come straight back without re-picking it. */
+  private static readonly SELECTED_INVESTIGATION_KEY = 'lusi_selected_investigation';
+
+  private persistSelectedInvestigation(): void {
+    try {
+      if (this.selectedInvestigationId) {
+        localStorage.setItem(GraphVisualizationComponent.SELECTED_INVESTIGATION_KEY, this.selectedInvestigationId);
+      } else {
+        localStorage.removeItem(GraphVisualizationComponent.SELECTED_INVESTIGATION_KEY);
+      }
+    } catch {
+      // localStorage unavailable - not fatal, the selection is just not remembered.
+    }
+  }
+
+  private restoreSelectedInvestigation(): void {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(GraphVisualizationComponent.SELECTED_INVESTIGATION_KEY);
+    } catch {
+      stored = null;
+    }
+    if (stored && this.investigations.some((inv) => inv.id === stored)) {
+      this.onInvestigationSelected(stored);
+    }
+  }
+
+  // --- Case Management actions in the node details panel (CASE-MANAGEMENT-IMPLEMENTATION.md §16) ---
+
+  /** Name of the currently selected investigation - shown in the actions dialog header. */
+  protected get selectedInvestigationName(): string | null {
+    return this.investigations.find((inv) => inv.id === this.selectedInvestigationId)?.name ?? null;
+  }
+
+  /** The selected node's address as a plain string, for the notes/link dialog. */
+  protected get selectedNodeAddress(): string {
+    return String(this.selectedNode?.address ?? this.selectedNode?.id ?? '');
+  }
+
+  /** Serbian plural for the note count shown in the inspector summary. */
+  protected get noteCountLabel(): string {
+    const n = this.selectedNodeNoteCount;
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) {
+      return 'beleška';
+    }
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'beleške';
+    }
+    return 'beleški';
+  }
+
+  /** Fetches just the COUNT of investigator notes for the selected node's address in the
+   * selected investigation - the inspector only ever shows the number, never the note
+   * text (that needs an explicit "Prikaži beleške" click). No investigation selected, or
+   * no node selected -> 0. */
+  private refreshSelectedNodeNoteCount(): void {
+    this.selectedNodeNoteCount = 0;
+    const address = this.selectedNode?.address ?? this.selectedNode?.id;
+    if (!this.selectedInvestigationId || !address) {
+      return;
+    }
+    this.api.getInvestigatorNotes(this.selectedInvestigationId, String(address)).subscribe({
+      next: (res) => (this.selectedNodeNoteCount = res.notes.length),
+      error: () => (this.selectedNodeNoteCount = 0),
+    });
+  }
+
+  protected openNodeDialog(mode: 'notes' | 'link'): void {
+    if (!this.selectedInvestigationId || !this.selectedNode) {
+      return;
+    }
+    this.nodeDialogMode = mode;
+    this.isNodeDialogOpen = true;
+  }
+
+  protected closeNodeDialog(): void {
+    this.isNodeDialogOpen = false;
+  }
+
+  protected onNodeDialogNotesChanged(): void {
+    this.refreshSelectedNodeNoteCount();
+    this.loadCaseOverviewNotes();
+  }
+
+  protected onNodeDialogLinkCreated(): void {
+    this.loadInvestigatorLinks();
+    this.closeNodeDialog();
+  }
+
+  // --- Case Overview panel (CASE-MANAGEMENT-IMPLEMENTATION.md §17) ---
+
+  protected get selectedInvestigationDescription(): string | null {
+    return this.investigations.find((inv) => inv.id === this.selectedInvestigationId)?.description ?? null;
+  }
+
+  /** Addresses of the currently pinned nodes (step 5 state, session-scoped). */
+  protected get pinnedNodeIds(): string[] {
+    return Array.from(this.pinnedNodePositions.keys());
+  }
+
+  /** Node ids present in the graph currently on screen - lets the overview panel flag an
+   * address that is not in this view. */
+  protected get currentGraphAddresses(): string[] {
+    return this.graph ? this.graph.nodes.map((node) => String(node.id)) : [];
+  }
+
+  /** Every investigator note (nodes + transactions) in the selected investigation, for the
+   * overview count and drill-down. No investigation selected -> empty. */
+  private loadCaseOverviewNotes(): void {
+    if (!this.selectedInvestigationId) {
+      this.caseOverviewNotes = [];
+      return;
+    }
+    this.api.getInvestigatorNotes(this.selectedInvestigationId).subscribe({
+      next: (res) => (this.caseOverviewNotes = res.notes),
+      error: () => (this.caseOverviewNotes = []),
+    });
+  }
+
+  /** Select and centre a node by its address, from the overview panel's "na graf" jump. */
+  protected focusNodeById(address: string): void {
+    const node = this.graph?.nodes.find((item) => String(item.id) === address);
+    if (node) {
+      this.state.setSelectedNode(node);
+    }
+  }
+
+  /** Unpin a node by address, from the overview panel. Mirrors togglePinSelectedNode()'s
+   * unpin branch (visual release + server-side delete). */
+  protected unpinNodeById(address: string): void {
+    if (!this.pinnedNodePositions.has(address)) {
+      return;
+    }
+    this.pinnedNodePositions.delete(address);
+    const element = this.cy?.$id(address);
+    if (element && element.nonempty()) {
+      element.unlock();
+      element.removeClass('pinned');
+    }
+    if (this.selectedInvestigationId) {
+      this.api.unpinInvestigatorNode(this.selectedInvestigationId, address).subscribe({ error: () => undefined });
+    }
+  }
+
+  /** Open the step-7 link inspector for a link picked in the overview panel. */
+  protected showInvestigatorLinkDetails(link: InvestigatorLink): void {
+    this.selectedInvestigatorLink = link;
+    this.selectedNode = null;
+    this.selectedSwapEvent = null;
+  }
+
+  /** Fetches the chosen investigation's links and (re)draws the overlay. A failure only
+   * means no dashed orange links are shown - it never blocks or errors the graph. */
+  private loadInvestigatorLinks(): void {
+    if (!this.selectedInvestigationId) {
+      this.investigatorLinks = [];
+      this.renderInvestigatorLinkOverlay();
+      return;
+    }
+    this.api.getInvestigatorLinks(this.selectedInvestigationId).subscribe({
+      next: (result) => {
+        this.investigatorLinks = result.links;
+        this.renderInvestigatorLinkOverlay();
+      },
+      error: () => {
+        this.investigatorLinks = [];
+        this.renderInvestigatorLinkOverlay();
+      },
+    });
+  }
+
+  protected toggleInvestigatorLinkOverlay(): void {
+    this.investigatorLinkOverlayEnabled = !this.investigatorLinkOverlayEnabled;
+    this.renderInvestigatorLinkOverlay();
+  }
+
+  /** Same mechanism as renderSwapOverlay(): add/remove just the investigator-link edges
+   * on the existing cytoscape instance, WITHOUT re-running the layout. buildElements()
+   * also includes these, for the case where renderGraph() runs after the links are
+   * already loaded (case/evidence switch). */
+  private renderInvestigatorLinkOverlay(): void {
+    if (!this.cy || !this.graph) {
+      return;
+    }
+    this.cy.remove('edge.investigator-link');
+    if (this.investigatorLinkOverlayEnabled) {
+      const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+      this.cy.add(this.buildInvestigatorLinkEdgeElements(nodeIds));
+    }
+    this.applyVisibilityFilters();
+  }
+
+  private buildInvestigatorLinkEdgeElements(nodeIds: Set<string>): ElementDefinition[] {
+    const elements: ElementDefinition[] = [];
+    this.investigatorLinks.forEach((link) => {
+      // Only drawn when BOTH endpoints are nodes in the graph currently on screen. A link
+      // to an address outside this evidence view is kept in the list (and counted on the
+      // toggle) but not rendered - same defensive skip the DEX swap overlay uses.
+      if (!nodeIds.has(link.source_address) || !nodeIds.has(link.target_address)) {
+        return;
+      }
+      elements.push({
+        data: {
+          id: `invlink__${link.id}`,
+          source: link.source_address,
+          target: link.target_address,
+          label: `◆ INVESTIGATOR LINK · ${link.confidence}`,
+          isInvestigatorLink: true,
+          investigatorLink: link,
+        },
+        classes: `investigator-link investigator-link-${link.confidence.toLowerCase()}`,
+      } as ElementDefinition);
+    });
+    return elements;
+  }
+
+  /** How many links are actually drawn (both endpoints present) vs. how many exist -
+   * shown on the toggle so a link to an off-view address never looks silently dropped. */
+  protected get visibleInvestigatorLinkCount(): number {
+    if (!this.graph) {
+      return 0;
+    }
+    const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+    return this.investigatorLinks.filter(
+      (link) => nodeIds.has(link.source_address) && nodeIds.has(link.target_address),
+    ).length;
+  }
+
+  /** Removes the currently selected investigator link (from the graph inspector). Deletes
+   * it via the API, then drops it from the overlay - no graph re-layout. */
+  protected removeSelectedInvestigatorLink(): void {
+    const link = this.selectedInvestigatorLink;
+    if (!link || !this.selectedInvestigationId || this.isDeletingInvestigatorLink) {
+      return;
+    }
+    if (!window.confirm(`Ukloniti istražiteljsku vezu ${link.source_address} ↔ ${link.target_address}?`)) {
+      return;
+    }
+    this.isDeletingInvestigatorLink = true;
+    this.investigatorLinkError = null;
+    this.api.deleteInvestigatorLink(this.selectedInvestigationId, link.id).subscribe({
+      next: () => {
+        this.investigatorLinks = this.investigatorLinks.filter((item) => item.id !== link.id);
+        this.selectedInvestigatorLink = null;
+        this.isDeletingInvestigatorLink = false;
+        this.renderInvestigatorLinkOverlay();
+      },
+      error: () => {
+        this.isDeletingInvestigatorLink = false;
+        this.investigatorLinkError = 'Neuspešno uklanjanje istražiteljske veze.';
+      },
+    });
+  }
+
+  /** Confidence as shown in the overlay/inspector: a 3-level read (High/Medium/Low) over
+   * the backend's own two-level `confidence` field, refined by `dex_match_basis` - NOT a
+   * new backend concept. 'Detected' (both legs share one real transaction hash) is
+   * always High. A 'Potential' match is Medium when the DEX contract itself was
+   * identified with a real signal (a curated known address, or a brand keyword like
+   * "uniswap"), and Low when it was only a generic keyword ("router"/"dex"/"aggregator")
+   * - the same distinction DEX-SWAP-ANALIZA.md §3.1 already draws between those two
+   * keyword tiers, just surfaced as a single label here. */
+  protected swapConfidenceLevel(event: DexSwapEvent): 'High' | 'Medium' | 'Low' {
+    if (event.confidence === 'Detected') {
+      return 'High';
+    }
+    return event.dex_match_basis.startsWith('keyword_match_generic') ? 'Low' : 'Medium';
+  }
+
+  private formatSwapAmount(amount: number, token: string | null): string {
+    const formattedAmount = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(amount);
+    return `${formattedAmount} ${token ?? '?'}`;
+  }
+
+  /** One representative tx hash line (or two, for a Potential swap whose legs were never
+   * confirmed to be the same on-chain transaction) - same logic as
+   * dex-swap-analysis.component.ts's txHashLines, duplicated rather than shared (see
+   * that component for why: this app copies small per-component display helpers rather
+   * than introducing a shared utils module). */
+  protected swapTxHashLines(event: DexSwapEvent): { label: string; hash: string }[] {
+    if (event.confidence === 'Detected') {
+      const hash = event.input_transaction_hash ?? event.output_transaction_hash;
+      return hash ? [{ label: 'Tx', hash }] : [];
+    }
+
+    const lines: { label: string; hash: string }[] = [];
+    if (event.input_transaction_hash) {
+      lines.push({ label: 'Tx in', hash: event.input_transaction_hash });
+    }
+    if (event.output_transaction_hash) {
+      lines.push({ label: 'Tx out', hash: event.output_transaction_hash });
+    }
+    return lines;
+  }
+
+  private buildSwapEdgeElements(nodeIds: Set<string>): ElementDefinition[] {
+    const elements: ElementDefinition[] = [];
+    this.dexSwapEvents.forEach((event, index) => {
+      // Defensive: the evidence scope should always match between the graph and the
+      // overlay fetch (both use the same selectedEvidence), so this should never
+      // actually trigger - but a swap edge pointing at a node cytoscape doesn't have
+      // would silently fail to render, so it's worth skipping explicitly rather than
+      // letting cytoscape.add() throw.
+      if (!nodeIds.has(event.user_address) || !nodeIds.has(event.dex_address)) {
+        return;
+      }
+      const level = this.swapConfidenceLevel(event);
+      const taint = this.swapCarriedTaint(event);
+      const taintSuffix = taint.available && taint.percentage !== null ? ` · ${taint.percentage}% tainted` : '';
+      const classes = ['swap-edge', `swap-${level.toLowerCase()}`];
+      if (taint.available && (taint.percentage ?? 0) > 0) {
+        classes.push('swap-tainted');
+      }
+      elements.push({
+        data: {
+          id: `swap__${index}__${event.user_address}__${event.dex_address}`,
+          source: event.user_address,
+          target: event.dex_address,
+          label: `SWAP · ${this.formatSwapAmount(event.input_amount, event.input_token)} → ${this.formatSwapAmount(event.output_amount, event.output_token)}${taintSuffix}`,
+          isSwapEdge: true,
+          swapEvent: event,
+        },
+        classes: classes.join(' '),
+      } as ElementDefinition);
+    });
+    return elements;
+  }
+
+  /** This case's already-computed taint_analysis plugin output (`analytics.run`'s
+   * response, unaltered) - null until "Analiziraj graf" has actually been clicked
+   * (hasAnalytics), since that is the only thing that ever computes taint at all. Read
+   * straight off `this.graph.analytics`, exactly like taint-analysis.component.ts does
+   * for its own copy of the same response - no separate request, no new backend field. */
+  private get taintAnalysis(): TaintAnalysisResult | null {
+    const analytics = this.graph?.analytics as Record<string, unknown> | undefined;
+    return (analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+  }
+
+  /** Bridges an ALREADY-COMPUTED taint number across a detected swap, without touching
+   * the taint algorithm or the DEX node's own (currency-mixed, unreliable - see
+   * DEX-SWAP-ANALIZA.md §10) taint_percentage at all.
+   *
+   * `tainted_hops` records, per individual transfer, what fraction of THAT transfer was
+   * tainted (`taint_pct_at_hop`) - a completely different, correct number from the DEX
+   * node's own aggregate. The swap's input leg (wallet -> DEX) is one specific transfer
+   * already IN that list (or, if it carried no taint at all, simply absent from it - the
+   * plugin only records hops with tainted_amount > 0). Matched by (source, target,
+   * amount, timestamp) - the exact same join taint-analysis.component.ts's
+   * buildEdgeDetails() already uses to attach tainted_hops onto a specific transaction,
+   * since neither record has a shared transaction id to join on directly.
+   *
+   * The result is displayed as the swap's carried-over taint (same % assumed to hold for
+   * the output token) - never as an independently computed taint for the DEX contract or
+   * the output token itself. */
+  protected swapCarriedTaint(event: DexSwapEvent): {
+    available: boolean;
+    percentage: number | null;
+    bySource: Record<string, number>;
+    sourceHopRank: number | null;
+  } {
+    const taint = this.taintAnalysis;
+    if (!taint) {
+      return { available: false, percentage: null, bySource: {}, sourceHopRank: null };
+    }
+
+    const hop = taint.tainted_hops.find(
+      (candidate) =>
+        candidate.source === event.user_address &&
+        candidate.target === event.dex_address &&
+        candidate.timestamp === event.input_timestamp &&
+        Math.abs(candidate.amount - event.input_amount) < 1e-9,
+    );
+
+    if (!hop) {
+      // No matching tainted_hops entry - per the plugin's own contract, that means this
+      // exact transfer carried no taint at all (not "unknown"), same reading
+      // taint-analysis.component.ts already gives an untainted transaction.
+      return { available: true, percentage: 0, bySource: {}, sourceHopRank: null };
+    }
+
+    return {
+      available: true,
+      percentage: hop.taint_pct_at_hop,
+      bySource: hop.taint_by_source,
+      sourceHopRank: hop.rank,
+    };
+  }
+
+  /** Same shape/sort as taint-analysis.component.ts's edgeTransactionSourceBreakdown -
+   * only shown when more than one seed contributed, same as everywhere else in the app. */
+  protected swapTaintBreakdown(carried: { bySource: Record<string, number> }): Array<{ address: string; pct: number }> {
+    return Object.entries(carried.bySource)
+      .map(([address, pct]) => ({ address, pct }))
+      .sort((a, b) => b.pct - a.pct);
   }
 
   /** File name of the currently scoped evidence, for the custody dialog's default
@@ -361,6 +916,115 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.applyVisibilityFilters();
   }
 
+  // --- Investigator "pin node" (see CASE-MANAGEMENT-IMPLEMENTATION.md §13 / §18). Reuses
+  // the existing fcose layout (its `fixedNodeConstraint` option) plus cytoscape's own
+  // `node.lock()` - no separate positioning system. Since step 10 the pin set is PERSISTED
+  // per investigation (data/investigations/<id>/pinned_nodes.json), so it survives a
+  // reload; pinning therefore requires an investigation to be selected. ---
+
+  /** Whether the currently selected node is investigator-pinned - drives the badge and
+   * button label in the node details panel. */
+  get isSelectedNodePinned(): boolean {
+    return !!this.selectedNode && this.pinnedNodePositions.has(String(this.selectedNode.id));
+  }
+
+  /** How many nodes are pinned right now (for the details-panel button title / any hint). */
+  get pinnedNodeCount(): number {
+    return this.pinnedNodePositions.size;
+  }
+
+  /** Loads the selected investigation's persisted pins and applies them to the graph. */
+  private loadInvestigatorPins(): void {
+    this.clearPinnedNodesVisual();
+    this.pinnedNodePositions.clear();
+    if (!this.selectedInvestigationId) {
+      return;
+    }
+    this.api.getInvestigatorPins(this.selectedInvestigationId).subscribe({
+      next: (res) => {
+        this.pinnedNodePositions.clear();
+        for (const pin of res.pins) {
+          const stored = pin.x != null && pin.y != null ? { x: pin.x, y: pin.y } : this.cy?.$id(pin.address).position();
+          this.pinnedNodePositions.set(pin.address, stored ? { ...stored } : { x: 0, y: 0 });
+        }
+        this.reapplyPinnedNodes();
+      },
+      error: () => this.pinnedNodePositions.clear(),
+    });
+  }
+
+  /** Unlocks + unmarks every currently-pinned node on the live graph (without deleting
+   * anything server-side) - used when switching investigations before loading the new
+   * one's pins. */
+  private clearPinnedNodesVisual(): void {
+    if (!this.cy) {
+      return;
+    }
+    for (const id of this.pinnedNodePositions.keys()) {
+      const element = this.cy.$id(id);
+      if (element.nonempty()) {
+        element.unlock();
+        element.removeClass('pinned');
+      }
+    }
+  }
+
+  /** Pin/unpin the selected node, straight from the node details panel. Pinning records
+   * the node's CURRENT position, locks it, marks it `.pinned`, and PERSISTS it to the
+   * selected investigation; unpinning releases it and deletes it server-side. The pin set
+   * is replayed into fcose's `fixedNodeConstraint` and re-locked on every re-layout
+   * (renderGraph -> reapplyPinnedNodes), so the existing layout does the "stay put" work.
+   * Does NOT trigger a re-layout itself. Requires an investigation (button is disabled
+   * otherwise). */
+  togglePinSelectedNode(): void {
+    if (!this.cy || !this.selectedNode || !this.selectedInvestigationId) {
+      return;
+    }
+    const investigationId = this.selectedInvestigationId;
+    const id = String(this.selectedNode.id);
+    const element = this.cy.$id(id);
+    if (element.empty()) {
+      return;
+    }
+
+    if (this.pinnedNodePositions.has(id)) {
+      this.pinnedNodePositions.delete(id);
+      element.unlock();
+      element.removeClass('pinned');
+      this.api.unpinInvestigatorNode(investigationId, id).subscribe({ error: () => undefined });
+    } else {
+      const position = { ...element.position() };
+      this.pinnedNodePositions.set(id, position);
+      element.lock();
+      element.addClass('pinned');
+      this.api
+        .pinInvestigatorNode(investigationId, { address: id, x: position.x, y: position.y })
+        .subscribe({ error: () => undefined });
+    }
+  }
+
+  /** Re-applies every still-present pin after a fresh cytoscape instance was built: snap
+   * the node to its stored position, lock it, mark it. fcose's `fixedNodeConstraint`
+   * (set in renderGraph) already holds it during layout - this is the belt-and-braces
+   * guarantee plus the `.pinned` class for the visual. A pin whose node is not in the
+   * current graph (e.g. hidden by the evidence filter) is kept and re-applies if it
+   * returns. */
+  private reapplyPinnedNodes(): void {
+    if (!this.cy) {
+      return;
+    }
+    for (const [id, position] of this.pinnedNodePositions) {
+      const element = this.cy.$id(id);
+      if (element.empty()) {
+        continue;
+      }
+      element.unlock();
+      element.position({ ...position });
+      element.lock();
+      element.addClass('pinned');
+    }
+  }
+
   toggleTimelinePlay(): void {
     if (this.isTimelinePlaying) {
       this.stopTimelinePlay();
@@ -423,6 +1087,14 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       node.style('display', timelineVisible && !hiddenAsDeadEnd && !hiddenAsFundingSource ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {
+      if (edge.hasClass('swap-edge') || edge.hasClass('investigator-link')) {
+        // Overlay annotations (DEX swap / investigator link) - not part of the graph's
+        // own chronology (no chronoRank), shown/hidden purely by their own toggle, never
+        // by timeline position. A hidden endpoint node still hides them via cytoscape's
+        // own node->edge display cascade, same as any other edge.
+        edge.style('display', 'element');
+        return;
+      }
       const rank = edge.data('chronoRank');
       const timelineVisible = !this.timelineEnabled || (rank != null && rank <= position);
       edge.style('display', timelineVisible ? 'element' : 'none');
@@ -825,6 +1497,23 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           'outline-offset': 2,
         },
       },
+      // Investigator-pinned node (CASE-MANAGEMENT-IMPLEMENTATION.md §13) - a gold double
+      // border plus a soft gold underlay glow. Layered so it never overrides the
+      // risk/blacklist fill (background-color), the peel/bridge shape, or the cluster
+      // outline ring: only `border-*` and the (otherwise unused on nodes) `underlay-*`
+      // are touched. Placed before `node:selected` so selection feedback still wins where
+      // they overlap.
+      {
+        selector: 'node.pinned',
+        style: {
+          'border-color': '#fde047',
+          'border-width': 4,
+          'border-style': 'double',
+          'underlay-color': '#facc15',
+          'underlay-opacity': 0.3,
+          'underlay-padding': 6,
+        },
+      },
       {
         selector: 'node:selected',
         style: {
@@ -877,7 +1566,113 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           opacity: 1,
         },
       },
+      // DEX Swap overlay (see DEX-SWAP-ANALIZA.md) - dashed and a distinct purple/violet
+      // hue so a SWAP is never mistaken for an ordinary transaction edge (solid blue) or
+      // a cross-chain bridge hop (also dashed, but green/teal node + no purple line).
+      // Opacity/width step with confidence: High (Detected, shared tx hash) is the
+      // boldest, Low (generic-keyword DEX match only) the faintest - see
+      // swapConfidenceLevel().
+      {
+        selector: 'edge.swap-edge',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [6, 4],
+          'line-color': '#c084fc',
+          'target-arrow-color': '#c084fc',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          width: 3,
+          opacity: 0.8,
+          label: 'data(label)',
+          'font-size': 9,
+          'min-zoomed-font-size': 7,
+          color: '#e9d5ff',
+          'text-background-color': '#07111f',
+          'text-background-opacity': 0.85,
+          'text-background-padding': '3px',
+        },
+      },
+      {
+        selector: 'edge.swap-low',
+        style: { opacity: 0.55 },
+      },
+      {
+        selector: 'edge.swap-medium',
+        style: { opacity: 0.78 },
+      },
+      {
+        selector: 'edge.swap-high',
+        style: { opacity: 1, width: 4 },
+      },
+      {
+        selector: 'edge.swap-edge:selected',
+        style: {
+          'overlay-opacity': 0.22,
+          'overlay-color': '#f0abfc',
+          width: 5,
+        },
+      },
+      // Taint bridged across the swap (see DEX-SWAP-ANALIZA.md §10) - a red halo BEHIND
+      // the purple dashed line (underlay, not overlay, so it doesn't fight :selected's
+      // own overlay above), visible at a glance without clicking. Only appears once
+      // "Analiziraj graf" has actually been run AND the carried-over % is nonzero - a
+      // swap that turns out to be clean, or hasn't been checked yet, looks like a normal
+      // swap edge.
+      {
+        selector: 'edge.swap-tainted',
+        style: {
+          'underlay-color': '#ef4444',
+          'underlay-opacity': 0.35,
+          'underlay-padding': 4,
+        },
+      },
+      // Investigator link (CASE-MANAGEMENT-IMPLEMENTATION.md §15) - a manually recorded
+      // SUSPECTED off-chain relation, NOT a blockchain transaction. Deliberately unlike
+      // every real edge: orange, dashed with a tight dash, and NO arrowheads (it is an
+      // undirected association, not a directed transfer), plus a "◆ INVESTIGATOR LINK"
+      // label. Also distinct from edge.swap-edge (purple, dashed, WITH an arrow).
+      {
+        selector: 'edge.investigator-link',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [4, 4],
+          'line-color': '#fb923c',
+          'target-arrow-shape': 'none',
+          'source-arrow-shape': 'none',
+          'curve-style': 'bezier',
+          width: 3,
+          opacity: 0.92,
+          label: 'data(label)',
+          'font-size': 9,
+          'min-zoomed-font-size': 7,
+          color: '#fed7aa',
+          'text-background-color': '#07111f',
+          'text-background-opacity': 0.85,
+          'text-background-padding': '3px',
+        },
+      },
+      // Confidence steps the emphasis, same idea as the swap-* rules above.
+      { selector: 'edge.investigator-link-low', style: { opacity: 0.6, 'line-style': 'dotted' } },
+      { selector: 'edge.investigator-link-medium', style: { opacity: 0.85 } },
+      { selector: 'edge.investigator-link-high', style: { opacity: 1, width: 4 } },
+      {
+        selector: 'edge.investigator-link:selected',
+        style: {
+          'overlay-opacity': 0.22,
+          'overlay-color': '#fdba74',
+          width: 5,
+        },
+      },
     ];
+
+    // Investigator-pinned nodes -> fcose's OWN fixed-position constraint, so a re-layout
+    // arranges every other node around them exactly as before. Only ids still present in
+    // this graph are constrained; when there are no pins the layout config below is byte-
+    // for-byte what it was, so non-pinned behaviour is unchanged.
+    const presentNodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+    const fixedNodeConstraint = Array.from(this.pinnedNodePositions.entries())
+      .filter(([id]) => presentNodeIds.has(id))
+      .map(([nodeId, position]) => ({ nodeId, position }));
 
     this.cy = cytoscape({
       container: this.graphCanvas.nativeElement,
@@ -897,6 +1692,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         nodeSeparation: nodeCount > 60 ? 150 : 100,
         nodeRepulsion: nodeCount > 60 ? 10000 : 6000,
         idealEdgeLength: nodeCount > 60 ? 100 : 80,
+        ...(fixedNodeConstraint.length ? { fixedNodeConstraint } : {}),
       } as any,
       style: graphStyles,
     });
@@ -916,9 +1712,27 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.cy.on('tap', 'node', (event) => {
       const nodeData = event.target.data() as GraphNodeData;
       this.selectedNode = nodeData;
+      this.selectedSwapEvent = null;
+      this.selectedInvestigatorLink = null;
       this.state.setSelectedNode(nodeData);
     });
 
+    // Delegated selector-based listener - also fires for swap edges added later via
+    // renderSwapOverlay()'s cy.add(), not just the ones present at this initial build.
+    this.cy.on('tap', 'edge.swap-edge', (event) => {
+      this.selectedSwapEvent = (event.target.data('swapEvent') as DexSwapEvent) ?? null;
+      this.selectedNode = null;
+      this.selectedInvestigatorLink = null;
+    });
+
+    // Same delegated pattern for investigator-link edges added by renderInvestigatorLinkOverlay().
+    this.cy.on('tap', 'edge.investigator-link', (event) => {
+      this.selectedInvestigatorLink = (event.target.data('investigatorLink') as InvestigatorLink) ?? null;
+      this.selectedNode = null;
+      this.selectedSwapEvent = null;
+    });
+
+    this.reapplyPinnedNodes();
     this.applyVisibilityFilters();
     this.syncSelection();
   }
@@ -1022,7 +1836,18 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       } as ElementDefinition;
     });
 
-    return [...nodes, ...links];
+    // Overlay only if it's already known at build time (e.g. re-rendering after an
+    // evidence switch, once loadDexSwapOverlay's response has arrived) - the far more
+    // common "swap data lands after the graph already rendered" case is handled by
+    // renderSwapOverlay() adding these same elements directly, without a full rebuild.
+    const swapEdges = this.dexSwapOverlayEnabled ? this.buildSwapEdgeElements(new Set(nodeById.keys())) : [];
+    // Same "already-known at build time" case for investigator links (e.g. re-rendering
+    // after an evidence switch while an investigation is selected).
+    const investigatorLinkEdges = this.investigatorLinkOverlayEnabled
+      ? this.buildInvestigatorLinkEdgeElements(new Set(nodeById.keys()))
+      : [];
+
+    return [...nodes, ...links, ...swapEdges, ...investigatorLinkEdges];
   }
 
   /** Chronological rank (1 = earliest) of each link by its first-seen timestamp, so the

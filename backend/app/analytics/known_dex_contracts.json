@@ -1,0 +1,12 @@
+{
+  "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": { "name": "Uniswap V2: Router 02" },
+  "0xe592427a0aece92de3edee1f18e0157c05861564": { "name": "Uniswap V3: Router" },
+  "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45": { "name": "Uniswap V3: Router 2" },
+  "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad": { "name": "Uniswap: Universal Router" },
+  "0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f": { "name": "SushiSwap: Router" },
+  "0x1111111254eeb25477b68fb85ed929f73a960582": { "name": "1inch: Aggregation Router V5" },
+  "0x1111111254fb6c44bac0bed2854e76f90643097d": { "name": "1inch: Aggregation Router V4" },
+  "0xdef1c0ded9bec7f1a1670819833240f027b25eff": { "name": "0x: Exchange Proxy" },
+  "0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7": { "name": "Curve.fi: 3pool" },
+  "0xba12222222228d8ba445958a75a0704d566bf2c8": { "name": "Balancer: Vault" }
+}

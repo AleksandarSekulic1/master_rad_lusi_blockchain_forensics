@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-07-16T16:48:06.761081+00:00",
-  "updated_at": "2026-08-11T17:11:59.180101+00:00",
+  "updated_at": "2026-09-08T12:46:28.721301+00:00",
   "evidence": [
     {
       "file_name": "demo_case.csv",
@@ -38,9 +38,45 @@
       "size_bytes": 485,
       "sha256": "1bedf221bd1bab3f73371c8fa40b070b33102df8cb47011a6acc84156a269e3d",
       "analyst": "admin"
+    },
+    {
+      "file_name": "demo_behavioral_analysis.csv",
+      "stored_name": "20260824_000355_286120_demo_behavioral_analysis.csv",
+      "imported_at": "2026-08-24T00:03:55.291119+00:00",
+      "size_bytes": 656,
+      "sha256": "6c2c2245c8e620fec4a7531768deea31f1602a30d78886732131787ade0527e3",
+      "analyst": "admin",
+      "currency": null
+    },
+    {
+      "file_name": "demo_behavioral_analysis_outlier.csv",
+      "stored_name": "20260824_000355_300669_demo_behavioral_analysis_outlier.csv",
+      "imported_at": "2026-08-24T00:03:55.312325+00:00",
+      "size_bytes": 116,
+      "sha256": "dfd347298b06c13da48a1b7a2e3cd13638b70948c0e2a5de1e5f8ed66242aef8",
+      "analyst": "admin",
+      "currency": null
+    },
+    {
+      "file_name": "demo_timezone_estimate.csv",
+      "stored_name": "20260824_001905_381531_demo_timezone_estimate.csv",
+      "imported_at": "2026-08-24T00:19:05.387027+00:00",
+      "size_bytes": 837,
+      "sha256": "8c9ec9f24830dc13379a516f0ad901efb75ffa41ab87dca55f7e55ee11f11ace",
+      "analyst": "admin",
+      "currency": null
+    },
+    {
+      "file_name": "demo_dex_swap_analysis.csv",
+      "stored_name": "20260908_124628_695981_demo_dex_swap_analysis.csv",
+      "imported_at": "2026-09-08T12:46:28.721301+00:00",
+      "size_bytes": 944,
+      "sha256": "4d6a6a9c267c8cec5c9b967addfb94c6cea4935e797b54358e952a9c98fbc8ef",
+      "analyst": "admin",
+      "currency": null
     }
   ],
-  "evidence_count": 4,
-  "total_size_bytes": 1490,
-  "last_imported_at": "2026-08-10T10:25:59.235060+00:00"
+  "evidence_count": 8,
+  "total_size_bytes": 4043,
+  "last_imported_at": "2026-09-08T12:46:28.721301+00:00"
 }

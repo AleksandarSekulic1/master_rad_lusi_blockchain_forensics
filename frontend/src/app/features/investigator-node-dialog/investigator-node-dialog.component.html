@@ -1,0 +1,113 @@
+<div class="inv-overlay" (click)="close()">
+  <div class="inv-dialog" (click)="$event.stopPropagation()">
+    <div class="inv-header">
+      <div>
+        <p class="inv-kicker">Istražiteljski sloj<ng-container *ngIf="investigationName"> — {{ investigationName }}</ng-container></p>
+        <h3 class="inv-address">{{ address }}</h3>
+      </div>
+      <button type="button" class="inv-close" (click)="close()" aria-label="Zatvori">✕</button>
+    </div>
+
+    <div class="inv-tabs">
+      <button type="button" [class.active]="activeTab === 'notes'" (click)="activeTab = 'notes'">
+        Beleške<ng-container *ngIf="notes.length"> ({{ notes.length }})</ng-container>
+      </button>
+      <button type="button" [class.active]="activeTab === 'link'" (click)="activeTab = 'link'">Nova veza</button>
+    </div>
+
+    <!-- NOTES -->
+    <section *ngIf="activeTab === 'notes'" class="inv-section">
+      <p class="inv-muted" *ngIf="isLoadingNotes">Učitavanje...</p>
+      <p class="inv-error" *ngIf="notesError">{{ notesError }}</p>
+      <p class="inv-muted" *ngIf="!isLoadingNotes && !notesError && notes.length === 0">
+        Nema beleški za ovu adresu u izabranoj istrazi.
+      </p>
+
+      <ul class="inv-note-list">
+        <li *ngFor="let note of notes">
+          <ng-container *ngIf="editingNoteId === note.id; else noteRead">
+            <textarea rows="3" maxlength="10000" [(ngModel)]="editNoteText" name="editNoteText_{{ note.id }}"></textarea>
+            <div class="inv-note-actions">
+              <button type="button" class="inv-btn small" (click)="saveEdit(note)" [disabled]="isSavingNote || !editNoteText.trim()">
+                {{ isSavingNote ? 'Čuvanje...' : 'Sačuvaj' }}
+              </button>
+              <button type="button" class="inv-btn small" (click)="cancelEdit()">Otkaži</button>
+            </div>
+          </ng-container>
+          <ng-template #noteRead>
+            <p class="inv-note-text">{{ note.text }}</p>
+            <p class="inv-note-meta">
+              {{ note.author }} · {{ note.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
+                *ngIf="note.updated_at !== note.created_at"
+              >
+                · izmenjeno</ng-container
+              >
+            </p>
+            <div class="inv-note-actions">
+              <button type="button" class="inv-btn small" (click)="startEdit(note)">Izmeni</button>
+              <button type="button" class="inv-btn small danger" (click)="deleteNote(note)">Obriši</button>
+            </div>
+          </ng-template>
+        </li>
+      </ul>
+
+      <label class="inv-field">
+        Nova beleška
+        <textarea
+          rows="3"
+          maxlength="10000"
+          [(ngModel)]="newNoteText"
+          name="newNoteText"
+          placeholder="Npr. Sumnja se da je ovo cold wallet. Čeka se dodatna provera."
+        ></textarea>
+      </label>
+      <div class="inv-actions">
+        <button type="button" class="inv-btn primary" (click)="addNote()" [disabled]="!canAddNote">
+          {{ isAddingNote ? 'Dodavanje...' : 'Dodaj belešku' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- NEW LINK -->
+    <section *ngIf="activeTab === 'link'" class="inv-section">
+      <p class="inv-hint">
+        Ručno zabeležena <strong>pretpostavljena</strong> veza sa drugom adresom na osnovu vanlančanih (off-chain) dokaza —
+        <strong>nije blockchain činjenica</strong> i ne menja transakcioni graf.
+      </p>
+      <label class="inv-field">
+        Izvorna adresa
+        <input type="text" class="inv-address-input" [value]="address" readonly />
+      </label>
+      <label class="inv-field">
+        Ciljna adresa
+        <input type="text" [(ngModel)]="linkTarget" name="linkTarget" placeholder="0x..." class="inv-address-input" />
+      </label>
+      <label class="inv-field">
+        Razlog
+        <textarea
+          rows="2"
+          maxlength="5000"
+          [(ngModel)]="linkReason"
+          name="linkReason"
+          placeholder="Npr. IP adresa iz logova servera povezuje obe adrese."
+        ></textarea>
+      </label>
+      <label class="inv-field">
+        Dokaz / referenca
+        <input type="text" maxlength="2000" [(ngModel)]="linkEvidence" name="linkEvidence" placeholder="Npr. Server log #42" />
+      </label>
+      <label class="inv-field">
+        Pouzdanost
+        <select [(ngModel)]="linkConfidence" name="linkConfidence">
+          <option *ngFor="let level of confidenceOptions" [ngValue]="level">{{ level }}</option>
+        </select>
+      </label>
+      <p class="inv-error" *ngIf="linkError">{{ linkError }}</p>
+      <div class="inv-actions">
+        <button type="button" class="inv-btn primary" (click)="createLink()" [disabled]="!canCreateLink">
+          {{ isCreatingLink ? 'Kreiranje...' : 'Kreiraj vezu' }}
+        </button>
+      </div>
+    </section>
+  </div>
+</div>

@@ -9,6 +9,7 @@ import {
   AddressEnrichment,
   AnalyticsResponse,
   AuthUser,
+  BehavioralAnalysisResult,
   Case,
   CasePathfindingResult,
   CaseStatus,
@@ -20,13 +21,22 @@ import {
   CustodyEvidenceSummary,
   CustodyFieldSuggestions,
   CustodyTransactionSummary,
+  DexSwapAnalysisResult,
   FetchOnchainRequest,
+  Investigation,
+  InvestigatorLink,
+  InvestigatorLinkConfidence,
+  InvestigatorLinkListResponse,
+  InvestigatorNote,
+  InvestigatorNoteListResponse,
   KnownEntity,
   NodeLinkGraphResponse,
   OnchainNetwork,
   PathfindingDestinationMode,
   PathFindingRequest,
   PathFindingResponse,
+  PinnedNode,
+  PinnedNodeListResponse,
   ReportVerificationResult,
   ResetLinkResponse,
   ScenarioRequest,
@@ -87,6 +97,89 @@ export class ApiService {
 
   deleteCase(caseId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/api/v1/cases/${caseId}`);
+  }
+
+  // --- Investigator layer: investigations + investigator links (see
+  // CASE-MANAGEMENT-IMPLEMENTATION.md). Separate from the evidence-Case endpoints above;
+  // links are an additional forensic layer, never a blockchain fact. ---
+
+  listInvestigations(): Observable<{ investigations: Investigation[] }> {
+    return this.http.get<{ investigations: Investigation[] }>(`${this.apiUrl}/api/v1/investigations`);
+  }
+
+  createInvestigation(body: { name: string; description?: string | null }): Observable<Investigation> {
+    return this.http.post<Investigation>(`${this.apiUrl}/api/v1/investigations`, body);
+  }
+
+  /** Every investigator link in an investigation (optionally only those touching one
+   * address - either endpoint, the association is undirected). */
+  getInvestigatorLinks(investigationId: string, address?: string | null): Observable<InvestigatorLinkListResponse> {
+    const params = address ? new HttpParams().set('address', address) : undefined;
+    return this.http.get<InvestigatorLinkListResponse>(
+      `${this.apiUrl}/api/v1/investigations/${investigationId}/links`,
+      { params },
+    );
+  }
+
+  addInvestigatorLink(
+    investigationId: string,
+    body: {
+      source_address: string;
+      target_address: string;
+      reason: string;
+      evidence: string;
+      confidence: InvestigatorLinkConfidence;
+    },
+  ): Observable<InvestigatorLink> {
+    return this.http.post<InvestigatorLink>(`${this.apiUrl}/api/v1/investigations/${investigationId}/links`, body);
+  }
+
+  deleteInvestigatorLink(investigationId: string, linkId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/links/${linkId}`);
+  }
+
+  /** Investigator notes in an investigation. With `address`, only that address's
+   * node notes (backend scopes ?address= to address/node notes - see step 4); without it,
+   * every note in the investigation (nodes + transactions). */
+  getInvestigatorNotes(investigationId: string, address?: string | null): Observable<InvestigatorNoteListResponse> {
+    const params = address ? new HttpParams().set('address', address) : undefined;
+    return this.http.get<InvestigatorNoteListResponse>(
+      `${this.apiUrl}/api/v1/investigations/${investigationId}/notes`,
+      { params },
+    );
+  }
+
+  addInvestigatorNote(investigationId: string, body: { address: string; text: string }): Observable<InvestigatorNote> {
+    return this.http.post<InvestigatorNote>(`${this.apiUrl}/api/v1/investigations/${investigationId}/notes`, body);
+  }
+
+  updateInvestigatorNote(investigationId: string, noteId: string, body: { text: string }): Observable<InvestigatorNote> {
+    return this.http.patch<InvestigatorNote>(
+      `${this.apiUrl}/api/v1/investigations/${investigationId}/notes/${noteId}`,
+      body,
+    );
+  }
+
+  deleteInvestigatorNote(investigationId: string, noteId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/notes/${noteId}`);
+  }
+
+  /** Pinned nodes for an investigation (persisted - step 10). */
+  getInvestigatorPins(investigationId: string): Observable<PinnedNodeListResponse> {
+    return this.http.get<PinnedNodeListResponse>(`${this.apiUrl}/api/v1/investigations/${investigationId}/pins`);
+  }
+
+  /** Pin an address (upsert - re-sending updates the stored position). */
+  pinInvestigatorNode(
+    investigationId: string,
+    body: { address: string; x?: number | null; y?: number | null },
+  ): Observable<PinnedNode> {
+    return this.http.put<PinnedNode>(`${this.apiUrl}/api/v1/investigations/${investigationId}/pins`, body);
+  }
+
+  unpinInvestigatorNode(investigationId: string, address: string): Observable<void> {
+    const params = new HttpParams().set('address', address);
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}/pins`, { params });
   }
 
   exportCaseReportCsv(caseId: string): Observable<Blob> {
@@ -178,6 +271,47 @@ export class ApiService {
     return this.http.post<CasePathfindingResult>(`${this.apiUrl}/api/v1/cases/${caseId}/pathfinding`, body, { params });
   }
 
+  /** Behavioral / Time-of-Day Analysis (case-scoped, first version - UTC only, no
+   * timezone/continent inference). Read-only, like getCaseGraph/getSeedSuggestions - no
+   * custody entry, since it only re-reads the case's own already-built graph. */
+  getBehavioralAnalysis(caseId: string, address: string, evidence?: string | null): Observable<BehavioralAnalysisResult> {
+    let params = new HttpParams().set('address', address);
+    if (evidence) {
+      params = params.set('evidence', evidence);
+    }
+    return this.http.get<BehavioralAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/behavioral-analysis`, { params });
+  }
+
+  /** `address` is optional (unlike getBehavioralAnalysis above) - omitted, the backend
+   * returns every candidate swap in the case's evidence, which is what the Graph page's
+   * overlay needs (see graph-visualization.component.ts's loadDexSwapOverlay); the DEX
+   * Swap Analysis page itself always supplies one. */
+  getDexSwapAnalysis(caseId: string, address?: string | null, evidence?: string | null): Observable<DexSwapAnalysisResult> {
+    let params = new HttpParams();
+    if (address) {
+      params = params.set('address', address);
+    }
+    if (evidence) {
+      params = params.set('evidence', evidence);
+    }
+    return this.http.get<DexSwapAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/dex-swap-analysis`, { params });
+  }
+
+  /** Deliberate variant of getDexSwapAnalysis above (see DEX-SWAP-ANALIZA.md #12 /
+   * LANAC-DOKAZA.md) - the DEX Swap Analysis page's own ANALYZE button calls this one,
+   * always with a `custody` entry, since scanning the evidence for swap pairs is the same
+   * kind of deliberate access as "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf". */
+  runDexSwapAnalysis(
+    caseId: string,
+    address: string,
+    evidence: string | null,
+    custody: TransactionCustodyEntry,
+  ): Observable<DexSwapAnalysisResult> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    const body: Record<string, unknown> = { address, custody };
+    return this.http.post<DexSwapAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/dex-swap-analysis/run`, body, { params });
+  }
+
   listUsers(): Observable<{ users: AuthUser[] }> {
     return this.http.get<{ users: AuthUser[] }>(`${this.apiUrl}/api/v1/users`);
   }
@@ -203,6 +337,11 @@ export class ApiService {
     declaration: string;
     content: Record<string, unknown>;
     summary: Record<string, unknown>;
+    /** 'taint' | 'pathfinding' | 'dex_swap' so far - purely descriptive, lets Log
+     * aktivnosti/izveštaj aktivnosti tell one signed report apart from another (see
+     * activity_report.py's _REPORT_TYPE_LABELS). Optional so this method's existing
+     * callers keep compiling even before each one is updated to pass it. */
+    report_type?: string;
   }): Observable<{ verification_code: string; content_hash: string; registered_at: string; analyst: string }> {
     return this.http.post<{ verification_code: string; content_hash: string; registered_at: string; analyst: string }>(
       `${this.apiUrl}/api/v1/reports/register`,

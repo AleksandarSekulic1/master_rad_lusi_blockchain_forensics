@@ -54,5 +54,123 @@
       "taint_trace": "da"
     },
     "registered_at": "2026-08-23T23:02:20.411259+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-AHWJ-JB7X",
+    "content_hash": "f49fc0b5edde08d2ff438d3cbd343cf67bcf7d1e99727b5daea9df58ff01ab08",
+    "case_id": "a858f96b8c07",
+    "case_name": "test 1",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 2,
+      "cash_out_points": 0,
+      "seeds": 1
+    },
+    "registered_at": "2026-08-24T14:36:29.516704+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-LAZF-23W4",
+    "content_hash": "60e5fd63f08e6d6f82ba3876769680267d3b72c316e44b555bbe007c6475580d",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "hops": 2,
+      "destination_mode": "specific_address",
+      "taint_trace": "ne"
+    },
+    "registered_at": "2026-08-24T14:38:38.740534+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-37B9-EBWB",
+    "content_hash": "bff4c8d795d0fc25ef643344f5cc2dc56b04e3bfbeb581f956733fed681ca347",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T13:19:49.181202+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-7QHN-94GC",
+    "content_hash": "bff4c8d795d0fc25ef643344f5cc2dc56b04e3bfbeb581f956733fed681ca347",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T13:21:51.587166+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-LZHR-SURE",
+    "content_hash": "bff4c8d795d0fc25ef643344f5cc2dc56b04e3bfbeb581f956733fed681ca347",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T14:03:04.805101+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-5CTQ-QMFR",
+    "content_hash": "bff4c8d795d0fc25ef643344f5cc2dc56b04e3bfbeb581f956733fed681ca347",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T14:23:11.070173+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-3QQ5-4J75",
+    "content_hash": "a5f72522ce42f36033003bdabf50b0bbd57a1c1999362de9a98b8ab5fe44f84d",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T14:28:23.002680+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-BARV-XWSW",
+    "content_hash": "a5f72522ce42f36033003bdabf50b0bbd57a1c1999362de9a98b8ab5fe44f84d",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1,
+      "address": "0xInvestorWallet"
+    },
+    "registered_at": "2026-09-08T15:18:20.307924+00:00"
   }
 ]

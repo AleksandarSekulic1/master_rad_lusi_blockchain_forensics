@@ -29,6 +29,59 @@
       {{ isAnalyzing ? 'Analiziranje...' : hasAnalytics ? 'Ponovo analiziraj graf' : 'Analiziraj graf' }}
     </button>
   </div>
+
+  <!-- Istražiteljski sloj: koja istraga (slučaj istražitelja) je aktivna. Jedan <select>,
+       istog oblika kao gornji izbor evidencije - nije nova sekcija/stranica. Uvek vidljiv:
+       ovde se istraga i pravi (dugme „Nova istraga") - bez toga ceo sloj je nedostupan
+       dok istraga ne postoji. -->
+  <div class="evidence-picker investigator-layer-picker">
+    <label>
+      Istražiteljski sloj — istraga
+      <select [ngModel]="selectedInvestigationId ?? ''" (ngModelChange)="onInvestigationSelected($event)">
+        <option value="">— bez istražiteljskog sloja —</option>
+        <option *ngFor="let inv of investigations" [value]="inv.id">{{ inv.name }}</option>
+      </select>
+    </label>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="createInvestigation()"
+      title="Napravi novu istragu (slučaj istražitelja) i odmah je izaberi"
+    >
+      ➕ Nova istraga
+    </button>
+    <button
+      type="button"
+      class="ghost-button"
+      [class.active]="investigatorLinkOverlayEnabled"
+      (click)="toggleInvestigatorLinkOverlay()"
+      [disabled]="!selectedInvestigationId"
+      title="Prikaži/sakrij istražiteljske veze (ručno zabeležene, pretpostavljene off-chain relacije) preko grafa — nisu blockchain transakcije"
+    >
+      {{ investigatorLinkOverlayEnabled ? 'Sakrij istražiteljske veze' : 'Prikaži istražiteljske veze' }}
+      <ng-container *ngIf="selectedInvestigationId"
+        >({{ visibleInvestigatorLinkCount
+        }}<ng-container *ngIf="visibleInvestigatorLinkCount !== investigatorLinks.length">/{{ investigatorLinks.length }}</ng-container
+        >)</ng-container
+      >
+    </button>
+  </div>
+
+  <!-- Case Overview: kompaktan pregled zapažanja i zaključaka istražitelja za izabranu
+       istragu (beleške / zakačene adrese / veze). Bez analitike - vidi §17. -->
+  <app-case-overview-panel
+    *ngIf="selectedInvestigationId"
+    [investigationName]="selectedInvestigationName ?? ''"
+    [description]="selectedInvestigationDescription"
+    [notes]="caseOverviewNotes"
+    [pinnedAddresses]="pinnedNodeIds"
+    [links]="investigatorLinks"
+    [graphAddresses]="currentGraphAddresses"
+    (focusNode)="focusNodeById($event)"
+    (unpinNode)="unpinNodeById($event)"
+    (showLink)="showInvestigatorLinkDetails($event)"
+  ></app-case-overview-panel>
+
   <p class="case-graph-error" *ngIf="caseGraphError">{{ caseGraphError }}</p>
 
   <!-- Lanac dokaza: razlog pristupa i potpis pre SVAKOG pokretanja analize -->
@@ -42,6 +95,19 @@
     (confirmed)="confirmCustodyAndAnalyze($event)"
     (cancelled)="closeCustodyDialog()"
   ></app-custody-access-dialog>
+
+  <!-- Case Management akcije za izabrani čvor (beleške + nova veza) - modal, otvara se
+       tek na klik iz panela detalja. -->
+  <app-investigator-node-dialog
+    *ngIf="isNodeDialogOpen && selectedNode && selectedInvestigationId"
+    [investigationId]="selectedInvestigationId"
+    [investigationName]="selectedInvestigationName"
+    [address]="selectedNodeAddress"
+    [mode]="nodeDialogMode"
+    (notesChanged)="onNodeDialogNotesChanged()"
+    (linkCreated)="onNodeDialogLinkCreated()"
+    (closed)="closeNodeDialog()"
+  ></app-investigator-node-dialog>
 
   <div class="graph-header">
     <div>
@@ -81,6 +147,16 @@
         title="Sakrij čvorove koji su samo slali sredstva i nikada ih nisu primili, a nisu već označeni kao sumnjivi"
       >
         {{ fundingSourceFilterEnabled ? 'Prikaži čvorove bez priliva' : 'Sakrij čvorove bez priliva' }} ({{ fundingSourceNodeCount }})
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="dexSwapOverlayEnabled"
+        (click)="toggleDexSwapOverlay()"
+        [disabled]="!hasLoadedGraph"
+        title="Heuristička DEX swap detekcija, iscrtana kao isprekidane veze preko postojećeg grafa — vidi DEX-SWAP-ANALIZA.md"
+      >
+        {{ dexSwapOverlayEnabled ? 'Sakrij DEX swap veze' : 'Prikaži DEX swap veze' }} ({{ dexSwapEvents.length }})
       </button>
     </div>
   </div>
@@ -143,9 +219,188 @@
       <div class="layout-status" *ngIf="isLayoutRunning">Raspoređivanje čvorova...</div>
     </div>
 
+    <!-- Inspector chain: investigator link -> swap event -> node -> empty. One nested
+         else-chain (not independent *ngIf's) so exactly one panel ever shows - see the
+         DEX-SWAP note below for why. -->
+    <ng-container *ngIf="selectedInvestigatorLink as link; else swapNodeOrEmpty">
+    <aside class="node-inspector investigator-link-inspector">
+      <p class="panel-kicker">Istražiteljska veza — nije blockchain činjenica</p>
+      <h3>{{ link.source_address }} ↔ {{ link.target_address }}</h3>
+      <span class="swap-confidence-badge" [class]="'level-' + link.confidence.toLowerCase()">
+        Pouzdanost: {{ link.confidence }}
+      </span>
+      <dl>
+        <div>
+          <dt>Izvorna adresa</dt>
+          <dd><span class="mono-address">{{ link.source_address }}</span></dd>
+        </div>
+        <div>
+          <dt>Ciljna adresa</dt>
+          <dd><span class="mono-address">{{ link.target_address }}</span></dd>
+        </div>
+        <div>
+          <dt>Razlog</dt>
+          <dd>{{ link.reason }}</dd>
+        </div>
+        <div>
+          <dt>Dokaz / referenca</dt>
+          <dd>{{ link.evidence }}</dd>
+        </div>
+        <div>
+          <dt>Pouzdanost</dt>
+          <dd>{{ link.confidence }}</dd>
+        </div>
+        <div>
+          <dt>Kreirano</dt>
+          <dd>{{ link.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</dd>
+        </div>
+        <div>
+          <dt>Uneo</dt>
+          <dd>{{ link.author }}</dd>
+        </div>
+      </dl>
+      <p class="swap-disclaimer">
+        Istražiteljska veza (investigator link / suspected relation) je ručno zabeležena, pretpostavljena veza na osnovu
+        vanlančanih (off-chain) dokaza — nije dokazana blockchain činjenica i nije grana transakcionog grafa.
+      </p>
+      <button
+        type="button"
+        class="ghost-button danger-ghost"
+        (click)="removeSelectedInvestigatorLink()"
+        [disabled]="isDeletingInvestigatorLink"
+      >
+        {{ isDeletingInvestigatorLink ? 'Uklanjanje...' : 'Ukloni vezu' }}
+      </button>
+      <p class="case-graph-error" *ngIf="investigatorLinkError">{{ investigatorLinkError }}</p>
+    </aside>
+    </ng-container>
+
+    <ng-template #swapNodeOrEmpty>
+    <!-- One three-way chain (swap panel / node panel / empty placeholder), not two
+         separate *ngIf/else pairs that happen to share #noSelection - two independent
+         ngIf's each evaluate their OWN condition, so when a swap edge was selected, the
+         node aside's condition went false and fired ITS OWN else, rendering the empty
+         "Detalji čvora" placeholder ALONGSIDE the swap panel instead of being replaced by
+         it (see DEX-SWAP-ANALIZA.md #9.3 for the intended, now-actually-enforced, behavior). -->
+    <ng-container *ngIf="selectedSwapEvent as swap; else nodeOrEmpty">
+    <aside class="node-inspector swap-inspector">
+      <p class="panel-kicker">SWAP događaj (heuristika)</p>
+      <h3>{{ swap.user_address }} → {{ swap.dex_name }}</h3>
+      <span class="swap-confidence-badge" [class]="'level-' + swapConfidenceLevel(swap).toLowerCase()">
+        {{ swapConfidenceLevel(swap) }}
+      </span>
+      <dl>
+        <div>
+          <dt>DEX</dt>
+          <dd>{{ swap.dex_name }} <span class="mono-address">({{ swap.dex_address }})</span></dd>
+        </div>
+        <div>
+          <dt>Input</dt>
+          <dd>{{ swap.input_amount | number : '1.0-6' }} {{ swap.input_token ?? '?' }}</dd>
+        </div>
+        <div>
+          <dt>Output</dt>
+          <dd>{{ swap.output_amount | number : '1.0-6' }} {{ swap.output_token ?? '?' }}</dd>
+        </div>
+        <div>
+          <dt>Timestamp</dt>
+          <dd
+            >{{ swap.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container *ngIf="swap.time_gap_seconds > 0"
+              >, izlaz {{ swap.time_gap_seconds }}s kasnije</ng-container
+            ></dd
+          >
+        </div>
+        <div>
+          <dt>Transaction hash</dt>
+          <dd *ngFor="let line of swapTxHashLines(swap)"><span class="mono-address">{{ line.label }}: {{ line.hash }}</span></dd>
+          <dd *ngIf="swapTxHashLines(swap).length === 0">n/a</dd>
+        </div>
+        <div>
+          <dt>Confidence</dt>
+          <dd>{{ swapConfidenceLevel(swap) }} <span class="muted-inline">({{ swap.confidence }} · {{ swap.dex_match_basis }})</span></dd>
+        </div>
+        <div
+          *ngIf="swapCarriedTaint(swap) as carried"
+          [class.blacklist-warning]="carried.available && (carried.percentage ?? 0) > 0"
+        >
+          <dt>Taint (preneto sa ulaznog kraka)</dt>
+          <dd *ngIf="!carried.available">
+            Taint analiza nije pokrenuta — klikni „Analiziraj graf" da vidiš da li je ovaj swap deo zaprljanog toka.
+          </dd>
+          <dd *ngIf="carried.available && carried.percentage === 0">0% — čista transakcija</dd>
+          <dd *ngIf="carried.available && (carried.percentage ?? 0) > 0">
+            {{ carried.percentage }}%
+            <span class="muted-inline"
+              >(preneto iz stanja pošiljaoca u trenutku ulaska u swap — nije nezavisno izračunato za DEX čvor ni za izlazni
+              token)</span
+            >
+          </dd>
+          <ng-container *ngIf="carried.available && swapTaintBreakdown(carried).length > 1">
+            <dd *ngFor="let entry of swapTaintBreakdown(carried)">
+              <span class="mono-address">{{ entry.address }}</span> — {{ entry.pct }}%
+            </dd>
+          </ng-container>
+        </div>
+      </dl>
+      <p class="swap-disclaimer">
+        Heuristička detekcija zasnovana na adresnom obrascu i vremenskoj bliskosti — nije kriptografski dokaz swap transakcije.
+        Preneti taint procenat je vezan za ulazni krak (pre swap-a) — ne tvrdi da je nezavisno izmeren za DEX kontrakt ili
+        izlazni token.
+      </p>
+    </aside>
+    </ng-container>
+
+    <ng-template #nodeOrEmpty>
     <aside class="node-inspector" *ngIf="selectedNode as node; else noSelection">
       <p class="panel-kicker">Detalji čvora</p>
       <h3>{{ node.address ?? node.id }}</h3>
+
+      <!-- Case Management akcije - kompaktan blok u POSTOJEĆEM panelu detalja, jasno
+           odvojen od on-chain podataka ispod (<dl>). Detalji su u modalu koji se otvara
+           tek na klik - vidi CASE-MANAGEMENT-IMPLEMENTATION.md §16 / §20. -->
+      <div class="investigator-block">
+      <span class="notes-summary-label">Istražiteljski sloj — nije blockchain podatak</span>
+      <div class="investigator-actions">
+        <button
+          type="button"
+          class="ghost-button action-chip pin-toggle"
+          [class.active]="isSelectedNodePinned"
+          (click)="togglePinSelectedNode()"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Zadrži čvor na fiksnoj poziciji; čuva se uz istragu i ostaje posle osvežavanja' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          {{ isSelectedNodePinned ? '📌 Otkači' : '📌 Zakači' }}
+        </button>
+        <button
+          type="button"
+          class="ghost-button action-chip"
+          (click)="openNodeDialog('notes')"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Dodaj istražiteljsku belešku za ovu adresu' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          📝 Dodaj belešku
+        </button>
+        <button
+          type="button"
+          class="ghost-button action-chip"
+          (click)="openNodeDialog('link')"
+          [disabled]="!selectedInvestigationId"
+          [title]="selectedInvestigationId ? 'Kreiraj istražiteljsku vezu od ove adrese' : 'Prvo izaberi istragu u „Istražiteljski sloj“ iznad grafa'"
+        >
+          🔗 Istražiteljska veza
+        </button>
+      </div>
+      <p class="investigator-actions-hint" *ngIf="!selectedInvestigationId">
+        Za beleške i veze izaberi istragu u „Istražiteljski sloj" iznad grafa.
+      </p>
+
+      <div class="investigator-notes-summary" *ngIf="selectedInvestigationId && selectedNodeNoteCount > 0">
+        <span class="notes-summary-label">Istražiteljske beleške</span>
+        <span class="notes-count">{{ selectedNodeNoteCount }} {{ noteCountLabel }}</span>
+        <button type="button" class="ghost-button small" (click)="openNodeDialog('notes')">Prikaži beleške</button>
+      </div>
+      </div>
+
       <dl>
         <div>
           <dt>ENS ime</dt>
@@ -287,8 +542,13 @@
     <ng-template #noSelection>
       <aside class="node-inspector empty">
         <p class="panel-kicker">Detalji čvora</p>
-        <p>Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake.</p>
+        <p>
+          Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake — isprekidanu SWAP vezu za detalje
+          detektovane DEX razmene — ili isprekidanu narandžastu istražiteljsku vezu za pretpostavljenu off-chain relaciju.
+        </p>
       </aside>
+    </ng-template>
+    </ng-template>
     </ng-template>
   </div>
 
@@ -331,6 +591,21 @@
       <div class="legend-item">
         <span class="legend-line last-transaction"></span>
         Poslednja transakcija hronološki (najskorija u ovom prikazu)
+      </div>
+      <div class="legend-item">
+        <span class="legend-line swap-edge"></span>
+        DEX SWAP (heuristika) — <strong>isprekidana ljubičasta veza</strong>; kliknite za DEX, iznose, hash i pouzdanost
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch pinned"></span>
+        Zakačen čvor (istražitelj) — <strong>zlatna dvostruka ivica</strong>; ostaje na fiksnoj poziciji pri ponovnom
+        raspoređivanju grafa
+      </div>
+      <div class="legend-item">
+        <span class="legend-line investigator-link"></span>
+        Istražiteljska veza (off-chain) — <strong>isprekidana narandžasta linija bez strelice, „◆ INVESTIGATOR LINK"</strong>;
+        ručno zabeležena pretpostavljena veza, <strong>nije blockchain transakcija</strong>; kliknite za razlog, dokaz,
+        pouzdanost i uklanjanje
       </div>
     </div>
     <p class="legend-hint">

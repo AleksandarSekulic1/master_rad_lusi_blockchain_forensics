@@ -1,0 +1,14 @@
+sender_address,recipient_address,amount,timestamp,currency,tx_hash
+0xbad0000000000000000000000000000000000001,0xInvestorWallet,10,2026-08-24T08:55:00Z,ETH,0xtaintseed
+0xInvestorWallet,0xUniswapRouter,10,2026-08-24T09:00:00Z,ETH,0xswap0001
+0xUniswapRouter,0xInvestorWallet,25000,2026-08-24T09:00:00Z,USDC,0xswap0001
+0xInvestorWallet,0xUniswapRouter,2,2026-08-25T11:15:00Z,ETH,
+0xUniswapRouter,0xInvestorWallet,3200,2026-08-25T11:16:10Z,DAI,
+0xInvestorWallet,0xUniswapRouter,1,2026-08-27T14:00:00Z,ETH,
+0xUniswapRouter,0xInvestorWallet,0.98,2026-08-27T14:00:30Z,ETH,
+0xInvestorWallet,0xSushiRouter,4,2026-08-28T16:00:00Z,ETH,
+0xSushiRouter,0xInvestorWallet,6000,2026-08-28T18:00:00Z,USDT,
+0xInvestorWallet,0xSushiRouter,3,2026-08-29T09:00:00Z,ETH,
+0xSushiRouter,0xOtherWallet,4500,2026-08-29T09:01:00Z,USDC,
+0xInvestorWallet,0xPeerWalletB,100,2026-08-30T08:00:00Z,USDC,
+0xPeerWalletB,0xInvestorWallet,100,2026-08-30T08:01:00Z,USDC,

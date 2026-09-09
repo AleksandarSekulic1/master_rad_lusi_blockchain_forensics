@@ -19,6 +19,13 @@ class RegisterReportRequest(BaseModel):
     # puts here is exactly what a later verification re-checks.
     content: dict = Field(default_factory=dict)
     summary: dict = Field(default_factory=dict)
+    # Which page's PDF this is ('taint' | 'pathfinding' | 'dex_swap', so far) - purely
+    # descriptive, never part of the content hash. Without it, every signed report from
+    # every page looked identical in Log aktivnosti ("report_signed", no way to tell which
+    # kind), since only verification_code/content_hash were recorded before this field
+    # existed. Optional and tolerant of unknown values, since this endpoint has no other
+    # way to enforce a closed set of callers.
+    report_type: str = ''
 
 
 @router.post('/register')
@@ -45,6 +52,10 @@ def post_register(
         case_id=request.case_id,
         case_name=request.case_name,
         details={
+            # request.summary first, so the fixed fields below always win on a key
+            # collision (a caller's summary dict is free-form, not a contract).
+            **request.summary,
+            'report_type': request.report_type or 'unknown',
             'verification_code': entry['verification_code'],
             'content_hash': content_hash,
         },
