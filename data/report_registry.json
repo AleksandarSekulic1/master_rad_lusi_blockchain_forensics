@@ -206,5 +206,73 @@
       "clusters": 0
     },
     "registered_at": "2026-09-09T14:01:42.577626+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-DBSR-QWQP",
+    "content_hash": "501247470e2b7d8eeedfbe58d041f23439c51dccb28c41a69f7a8b21e9d28e7c",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:09:18.716773+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-PZYP-N68M",
+    "content_hash": "0f6259db529a5050cc824b1fad8bd51f40e3b8a4da490fd78ed627b5a8c05942",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:15:34.266133+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZS5K-KFQ9",
+    "content_hash": "0fd86194f920525aae4ca8a173f7dbda53ee356752c93255a0a4a08b9586aa2e",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:19:25.071759+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-7Y9U-MS8N",
+    "content_hash": "66e80dc3ba03238ab8afb3db42f7f32cdea1fffc86d9bf6dd41f47fa3b4568cb",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "I confirm that I have reviewed the collected evidence for the stated case and that this triage report was produced to decide on further transaction analysis. The signature above is mine.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:23:23.013036+00:00"
   }
 ]

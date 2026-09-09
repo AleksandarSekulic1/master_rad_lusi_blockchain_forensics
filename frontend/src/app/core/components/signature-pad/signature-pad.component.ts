@@ -1,6 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, Input, ViewChild } from '@angular/core';
 
+import { SettingsService } from '../../services/settings.service';
+
 /** Mouse/stylus/touch signature capture, shared by every place in the app that needs an
  * analyst's drawn signature (taint-analysis report export, per-transaction custody log).
  * Kept deliberately dumb: it only knows how to draw and hand back a PNG data URL - the
@@ -15,12 +17,20 @@ import { AfterViewInit, Component, ElementRef, Input, ViewChild } from '@angular
   styleUrl: './signature-pad.component.scss',
 })
 export class SignaturePadComponent implements AfterViewInit {
-  @Input() placeholder = 'Potpišite se ovde';
+  /** Override the hint text; when empty a translated default ("Potpišite se ovde" /
+   * "Sign here") is shown instead. */
+  @Input() placeholder = '';
 
   @ViewChild('canvas') private canvasRef?: ElementRef<HTMLCanvasElement>;
 
   protected isDrawing = false;
   hasStrokes = false;
+
+  constructor(protected readonly settings: SettingsService) {}
+
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngAfterViewInit(): void {
     this.clear();

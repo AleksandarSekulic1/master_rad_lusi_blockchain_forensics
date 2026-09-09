@@ -298,29 +298,34 @@ export class ReportExportComponent {
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
     };
 
-    // --- 1. Header banner + cat emblem --------------------------------------------------
+    // --- 1. Header banner: cat emblem beside the title, inside the navy bar -----------
+    const barHeight = 26;
     doc.setFillColor(...NAVY);
-    doc.rect(0, 0, pageWidth, 24, 'F');
-    doc.setTextColor(...WHITE);
-    setF('bold', 15);
-    doc.text(tx(this.L('Lusi v1.0 — Izveštaj za trijažu predmeta', 'Lusi v1.0 — Case triage report')), marginX, 11);
-    setF('normal', 10);
-    doc.text(tx(`${this.L('Predmet', 'Case')}: ${context.case.name ?? ''}`), marginX, 19);
-    doc.setTextColor(...TEXT_DARK);
+    doc.rect(0, 0, pageWidth, barHeight, 'F');
 
-    y = 30;
+    let titleX = marginX;
     try {
       const cat = await this.loadImage('assets/cat_pdf.png');
-      const emblem = 40;
+      const emblem = 20;
       const emblemW = (cat.width / cat.height) * emblem;
-      const frameX = (pageWidth - emblemW) / 2 - 3;
-      doc.setFillColor(...NAVY);
-      doc.roundedRect(frameX, y - 3, emblemW + 6, emblem + 6, 3, 3, 'F');
-      doc.addImage(cat.dataUrl, 'PNG', (pageWidth - emblemW) / 2, y, emblemW, emblem);
-      y += emblem + 8;
+      doc.addImage(cat.dataUrl, 'PNG', marginX, (barHeight - emblem) / 2, emblemW, emblem);
+      titleX = marginX + emblemW + 5;
     } catch {
-      y += 2;
+      // no emblem file - the title just stays at the left margin
     }
+
+    doc.setTextColor(...WHITE);
+    setF('bold', 15);
+    doc.text(tx(this.L('Lusi v1.0 — Izveštaj za trijažu predmeta', 'Lusi v1.0 — Case triage report')), titleX, 11);
+    setF('normal', 10);
+    const subtitleLines = doc.splitTextToSize(
+      tx(`${this.L('Predmet', 'Case')}: ${context.case.name ?? ''}`),
+      pageWidth - titleX - marginX,
+    ) as string[];
+    doc.text(subtitleLines[0], titleX, 19);
+    doc.setTextColor(...TEXT_DARK);
+
+    y = barHeight + 6;
 
     // --- 2. Triage note --------------------------------------------------------------
     const noteLines = doc.splitTextToSize(
@@ -450,7 +455,7 @@ export class ReportExportComponent {
         entry.analyst ?? '',
         entry.imported_at ?? '',
       ]),
-      { 1: { cellWidth: 58 } },
+      { 0: { cellWidth: 52 }, 1: { cellWidth: 46 }, 2: { cellWidth: 18 }, 3: { cellWidth: 16 }, 4: { cellWidth: 50 } },
     );
     if (context.case.evidence.length === 0) {
       setF('normal', 9);
@@ -479,6 +484,7 @@ export class ReportExportComponent {
         String(item.high_risk_addresses ?? 0),
         String(item.blacklisted_addresses ?? 0),
       ]),
+      { 0: { cellWidth: 60 }, 1: { cellWidth: 16 }, 2: { cellWidth: 32 }, 3: { cellWidth: 22 }, 4: { cellWidth: 26 }, 5: { cellWidth: 26 } },
     );
 
     // --- 8. Audit log -----------------------------------------------------------
@@ -491,7 +497,7 @@ export class ReportExportComponent {
         entry.file_name ?? '',
         entry.user ?? '',
       ]),
-      { 0: { cellWidth: 40 }, 3: { cellWidth: 24 } },
+      { 0: { cellWidth: 40 }, 1: { cellWidth: 28 }, 3: { cellWidth: 22 } },
     );
 
     // --- 9. Examiner sign-off ------------------------------------------------------

@@ -53,11 +53,10 @@
       </p>
     </fieldset>
 
-    <label class="signing-field">
-      {{ t('Ime i prezime forenzičara', 'Examiner full name') }}
-      <input type="text" [(ngModel)]="examinerName" name="examinerName" [disabled]="isExporting"
-             [placeholder]="t('Ime i prezime', 'Full name')" />
-    </label>
+    <p class="signing-examiner">
+      {{ t('Forenzičar (ulogovani korisnik)', 'Examiner (logged-in user)') }}
+      <strong>{{ examinerName || '—' }}</strong>
+    </p>
 
     <p class="signing-signature-label">{{ t('Potpis', 'Signature') }}</p>
     <app-signature-pad></app-signature-pad>
