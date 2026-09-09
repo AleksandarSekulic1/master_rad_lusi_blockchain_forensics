@@ -264,3 +264,28 @@ h2 {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* compact toolbar trigger (variant="button") */
+.rx-trigger {
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--field-border);
+  background: transparent;
+  color: var(--heading);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.rx-trigger:hover:not(:disabled) {
+  border-color: var(--kicker);
+  background: color-mix(in srgb, var(--kicker) 12%, transparent);
+}
+
+.rx-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

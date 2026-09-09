@@ -291,5 +291,22 @@
       "clusters": 4
     },
     "registered_at": "2026-09-09T19:17:12.699249+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-DHUW-UGA8",
+    "content_hash": "c0364c3d1650dce3ea31b5c07163232e2f2325d2f9668b9e92b2632d426b7bec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T21:14:53.716578+00:00"
   }
 ]

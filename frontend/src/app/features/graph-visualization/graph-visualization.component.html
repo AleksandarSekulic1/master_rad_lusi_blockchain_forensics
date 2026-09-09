@@ -185,6 +185,7 @@
       >
         {{ dexSwapOverlayEnabled ? t('Sakrij DEX swap veze', 'Hide DEX swap edges') : t('Prikaži DEX swap veze', 'Show DEX swap edges') }} ({{ dexSwapEvents.length }})
       </button>
+      <app-report-export *ngIf="mode === 'full'" variant="button"></app-report-export>
     </div>
   </div>
 

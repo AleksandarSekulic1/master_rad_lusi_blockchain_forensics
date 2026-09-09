@@ -30,6 +30,7 @@ import {
 import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
+import { ReportExportComponent } from '../report-export/report-export.component';
 
 @Component({
   selector: 'app-graph-visualization',
@@ -41,6 +42,7 @@ import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/inv
     CustodyAccessDialogComponent,
     InvestigatorNodeDialogComponent,
     CaseOverviewPanelComponent,
+    ReportExportComponent,
   ],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',

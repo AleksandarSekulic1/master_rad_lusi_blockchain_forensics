@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ViewChild } from '@angular/core';
+import { Component, Input, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
@@ -36,6 +36,10 @@ interface SigningRegistration {
   styleUrl: './report-export.component.scss',
 })
 export class ReportExportComponent {
+  /** 'card' - the standalone panel (Dashboard). 'button' - just a compact trigger to drop
+   * into a toolbar (the graph page's button row); the signing dialog is the same. */
+  @Input() variant: 'card' | 'button' = 'card';
+
   protected isExporting = false;
   protected exportError: string | null = null;
 

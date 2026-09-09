@@ -1,4 +1,4 @@
-<div class="export-shell">
+<div class="export-shell" *ngIf="variant === 'card'">
   <div class="export-header">
     <div>
       <p class="panel-kicker">{{ t('Prezentacija dokaza', 'Evidence presentation') }}</p>
@@ -22,6 +22,18 @@
 
   <p class="export-error" *ngIf="exportError">{{ exportError }}</p>
 </div>
+
+<!-- Compact trigger for a toolbar (e.g. the graph page's button row). -->
+<button
+  *ngIf="variant === 'button'"
+  type="button"
+  class="rx-trigger"
+  (click)="openSigning()"
+  [disabled]="!activeCaseId || isExporting"
+  [title]="exportError || t('Potpisan PDF izveštaj (mačka, pečat, kontrolni broj) — ista struktura kao na kontrolnoj tabli', 'Signed PDF report (cat header, seal, verification code) — same structure as on the dashboard')"
+>
+  {{ isExporting ? t('Izrada PDF-a...', 'Generating PDF...') : t('Generiši PDF', 'Generate PDF') }}
+</button>
 
 <div class="signing-overlay" *ngIf="isSigningOpen" (click)="closeSigning()">
   <div class="signing-dialog" (click)="$event.stopPropagation()">
