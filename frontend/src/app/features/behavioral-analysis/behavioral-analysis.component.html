@@ -73,20 +73,36 @@
     </div>
 
     <div class="queue-chips" *ngIf="queue.length > 0">
-      <span class="queue-label">{{ t('Za analizu', 'To analyse') }}:</span>
+      <span class="queue-label">{{ t('Za analizu', 'To analyse') }} ({{ queue.length }}):</span>
       <span class="queue-chip" *ngFor="let addr of queue">
         <span class="mono-clip">{{ addr }}</span>
         <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
       </span>
     </div>
 
-    <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
-      {{ isAnalyzing
-          ? t('Analiza…', 'Analysing…')
-          : queue.length > 1
-            ? t('Analiziraj', 'Analyse') + ' (' + queue.length + ')'
-            : t('Analiziraj', 'Analyse') }}
-    </button>
+    <div class="analyze-row">
+      <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+        {{ isAnalyzing
+            ? t('Analiza…', 'Analysing…')
+            : queue.length > 1
+              ? t('Analiziraj', 'Analyse') + ' (' + queue.length + ')'
+              : t('Analiziraj', 'Analyse') }}
+      </button>
+
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="addAllCaseAddresses()"
+        [disabled]="!activeCase || availableCaseAddresses.length === 0"
+        [title]="t('Dodaj u red sve adrese iz izabrane evidencije', 'Add every address from the selected evidence to the queue')"
+      >
+        {{ t('Dodaj sve adrese', 'Add all addresses') }}<ng-container *ngIf="availableCaseAddresses.length > 0"> ({{ availableCaseAddresses.length }})</ng-container>
+      </button>
+
+      <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
+        {{ t('Očisti red', 'Clear queue') }}
+      </button>
+    </div>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>

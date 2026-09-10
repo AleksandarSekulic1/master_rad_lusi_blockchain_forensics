@@ -204,8 +204,21 @@ export class BehavioralAnalysisComponent implements OnInit {
     }
   }
 
+  /** Stages every case address that isn't already queued/analysed - one click instead of
+   * picking them one by one from the list. */
+  protected addAllCaseAddresses(): void {
+    if (this.availableCaseAddresses.length === 0) {
+      return;
+    }
+    this.queue = [...this.queue, ...this.availableCaseAddresses];
+  }
+
   protected removeFromQueue(address: string): void {
     this.queue = this.queue.filter((queued) => queued !== address);
+  }
+
+  protected clearQueue(): void {
+    this.queue = [];
   }
 
   protected get canAnalyze(): boolean {

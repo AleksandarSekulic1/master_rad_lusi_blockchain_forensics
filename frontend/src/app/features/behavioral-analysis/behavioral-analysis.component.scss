@@ -249,6 +249,16 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
+  max-height: 8.5rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.analyze-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .queue-label {
