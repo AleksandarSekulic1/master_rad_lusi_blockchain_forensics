@@ -1,28 +1,27 @@
 <div class="behavioral-shell">
-  <div class="active-case-banner">
-    <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">{{ t('Aktivan slučaj', 'Active case') }}</span>
-      <strong>{{ activeCase.name }}</strong>
-    </div>
-    <ng-template #noCase>
-      <span class="muted">
-        {{ t('Nije izabran slučaj — idi na', 'No case selected — go to') }}
-        <a routerLink="/cases">{{ t('Slučajevi', 'Cases') }}</a>
-        {{ t('da izabereš jedan.', 'to pick one.') }}
-      </span>
-    </ng-template>
-  </div>
+  <div class="ba-controls">
+    <div class="ba-bar">
+      <div class="ba-case" *ngIf="activeCase; else noCase">
+        <span class="ba-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="ba-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
 
-  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
-    <label>
-      {{ t('Prikaz transakcija', 'Transaction view') }}
-      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
-        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
-          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
-        </option>
-      </select>
-    </label>
+      <label class="ba-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="ba-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div class="behavioral-header">
