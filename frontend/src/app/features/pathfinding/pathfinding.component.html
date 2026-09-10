@@ -57,6 +57,76 @@
     </div>
 
     <aside class="pathfinding-panel">
+      <section class="node-inspect" *ngIf="inspectedAddress as addr">
+        <div class="node-inspect-head">
+          <div class="node-inspect-title">
+            <p class="panel-kicker">{{ t('Detalji čvora', 'Node details') }}</p>
+            <span class="mono-address node-inspect-addr">{{ addr }}</span>
+          </div>
+          <button
+            type="button"
+            class="node-inspect-close"
+            (click)="clearInspectedNode()"
+            [attr.aria-label]="t('Zatvori', 'Close')"
+            [title]="t('Zatvori', 'Close')"
+          >
+            ×
+          </button>
+        </div>
+
+        <span class="ni-pin-badge" *ngIf="inspectedIsPinned">
+          {{ t('Pinovan čvor (Case management)', 'Pinned node (Case management)') }}
+        </span>
+
+        <p class="ni-cm-muted" *ngIf="isLoadingInspected">{{ t('Učitavanje…', 'Loading…') }}</p>
+
+        <ng-container *ngIf="!isLoadingInspected">
+          <p class="ni-cm-muted" *ngIf="!inspectedInvestigationId">
+            {{ t('Nije izabrana istraga — otvori je na Graf stranici da bi se ovde videle beleške, veze i pinovi.',
+                  'No investigation selected — open one on the Graph page to see notes, links and pins here.') }}
+          </p>
+
+          <ng-container *ngIf="inspectedInvestigationId">
+            <div class="ni-cm-block" *ngIf="inspectedNotes.length > 0">
+              <span class="ni-cm-label">{{ t('Istražiteljske beleške', 'Investigator notes') }}</span>
+              <ul class="ni-cm-list">
+                <li *ngFor="let note of inspectedNotes">
+                  <p class="ni-cm-text">{{ note.text }}</p>
+                  <p class="ni-cm-meta">{{ note.author }} · {{ note.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</p>
+                </li>
+              </ul>
+            </div>
+
+            <div class="ni-cm-block" *ngIf="inspectedLinks.length > 0">
+              <span class="ni-cm-label">{{ t('Istražiteljske veze (pretpostavljene)', 'Investigator links (suspected)') }}</span>
+              <ul class="ni-cm-list">
+                <li *ngFor="let link of inspectedLinks">
+                  <p class="ni-cm-text">
+                    ↔ <span class="mono-address">{{ linkCounterparty(link) }}</span>
+                    <span class="ni-cm-confidence" [class]="'conf-' + link.confidence.toLowerCase()">
+                      {{ t('pouzdanost:', 'confidence:') }} {{ confidenceLabel(link.confidence) }}
+                    </span>
+                  </p>
+                  <p class="ni-cm-sub" *ngIf="link.reason">{{ t('Razlog:', 'Reason:') }} {{ link.reason }}</p>
+                  <p class="ni-cm-sub" *ngIf="link.evidence">{{ t('Dokaz:', 'Evidence:') }} {{ link.evidence }}</p>
+                  <p class="ni-cm-meta">{{ link.author }} · {{ link.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</p>
+                </li>
+              </ul>
+            </div>
+
+            <p class="ni-cm-muted" *ngIf="!hasInspectedCaseData">
+              {{ t('Za ovu adresu nema pinova, beleški ni veza u aktivnoj istrazi.',
+                    'This address has no pins, notes or links in the active investigation.') }}
+            </p>
+          </ng-container>
+
+          <p class="ni-cm-disclaimer">
+            {{ t('Prikaz je samo za čitanje — podaci se uređuju na Graf stranici (Case management).',
+                  'Read-only view — the data is edited on the Graph page (Case management).') }}
+          </p>
+        </ng-container>
+      </section>
+
       <p class="panel-kicker">{{ t('Pretraga puta', 'Path search') }}</p>
       <h3>{{ t('Pronađi put', 'Find a path') }}</h3>
       <p class="selection-hint">

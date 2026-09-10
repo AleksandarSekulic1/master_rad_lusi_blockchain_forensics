@@ -20,6 +20,9 @@ import {
   CasePathfindingResult,
   CaseSummary,
   EvidenceEntry,
+  InvestigatorLink,
+  InvestigatorLinkConfidence,
+  InvestigatorNote,
   NodeLinkGraphResponse,
   PathfindingDestinationMode,
   TaintAnalysisResult,
@@ -192,6 +195,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   // that node, same "click a new node to restart" rule as elsewhere in the app. ---
 
   protected onNodeTap(nodeId: string): void {
+    this.inspectNode(nodeId);
     if (this.fromAddress === nodeId) {
       this.clearFromAddress();
       return;
@@ -240,6 +244,113 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       this.cy?.getElementById(this.toAddress).removeClass('node-to');
     }
     this.toAddress = '';
+  }
+
+  // --- Read-only Case-management view for a clicked node -----------------------------
+  // Pins / notes / links are created on the Graph page's investigator layer and persisted
+  // per investigation (server-side). Here they are only SHOWN for whichever node was last
+  // tapped, using the investigation the Graph page last had active. Nothing is editable.
+  protected inspectedAddress: string | null = null;
+  protected inspectedIsPinned = false;
+  protected inspectedNotes: InvestigatorNote[] = [];
+  protected inspectedLinks: InvestigatorLink[] = [];
+  protected isLoadingInspected = false;
+  protected inspectedInvestigationId: string | null = null;
+
+  private get storedInvestigationId(): string | null {
+    try {
+      return localStorage.getItem('lusi_selected_investigation');
+    } catch {
+      return null;
+    }
+  }
+
+  protected get hasInspectedCaseData(): boolean {
+    return this.inspectedIsPinned || this.inspectedNotes.length > 0 || this.inspectedLinks.length > 0;
+  }
+
+  protected clearInspectedNode(): void {
+    this.inspectedAddress = null;
+    this.inspectedIsPinned = false;
+    this.inspectedNotes = [];
+    this.inspectedLinks = [];
+    this.isLoadingInspected = false;
+  }
+
+  protected confidenceLabel(confidence: InvestigatorLinkConfidence): string {
+    if (confidence === 'High') {
+      return this.t('visoka', 'high');
+    }
+    if (confidence === 'Medium') {
+      return this.t('srednja', 'medium');
+    }
+    return this.t('niska', 'low');
+  }
+
+  /** Loads (read-only) pins / notes / links for a tapped node. Silently no-ops when no
+   * investigation is selected - the panel then just says so. */
+  private inspectNode(nodeId: string): void {
+    this.inspectedAddress = nodeId;
+    this.inspectedIsPinned = false;
+    this.inspectedNotes = [];
+    this.inspectedLinks = [];
+    this.inspectedInvestigationId = this.storedInvestigationId;
+    const investigationId = this.inspectedInvestigationId;
+    if (!investigationId) {
+      this.isLoadingInspected = false;
+      return;
+    }
+
+    this.isLoadingInspected = true;
+    let pending = 3;
+    const settle = (): void => {
+      pending -= 1;
+      if (pending === 0) {
+        this.isLoadingInspected = false;
+      }
+    };
+    // Guard every callback against a newer selection landing first.
+    const isStale = (): boolean => this.inspectedAddress !== nodeId;
+
+    this.api.getInvestigatorPins(investigationId).subscribe({
+      next: (response) => {
+        if (!isStale()) {
+          this.inspectedIsPinned = response.pins.some(
+            (pin) => pin.address.toLowerCase() === nodeId.toLowerCase(),
+          );
+        }
+        settle();
+      },
+      error: settle,
+    });
+    this.api.getInvestigatorNotes(investigationId, nodeId).subscribe({
+      next: (response) => {
+        if (!isStale()) {
+          this.inspectedNotes = response.notes;
+        }
+        settle();
+      },
+      error: settle,
+    });
+    this.api.getInvestigatorLinks(investigationId, nodeId).subscribe({
+      next: (response) => {
+        if (!isStale()) {
+          this.inspectedLinks = response.links;
+        }
+        settle();
+      },
+      error: settle,
+    });
+  }
+
+  /** The other end of an investigator link, from the inspected address's point of view. */
+  protected linkCounterparty(link: InvestigatorLink): string {
+    if (!this.inspectedAddress) {
+      return link.target_address;
+    }
+    return link.source_address.toLowerCase() === this.inspectedAddress.toLowerCase()
+      ? link.target_address
+      : link.source_address;
   }
 
   /** Re-applies the From/To markers after (re)rendering the graph (e.g. evidence switch) -
@@ -354,6 +465,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.pathTaintResult = null;
     this.taintDialogError = null;
     this.applyPathHighlight(null);
+    this.clearInspectedNode();
   }
 
   // --- Path Analysis: forensic details for the found path -------------------------------
@@ -721,6 +833,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
     this.cy.on('tap', 'node', (event) => {
       this.onNodeTap(String(event.target.id()));
+    });
+    // Tapping empty canvas closes the read-only node-details panel.
+    this.cy.on('tap', (event) => {
+      if (event.target === this.cy) {
+        this.clearInspectedNode();
+      }
     });
 
     this.applySelectionMarkers();

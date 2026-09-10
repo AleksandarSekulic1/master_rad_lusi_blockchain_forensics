@@ -39,6 +39,9 @@
   --pf-bad-bg: rgba(239, 68, 68, 0.1);
   --pf-bad-border: rgba(239, 68, 68, 0.28);
   --pf-bad-text: #fecaca;
+  --pf-cm-bg: rgba(251, 146, 60, 0.08);
+  --pf-cm-border: rgba(251, 146, 60, 0.32);
+  --pf-cm-label: #fdba74;
 }
 
 :host-context([data-theme='light']) {
@@ -74,6 +77,9 @@
   --pf-bad-bg: rgba(220, 38, 38, 0.08);
   --pf-bad-border: rgba(220, 38, 38, 0.28);
   --pf-bad-text: #b91c1c;
+  --pf-cm-bg: rgba(234, 88, 12, 0.07);
+  --pf-cm-border: rgba(234, 88, 12, 0.3);
+  --pf-cm-label: #c2410c;
 }
 
 .graph-shell {
@@ -327,6 +333,158 @@ h3 {
 .pathfinding-panel h3 {
   font-size: 1rem;
   color: var(--pf-heading);
+}
+
+/* --- read-only Case-management view for a clicked node --- */
+
+.node-inspect {
+  margin: 0 0 0.4rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--pf-cm-border);
+  background: var(--pf-cm-bg);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.node-inspect-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.node-inspect-title {
+  min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.node-inspect-addr {
+  align-self: start;
+  max-width: 100%;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.7rem;
+}
+
+.node-inspect-close {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--pf-border);
+  background: transparent;
+  color: var(--pf-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-inspect-close:hover {
+  color: var(--pf-heading);
+  border-color: var(--pf-btn-hover-border);
+}
+
+.ni-pin-badge {
+  justify-self: start;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--pf-cm-border);
+  color: var(--pf-cm-label);
+  background: var(--pf-cm-bg);
+}
+
+.ni-cm-block {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ni-cm-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pf-cm-label);
+}
+
+.ni-cm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ni-cm-list li {
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--pf-chip-bg);
+  border: 1px solid var(--pf-border-soft);
+}
+
+.ni-cm-text {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--pf-text);
+  overflow-wrap: anywhere;
+}
+
+.ni-cm-text .mono-address {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.7rem;
+}
+
+.ni-cm-confidence {
+  font-size: 0.66rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--pf-border);
+  color: var(--pf-muted);
+}
+
+.ni-cm-confidence.conf-high {
+  color: var(--pf-bad-text);
+  border-color: var(--pf-bad-border);
+}
+
+.ni-cm-confidence.conf-medium {
+  color: var(--pf-cm-label);
+  border-color: var(--pf-cm-border);
+}
+
+.ni-cm-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--pf-text-2);
+  overflow-wrap: anywhere;
+}
+
+.ni-cm-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+  color: var(--pf-muted);
+}
+
+.ni-cm-muted {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--pf-muted);
+}
+
+.ni-cm-disclaimer {
+  margin: 0;
+  font-size: 0.68rem;
+  font-style: italic;
+  color: var(--pf-muted);
 }
 
 .address-field {

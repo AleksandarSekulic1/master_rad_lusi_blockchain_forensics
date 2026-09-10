@@ -469,5 +469,19 @@
       "seeds": 3
     },
     "registered_at": "2026-09-10T11:22:38.217892+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-6H6V-2DAS",
+    "content_hash": "5a6037770a59f3ce76932a9f717f3451162d610322940bd17d35e5dbfa41428e",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "hops": 2,
+      "destination_mode": "specific_address",
+      "taint_trace": "da"
+    },
+    "registered_at": "2026-09-10T12:02:02.590750+00:00"
   }
 ]
