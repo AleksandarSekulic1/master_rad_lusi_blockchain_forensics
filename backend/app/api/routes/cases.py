@@ -252,6 +252,78 @@ def get_case_behavioral_analysis(
     return result
 
 
+class BehavioralAnalysisRunRequest(BaseModel):
+    """`address` is always required. Same "all fields or none" custody gate as
+    RunAnalyticsRequest.custody / CasePathfindingRequest.custody - optional at the API
+    level so direct/test callers still work, but the only real caller (the Behavioral
+    Analysis page's "Analiziraj" button) always supplies one: aggregating an address's
+    hour-of-day pattern still reads every transaction of the selected evidence to build
+    the graph, the same deliberate access as "FIND PATH" / "Pokreni taint analizu"."""
+
+    address: str = Field(min_length=1)
+    custody: TransactionCustodyEntry | None = None
+
+
+@router.post('/{case_id}/behavioral-analysis/run')
+def run_case_behavioral_analysis(
+    case_id: str,
+    request: BehavioralAnalysisRunRequest,
+    evidence: str | None = None,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    """Deliberate-access counterpart of GET /behavioral-analysis: identical result, but
+    this route accepts a `custody` entry and, when present, records it in both chains of
+    custody (`_record_custody_access`) before returning - so running the analysis from the
+    UI leaves the same audit trail as Taint / Pathfinding / DEX Swaps. The read-only GET
+    route stays for passive/embedded use.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    # Per-evidence-file frames (like run_case_pathfinding) so _record_custody_access can
+    # tag each custody row with the evidence file it came from.
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
+    graph = build_transaction_graph(combined_frame)
+
+    try:
+        result = analyze_time_of_day(graph, request.address.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['timezone_estimate'] = estimate_timezone_compatibility(
+        result['hourly_distribution'], result['total_transactions']
+    )
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+
+    has_custody = bool(request.custody)
+    write_audit_log(
+        action='behavioral_analysis_run',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        details={
+            'address': request.address.strip(),
+            'evidence_scope': evidence or 'combined',
+            'total_transactions': result['total_transactions'],
+            'custody_recorded': has_custody,
+            'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
+            'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,
+        },
+    )
+
+    if request.custody:
+        _record_custody_access(
+            case=case,
+            per_evidence_frames=per_evidence_frames,
+            custody=request.custody,
+            user=str(current_user['username']),
+        )
+
+    return result
+
+
 @router.get('/{case_id}/dex-swap-analysis')
 def get_case_dex_swap_analysis(
     case_id: str,

@@ -68,6 +68,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     analytics_run: { label: 'Pokrenuta analiza', group: 'analysis', icon: '⚙' },
     path_finding: { label: 'Pretraga putanja', group: 'analysis', icon: '↝' },
     dex_swap_analysis_run: { label: 'Pokrenuta DEX swap analiza', group: 'analysis', icon: '⇌' },
+    behavioral_analysis_run: { label: 'Pokrenuta bihevioralna analiza', group: 'analysis', icon: '◔' },
     case_created: { label: 'Kreiran slučaj', group: 'case', icon: '＋' },
     case_status_changed: { label: 'Promenjen status slučaja', group: 'case', icon: '⇄' },
     case_deleted: { label: 'Obrisan slučaj', group: 'case', icon: '✕' },
@@ -88,6 +89,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     taint: 'Taint izveštaj',
     pathfinding: 'Pathfinding izveštaj',
     dex_swap: 'DEX Swap izveštaj',
+    behavioral: 'Bihevioralni izveštaj',
   };
 
   constructor(

@@ -469,5 +469,73 @@
       "seeds": 3
     },
     "registered_at": "2026-09-10T11:22:38.217892+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-6H6V-2DAS",
+    "content_hash": "5a6037770a59f3ce76932a9f717f3451162d610322940bd17d35e5dbfa41428e",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "hops": 2,
+      "destination_mode": "specific_address",
+      "taint_trace": "da"
+    },
+    "registered_at": "2026-09-10T12:02:02.590750+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-TLSS-UJE2",
+    "content_hash": "6c82d74349bb0e5ab42add689d563f9cdb3751785557a13ec5f801e7ca3aebec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "hops": 2,
+      "destination_mode": "specific_address",
+      "taint_trace": "ne"
+    },
+    "registered_at": "2026-09-10T12:30:05.882059+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-HZMS-CHBF",
+    "content_hash": "0825f3266de6a16d8e9e643a004de0482564dfb3ec5664dd7dace56c7e3a1dec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "hops": 1,
+      "destination_mode": "specific_address",
+      "taint_trace": "da"
+    },
+    "registered_at": "2026-09-10T12:51:39.144020+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-DWAL-KA92",
+    "content_hash": "2b172d318ae05ba77fa39067c576cc9383c0c41afb5c5f3c28f45c3b8b852fbc",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "addresses": 4,
+      "evidence_scope": "20260824_001905_381531_demo_timezone_estimate.csv"
+    },
+    "registered_at": "2026-09-10T17:18:15.103899+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-2JK7-MHR2",
+    "content_hash": "2b172d318ae05ba77fa39067c576cc9383c0c41afb5c5f3c28f45c3b8b852fbc",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "addresses": 4,
+      "evidence_scope": "20260824_001905_381531_demo_timezone_estimate.csv"
+    },
+    "registered_at": "2026-09-10T17:19:39.691546+00:00"
   }
 ]

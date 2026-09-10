@@ -46,7 +46,7 @@ upisuje u oba odjednom (vidi §2).
 
 ## 2. Kad se pravi novi red
 
-Okidač je **svako deliberatno pokretanje analize**, na bilo kojoj od četiri stranice koje
+Okidač je **svako deliberatno pokretanje analize**, na bilo kojoj od pet stranica koje
 to rade:
 
 | Stranica | Dugme | Šta se dešava | Endpoint |
@@ -55,10 +55,11 @@ to rade:
 | **Graf** | „Analiziraj graf" | boji graf po riziku/crnoj listi, bez izbora izvora | `POST /cases/{id}/analytics/run` |
 | **Pathfinding** | „FIND PATH" | BFS pretraga puta kroz evidenciju | `POST /cases/{id}/pathfinding` |
 | **DEX Swaps** | „ANALYZE" | heuristička detekcija swap događaja (vidi DEX-SWAP-ANALIZA.md §12) | `POST /cases/{id}/dex-swap-analysis/run` |
+| **Bihevioralna analiza** | „Analiziraj" | UTC obrazac aktivnosti adrese po satu/danu (vidi BEHAVIORAL-ANALIZA.md) | `POST /cases/{id}/behavioral-analysis/run` |
 
-Sva četiri dugmeta otvaraju **isti dijalog** (`CustodyAccessDialogComponent`) tražeći
-razlog pristupa, ime i prezime i potpis, i sva četiri, na potvrdu, pozivaju svoj endpoint
-sa istim oblikom `custody` objekta. Svaki od ta tri endpoint-a, kad dobije `custody`,
+Svih pet dugmadi otvaraju **isti dijalog** (`CustodyAccessDialogComponent`) tražeći
+razlog pristupa, ime i prezime i potpis, i svih pet, na potvrdu, pozivaju svoj endpoint
+sa istim oblikom `custody` objekta. Svaki od tih endpoint-a, kad dobije `custody`,
 upisuje kroz isti deljeni helper (`_record_custody_access`):
 
 - **jedan red po transakciji** u opsegu (`custody_log.jsonl`) — potencijalno stotine odjednom
@@ -69,10 +70,13 @@ pristupljeni istim činom. „Opseg" je uvek **cela evidencija trenutno izabrana
 stranici** (kombinovana ili jedan fajl) — ne samo transakcije koje se pojave u konačnom
 rezultatu (npr. za Pathfinding to je cela evidencija kroz koju je BFS tražio put, ne samo
 same grane puta; za DEX Swaps to je cela evidencija u kojoj se tražio obrazac, ne samo
-transakcije koje su ispale kao detektovan swap) — jer je pretraga/analiza stvarno
+transakcije koje su ispale kao detektovan swap; za Bihevioralnu analizu to je cela
+evidencija iz koje se gradi graf da bi se agregirao satni obrazac, ne samo transakcije te
+jedne adrese — a kad se u jednom pokretanju analizira više adresa, to je i dalje **jedno**
+potpisivanje čiji je opseg ta ista cela evidencija) — jer je pretraga/analiza stvarno
 pročitala/obradila svaki taj red da bi došla do rezultata.
 
-**Bitno razgraničenje:** sva tri endpoint-a se pozivaju i **pasivno** (Kontrolna tabla, kao
+**Bitno razgraničenje:** ovi endpoint-i se pozivaju i **pasivno** (Kontrolna tabla, kao
 i sam Graf/Pathfinding/DEX Swaps overlay pri prvom učitavanju — vidi niže) radi prikaza
 podataka bez custody upisa. Kad `custody` nije poslat u telu zahteva, ništa se ne upisuje
 ni u jedan lanac — samo namerni klik na jedno od dugmadi iznad predstavlja pristup u
@@ -89,6 +93,13 @@ gated tok kao na Taint analizi.
 lanac) i `POST .../dex-swap-analysis/run` (deliberatan, iza „ANALYZE" dugmeta na samoj
 DEX Swaps stranici, uvek nosi `custody`). Isti obrazac kao razdvajanje sirovog Graf
 prikaza od „Analiziraj graf".
+
+**Bihevioralna analiza konkretno:** isti obrazac sa DVA endpoint-a — `GET
+.../behavioral-analysis` (pasivan, read-only, nikad ne piše u lanac; zadržan za buduću
+ugrađenu upotrebu) i `POST .../behavioral-analysis/run` (deliberatan, iza „Analiziraj"
+dugmeta, uvek nosi `custody`). Stranica dozvoljava biranje više adresa u jedan red za
+analizu; potvrda dijaloga pokreće **jedno** potpisivanje za ceo red (opseg = izabrana
+evidencija), a `POST .../run` se poziva po adresi sa tim istim `custody` objektom.
 
 ## 3. Identitet transakcije/fajla
 
@@ -124,9 +135,10 @@ Identična pravila za oba nivoa (isti dijalog, ista polja):
 ## 5. Tok kroz aplikaciju
 
 1. Analitičar klikne **„Pokreni taint analizu"** (Taint analiza), **„Analiziraj graf"**
-   (Graf), **„FIND PATH"** (Pathfinding) ili **„ANALYZE"** (DEX Swaps).
+   (Graf), **„FIND PATH"** (Pathfinding), **„ANALYZE"** (DEX Swaps) ili **„Analiziraj"**
+   (Bihevioralna analiza).
 2. Otvara se dijalog **„Razlog pristupa i potpis"** (`features/custody-access-dialog`,
-   zajednički za sve četiri stranice) — polja iz tabele iznad, plus potpis mišem i
+   zajednički za svih pet stranica) — polja iz tabele iznad, plus potpis mišem i
    obavezan checkbox izjave.
 3. Na potvrdu se šalje odgovarajući endpoint (vidi tabelu u §2) sa `custody` objektom.
 4. Backend prolazi kroz **svaki red** evidencije u opsegu i piše: po jedan zapis u
@@ -208,6 +220,7 @@ brojanje redova, odvojeni lanci za različite fajlove, PDF izvoz.
 | Poziv sa Grafa | `graph-visualization.component.ts` (`openCustodyDialog`, `confirmCustodyAndAnalyze`) |
 | Poziv sa Pathfinding-a | `pathfinding.component.ts` (`openFindPathDialog`, `confirmCustodyAndFindPath`) |
 | Poziv sa DEX Swaps | `dex-swap-analysis.component.ts` (`openCustodyDialog`, `confirmCustodyAndAnalyze`) |
+| Poziv sa Bihevioralne analize | `behavioral-analysis.component.ts` (`analyze` otvara dijalog, `confirmCustodyAndAnalyze`) |
 
 **Rute:**
 
@@ -216,6 +229,7 @@ brojanje redova, odvojeni lanci za različite fajlove, PDF izvoz.
 | `POST /api/v1/cases/{id}/analytics/run` | pokretanje Taint/Graf analize; `custody` opciono (vidi §2) |
 | `POST /api/v1/cases/{id}/pathfinding` | BFS pretraga puta; `custody` opciono |
 | `POST /api/v1/cases/{id}/dex-swap-analysis/run` | DEX swap detekcija (deliberatna); `custody` opciono — pasivna varijanta je `GET .../dex-swap-analysis`, bez custody upisa |
+| `POST /api/v1/cases/{id}/behavioral-analysis/run` | bihevioralna analiza (deliberatna); `custody` opciono — pasivna varijanta je `GET .../behavioral-analysis`, bez custody upisa |
 | `GET /api/v1/cases/{id}/custody/suggestions` | predlozi za autocomplete polja (zajedničko) |
 | `GET /api/v1/cases/{id}/custody/transactions` | spisak transakcija sa lancem dokaza |
 | `GET /api/v1/cases/{id}/custody/transactions/{tx_id}` | pun obrazac za jednu transakciju |

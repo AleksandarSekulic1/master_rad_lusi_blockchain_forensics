@@ -294,14 +294,34 @@ export class ApiService {
   }
 
   /** Behavioral / Time-of-Day Analysis (case-scoped, first version - UTC only, no
-   * timezone/continent inference). Read-only, like getCaseGraph/getSeedSuggestions - no
-   * custody entry, since it only re-reads the case's own already-built graph. */
+   * timezone/continent inference). Read-only GET, like getCaseGraph/getSeedSuggestions -
+   * NO custody entry. Kept for passive/embedded use; the Behavioral Analysis page's
+   * "Analiziraj" button goes through runBehavioralAnalysis below instead. */
   getBehavioralAnalysis(caseId: string, address: string, evidence?: string | null): Observable<BehavioralAnalysisResult> {
     let params = new HttpParams().set('address', address);
     if (evidence) {
       params = params.set('evidence', evidence);
     }
     return this.http.get<BehavioralAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/behavioral-analysis`, { params });
+  }
+
+  /** Deliberate-access counterpart of getBehavioralAnalysis: same result, but this POST
+   * carries a `custody` entry and the backend records it in both chains of custody before
+   * returning - so running the analysis leaves the same audit trail as Taint/Pathfinding/
+   * DEX Swaps. `custody` is optional at the API level (direct/test callers), but the
+   * Behavioral Analysis page always supplies one. */
+  runBehavioralAnalysis(
+    caseId: string,
+    address: string,
+    evidence?: string | null,
+    custody?: TransactionCustodyEntry | null,
+  ): Observable<BehavioralAnalysisResult> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.post<BehavioralAnalysisResult>(
+      `${this.apiUrl}/api/v1/cases/${caseId}/behavioral-analysis/run`,
+      { address, custody: custody ?? undefined },
+      { params },
+    );
   }
 
   /** `address` is optional (unlike getBehavioralAnalysis above) - omitted, the backend

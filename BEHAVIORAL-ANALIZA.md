@@ -93,13 +93,22 @@ Nepostojeća adresa → `ValueError` → `404`, ne tih prazan rezultat.
 ## 3. API
 
 ```
-GET /api/v1/cases/{case_id}/behavioral-analysis?address=0x...&evidence=<opciono>
+GET  /api/v1/cases/{case_id}/behavioral-analysis?address=0x...&evidence=<opciono>
+POST /api/v1/cases/{case_id}/behavioral-analysis/run?evidence=<opciono>   { "address": "0x...", "custody": {...}|null }
 ```
 
-Read-only ruta — isti tretman kao `GET /cases/{id}/graph` i `GET
-/cases/{id}/seed-suggestions`: nema dijaloga za lanac dokaza i ne piše u `custody_log`, jer
-samo ponovo čita već izgrađen graf slučaja, ne pokreće nikakvu novu analitičku obradu nad
-evidencijom.
+**Dve rute, isti rezultat, isti obrazac kao DEX Swaps (LANAC-DOKAZA.md §2):**
+
+- `GET .../behavioral-analysis` — **read-only, pasivna**: nema dijaloga za lanac dokaza i
+  ne piše u `custody_log`. Zadržana za buduću ugrađenu/pregled upotrebu.
+- `POST .../behavioral-analysis/run` — **deliberatna**, iza dugmeta „Analiziraj" na stranici.
+  Prima `custody` objekat i, kad je poslat, kroz zajednički `_record_custody_access` upisuje
+  po jedan red u `custody_log.jsonl` (po transakciji u opsegu) i `custody_evidence_log.jsonl`
+  (po dokaznom fajlu), pa upisuje `behavioral_analysis_run` u `audit_log`. Opseg je cela
+  izabrana evidencija (kombinovana ili jedan fajl) jer se iz nje gradi graf da bi se
+  agregirao satni obrazac — a ne samo transakcije te jedne adrese. Kad se u jednom
+  pokretanju analizira više adresa, to je **jedno** potpisivanje, a `POST .../run` se poziva
+  po adresi sa tim istim `custody` objektom.
 
 Odgovor:
 ```json
@@ -151,6 +160,15 @@ Ruta `/behavioral`, link **„Behavioral"** u glavnom meniju.
   najranijeg do najkasnijeg UTC sata sa bilo kakvom aktivnošću (agregirano preko svih
   dana), iz `hourly_distribution` koji stranica već ima učitan. Vidi §8 za posledicu ove
   definicije (jedna izdvojena transakcija ume znatno da proširi prikazani raspon).
+- **Više adresa u jednom pokretanju** — može se dodati više adresa u red (padajući meni
+  „Adrese iz slučaja", ručni unos, ili „Dodaj sve adrese"); po završetku svaka ima svoj
+  tab (heatmap + rezime). Custody se potpisuje jednom za ceo red (§3).
+- **Opcioni tab „Sve zajedno / Combined"** (kad ima ≥ 2 uspešna rezultata) — sintetički
+  prikaz čije su raspodele **zbir** svih pojedinačnih; ne menja pojedinačne rezultate.
+  Procena vremenske zone se za njega računa na frontend-u (`timezone-heuristic.ts`, doslovni
+  port `timezone_heuristics.py` sa istim pragovima), pa mali uzorci mogu zajedno preći prag
+  od 8 transakcija. Interni prenosi između analiziranih adresa broje se dvaput — jasno
+  navedeno na prikazu i u PDF-u; smisleno samo ako se skup smatra jednim entitetom.
 
 ## 5. Heatmap vizuelizacija
 
@@ -464,24 +482,33 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
   se ne ocenjuje kao „sumnjivo" na osnovu nje.
 - **Adresa se traži tačnim poklapanjem** (case-sensitive), isto kao Pathfinding — ne
   normalizuje se na mala slova (§2.5).
-- **Nema PDF izveštaja** (za razliku od Taint/Pathfinding) — prva verzija je samo prikaz na
-  ekranu; izveštaj sa potpisom/pečatom/kontrolnim brojem može se dodati kasnije po istom
-  obrascu (`report_registry.py` je već generički, vidi PATHFINDING-ANALIZA.md §8.2).
-- **Bez dijaloga za lanac dokaza** — read-only pregled već izgrađenog grafa (§3), ne
-  pokreće se nova obrada nad evidencijom, pa se ne beleži u `custody_log` (za razliku od
-  „Pokreni taint analizu"/„FIND PATH").
+- **PDF izveštaj** — dugme „Izvezi PDF izveštaj" (kad postoji bar jedan uspešan rezultat)
+  otvara isti dijalog za potpis kao Taint/Pathfinding (izbor jezika SR/EN, potpis mišem,
+  checkbox izjave), registruje izveštaj (`report_type: 'behavioral'`) i gradi PDF sa:
+  zaglavljem (mačka + naslov), meta-poljima, uvodnom napomenom, po jednom sekcijom za svaku
+  analiziranu adresu (kartice sa ključnim brojevima, auto-generisan **zaključak** u prozi,
+  procena vremenske zone, tabela aktivnosti po satu i po danu), metodološkim dodatkom, pa
+  stranom „Potpis i overa" (pečat = `assets/seal.png`) i „Provera verodostojnosti"
+  (kontrolni broj + otisak sadržaja). `buildBehavioralPdf` u `behavioral-analysis.component.ts`.
+- **Dijalog za lanac dokaza** — dugme „Analiziraj" prolazi kroz isti
+  `CustodyAccessDialogComponent` (razlog pristupa, ime/prezime, potpis, checkbox izjave) kao
+  Taint/Pathfinding/DEX Swaps i poziva `POST .../behavioral-analysis/run` sa `custody`
+  objektom, koji se beleži u oba lanca (§3, LANAC-DOKAZA.md §2). Pasivni `GET
+  .../behavioral-analysis` ostaje bez custody upisa.
 
 ## 9. Gde je šta u kodu
 
 | Šta | Fajl |
 |---|---|
 | Algoritam (bucketing, statistike) | `backend/app/analytics/behavioral_analysis.py` (`analyze_time_of_day`) |
-| Timezone/region heuristika (§7) | `backend/app/analytics/timezone_heuristics.py` (`estimate_timezone_compatibility`) |
-| Ruta | `backend/app/api/routes/cases.py` (`get_case_behavioral_analysis`) |
+| Timezone/region heuristika (§7) | `backend/app/analytics/timezone_heuristics.py` (`estimate_timezone_compatibility`); frontend port za „Sve zajedno" tab: `frontend/src/app/features/behavioral-analysis/timezone-heuristic.ts` |
+| Rute | `backend/app/api/routes/cases.py` (`get_case_behavioral_analysis` — GET/pasivna, `run_case_behavioral_analysis` — POST/deliberatna sa `custody`) |
+| Lanac dokaza (upis) | `backend/app/api/routes/cases.py` (`_record_custody_access`), `LANAC-DOKAZA.md` §2 |
 | Testovi | `backend/tests/test_behavioral_analysis.py`, `backend/tests/test_timezone_heuristics.py` |
 | Demo podaci (§6.2, §7.5) | `backend/scripts/seed_demo_behavioral_evidence.py` |
-| Frontend stranica | `frontend/src/app/features/behavioral-analysis/` |
-| API poziv | `frontend/src/app/core/services/api.service.ts` (`getBehavioralAnalysis`) |
+| Frontend stranica | `frontend/src/app/features/behavioral-analysis/` (`analyze` otvara dijalog, `confirmCustodyAndAnalyze` pokreće) |
+| PDF izveštaj | `frontend/src/app/features/behavioral-analysis/behavioral-analysis.component.ts` (`openSignatureDialog`, `confirmSignatureAndExport`, `buildBehavioralPdf`, `buildAddressConclusion`) — `report_type: 'behavioral'` |
+| API poziv | `frontend/src/app/core/services/api.service.ts` (`getBehavioralAnalysis` pasivno, `runBehavioralAnalysis` sa `custody`) |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`BehavioralAnalysisResult`, `BehavioralAnalysisStats`, `BehavioralAnalysisPeakPeriod`, `TimezoneEstimate`) |
 
 **Ruta:**

@@ -1,57 +1,168 @@
 <div class="behavioral-shell">
-  <div class="active-case-banner">
-    <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">Aktivan slučaj</span>
-      <strong>{{ activeCase.name }}</strong>
-    </div>
-    <ng-template #noCase>
-      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
-    </ng-template>
-  </div>
+  <div class="ba-controls">
+    <div class="ba-bar">
+      <div class="ba-case" *ngIf="activeCase; else noCase">
+        <span class="ba-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="ba-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
 
-  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
-    <label>
-      Prikaz transakcija
-      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">Sve transakcije (kombinovano)</option>
-        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
-          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
-        </option>
-      </select>
-    </label>
+      <label class="ba-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="ba-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div class="behavioral-header">
-    <p class="panel-kicker">Behavioral Analysis</p>
-    <h2>BEHAVIORAL ANALYSIS</h2>
-    <p>Analiza vremenskog obrasca aktivnosti blockchain adrese.</p>
+    <p class="panel-kicker">{{ t('Bihevioralna analiza', 'Behavioral analysis') }}</p>
+    <h2>{{ t('BIHEVIORALNA ANALIZA', 'BEHAVIORAL ANALYSIS') }}</h2>
+    <p>{{ t('Analiza vremenskog obrasca aktivnosti blockchain adrese.', 'Analysis of the time-of-activity pattern of a blockchain address.') }}</p>
   </div>
 
-  <div class="address-form">
-    <label class="address-field">
-      Address
-      <input
-        type="text"
-        [(ngModel)]="address"
-        placeholder="0x..."
-        (keydown.enter)="analyze()"
-        [disabled]="!activeCase"
-      />
-    </label>
-    <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
-      {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
-    </button>
+  <div class="address-picker">
+    <div class="address-picker-row">
+      <label class="address-field" *ngIf="caseAddresses.length > 0 || isLoadingCaseAddresses">
+        {{ t('Adrese iz slučaja', 'Case addresses') }}
+        <select
+          class="case-address-select"
+          [disabled]="!activeCase || isLoadingCaseAddresses || availableCaseAddresses.length === 0"
+          [ngModel]="''"
+          (ngModelChange)="onPickAddress($event)"
+        >
+          <option value="" disabled>
+            {{ isLoadingCaseAddresses
+                ? t('Učitavanje adresa…', 'Loading addresses…')
+                : availableCaseAddresses.length === 0
+                  ? t('Sve adrese su već dodate', 'All addresses already added')
+                  : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…') }}
+          </option>
+          <option *ngFor="let addr of availableCaseAddresses" [value]="addr">{{ addr }}</option>
+        </select>
+      </label>
+
+      <label class="address-field">
+        {{ t('Ili unesi adresu ručno', 'Or enter an address manually') }}
+        <input
+          type="text"
+          [(ngModel)]="address"
+          placeholder="0x..."
+          (keydown.enter)="addTypedAddress()"
+          [disabled]="!activeCase"
+        />
+      </label>
+
+      <button
+        type="button"
+        class="ghost-button add-address-button"
+        (click)="addTypedAddress()"
+        [disabled]="!activeCase || !address.trim()"
+      >
+        {{ t('Dodaj', 'Add') }}
+      </button>
+    </div>
+
+    <div class="queue-chips" *ngIf="queue.length > 0">
+      <span class="queue-label">{{ t('Za analizu', 'To analyse') }} ({{ queue.length }}):</span>
+      <span class="queue-chip" *ngFor="let addr of queue">
+        <span class="mono-clip">{{ addr }}</span>
+        <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
+      </span>
+    </div>
+
+    <div class="analyze-row">
+      <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+        {{ isAnalyzing
+            ? t('Analiza…', 'Analysing…')
+            : queue.length > 1
+              ? t('Analiziraj', 'Analyse') + ' (' + queue.length + ')'
+              : t('Analiziraj', 'Analyse') }}
+      </button>
+
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="addAllCaseAddresses()"
+        [disabled]="!activeCase || availableCaseAddresses.length === 0"
+        [title]="t('Dodaj u red sve adrese iz izabrane evidencije', 'Add every address from the selected evidence to the queue')"
+      >
+        {{ t('Dodaj sve adrese', 'Add all addresses') }}<ng-container *ngIf="availableCaseAddresses.length > 0"> ({{ availableCaseAddresses.length }})</ng-container>
+      </button>
+
+      <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
+        {{ t('Očisti red', 'Clear queue') }}
+      </button>
+    </div>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
 
-  <ng-container *ngIf="result">
+  <p class="error-inline" *ngFor="let run of failedRuns">
+    <span class="mono-clip">{{ run.address }}</span> — {{ run.error }}
+  </p>
+
+  <div class="results-toolbar" *ngIf="runs.length > 0">
+    <div class="result-tabs" *ngIf="runs.length > 1">
+      <button
+        type="button"
+        class="result-tab combined"
+        *ngIf="canShowCombined"
+        [class.active]="isCombinedActive"
+        (click)="showCombined()"
+        [title]="t('Zbir obrazaca svih analiziranih adresa (interni prenosi se broje dvaput)', 'Sum of every analysed address’s pattern (internal transfers counted twice)')"
+      >
+        {{ t('Sve zajedno', 'Combined') }} ({{ exportableRuns.length }})
+      </button>
+      <button
+        type="button"
+        class="result-tab"
+        *ngFor="let run of runs"
+        [class.active]="!isCombinedActive && run.address === activeAddress"
+        [class.failed]="!run.result"
+        (click)="setActiveAddress(run.address)"
+      >
+        <span class="mono-clip">{{ run.address }}</span>
+        <span class="result-tab-remove" (click)="$event.stopPropagation(); removeRun(run.address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</span>
+      </button>
+    </div>
+
+    <button
+      type="button"
+      class="primary-button export-pdf-button"
+      *ngIf="canExportPdf"
+      (click)="openSignatureDialog()"
+      [disabled]="isExportingPdf"
+      [title]="t('Izvezi potpisan PDF izveštaj sa zaključcima za sve analizirane adrese', 'Export a signed PDF report with conclusions for every analysed address')"
+    >
+      {{ isExportingPdf ? t('Generisanje…', 'Generating…') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+    </button>
+  </div>
+
+  <ng-container *ngIf="activeResult as result">
     <div class="behavioral-content">
       <section class="heatmap-panel">
         <div class="heatmap-panel-header">
-          <p class="panel-kicker">Activity Heatmap</p>
-          <span class="tx-count-pill">{{ result.total_transactions }} transakcija (UTC)</span>
+          <div>
+            <p class="panel-kicker">{{ t('Mapa aktivnosti', 'Activity heatmap') }}</p>
+            <p class="heatmap-address" [class.mono-clip]="!isCombinedActive">{{ activeAddressLabel }}</p>
+          </div>
+          <span class="tx-count-pill">{{ result.total_transactions }} {{ t('transakcija', 'transactions') }} (UTC)</span>
         </div>
+
+        <p class="combined-note" *ngIf="isCombinedActive">
+          {{ t('Zbir obrazaca svih analiziranih adresa. Interni prenosi između ovih adresa broje se dvaput. Smisleno samo ako se skup smatra jednim entitetom.',
+                'Sum of every analysed address’s pattern. Internal transfers between these addresses are counted twice. Meaningful only if the set is treated as a single entity.') }}
+        </p>
 
         <div class="heatmap-scroll">
           <div class="heatmap-grid">
@@ -73,16 +184,19 @@
         </div>
 
         <div class="heatmap-legend">
-          <span>Less</span>
+          <span>{{ t('Manje', 'Less') }}</span>
           <span class="legend-gradient"></span>
-          <span>More</span>
+          <span>{{ t('Više', 'More') }}</span>
         </div>
 
         <details class="heatmap-table-toggle">
-          <summary>Prikaži kao tabelu</summary>
+          <summary>
+            <span class="ht-chevron" aria-hidden="true">▸</span>
+            {{ t('Prikaži kao tabelu', 'Show as table') }}
+          </summary>
           <div class="heatmap-table-scroll">
             <table class="heatmap-table">
-              <caption class="sr-only">Broj transakcija po danu u nedelji i UTC satu</caption>
+              <caption class="sr-only">{{ t('Broj transakcija po danu u nedelji i UTC satu', 'Transaction count by weekday and UTC hour') }}</caption>
               <thead>
                 <tr>
                   <th scope="col"></th>
@@ -92,7 +206,7 @@
               <tbody>
                 <tr *ngFor="let day of days">
                   <th scope="row">{{ dayShortLabels[day] }}</th>
-                  <td *ngFor="let hour of hours">{{ cellCount(day, hour) }}</td>
+                  <td *ngFor="let hour of hours" [class.zero]="!cellCount(day, hour)">{{ cellCount(day, hour) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -101,28 +215,28 @@
       </section>
 
       <aside class="stats-panel">
-        <p class="panel-kicker">Activity Summary</p>
+        <p class="panel-kicker">{{ t('Rezime aktivnosti', 'Activity summary') }}</p>
 
         <div class="stat-tile">
-          <span class="stat-label">Most active hour</span>
+          <span class="stat-label">{{ t('Najaktivniji sat', 'Most active hour') }}</span>
           <span class="stat-value">{{ result.stats.most_active_hour ? result.stats.most_active_hour + ':00 UTC' : 'n/a' }}</span>
         </div>
 
         <div class="stat-tile">
-          <span class="stat-label">Most active day</span>
+          <span class="stat-label">{{ t('Najaktivniji dan', 'Most active day') }}</span>
           <span class="stat-value">{{ result.stats.most_active_day ?? 'n/a' }}</span>
         </div>
 
         <div class="stat-tile">
-          <span class="stat-label">Peak activity</span>
+          <span class="stat-label">{{ t('Vrhunac aktivnosti', 'Peak activity') }}</span>
           <span class="stat-value">
             {{ result.stats.most_active_hour_count }}
-            {{ result.stats.most_active_hour_count === 1 ? 'transaction' : 'transactions' }}
+            {{ result.stats.most_active_hour_count === 1 ? t('transakcija', 'transaction') : t('transakcija', 'transactions') }}
           </span>
         </div>
 
         <div class="stat-tile">
-          <span class="stat-label">Active period</span>
+          <span class="stat-label">{{ t('Aktivan period', 'Active period') }}</span>
           <span class="stat-value">{{ activePeriodLabel ?? 'n/a' }}</span>
         </div>
 
@@ -131,32 +245,101 @@
              Never claims a location; see BEHAVIORAL-ANALIZA.md §7 for the methodology and
              confirmation there is no "vlasnik se nalazi u..." phrasing anywhere here. -->
         <div class="timezone-section" *ngIf="result.timezone_estimate as tz">
-          <p class="panel-kicker timezone-kicker">Timezone Inference</p>
+          <p class="panel-kicker timezone-kicker">{{ t('Procena vremenske zone', 'Timezone inference') }}</p>
 
           <ng-container *ngIf="tz.available; else timezoneUnavailable">
             <div class="stat-tile">
-              <span class="stat-label">Compatible time zones</span>
+              <span class="stat-label">{{ t('Kompatibilne vremenske zone', 'Compatible time zones') }}</span>
               <span class="stat-value">{{ tz.utc_offset_range_label }}</span>
             </div>
             <div class="stat-tile">
-              <span class="stat-label">Possible region{{ (tz.possible_regions?.length ?? 0) > 1 ? 's' : '' }}</span>
-              <span class="stat-value">{{ tz.possible_regions?.join(', ') }}</span>
+              <span class="stat-label">{{ (tz.possible_regions?.length ?? 0) > 1 ? t('Mogući regioni', 'Possible regions') : t('Mogući region', 'Possible region') }}</span>
+              <span class="stat-value">{{ regionLabels(tz.possible_regions) }}</span>
             </div>
             <div class="stat-tile">
-              <span class="stat-label">Confidence</span>
-              <span class="stat-value">{{ tz.confidence }}</span>
+              <span class="stat-label">{{ t('Pouzdanost', 'Confidence') }}</span>
+              <span class="stat-value">{{ confidenceLabel(tz.confidence) }}</span>
             </div>
-            <p class="timezone-disclaimer"><span class="disclaimer-label">Napomena:</span> {{ tz.disclaimer }}</p>
+            <p class="timezone-disclaimer"><span class="disclaimer-label">{{ t('Napomena:', 'Note:') }}</span> {{ timezoneDisclaimer(tz) }}</p>
           </ng-container>
           <ng-template #timezoneUnavailable>
-            <p class="timezone-disclaimer">{{ tz.message }}</p>
+            <p class="timezone-disclaimer">{{ timezoneUnavailableMessage(tz) }}</p>
           </ng-template>
         </div>
       </aside>
     </div>
   </ng-container>
 
-  <p class="empty-hint" *ngIf="!result && !analysisError">
-    Unesi Ethereum adresu i klikni "ANALYZE" da vidiš heatmap njene vremenske aktivnosti (UTC).
+  <p class="empty-hint" *ngIf="runs.length === 0 && queue.length === 0 && !analysisError && !isAnalyzing">
+    {{ t('Izaberi jednu ili više adresa iz slučaja (ili ih unesi ručno), dodaj ih i klikni „Analiziraj" da vidiš mapu njihove vremenske aktivnosti (UTC).',
+          'Pick one or more addresses from the case (or enter them manually), add them and click “Analyse” to see the heatmap of their time-of-day activity (UTC).') }}
   </p>
+
+  <!-- Lanac dokaza: razlog pristupa i potpis pre pokretanja bihevioralne analize -->
+  <app-custody-access-dialog
+    *ngIf="isCustodyDialogOpen && activeCase"
+    [caseId]="activeCase.id"
+    [caseName]="activeCase.name"
+    [evidenceFileName]="selectedEvidenceFileName"
+    [isSubmitting]="isAnalyzing"
+    [submitError]="custodyDialogError"
+    (confirmed)="confirmCustodyAndAnalyze($event)"
+    (cancelled)="closeCustodyDialog()"
+  ></app-custody-access-dialog>
+
+  <!-- Potpisivanje pre izvoza PDF izveštaja - ista struktura kao Taint / Pathfinding -->
+  <div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
+    <div class="signature-dialog" (click)="$event.stopPropagation()">
+      <p class="panel-kicker">{{ t('Overa izveštaja', 'Report certification') }}</p>
+      <h3>{{ t('Potpis analitičara', 'Analyst signature') }}</h3>
+
+      <p class="signature-intro">
+        {{ t('Potpišite se mišem u polju ispod. Uz potpis se generiše', 'Sign with the mouse in the field below. Together with the signature, a') }}
+        <strong>{{ t('pečat aplikacije Lusi', 'Lusi application seal') }}</strong>
+        {{ t('sa kontrolnim brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.',
+              'is generated with a verification code and a content hash, which can later be used to check whether the report was altered.') }}
+      </p>
+
+      <fieldset class="signature-lang" [disabled]="isExportingPdf">
+        <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+        <label>
+          <input type="radio" name="behavioralPdfLang" value="sr" [(ngModel)]="behavioralPdfLang" />
+          {{ t('Srpski', 'Serbian') }}
+        </label>
+        <label>
+          <input type="radio" name="behavioralPdfLang" value="en" [(ngModel)]="behavioralPdfLang" />
+          {{ t('Engleski', 'English') }}
+        </label>
+        <p class="signature-lang-hint">
+          {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+          <strong>{{ behavioralPdfLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+        </p>
+      </fieldset>
+
+      <app-signature-pad></app-signature-pad>
+
+      <label class="signature-declaration">
+        <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
+        <span>
+          {{ t('Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.',
+                'I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.') }}
+        </span>
+      </label>
+
+      <p class="signature-limit">
+        {{ t('Napomena: potpis je', 'Note: the signature is a') }} <strong>{{ t('izjava', 'declaration') }}</strong>
+        {{ t(', a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.',
+              ', not a cryptographic proof — it stays intact even if someone edits the document. An alteration is detected only by comparing the content hash against the verification code.') }}
+      </p>
+
+      <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+      <div class="signature-actions">
+        <button type="button" class="ghost-button" (click)="closeSignatureDialog()">{{ t('Odustani', 'Cancel') }}</button>
+        <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
+          {{ isExportingPdf ? t('Generisanje…', 'Generating…') : t('Potpiši i izvezi PDF', 'Sign and export PDF') }}
+        </button>
+      </div>
+    </div>
+  </div>
 </div>

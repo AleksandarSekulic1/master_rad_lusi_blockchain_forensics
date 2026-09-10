@@ -15,10 +15,14 @@ import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup'
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { AppLang, SettingsService } from '../../core/services/settings.service';
 import {
   CasePathfindingResult,
   CaseSummary,
   EvidenceEntry,
+  InvestigatorLink,
+  InvestigatorLinkConfidence,
+  InvestigatorNote,
   NodeLinkGraphResponse,
   PathfindingDestinationMode,
   TaintAnalysisResult,
@@ -104,6 +108,9 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   protected signatureDeclarationAccepted = false;
   protected signatureError: string | null = null;
   protected isExportingPdf = false;
+  /** Language the exported PDF is produced in - seeded from the app toggle when the signing
+   * dialog opens, then confirmed by the analyst on the modal. */
+  protected pathfindingPdfLang: AppLang = 'sr';
 
   private cy: Core | null = null;
 
@@ -112,8 +119,20 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     private readonly api: ApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {
     ensureCytoscapeExtensionsRegistered();
+  }
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  /** PDF-string translator: SR or EN by the language chosen on the signing modal, then
+   * ASCII-folded (harmless for English) since the PDF core font is Latin-1 only. */
+  private lx(sr: string, en: string): string {
+    return this.asciiSafe(this.pathfindingPdfLang === 'sr' ? sr : en);
   }
 
   ngOnInit(): void {
@@ -185,6 +204,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   // that node, same "click a new node to restart" rule as elsewhere in the app. ---
 
   protected onNodeTap(nodeId: string): void {
+    this.inspectNode(nodeId);
     if (this.fromAddress === nodeId) {
       this.clearFromAddress();
       return;
@@ -233,6 +253,113 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       this.cy?.getElementById(this.toAddress).removeClass('node-to');
     }
     this.toAddress = '';
+  }
+
+  // --- Read-only Case-management view for a clicked node -----------------------------
+  // Pins / notes / links are created on the Graph page's investigator layer and persisted
+  // per investigation (server-side). Here they are only SHOWN for whichever node was last
+  // tapped, using the investigation the Graph page last had active. Nothing is editable.
+  protected inspectedAddress: string | null = null;
+  protected inspectedIsPinned = false;
+  protected inspectedNotes: InvestigatorNote[] = [];
+  protected inspectedLinks: InvestigatorLink[] = [];
+  protected isLoadingInspected = false;
+  protected inspectedInvestigationId: string | null = null;
+
+  private get storedInvestigationId(): string | null {
+    try {
+      return localStorage.getItem('lusi_selected_investigation');
+    } catch {
+      return null;
+    }
+  }
+
+  protected get hasInspectedCaseData(): boolean {
+    return this.inspectedIsPinned || this.inspectedNotes.length > 0 || this.inspectedLinks.length > 0;
+  }
+
+  protected clearInspectedNode(): void {
+    this.inspectedAddress = null;
+    this.inspectedIsPinned = false;
+    this.inspectedNotes = [];
+    this.inspectedLinks = [];
+    this.isLoadingInspected = false;
+  }
+
+  protected confidenceLabel(confidence: InvestigatorLinkConfidence): string {
+    if (confidence === 'High') {
+      return this.t('visoka', 'high');
+    }
+    if (confidence === 'Medium') {
+      return this.t('srednja', 'medium');
+    }
+    return this.t('niska', 'low');
+  }
+
+  /** Loads (read-only) pins / notes / links for a tapped node. Silently no-ops when no
+   * investigation is selected - the panel then just says so. */
+  private inspectNode(nodeId: string): void {
+    this.inspectedAddress = nodeId;
+    this.inspectedIsPinned = false;
+    this.inspectedNotes = [];
+    this.inspectedLinks = [];
+    this.inspectedInvestigationId = this.storedInvestigationId;
+    const investigationId = this.inspectedInvestigationId;
+    if (!investigationId) {
+      this.isLoadingInspected = false;
+      return;
+    }
+
+    this.isLoadingInspected = true;
+    let pending = 3;
+    const settle = (): void => {
+      pending -= 1;
+      if (pending === 0) {
+        this.isLoadingInspected = false;
+      }
+    };
+    // Guard every callback against a newer selection landing first.
+    const isStale = (): boolean => this.inspectedAddress !== nodeId;
+
+    this.api.getInvestigatorPins(investigationId).subscribe({
+      next: (response) => {
+        if (!isStale()) {
+          this.inspectedIsPinned = response.pins.some(
+            (pin) => pin.address.toLowerCase() === nodeId.toLowerCase(),
+          );
+        }
+        settle();
+      },
+      error: settle,
+    });
+    this.api.getInvestigatorNotes(investigationId, nodeId).subscribe({
+      next: (response) => {
+        if (!isStale()) {
+          this.inspectedNotes = response.notes;
+        }
+        settle();
+      },
+      error: settle,
+    });
+    this.api.getInvestigatorLinks(investigationId, nodeId).subscribe({
+      next: (response) => {
+        if (!isStale()) {
+          this.inspectedLinks = response.links;
+        }
+        settle();
+      },
+      error: settle,
+    });
+  }
+
+  /** The other end of an investigator link, from the inspected address's point of view. */
+  protected linkCounterparty(link: InvestigatorLink): string {
+    if (!this.inspectedAddress) {
+      return link.target_address;
+    }
+    return link.source_address.toLowerCase() === this.inspectedAddress.toLowerCase()
+      ? link.target_address
+      : link.source_address;
   }
 
   /** Re-applies the From/To markers after (re)rendering the graph (e.g. evidence switch) -
@@ -347,6 +474,34 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.pathTaintResult = null;
     this.taintDialogError = null;
     this.applyPathHighlight(null);
+    this.clearInspectedNode();
+    this.expandedHops = new Set<number>();
+    this.pathHopsCache = null;
+  }
+
+  // --- Per-hop detail is collapsed by default so a long path doesn't bury the rest of the
+  // panel under a wall of amount/taint/time/hash rows the investigator may not need yet.
+  // The summary still shows the route and the amount; a click opens the full detail. ---
+  protected expandedHops = new Set<number>();
+
+  protected toggleHop(index: number): void {
+    const next = new Set(this.expandedHops);
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+    this.expandedHops = next;
+  }
+
+  protected get allHopsExpanded(): boolean {
+    return this.pathHops.length > 0 && this.expandedHops.size >= this.pathHops.length;
+  }
+
+  protected toggleAllHops(): void {
+    this.expandedHops = this.allHopsExpanded
+      ? new Set<number>()
+      : new Set(this.pathHops.map((_hop, index) => index));
   }
 
   // --- Path Analysis: forensic details for the found path -------------------------------
@@ -412,10 +567,22 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   /** One row per hop, built entirely from data already on the page (this.graph.links) -
    * no extra request. See PathHopDetail for why the EARLIEST transaction on an edge is
    * the one shown when a hop aggregates more than one. */
+  /** Memoised so the getter returns a STABLE array reference across change-detection
+   * cycles: without this the template rebuilt every hop row on every CD tick, which threw
+   * away in-progress UI state (an expanded row would snap shut again). Recomputed only
+   * when the path, the per-path taint result or the scoped evidence actually changes. */
+  private pathHopsCache: { key: string; hops: PathHopDetail[] } | null = null;
+
   get pathHops(): PathHopDetail[] {
     const path = this.result?.found ? this.result.path : null;
     if (!path || !this.graph) {
+      this.pathHopsCache = null;
       return [];
+    }
+
+    const cacheKey = `${path.join('>')}|${this.pathTaintResult ? 'T' : '-'}|${this.selectedEvidence ?? ''}`;
+    if (this.pathHopsCache && this.pathHopsCache.key === cacheKey) {
+      return this.pathHopsCache.hops;
     }
 
     const taint = this.taintByAddress;
@@ -441,7 +608,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       });
     }
 
+    this.pathHopsCache = { key: cacheKey, hops };
     return hops;
+  }
+
+  protected trackHopIndex(index: number): number {
+    return index;
   }
 
   get initialAmount(): number | null {
@@ -715,6 +887,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.cy.on('tap', 'node', (event) => {
       this.onNodeTap(String(event.target.id()));
     });
+    // Tapping empty canvas closes the read-only node-details panel.
+    this.cy.on('tap', (event) => {
+      if (event.target === this.cy) {
+        this.clearInspectedNode();
+      }
+    });
 
     this.applySelectionMarkers();
   }
@@ -766,6 +944,24 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Loads a bundled asset (cat emblem, seal) as a data URL + intrinsic size for jsPDF.
+   * Same helper as the Taint Analysis report builder. */
+  private async loadPdfImage(path: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const response = await fetch(path);
+    if (!response.ok) {
+      throw new Error(`asset not found: ${path}`);
+    }
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('asset read failed'));
+      reader.readAsDataURL(blob);
+    });
+    const size = await PathfindingComponent.loadImageSize(dataUrl);
+    return { dataUrl, width: size.width, height: size.height };
+  }
+
   /** Opens the signing dialog. Export always goes through it, same as Taint Analysis: the
    * report leaves the application as a standalone document, so it has to carry both who
    * vouches for it and the means to check it later. */
@@ -776,6 +972,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.isSignatureDialogOpen = true;
     this.signatureDeclarationAccepted = false;
     this.signatureError = null;
+    this.pathfindingPdfLang = this.settings.lang();
     setTimeout(() => this.signaturePad?.clear());
   }
 
@@ -787,9 +984,13 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     return (this.signaturePad?.hasStrokes ?? false) && this.signatureDeclarationAccepted && !this.isExportingPdf;
   }
 
-  protected static readonly SIGNATURE_DECLARATION =
-    'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi '
-    + 'kakve je aplikacija izračunala nad navedenom evidencijom.';
+  private signatureDeclaration(): string {
+    return this.pathfindingPdfLang === 'sr'
+      ? 'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi '
+        + 'kakve je aplikacija izračunala nad navedenom evidencijom.'
+      : 'I confirm that I produced this report within the stated case and that the results shown in it are those the '
+        + 'application computed over the stated evidence.';
+  }
 
   /** The exact data the verification hash is computed over - kept to the figures a reader
    * could dispute (the path itself, amounts, taint trace if run), so altering any of them
@@ -821,7 +1022,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.signatureError = null;
     try {
       const signatureImage = this.signaturePad!.getDataUrl();
-      const declaration = PathfindingComponent.SIGNATURE_DECLARATION;
+      const declaration = this.signatureDeclaration();
 
       // Registered BEFORE the document is built: the verification code has to be printed
       // inside the very report it identifies.
@@ -842,10 +1043,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
       const graphImage = this.cy.png({ full: true, scale: 2, bg: PathfindingComponent.PDF_CANVAS_BG });
       const imageSize = await PathfindingComponent.loadImageSize(graphImage);
-      this.buildPathfindingPdf(graphImage, imageSize, { signatureImage, declaration, registration });
+      const catEmblem = await this.loadPdfImage('assets/cat_pdf.png').catch(() => null);
+      const sealImage = await this.loadPdfImage('assets/seal.png').catch(() => null);
+      this.buildPathfindingPdf(graphImage, imageSize, { signatureImage, declaration, registration }, { catEmblem, sealImage });
       this.isSignatureDialogOpen = false;
     } catch {
-      this.signatureError = 'Neuspešno generisanje PDF izveštaja.';
+      this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
     } finally {
       this.isExportingPdf = false;
     }
@@ -859,7 +1062,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       declaration: string;
       registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
     },
+    assets: {
+      catEmblem: { dataUrl: string; width: number; height: number } | null;
+      sealImage: { dataUrl: string; width: number; height: number } | null;
+    },
   ): void {
+    const L = (sr: string, en: string): string => this.lx(sr, en);
     const result = this.result!;
     const caseSummary = this.activeCase!;
     const NAVY = PathfindingComponent.PDF_NAVY;
@@ -875,15 +1083,24 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     const usableWidth = pageWidth - marginX * 2;
     let y = 32;
 
+    const barHeight = 24;
     doc.setFillColor(...NAVY);
-    doc.rect(0, 0, pageWidth, 24, 'F');
+    doc.rect(0, 0, pageWidth, barHeight, 'F');
+
+    let titleX = marginX;
+    if (assets.catEmblem) {
+      const emblem = 19;
+      const emblemW = (assets.catEmblem.width / assets.catEmblem.height) * emblem;
+      doc.addImage(assets.catEmblem.dataUrl, 'PNG', marginX, (barHeight - emblem) / 2, emblemW, emblem);
+      titleX = marginX + emblemW + 5;
+    }
     doc.setTextColor(...WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
-    doc.text('Lusi v1.0 - Izvestaj Pathfinding analize', marginX, 11);
+    doc.text(L('Lusi v1.0 - Izvestaj Pathfinding analize', 'Lusi v1.0 - Pathfinding analysis report'), titleX, 11);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, marginX, 19);
+    doc.text(`${L('Slucaj', 'Case')}: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
     doc.setTextColor(...TEXT_DARK);
 
     const kv = (label: string, value: string): void => {
@@ -899,20 +1116,35 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       y += Math.max(6, lines.length * 5);
     };
 
-    kv('CASE ID', caseSummary.id);
-    kv('IZVEZAO', this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
-    kv('EVIDENCIJA', this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : 'Sve transakcije (kombinovano)');
-    kv('NACIN ODREDISTA', this.destinationMode === 'nearest_cex' ? 'Nearest known CEX' : 'Specific address');
-    kv('GENERISANO', new Date().toLocaleString());
+    kv(L('IDENTIFIKATOR', 'CASE ID'), caseSummary.id);
+    kv(L('IZVEZAO', 'EXPORTED BY'), this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
+    kv(
+      L('EVIDENCIJA', 'EVIDENCE'),
+      this.selectedEvidence
+        ? this.asciiSafe(this.selectedEvidence)
+        : L('Sve transakcije (kombinovano)', 'All transactions (combined)'),
+    );
+    kv(
+      L('NACIN ODREDISTA', 'DESTINATION MODE'),
+      this.destinationMode === 'nearest_cex'
+        ? L('Najbliza poznata berza (CEX)', 'Nearest known CEX')
+        : L('Odredjena adresa', 'Specific address'),
+    );
+    kv(L('GENERISANO', 'GENERATED AT'), new Date().toLocaleString(this.pathfindingPdfLang === 'sr' ? 'sr-RS' : 'en-GB'));
     y += 2;
 
     // Short "how to read this" note, placed before any result - same convention as Taint
     // Analysis's own report: what the model does and does not claim isn't obvious to a
     // reader who never sees the source code.
     const methodologyNoteLines = doc.splitTextToSize(
-      'Ovaj izvestaj prikazuje JEDNU putanju stvarnih transakcija, pronadjenu nezatezenom (BFS) pretragom - '
-        + 'najkraca po broju skokova, ne po iznosu ili verovatnoci, i bez provere hronoloskog redosleda skokova. '
-        + 'Detaljno objasnjenje i ogranicenja nalaze se na kraju izvestaja.',
+      L(
+        'Ovaj izvestaj prikazuje JEDNU putanju stvarnih transakcija, pronadjenu nezatezenom (BFS) pretragom - '
+          + 'najkraca po broju skokova, ne po iznosu ili verovatnoci, i bez provere hronoloskog redosleda skokova. '
+          + 'Detaljno objasnjenje i ogranicenja nalaze se na kraju izvestaja.',
+        'This report shows ONE path of real transactions, found by an unweighted (BFS) search - the shortest by hop '
+          + 'count, not by amount or probability, and without checking the chronological order of the hops. A detailed '
+          + 'explanation and limitations are at the end of the report.',
+      ),
       usableWidth - 8,
     );
     const noteBoxHeight = methodologyNoteLines.length * 4.2 + 7;
@@ -961,26 +1193,26 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       doc.setTextColor(...TEXT_DARK);
     };
 
-    sectionTitle('Rezime puta');
+    sectionTitle(L('Rezime puta', 'Path summary'));
     const formatAmountOrNa = (value: number | null): string => (value === null ? 'n/a' : PathfindingComponent.formatPdfAmount(value));
     drawSummaryCards([
-      ['Broj skokova', result.hops, ACCENT],
-      ['Adresa na putu', result.path.length, ACCENT],
-      ['Pocetni iznos', formatAmountOrNa(this.initialAmount), ACCENT],
-      ['Krajnji iznos', formatAmountOrNa(this.finalAmount), ACCENT],
+      [L('Broj skokova', 'Hop count'), result.hops, ACCENT],
+      [L('Adresa na putu', 'Addresses on path'), result.path.length, ACCENT],
+      [L('Pocetni iznos', 'Initial amount'), formatAmountOrNa(this.initialAmount), ACCENT],
+      [L('Krajnji iznos', 'Final amount'), formatAmountOrNa(this.finalAmount), ACCENT],
     ]);
     if (this.pathDurationLabel) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text(`Trajanje puta: ${this.asciiSafe(this.pathDurationLabel)}`, marginX, y);
+      doc.text(`${L('Trajanje puta', 'Path duration')}: ${this.asciiSafe(this.pathDurationLabel)}`, marginX, y);
       y += 8;
       doc.setTextColor(...TEXT_DARK);
     }
 
     if (this.destinationMode === 'nearest_cex' && result.destination_label) {
       const destLine =
-        `Odrediste (Nearest known CEX): ${result.destination_address} [${this.asciiSafe(result.destination_label)}]`;
+        `${L('Odrediste (najbliza poznata berza)', 'Destination (nearest known CEX)')}: ${result.destination_address} [${this.asciiSafe(result.destination_label)}]`;
       const destLines = doc.splitTextToSize(destLine, usableWidth - 8);
       const destBoxHeight = destLines.length * 4.2 + 6;
       doc.setFillColor(240, 253, 244);
@@ -995,13 +1227,17 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     }
 
     if (this.pathTaintResult) {
-      sectionTitle('Taint provera puta');
+      sectionTitle(L('Taint provera puta', 'Path taint check'));
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...TEXT_GRAY);
       const taintNoteLines = doc.splitTextToSize(
-        'Taint analiza pokrenuta sa jednim seed-om: polazna adresa ove putanje (dobija 100% po definiciji modela). '
-          + 'Krajnji procenat pokazuje koliko je od te vrednosti stiglo do poslednje adrese, bas kroz ovu putanju.',
+        L(
+          'Taint analiza pokrenuta sa jednim seed-om: polazna adresa ove putanje (dobija 100% po definiciji modela). '
+            + 'Krajnji procenat pokazuje koliko je od te vrednosti stiglo do poslednje adrese, bas kroz ovu putanju.',
+          'Taint analysis run with a single seed: the start address of this path (which gets 100% by the model’s '
+            + 'definition). The final percentage shows how much of that value reached the last address, along this exact path.',
+        ),
         usableWidth,
       );
       doc.text(taintNoteLines, marginX, y);
@@ -1009,17 +1245,17 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...TEXT_DARK);
       drawSummaryCards([
-        ['Pocetni taint', `${this.initialTaint ?? 0}%`, PathfindingComponent.PDF_GREEN],
-        ['Krajnji taint', `${this.finalTaint ?? 0}%`, PathfindingComponent.PDF_AMBER],
-        ['Razblazenje', `${this.taintDilution ?? 0}%`, ACCENT],
+        [L('Pocetni taint', 'Initial taint'), `${this.initialTaint ?? 0}%`, PathfindingComponent.PDF_GREEN],
+        [L('Krajnji taint', 'Final taint'), `${this.finalTaint ?? 0}%`, PathfindingComponent.PDF_AMBER],
+        [L('Razblazenje', 'Dilution'), `${this.taintDilution ?? 0}%`, ACCENT],
       ]);
     }
 
-    sectionTitle('Putanja');
+    sectionTitle(L('Putanja', 'Path'));
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['Br.', 'Adresa']],
+      head: [[L('Br.', 'No.'), L('Adresa', 'Address')]],
       body: result.path.map((address, index) => [String(index + 1), address]),
       styles: { fontSize: 8.5, cellPadding: 1.8, font: 'courier', textColor: TEXT_DARK },
       headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
@@ -1031,7 +1267,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Transakcije na putu');
+    sectionTitle(L('Transakcije na putu', 'Transactions along the path'));
     const hopRows = this.pathHops.map((hop, index) => [
       String(index + 1),
       this.truncateAddress(hop.source),
@@ -1044,7 +1280,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['#', 'Od', 'Do', 'Iznos', 'Taint', 'Vreme', 'Tx hes']],
+      head: [['#', L('Od', 'From'), L('Do', 'To'), L('Iznos', 'Amount'), 'Taint', L('Vreme', 'Time'), L('Tx hes', 'Tx hash')]],
       body: hopRows,
       styles: { fontSize: 7.3, cellPadding: 1.5, font: 'courier', textColor: TEXT_DARK },
       headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
@@ -1066,7 +1302,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Graficki prikaz puta');
+    sectionTitle(L('Graficki prikaz puta', 'Path graph'));
     const imgX = marginX + (usableWidth - renderWidth) / 2;
     doc.setFillColor(7, 13, 26);
     doc.rect(imgX, y, renderWidth, renderHeight, 'F');
@@ -1076,8 +1312,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
     const legendLines = doc.splitTextToSize(
-      'Istaknuta (cijan) putanja je pronadjeni put; ostatak grafa je zatamnjen. Slika prikazuje tacno ono sto je '
-        + 'bilo vidljivo na ekranu u trenutku izvoza.',
+      L(
+        'Istaknuta (cijan) putanja je pronadjeni put; ostatak grafa je zatamnjen. Slika prikazuje tacno ono sto je '
+          + 'bilo vidljivo na ekranu u trenutku izvoza.',
+        'The highlighted (cyan) path is the path found; the rest of the graph is dimmed. The image shows exactly what '
+          + 'was visible on screen at export time.',
+      ),
       usableWidth,
     );
     doc.text(legendLines, marginX, y);
@@ -1088,18 +1328,27 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Metodologija i ogranicenja');
+    sectionTitle(L('Metodologija i ogranicenja', 'Methodology and limitations'));
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_DARK);
     const methodologyLines = doc.splitTextToSize(
-      'Putanja je pronadjena nezatezenom (BFS) pretragom preko usmerenih grana (posiljalac -> primalac) - najkraca '
-        + 'po broju skokova, ne po iznosu ili verovatnoci. Model ne proverava da li skokovi hronoloski predstavljaju '
-        + 'jedan kontinuirani tok istog novca - moguce je da put topoloski postoji a hronoloski nije realan tok. '
-        + 'Odrediste "Nearest known CEX" (ako je koriscen) zasniva se iskljucivo na lokalnom registru poznatih '
-        + 'adresa (berze/mikseri/sankcionisane adrese, known_entities.json) - adresa se nikad ne pretpostavlja na '
-        + 'osnovu izgleda ili naziva. Opciona taint provera (ako je pokrenuta) koristi isti proporcionalni '
-        + '("haircut") model kao Taint analiza, seedovan iskljucivo polaznom adresom ove putanje.',
+      L(
+        'Putanja je pronadjena nezatezenom (BFS) pretragom preko usmerenih grana (posiljalac -> primalac) - najkraca '
+          + 'po broju skokova, ne po iznosu ili verovatnoci. Model ne proverava da li skokovi hronoloski predstavljaju '
+          + 'jedan kontinuirani tok istog novca - moguce je da put topoloski postoji a hronoloski nije realan tok. '
+          + 'Odrediste "najbliza poznata berza" (ako je koriscen) zasniva se iskljucivo na lokalnom registru poznatih '
+          + 'adresa (berze/mikseri/sankcionisane adrese, known_entities.json) - adresa se nikad ne pretpostavlja na '
+          + 'osnovu izgleda ili naziva. Opciona taint provera (ako je pokrenuta) koristi isti proporcionalni '
+          + '("haircut") model kao Taint analiza, seedovan iskljucivo polaznom adresom ove putanje.',
+        'The path was found by an unweighted (BFS) search over directed edges (sender -> receiver) - the shortest by '
+          + 'hop count, not by amount or probability. The model does not check whether the hops chronologically '
+          + 'represent one continuous flow of the same money - a path may exist topologically while not being a real '
+          + 'flow in time. The "nearest known CEX" destination (if used) is based solely on the local registry of known '
+          + 'addresses (exchanges/mixers/sanctioned addresses, known_entities.json) - an address is never assumed from '
+          + 'its look or name. The optional taint check (if run) uses the same proportional ("haircut") model as Taint '
+          + 'analysis, seeded solely with the start address of this path.',
+      ),
       usableWidth,
     );
     doc.text(methodologyLines, marginX, y);
@@ -1110,7 +1359,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     // nepromenjenosti - to obezbedjuju kontrolni broj i otisak sadrzaja ispod.
     doc.addPage();
     y = 16;
-    sectionTitle('Potpis i overa');
+    sectionTitle(L('Potpis i overa', 'Signature and certification'));
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -1128,44 +1377,61 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('Potpis analiticara', marginX, y + signatureBoxHeight + 4);
+    doc.text(L('Potpis analiticara', 'Analyst signature'), marginX, y + signatureBoxHeight + 4);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(...TEXT_DARK);
     doc.text(this.asciiSafe(signing.registration.analyst), marginX, y + signatureBoxHeight + 9);
 
-    // Round stamp, drawn as vectors rather than an image so it stays crisp at any zoom.
+    // Certification stamp: the prepared seal image when it loaded, with a vector-drawn
+    // fallback so the page still certifies if the asset is missing. The certification date
+    // stays as a caption underneath regardless of which variant is drawn.
     const sealCenterX = marginX + signatureBoxWidth + (usableWidth - signatureBoxWidth) / 2;
     const sealCenterY = y + signatureBoxHeight / 2;
-    const sealRadius = 19;
-    doc.setDrawColor(...NAVY);
-    doc.setLineWidth(1.1);
-    doc.circle(sealCenterX, sealCenterY, sealRadius);
-    doc.setLineWidth(0.4);
-    doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+    if (assets.sealImage) {
+      const sealHeight = 34;
+      const sealWidth = (assets.sealImage.width / assets.sealImage.height) * sealHeight;
+      doc.addImage(
+        assets.sealImage.dataUrl,
+        'PNG',
+        sealCenterX - sealWidth / 2,
+        sealCenterY - sealHeight / 2,
+        sealWidth,
+        sealHeight,
+      );
+    } else {
+      const sealRadius = 19;
+      doc.setDrawColor(...NAVY);
+      doc.setLineWidth(1.1);
+      doc.circle(sealCenterX, sealCenterY, sealRadius);
+      doc.setLineWidth(0.4);
+      doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+      doc.setTextColor(...NAVY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('LUSI', sealCenterX, sealCenterY - 3, { align: 'center' });
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(L('DIGITALNA FORENZIKA', 'DIGITAL FORENSICS'), sealCenterX, sealCenterY + 2, { align: 'center' });
+    }
     doc.setTextColor(...NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('LUSI', sealCenterX, sealCenterY - 5, { align: 'center' });
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY - 0.5, { align: 'center' });
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.text('OVERENO', sealCenterX, sealCenterY + 4.5, { align: 'center' });
+    doc.text(
+      `${L('OVERENO', 'CERTIFIED')} ${new Date(signing.registration.registered_at).toLocaleDateString()}`,
+      sealCenterX,
+      y + signatureBoxHeight + 4,
+      { align: 'center' },
+    );
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
-    doc.text(new Date(signing.registration.registered_at).toLocaleDateString(), sealCenterX, sealCenterY + 9, {
-      align: 'center',
-    });
 
     y += signatureBoxHeight + 16;
 
-    sectionTitle('Provera verodostojnosti');
+    sectionTitle(L('Provera verodostojnosti', 'Authenticity check'));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('KONTROLNI BROJ', marginX, y);
+    doc.text(L('KONTROLNI BROJ', 'VERIFICATION CODE'), marginX, y);
     doc.setFont('courier', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(...NAVY);
@@ -1175,7 +1441,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('OTISAK SADRZAJA', marginX, y);
+    doc.text(L('OTISAK SADRZAJA', 'CONTENT HASH'), marginX, y);
     doc.setFont('courier', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...TEXT_DARK);
@@ -1186,9 +1452,14 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_DARK);
     const verifyLines = doc.splitTextToSize(
-      'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja '
-        + 'poklapa sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je '
-        + 'izmenjen posle izvoza.',
+      L(
+        'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja '
+          + 'poklapa sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je '
+          + 'izmenjen posle izvoza.',
+        'Authenticity is verified in the Lusi application by entering the verification code above. If the content hash '
+          + 'matches the recorded one, the data in this report is the same as at export time. If it does not match, the '
+          + 'report was altered after export.',
+      ),
       usableWidth,
     );
     doc.text(verifyLines, marginX, y);
@@ -1198,10 +1469,16 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
     const limitLines = doc.splitTextToSize(
-      'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
-        + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se '
-        + 'PODACI poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban '
-        + 'kriptografski potpis dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+      L(
+        'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
+          + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se '
+          + 'PODACI poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban '
+          + 'kriptografski potpis dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+        'Limitation: the signature above is the analyst’s declaration, not a cryptographic proof — it stays intact '
+          + 'even if someone edits the document. An alteration is detected solely by comparing the content hash. The '
+          + 'check confirms that the DATA matches what was registered, not that the PDF file is byte-for-byte identical; '
+          + 'that would require a cryptographic document signature (e.g. PAdES), which is not part of this application.',
+      ),
       usableWidth,
     );
     doc.text(limitLines, marginX, y);
@@ -1212,7 +1489,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text(`Lusi v1.0 forensic export | Strana ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.text(
+        `Lusi v1.0 forensic export | ${L('Strana', 'Page')} ${page}/${pageCount}`,
+        pageWidth / 2,
+        pageHeight - 8,
+        { align: 'center' },
+      );
     }
 
     doc.save(`${caseSummary.id}_pathfinding_report.pdf`);
