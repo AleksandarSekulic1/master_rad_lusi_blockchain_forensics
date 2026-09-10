@@ -10,8 +10,7 @@
 :host {
   --dx-border: rgba(148, 163, 184, 0.18);
   --dx-border-soft: rgba(148, 163, 184, 0.14);
-  --dx-banner-border: rgba(148, 163, 184, 0.18);
-  --dx-banner-bg: rgba(125, 211, 252, 0.06);
+  --dx-surface: rgba(4, 9, 18, 0.78);
   --dx-heading: #f4f7fe;
   --dx-muted: #8ea6c7;
   --dx-kicker: #7bd6ff;
@@ -32,8 +31,7 @@
 :host-context([data-theme='light']) {
   --dx-border: rgba(15, 23, 42, 0.12);
   --dx-border-soft: rgba(15, 23, 42, 0.1);
-  --dx-banner-border: rgba(15, 23, 42, 0.12);
-  --dx-banner-bg: rgba(37, 99, 235, 0.07);
+  --dx-surface: #ffffff;
   --dx-heading: #16233b;
   --dx-muted: #55658c;
   --dx-kicker: #2563eb;
@@ -56,50 +54,81 @@
   gap: 1rem;
 }
 
-.active-case-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1rem;
+/* ---------- objedinjena gornja kontrolna kartica (slučaj + evidencija) ----------
+   Isti obrazac kao .pf-controls / .pf-bar na Pathfinding stranici, da gornji strip
+   izgleda kao sestra ostalih stranica analize, a ne kao zaseban blok. */
+
+.dex-controls {
+  border: 1px solid var(--dx-border);
   border-radius: 1rem;
-  border: 1px solid var(--dx-banner-border);
-  background: var(--dx-banner-bg);
+  background: var(--dx-surface);
+  overflow: hidden;
 }
 
-.active-case-banner strong {
-  display: block;
-  color: var(--dx-heading);
+.dex-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
 }
 
-.active-case-banner .muted {
-  color: var(--dx-muted);
-  font-size: 0.9rem;
+.dex-case {
+  display: grid;
+  gap: 0.1rem;
+  align-self: center;
 }
 
-.active-case-banner .muted a {
+.dex-eyebrow {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: var(--dx-kicker);
 }
 
-.evidence-picker label {
-  display: grid;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  color: var(--dx-muted);
-  max-width: 28rem;
+.dex-case strong {
+  font-size: 0.92rem;
+  color: var(--dx-heading);
 }
 
-.evidence-picker select {
+.dex-nocase {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--dx-dim);
+}
+
+.dex-nocase a {
+  color: var(--dx-kicker);
+}
+
+.dex-field {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.dex-field-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dx-dim);
+}
+
+.dex-field select {
   width: 100%;
-  padding: 0.8rem 0.95rem;
-  border-radius: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.7rem;
   border: 1px solid var(--dx-field-border);
   color: var(--dx-field-text);
   background: var(--dx-field-bg);
+  font: inherit;
+  font-size: 0.85rem;
 }
 
-.evidence-picker select option {
+.dex-field select option {
   color: #0b1526;
   background: #ffffff;
 }

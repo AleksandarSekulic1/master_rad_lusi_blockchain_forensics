@@ -1,28 +1,27 @@
 <div class="dex-swap-shell">
-  <div class="active-case-banner">
-    <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">{{ t('Aktivan slučaj', 'Active case') }}</span>
-      <strong>{{ activeCase.name }}</strong>
-    </div>
-    <ng-template #noCase>
-      <span class="muted">
-        {{ t('Nije izabran slučaj — idi na', 'No case selected — go to') }}
-        <a routerLink="/cases">{{ t('Slučajevi', 'Cases') }}</a>
-        {{ t('da izabereš jedan.', 'to pick one.') }}
-      </span>
-    </ng-template>
-  </div>
+  <div class="dex-controls">
+    <div class="dex-bar">
+      <div class="dex-case" *ngIf="activeCase; else noCase">
+        <span class="dex-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="dex-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
 
-  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
-    <label>
-      {{ t('Prikaz transakcija', 'Transaction view') }}
-      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
-        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
-          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
-        </option>
-      </select>
-    </label>
+      <label class="dex-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="dex-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div class="dex-swap-header">
@@ -40,7 +39,7 @@
 
   <div class="address-form">
     <label class="address-field">
-      Address
+      {{ t('Adresa', 'Address') }}
       <input
         type="text"
         [(ngModel)]="address"
