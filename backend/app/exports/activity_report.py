@@ -40,6 +40,7 @@ ACTION_LABELS: dict[str, str] = {
     'analytics_run': 'Pokrenuta analiza',
     'path_finding': 'Pretraga putanja',
     'dex_swap_analysis_run': 'Pokrenuta DEX swap analiza',
+    'behavioral_analysis_run': 'Pokrenuta bihevioralna analiza',
     'case_created': 'Kreiran slučaj',
     'case_status_changed': 'Promenjen status slučaja',
     'case_deleted': 'Obrisan slučaj',
@@ -85,7 +86,7 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_TEST
     if action.startswith('case_'):
         return _GROUP_CASE
-    if action in ('analytics_run', 'path_finding', 'dex_swap_analysis_run'):
+    if action in ('analytics_run', 'path_finding', 'dex_swap_analysis_run', 'behavioral_analysis_run'):
         return _GROUP_ANALYSIS
     if action in ('csv_upload', 'evidence_removed') or action.startswith('onchain_fetch'):
         return _GROUP_EVIDENCE

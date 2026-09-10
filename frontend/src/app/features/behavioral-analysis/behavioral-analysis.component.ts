@@ -16,7 +16,9 @@ import {
   EvidenceEntry,
   NodeLinkGraphResponse,
   TimezoneEstimate,
+  TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
+import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 /** One completed (or failed) per-address behavioral run. Kept as a flat list so the page
  * can analyse several addresses at once and let the investigator flip between them. */
@@ -38,7 +40,7 @@ interface AddressBehavioralRun {
 @Component({
   selector: 'app-behavioral-analysis',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, CustodyAccessDialogComponent],
   templateUrl: './behavioral-analysis.component.html',
   styleUrl: './behavioral-analysis.component.scss',
 })
@@ -59,6 +61,12 @@ export class BehavioralAnalysisComponent implements OnInit {
   /** Every address that appears in the current case/evidence graph - the pick-list. */
   protected caseAddresses: string[] = [];
   protected isLoadingCaseAddresses = false;
+
+  // --- Lanac dokaza: razlog pristupa + potpis pre svakog pokretanja, isti dijalog kao na
+  // Taint / Pathfinding / DEX Swaps. Running the analysis re-reads every transaction of the
+  // selected evidence to build the graph, so it counts as a deliberate access. ---
+  protected isCustodyDialogOpen = false;
+  protected custodyDialogError: string | null = null;
 
   /** Completed runs, one per analysed address. */
   protected runs: AddressBehavioralRun[] = [];
@@ -204,7 +212,34 @@ export class BehavioralAnalysisComponent implements OnInit {
     return !!this.activeCase && this.queue.length > 0 && !this.isAnalyzing;
   }
 
+  /** "Analiziraj" no longer runs anything directly - it opens the chain-of-custody dialog
+   * (access reason + signature), same gate as Taint / Pathfinding / DEX Swaps. The run
+   * only happens on confirmCustodyAndAnalyze(). */
   protected analyze(): void {
+    if (!this.canAnalyze) {
+      return;
+    }
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  protected closeCustodyDialog(): void {
+    this.isCustodyDialogOpen = false;
+  }
+
+  /** File name of the currently scoped evidence, for the custody dialog's default
+   * "identifikator dokaznog materijala" - null means the combined view (all evidence). */
+  protected get selectedEvidenceFileName(): string | null {
+    if (!this.selectedEvidence) {
+      return null;
+    }
+    return this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? null;
+  }
+
+  /** Runs the whole queue with one signed custody entry - the scope of that one access is
+   * the full selected evidence (see LANAC-DOKAZA.md §2), regardless of how many addresses
+   * are analysed off it. */
+  protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
     if (!caseId || this.queue.length === 0 || this.isAnalyzing) {
       return;
@@ -213,10 +248,11 @@ export class BehavioralAnalysisComponent implements OnInit {
     const addresses = [...this.queue];
     this.isAnalyzing = true;
     this.analysisError = null;
+    this.custodyDialogError = null;
 
     forkJoin(
       addresses.map((address) =>
-        this.api.getBehavioralAnalysis(caseId, address, this.selectedEvidence).pipe(
+        this.api.runBehavioralAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
           map((result): AddressBehavioralRun => ({ address, result, error: null })),
           catchError((error: HttpErrorResponse) =>
             of<AddressBehavioralRun>({
@@ -234,8 +270,16 @@ export class BehavioralAnalysisComponent implements OnInit {
       // Newly analysed addresses replace any earlier run for the same address, keep the rest.
       const analysed = new Set(runs.map((run) => run.address.toLowerCase()));
       this.runs = [...this.runs.filter((run) => !analysed.has(run.address.toLowerCase())), ...runs];
-      this.queue = [];
       this.isAnalyzing = false;
+
+      const anyOk = runs.some((run) => run.result);
+      if (anyOk) {
+        this.queue = [];
+        this.isCustodyDialogOpen = false;
+      } else {
+        // Nothing went through - keep the dialog open so the analyst sees why.
+        this.custodyDialogError = runs[0]?.error ?? this.t('Analiza nije uspela.', 'The analysis failed.');
+      }
 
       const firstOk = runs.find((run) => run.result) ?? this.runs.find((run) => run.result);
       if (firstOk && (!this.activeAddress || !this.activeRun)) {
@@ -271,6 +315,8 @@ export class BehavioralAnalysisComponent implements OnInit {
     this.runs = [];
     this.activeAddress = null;
     this.analysisError = null;
+    this.isCustodyDialogOpen = false;
+    this.custodyDialogError = null;
   }
 
   // --- Heatmap cell helpers ---------------------------------------------------------

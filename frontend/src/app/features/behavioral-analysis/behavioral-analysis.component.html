@@ -230,4 +230,16 @@
     {{ t('Izaberi jednu ili više adresa iz slučaja (ili ih unesi ručno), dodaj ih i klikni „Analiziraj" da vidiš mapu njihove vremenske aktivnosti (UTC).',
           'Pick one or more addresses from the case (or enter them manually), add them and click “Analyse” to see the heatmap of their time-of-day activity (UTC).') }}
   </p>
+
+  <!-- Lanac dokaza: razlog pristupa i potpis pre pokretanja bihevioralne analize -->
+  <app-custody-access-dialog
+    *ngIf="isCustodyDialogOpen && activeCase"
+    [caseId]="activeCase.id"
+    [caseName]="activeCase.name"
+    [evidenceFileName]="selectedEvidenceFileName"
+    [isSubmitting]="isAnalyzing"
+    [submitError]="custodyDialogError"
+    (confirmed)="confirmCustodyAndAnalyze($event)"
+    (cancelled)="closeCustodyDialog()"
+  ></app-custody-access-dialog>
 </div>
