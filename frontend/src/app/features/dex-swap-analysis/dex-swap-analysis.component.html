@@ -119,7 +119,12 @@
   </ng-container>
 
   <p class="empty-hint" *ngIf="!result && !analysisError">
-    Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.
+    {{
+      t(
+        'Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.',
+        'Enter an Ethereum address and click "ANALYZE" to see detected DEX swap events.'
+      )
+    }}
   </p>
 </div>
 
