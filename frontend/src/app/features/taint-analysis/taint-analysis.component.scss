@@ -401,6 +401,105 @@ h3 {
   background: var(--tx-surface);
 }
 
+.pinned-addr-panel {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  background: rgba(250, 204, 21, 0.07);
+  overflow: hidden;
+}
+
+.pinned-addr-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tx-kicker);
+}
+
+.pinned-addr-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pinned-addr-panel > summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  transition: transform 0.14s ease;
+}
+
+.pinned-addr-panel[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.pinned-addr-panel .pin-count {
+  margin-left: auto;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--tx-muted);
+}
+
+.pinned-addr-body {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.85rem 0.75rem;
+}
+
+.pinned-addr-body .ghost-button.small {
+  justify-self: start;
+}
+
+.pinned-addr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.pinned-addr-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.pinned-addr-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.pinned-addr-list .mono-address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pin-tag {
+  flex: none;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--tx-border);
+  color: var(--tx-muted);
+  background: var(--tx-chip-bg);
+}
+
+.pin-tag.absent {
+  border-color: rgba(250, 204, 21, 0.5);
+  color: var(--tx-amber-text);
+  background: var(--tx-amber-bg);
+}
+
 .seed-input {
   display: flex;
   gap: 0.6rem;

@@ -260,6 +260,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       next: (graph) => {
         this.graph = graph;
         this.resetAnalysisState();
+        this.loadPinnedAddresses();
         this.isLoadingGraph = false;
         this.renderGraph();
       },
@@ -292,6 +293,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.timelineMaxRank = 0;
     this.activeSeeds.clear();
     this.cashOutEntities.clear();
+    this.includedPinnedAddresses.clear();
   }
 
   startNewAnalysis(): void {
@@ -984,6 +986,80 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
   }
 
+  // --- Investigator-pinned addresses (Case management / Graph page) -------------------
+  // The pins live in the investigator layer, per investigation (same stored id the notes
+  // lookup uses). On the taint page the investigator ticks which pinned addresses to pull
+  // into the current run: a ticked address is added as a seed, and if it isn't part of the
+  // evidence graph it's injected into the canvas as an isolated reference node (see
+  // renderGraph) so it stays visible and its notes are one click away.
+  protected pinnedAddresses: string[] = [];
+  protected includedPinnedAddresses = new Set<string>();
+
+  private loadPinnedAddresses(): void {
+    this.pinnedAddresses = [];
+    const investigationId = this.storedInvestigationId;
+    if (!investigationId) {
+      return;
+    }
+    this.api.getInvestigatorPins(investigationId).subscribe({
+      next: (response) => {
+        this.pinnedAddresses = response.pins.map((pin) => pin.address);
+      },
+      error: () => {
+        this.pinnedAddresses = [];
+      },
+    });
+  }
+
+  /** True when a pinned address is already a node in the loaded evidence graph (so it only
+   * needs marking, not injecting). Case-insensitive - see resolveNodeId. */
+  protected pinnedAddressInGraph(address: string): boolean {
+    return !!this.graph?.nodes.some((node) => String(node.id).toLowerCase() === address.toLowerCase());
+  }
+
+  protected isPinnedAddressIncluded(address: string): boolean {
+    return this.includedPinnedAddresses.has(this.resolveNodeId(address));
+  }
+
+  protected get includedPinnedCount(): number {
+    return this.pinnedAddresses.filter((address) => this.isPinnedAddressIncluded(address)).length;
+  }
+
+  protected get allPinnedAddressesIncluded(): boolean {
+    return this.pinnedAddresses.length > 0 && this.pinnedAddresses.every((address) => this.isPinnedAddressIncluded(address));
+  }
+
+  /** One button to tick / untick every pinned address at once - keeps the panel usable
+   * when a case has a long pin list. */
+  protected toggleAllPinnedAddresses(): void {
+    const select = !this.allPinnedAddressesIncluded;
+    for (const address of this.pinnedAddresses) {
+      const id = this.resolveNodeId(address);
+      if (select && !this.includedPinnedAddresses.has(id)) {
+        this.includedPinnedAddresses.add(id);
+        this.addSeedAddress(id);
+      } else if (!select && this.includedPinnedAddresses.has(id)) {
+        this.includedPinnedAddresses.delete(id);
+        this.removeSeedAddress(id);
+      }
+    }
+    this.renderGraph();
+  }
+
+  /** Tick / untick a pinned address for this taint run: keeps it in sync with the seed
+   * list and re-renders so the isolated reference node appears or disappears. */
+  protected togglePinnedAddressIncluded(address: string): void {
+    const id = this.resolveNodeId(address);
+    if (this.includedPinnedAddresses.has(id)) {
+      this.includedPinnedAddresses.delete(id);
+      this.removeSeedAddress(id);
+    } else {
+      this.includedPinnedAddresses.add(id);
+      this.addSeedAddress(id);
+    }
+    this.renderGraph();
+  }
+
   private loadInvestigatorNotes(): void {
     this.investigatorNotes = [];
     const investigationId = this.storedInvestigationId;
@@ -1534,10 +1610,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const pinnedLower = new Set(this.pinnedAddresses.map((address) => address.toLowerCase()));
+    const presentLower = new Set(this.graph.nodes.map((node) => String(node.id).toLowerCase()));
+
     const elements: ElementDefinition[] = [
       ...this.graph.nodes.map((node) => {
         const id = String(node.id);
         const isSeed = Boolean(node.is_taint_seed) || this.seedAddresses.includes(id);
+        const isPinned = pinnedLower.has(id.toLowerCase());
         const taintPercentage = node.taint_percentage ?? 0;
         return {
           data: {
@@ -1555,9 +1635,32 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             // label string) so the timeline scrubber can update it live.
             displayLabel: this.hasRunTaint ? `${this.truncateAddress(String(node.address ?? node.id))}\n${taintPercentage}%` : '',
           },
-          classes: isSeed ? 'taint-seed' : '',
+          classes: [isSeed ? 'taint-seed' : '', isPinned ? 'pinned' : ''].filter(Boolean).join(' '),
         } as ElementDefinition;
       }),
+      // Investigator-pinned addresses the user ticked for this run that aren't part of the
+      // evidence graph: isolated reference nodes (no edges), so they're visible on the
+      // canvas and their investigator notes are one click away. They carry no taint of
+      // their own - nothing in this evidence flows to or from them.
+      ...Array.from(this.includedPinnedAddresses)
+        .filter((address) => !presentLower.has(address.toLowerCase()))
+        .map((address) => {
+          const isSeed = this.seedAddresses.includes(address);
+          return {
+            data: {
+              id: address,
+              address,
+              taint_percentage: 0,
+              finalTaintPercentage: 0,
+              chronoRank: null,
+              isPinnedExternal: true,
+              displayLabel: this.hasRunTaint
+                ? `${this.truncateAddress(address)}\n${this.t('pin (van evidencije)', 'pin (off-evidence)')}`
+                : '',
+            },
+            classes: ['pinned', 'pinned-external', isSeed ? 'taint-seed' : ''].filter(Boolean).join(' '),
+          } as ElementDefinition;
+        }),
       ...this.graph.links.map((link) => {
         const totalAmount = Number(link.total_amount ?? link.amount ?? 0);
         const source = String(link.source);
@@ -1635,6 +1738,31 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
             'border-width': 4,
             'border-color': '#fbbf24',
             'border-style': 'double',
+          },
+        },
+        // Investigator-pinned address (from Case management / the Graph page). Gold double
+        // border plus a soft gold underlay glow - same visual language as the Graph page.
+        // Only border-* / underlay-* are touched so it never fights the taint fill.
+        {
+          selector: 'node.pinned',
+          style: {
+            'border-color': '#fde047',
+            'border-width': 4,
+            'border-style': 'double',
+            'underlay-color': '#facc15',
+            'underlay-opacity': 0.3,
+            'underlay-padding': 6,
+          },
+        },
+        // A pinned address that isn't in this evidence - injected as an isolated marker.
+        // Muted slate fill + a square, dashed outline so it reads as "reference, not a
+        // measured node".
+        {
+          selector: 'node.pinned-external',
+          style: {
+            'background-color': '#1e293b',
+            shape: 'round-rectangle',
+            'border-style': 'dashed',
           },
         },
         {
@@ -2279,13 +2407,15 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
         doc.setTextColor(...TEXT_DARK);
-        doc.text(this.asciiSafe(entry.file_name), marginX, y);
-        y += 4;
+        const nameLines = doc.splitTextToSize(this.asciiSafe(entry.file_name), usableWidth);
+        doc.text(nameLines, marginX, y);
+        y += nameLines.length * 4;
         doc.setFont('courier', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(...TEXT_GRAY);
-        doc.text(entry.sha256, marginX, y);
-        y += 5.5;
+        const hashLines = doc.splitTextToSize(entry.sha256, usableWidth);
+        doc.text(hashLines, marginX, y);
+        y += hashLines.length * 4 + 1.5;
       }
       doc.setTextColor(...TEXT_DARK);
     }
@@ -2414,12 +2544,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFont('courier', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(...NAVY);
-        doc.text(
+        // Wrapped: a 42-char address plus the "- NN% (LEVEL)" suffix in Courier 9pt runs
+        // past the right margin on its own, so it must break instead of overflowing.
+        const msHeadingLines = doc.splitTextToSize(
           `${node.address}  -  ${node.taint_percentage}% (${this.riskLabel(node.taint_percentage)})`,
-          marginX,
-          y,
+          usableWidth,
         );
-        y += 5;
+        doc.text(msHeadingLines, marginX, y);
+        y += msHeadingLines.length * 4.6;
         doc.setTextColor(...TEXT_DARK);
 
         autoTable(doc, {
@@ -2560,12 +2692,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFont('courier', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(...NAVY);
-        doc.text(
+        // Wrapped: address + "- NN% (LEVEL)" + an entity tag easily exceeds the usable
+        // width, especially with a named exchange in the tag.
+        const coHeadingLines = doc.splitTextToSize(
           `${item.address}  -  ${item.taint_percentage}% (${this.riskLabel(item.taint_percentage)})${entityTag}`,
-          marginX,
-          y,
+          usableWidth,
         );
-        y += 5;
+        doc.text(coHeadingLines, marginX, y);
+        y += coHeadingLines.length * 4.6;
         doc.setTextColor(...TEXT_DARK);
 
         const shown = fullLog.slice(0, TaintAnalysisComponent.EVENT_HISTORY_PDF_LIMIT);
@@ -2634,8 +2768,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFont('courier', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(...NAVY);
-      doc.text(`${edgeDetails.source}  ->  ${edgeDetails.target}`, marginX, y);
-      y += 5;
+      // Two full addresses on one line always overflow the page in Courier 9pt - wrap.
+      const edgeHeadingLines = doc.splitTextToSize(`${edgeDetails.source}  ->  ${edgeDetails.target}`, usableWidth);
+      doc.text(edgeHeadingLines, marginX, y);
+      y += edgeHeadingLines.length * 4.6;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);

@@ -239,6 +239,36 @@
         </table>
       </div>
     </div>
+    <details class="pinned-addr-panel" *ngIf="pinnedAddresses.length > 0">
+      <summary>
+        {{ t('Pinovane adrese (Case management)', 'Pinned addresses (Case management)') }}
+        <span class="pin-count">{{ includedPinnedCount }} / {{ pinnedAddresses.length }}</span>
+      </summary>
+      <div class="pinned-addr-body">
+        <p class="muted top-tainted-hint">
+          {{ t('Adrese koje si pinovao/la na Graf stranici. Označi koje da uđu u ovu taint analizu kao izvor — adrese kojih nema u izabranoj evidenciji dodaju se kao zaseban čvor (bez transakcija), samo da bi bile vidljive na grafu i da bi im beleške bile dostupne na klik.',
+                'Addresses you pinned on the Graph page. Tick which ones to bring into this taint run as a source — any that are not in the selected evidence are added as a standalone node (no transactions), just so they stay visible on the graph and their notes are reachable on click.') }}
+        </p>
+        <button type="button" class="ghost-button small" (click)="toggleAllPinnedAddresses()">
+          {{ allPinnedAddressesIncluded ? t('Poništi sve', 'Deselect all') : t('Označi sve', 'Select all') }}
+        </button>
+        <ul class="pinned-addr-list">
+          <li *ngFor="let addr of pinnedAddresses">
+            <label>
+              <input
+                type="checkbox"
+                [checked]="isPinnedAddressIncluded(addr)"
+                (change)="togglePinnedAddressIncluded(addr)"
+              />
+              <span class="mono-address">{{ addr }}</span>
+            </label>
+            <span class="pin-tag" [class.absent]="!pinnedAddressInGraph(addr)">
+              {{ pinnedAddressInGraph(addr) ? t('u evidenciji', 'in evidence') : t('nije u ovoj evidenciji', 'not in this evidence') }}
+            </span>
+          </li>
+        </ul>
+      </div>
+    </details>
     <div class="seed-input">
       <input
         type="text"
