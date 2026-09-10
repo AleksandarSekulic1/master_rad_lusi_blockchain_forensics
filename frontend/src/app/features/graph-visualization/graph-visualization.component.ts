@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, Input, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -10,6 +10,7 @@ import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   AddressEnrichment,
   AddressType,
@@ -22,6 +23,7 @@ import {
   EvidenceEntry,
   GraphLinkData,
   GraphNodeData,
+  GraphReportData,
   NodeLinkGraphResponse,
   TaintAnalysisResult,
   TransactionCustodyEntry,
@@ -29,6 +31,7 @@ import {
 import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
+import { ReportExportComponent } from '../report-export/report-export.component';
 
 @Component({
   selector: 'app-graph-visualization',
@@ -40,11 +43,20 @@ import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/inv
     CustodyAccessDialogComponent,
     InvestigatorNodeDialogComponent,
     CaseOverviewPanelComponent,
+    ReportExportComponent,
   ],
   templateUrl: './graph-visualization.component.html',
   styleUrl: './graph-visualization.component.scss',
 })
 export class GraphVisualizationComponent implements OnInit, OnDestroy {
+  /**
+   * 'full'    - the standalone /graph page: evidence picker, investigator layer, custody
+   *             dialog, node inspector, legend, everything.
+   * 'compact' - embedded on the Dashboard: just the header, the toolbar buttons and the
+   *             canvas, so the dashboard stays a quick overview.
+   */
+  @Input() mode: 'full' | 'compact' = 'full';
+
   @ViewChild('graphCanvas', { static: true })
   protected graphCanvas!: ElementRef<HTMLDivElement>;
 
@@ -95,6 +107,10 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   // transaction edge, and the real blockchain edges are never touched. ---
   protected investigations: Investigation[] = [];
   protected selectedInvestigationId: string | null = null;
+  /** The investigator layer (investigation picker + case overview) is collapsed by default
+   * so the intro doesn't crowd the page; it opens on demand, or automatically when an
+   * investigation is already active. */
+  protected investigatorLayerOpen = false;
   protected investigatorLinks: InvestigatorLink[] = [];
   protected investigatorLinkOverlayEnabled = true;
   protected selectedInvestigatorLink: InvestigatorLink | null = null;
@@ -163,11 +179,23 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {
     ensureCytoscapeExtensionsRegistered();
   }
 
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
+
   ngOnInit(): void {
+    // Let the dashboard's report-export panel snapshot the live graph for its PDF, without
+    // a hard import of this component. Cleared in ngOnDestroy.
+    this.state.registerGraphImageProvider(() =>
+      this.cy ? this.cy.png({ full: true, scale: 2, bg: '#0a1425' }) : null,
+    );
+
     // Rendered from graph$: the plain /graph response has no blacklist/risk/anomaly/
     // peel-chain data (that's only computed by the analytics pipeline), so it renders
     // uncoloured by default - a deliberate "Analiziraj graf" click (see
@@ -270,7 +298,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isLoadingCaseGraph = false;
-        this.caseGraphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
+        this.caseGraphError = this.t('Neuspešno učitavanje grafa za izabrani slučaj.', 'Failed to load the graph for the selected case.');
       },
     });
 
@@ -341,7 +369,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
    * otherwise unreachable until one exists, and there is no other UI for it). Prompts for
    * a name, POSTs it, then selects it so the node-details actions become usable. */
   protected createInvestigation(): void {
-    const name = window.prompt('Naziv nove istrage:')?.trim();
+    const name = window.prompt(this.t('Naziv nove istrage:', 'New investigation name:'))?.trim();
     if (!name) {
       return;
     }
@@ -350,7 +378,33 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         this.investigations = [...this.investigations, created];
         this.onInvestigationSelected(created.id);
       },
-      error: () => window.alert('Neuspešno kreiranje istrage.'),
+      error: () => window.alert(this.t('Neuspešno kreiranje istrage.', 'Failed to create the investigation.')),
+    });
+  }
+
+  /** Deletes the currently selected investigation (and all of its notes / pins / links).
+   * The evidence case is untouched. */
+  protected deleteSelectedInvestigation(): void {
+    const id = this.selectedInvestigationId;
+    if (!id) {
+      return;
+    }
+    const name = this.investigations.find((inv) => inv.id === id)?.name ?? id;
+    const confirmed = window.confirm(
+      this.t(
+        `Obrisati istragu „${name}"? Sve beleške, zakačeni čvorovi i istražiteljske veze u njoj se trajno brišu. Dokazni slučaj se ne dira.`,
+        `Delete investigation “${name}”? All of its notes, pinned nodes and investigator links are permanently removed. The evidence case is untouched.`,
+      ),
+    );
+    if (!confirmed) {
+      return;
+    }
+    this.api.deleteInvestigation(id).subscribe({
+      next: () => {
+        this.investigations = this.investigations.filter((inv) => inv.id !== id);
+        this.onInvestigationSelected('');
+      },
+      error: () => window.alert(this.t('Neuspešno brisanje istrage.', 'Failed to delete the investigation.')),
     });
   }
 
@@ -379,6 +433,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
     if (stored && this.investigations.some((inv) => inv.id === stored)) {
       this.onInvestigationSelected(stored);
+      this.investigatorLayerOpen = true;
     }
   }
 
@@ -606,7 +661,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isDeletingInvestigatorLink = false;
-        this.investigatorLinkError = 'Neuspešno uklanjanje istražiteljske veze.';
+        this.investigatorLinkError = this.t('Neuspešno uklanjanje istražiteljske veze.', 'Failed to remove the investigator link.');
       },
     });
   }
@@ -801,12 +856,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
         // Shown INSIDE the dialog (still open) rather than caseGraphError, which sits
         // above the canvas and would not be visible behind the overlay - nothing typed/
         // signed is lost, the analyst can just retry.
-        this.custodyDialogError = 'Neuspešno pokretanje analize.';
+        this.custodyDialogError = this.t('Neuspešno pokretanje analize.', 'Failed to start the analysis.');
       },
     });
   }
 
   ngOnDestroy(): void {
+    this.state.registerGraphImageProvider(null);
     this.cy?.destroy();
     this.cy = null;
     if (this.layoutIndicatorTimer !== null) {
@@ -1269,12 +1325,157 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
   }
 
-  get graphSummary(): string {
-    if (!this.graph) {
-      return 'Čekanje na podatke grafa sa servera.';
+  private nodeFlagKeys(node: GraphNodeData): string[] {
+    const flags: string[] = [];
+    if (node.blacklist_flag) {
+      flags.push('Crna lista');
+    }
+    if (node.peel_chain_flag) {
+      flags.push('Peel lanac');
+    }
+    if (Number(node.risk_score ?? 0) >= 70) {
+      flags.push('Visok rizik');
+    }
+    if (node.chain_hop_flag) {
+      flags.push('Skok lanca');
+    }
+    if (node.anomaly_flag) {
+      flags.push('Anomalija');
+    }
+    return flags;
+  }
+
+  /** Graph-specific payload for ReportExportComponent so its PDF is a graph-analysis
+   * report (findings, flagged nodes, focused node, investigator layer) rather than the
+   * Dashboard's triage document. Null until a graph is loaded. */
+  protected get graphReportData(): GraphReportData | null {
+    const graph = this.graph;
+    if (!graph) {
+      return null;
+    }
+    const nodes = graph.nodes;
+
+    const scope = this.selectedEvidence
+      ? this.evidenceOptions.find((entry) => entry.stored_name === this.selectedEvidence)?.file_name ?? this.selectedEvidence
+      : this.t('Sve transakcije (kombinovano)', 'All transactions (combined)');
+
+    const filters: string[] = [];
+    if (this.deadEndFilterEnabled) {
+      filters.push(this.t('sakriveni čvorovi bez odliva', 'sink-only nodes hidden'));
+    }
+    if (this.fundingSourceFilterEnabled) {
+      filters.push(this.t('sakriveni čvorovi bez priliva', 'source-only nodes hidden'));
+    }
+    if (!this.dexSwapOverlayEnabled) {
+      filters.push(this.t('DEX swap veze sakrivene', 'DEX swap edges hidden'));
+    }
+    if (this.timelineEnabled) {
+      filters.push(`${this.t('vremenska traka', 'timeline')} ${this.timelinePosition}/${this.timelineMaxRank}`);
     }
 
-    return `${this.graph.nodes.length} čvorova, ${this.graph.links.length} veza, generisano ${this.graph.generated_at ?? 'n/a'}`;
+    const flaggedNodes = nodes
+      .map((node) => ({ node, keys: this.nodeFlagKeys(node) }))
+      .filter((entry) => entry.keys.length > 0)
+      .sort((a, b) => Number(b.node.risk_score ?? 0) - Number(a.node.risk_score ?? 0))
+      .map((entry) => ({
+        address: String(entry.node.address ?? entry.node.id),
+        risk: Number(entry.node.risk_score ?? 0),
+        flags: entry.keys,
+        blacklist: (entry.node.blacklist_sources ?? []).join(', '),
+      }));
+
+    const selected = this.selectedNode;
+    const focusedNode = selected
+      ? {
+          address: String(selected.address ?? selected.id),
+          risk: Number(selected.risk_score ?? 0),
+          flags: this.nodeFlagKeys(selected),
+          blacklistSources: (selected.blacklist_sources ?? []).join(', '),
+          cluster: String(selected.cluster_id ?? ''),
+        }
+      : null;
+
+    const investigator = this.selectedInvestigationId
+      ? {
+          name: this.selectedInvestigationName ?? '',
+          notes: this.caseOverviewNotes.length,
+          pinned: this.pinnedNodeIds.length,
+          links: this.investigatorLinks.map((link) => ({
+            source: link.source_address,
+            target: link.target_address,
+            confidence: String(link.confidence),
+            reason: link.reason,
+          })),
+        }
+      : null;
+
+    return {
+      scope,
+      analyzed: this.hasAnalytics,
+      generatedAt: graph.generated_at ?? '',
+      counts: {
+        nodes: nodes.length,
+        edges: graph.links.length,
+        blacklisted: nodes.filter((node) => node.blacklist_flag).length,
+        highRisk: nodes.filter((node) => Number(node.risk_score ?? 0) >= 70).length,
+        peel: nodes.filter((node) => node.peel_chain_flag).length,
+        chainHop: nodes.filter((node) => node.chain_hop_flag).length,
+        clusters: new Set(nodes.map((node) => node.cluster_id).filter(Boolean)).size,
+        dexSwaps: this.dexSwapEvents.length,
+      },
+      activeFilters: filters,
+      flaggedNodes,
+      focusedNode,
+      investigator,
+    };
+  }
+
+  /** Coarse risk band for the node-details verdict header - blacklist always wins. */
+  protected get selectedNodeRiskBand(): 'high' | 'medium' | 'low' | 'none' {
+    const node = this.selectedNode;
+    if (!node) {
+      return 'none';
+    }
+    if (node.blacklist_flag) {
+      return 'high';
+    }
+    const score = Number(node.risk_score ?? 0);
+    if (score >= 70) {
+      return 'high';
+    }
+    if (score >= 40) {
+      return 'medium';
+    }
+    return score > 0 ? 'low' : 'none';
+  }
+
+  /** True when the "Poreklo sredstava" group holds at least one warning - drives the dot
+   * on its (collapsed) summary so the analyst knows to open it. */
+  protected get fundingGroupHasWarning(): boolean {
+    return (
+      !this.isEnrichingAddress &&
+      (this.isDustFunding ||
+        Boolean(this.fundingSourceBlacklistMatch) ||
+        this.addressEnrichment?.funding_source_entity_category === 'sanctioned')
+    );
+  }
+
+  protected get identityGroupHasWarning(): boolean {
+    return !this.isEnrichingAddress && this.addressEnrichment?.known_entity_category === 'sanctioned';
+  }
+
+  get graphSummary(): string {
+    if (!this.graph) {
+      return this.t('Čekanje na podatke grafa sa servera.', 'Waiting for graph data from the server.');
+    }
+
+    const nodes = this.graph.nodes.length;
+    const edges = this.graph.links.length;
+    const generated = this.graph.generated_at ?? 'n/a';
+    return this.t(
+      `${nodes} čvorova, ${edges} veza, generisano ${generated}`,
+      `${nodes} nodes, ${edges} edges, generated ${generated}`,
+    );
   }
 
   get nodeCount(): number {
@@ -1307,6 +1508,83 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       flags.push('Anomalija');
     }
     return flags;
+  }
+
+  /** Each active flag with a plain-language explanation of what it is and how it bears on
+   * the transaction / the investigation - shown in the "Zašto je čvor sumnjiv" row and as
+   * the tooltip on the verdict chips. */
+  protected get selectedNodeFlagDetails(): Array<{ label: string; detail: string }> {
+    return this.selectedNodeFlags.map((flag) => ({ label: this.flagLabel(flag), detail: this.flagExplanation(flag) }));
+  }
+
+  protected flagLabel(flag: string): string {
+    switch (flag) {
+      case 'Crna lista':
+        return this.t('Crna lista', 'Blacklisted');
+      case 'Visok rizik':
+        return this.t('Visok rizik', 'High risk');
+      case 'Peel lanac':
+        return this.t('Peel lanac', 'Peel chain');
+      case 'Skok lanca':
+        return this.t('Skok lanca', 'Chain hop');
+      case 'Anomalija':
+        return this.t('Anomalija', 'Anomaly');
+      default:
+        return flag;
+    }
+  }
+
+  protected flagExplanation(flag: string): string {
+    switch (flag) {
+      case 'Crna lista':
+        return this.t(
+          'Adresa je u bazi poznatih zlonamernih ili sankcionisanih adresa (npr. OFAC). Sredstva koja prođu kroz nju '
+            + 'smatraju se zaprljanim — svaki primalac nizvodno nasleđuje taj rizik, a berze takva sredstva mogu odbiti '
+            + 'ili zamrznuti. Direktna veza sa ovom adresom je najjači pojedinačni pokazatelj u analizi.',
+          'The address is in a database of known malicious or sanctioned addresses (e.g. OFAC). Funds passing through it '
+            + 'are treated as tainted — every downstream recipient inherits that risk, and exchanges may reject or freeze '
+            + 'such funds. A direct link to this address is the single strongest signal in the analysis.',
+        );
+      case 'Visok rizik':
+        return this.t(
+          'Zbirni skor rizika je ≥ 70 — kombinacija blizine crnoj listi, obrazaca pranja i sumnjivog porekla sredstava. '
+            + 'Ne dokazuje krivicu, ali označava čvor kao prioritet: svaku vezu koja iz njega izlazi treba proveriti, a '
+            + 'čvor je dobar kandidat za taint i pathfinding analizu.',
+          'The aggregate risk score is ≥ 70 — a mix of proximity to the blacklist, laundering patterns and suspicious '
+            + 'fund origin. It does not prove wrongdoing, but marks the node as a priority: review every outgoing edge, '
+            + 'and treat the node as a good candidate for taint and pathfinding analysis.',
+        );
+      case 'Peel lanac':
+        return this.t(
+          'Čvor je deo „peel chain" obrasca: velika suma se kreće kroz niz adresa i na svakom koraku se odvaja mali deo '
+            + 'ka strani (najčešće ka berzi radi unovčavanja), dok ostatak ide dalje. Klasična tehnika pranja koja '
+            + 'razbija tok na mnogo malih delova; svaki „odlomljeni" iznos je kandidat za tačku izlaska sredstava.',
+          'The node is part of a peel-chain pattern: a large sum moves through a series of addresses and at each hop a '
+            + 'small slice is peeled off to the side (usually an exchange for cash-out) while the remainder moves on. A '
+            + 'classic laundering technique that splits the flow into many small parts; each peeled amount is a candidate '
+            + 'cash-out point.',
+        );
+      case 'Skok lanca':
+        return this.t(
+          'Sredstva su prešla između različitih blokčejn mreža ili kroz most (bridge). Direktno on-chain praćenje se '
+            + 'ovde prekida — na drugoj mreži transakcija izgleda kao nov priliv bez istorije. Ulazni i izlazni krak '
+            + 'mosta treba ručno spojiti po iznosu i vremenu da bi se trag nastavio.',
+          'Funds crossed between different blockchain networks or through a bridge. Direct on-chain tracing breaks here — '
+            + 'on the other network the transaction looks like a fresh inflow with no history. The bridge’s in and out '
+            + 'legs must be matched manually by amount and time to continue the trail.',
+        );
+      case 'Anomalija':
+        return this.t(
+          'Statistički neuobičajen obrazac za ovu adresu — nagli skok u broju ili iznosu transakcija, aktivacija posle '
+            + 'dugog mirovanja, ili mnogo protivstrana u kratkom roku. Sam po sebi nije dokaz, ali je signal da '
+            + 'vremenski i iznosni kontekst transakcija oko ovog čvora zaslužuje pregled.',
+          'A statistically unusual pattern for this address — a sudden spike in transaction count or volume, reactivation '
+            + 'after a long dormancy, or many counterparties in a short window. Not evidence on its own, but a signal '
+            + 'that the timing and amount context around this node deserves a look.',
+        );
+      default:
+        return '';
+    }
   }
 
   /** Same criteria as selectedNodeFlags (crna lista/visok rizik/anomalija/peel lanac/

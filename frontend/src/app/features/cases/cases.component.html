@@ -1,120 +1,209 @@
 <section class="cases-grid">
   <article class="panel create-panel">
+    <span class="panel-accent" aria-hidden="true"></span>
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Upravljanje slučajevima</p>
-        <h2>Otvori novu istragu</h2>
+        <p class="panel-kicker">{{ t('Upravljanje slučajevima', 'Case management') }}</p>
+        <h2>{{ t('Otvori novu istragu', 'Open a new investigation') }}</h2>
       </div>
     </div>
 
+    <p class="panel-lead">
+      {{ t('Svaki slučaj je zaseban kontejner za dokaze i analizu. Kreirajte ga pre učitavanja CSV podataka.',
+            'Each case is a separate container for evidence and analysis. Create one before uploading CSV data.') }}
+    </p>
+
     <div class="case-form">
-      <label>
-        Naziv slučaja
-        <input [(ngModel)]="newCaseName" type="text" placeholder="npr. Hakovanje berze Q3" />
+      <label class="field">
+        <span class="field-label">{{ t('Naziv slučaja', 'Case name') }}</span>
+        <input [(ngModel)]="newCaseName" type="text"
+               [placeholder]="t('npr. Hakovanje berze Q3', 'e.g. Exchange hack Q3')"
+               (keyup.enter)="createCase()" />
       </label>
-      <label class="description-field">
-        Opis
-        <input [(ngModel)]="newCaseDescription" type="text" placeholder="Opciona napomena o slučaju" />
+      <label class="field">
+        <span class="field-label">{{ t('Opis', 'Description') }}</span>
+        <input [(ngModel)]="newCaseDescription" type="text"
+               [placeholder]="t('Opciona napomena o slučaju', 'Optional note about the case')" />
       </label>
       <button type="button" class="primary-button" (click)="createCase()" [disabled]="isCreating">
-        {{ isCreating ? 'Kreiranje...' : 'Kreiraj slučaj' }}
+        {{ isCreating ? t('Kreiranje...', 'Creating...') : t('Kreiraj slučaj', 'Create case') }}
       </button>
     </div>
 
-    <p class="status">{{ statusMessage }}</p>
+    <p class="status">{{ statusMessage() }}</p>
   </article>
 
   <article class="panel list-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Lista slučajeva</p>
-        <h2>Istrage</h2>
+        <p class="panel-kicker">{{ t('Lista slučajeva', 'Case list') }}</p>
+        <h2>{{ t('Istrage', 'Investigations') }}</h2>
       </div>
-      <button class="ghost-button" type="button" (click)="loadCases()" [disabled]="isLoading">Osveži</button>
+      <button class="ghost-button" type="button" (click)="loadCases()" [disabled]="isLoading">
+        {{ isLoading ? t('Osvežavanje...', 'Refreshing...') : t('Osveži', 'Refresh') }}
+      </button>
     </div>
 
-    <div class="table-wrapper" *ngIf="cases.length > 0; else emptyCases">
-      <table>
-        <thead>
-          <tr>
-            <th>Naziv</th>
-            <th>Analitičar</th>
-            <th>Status</th>
-            <th>Dokazi</th>
-            <th>Veličina</th>
-            <th>Poslednji unos</th>
-            <th>Akcije</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            *ngFor="let caseEntry of cases"
-            [class.selected]="isSelected(caseEntry)"
-            (click)="selectCase(caseEntry)"
-          >
-            <td>
-              <strong>{{ caseEntry.name }}</strong>
-              <span class="case-id">{{ caseEntry.id }}</span>
-            </td>
-            <td>{{ caseEntry.analyst }}</td>
-            <td>
-              <span class="status-pill" [class.closed]="caseEntry.status === 'closed'">
-                {{ caseEntry.status === 'open' ? 'Otvoren' : 'Zatvoren' }}
-              </span>
-            </td>
-            <td>{{ caseEntry.evidence_count }}</td>
-            <td>{{ formatBytes(caseEntry.total_size_bytes) }}</td>
-            <td>{{ caseEntry.last_imported_at ?? 'n/a' }}</td>
-            <td class="actions" (click)="$event.stopPropagation()">
-              <button type="button" class="ghost-button" (click)="toggleCaseStatus(caseEntry)">
-                {{ caseEntry.status === 'open' ? 'Zatvori' : 'Otvori' }}
-              </button>
-              <button type="button" class="danger-button" (click)="removeCase(caseEntry)">Obriši</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="search-bar">
+      <span class="search-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </span>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (ngModelChange)="onSearchChange($event)"
+        [placeholder]="t('Pretraži po nazivu slučaja...', 'Search by case name...')"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button *ngIf="searchQuery" type="button" class="search-clear" (click)="clearSearch()"
+              [attr.aria-label]="t('Obriši pretragu', 'Clear search')">×</button>
     </div>
+
+    <ng-container *ngIf="cases.length > 0; else emptyCases">
+      <div class="case-list">
+        <article
+          class="case-card"
+          *ngFor="let caseEntry of pagedCases"
+          [class.selected]="isSelected(caseEntry)"
+          (click)="onCaseClick(caseEntry)"
+        >
+          <span class="case-status-dot" [class.closed]="caseEntry.status === 'closed'" aria-hidden="true"></span>
+
+          <div class="case-card-body">
+            <div class="case-card-title">
+              <strong>{{ caseEntry.name }}</strong>
+              <span class="status-pill" [class.closed]="caseEntry.status === 'closed'">
+                {{ caseEntry.status === 'open' ? t('Otvoren', 'Open') : t('Zatvoren', 'Closed') }}
+              </span>
+              <span class="active-badge" *ngIf="isSelected(caseEntry)">
+                {{ t('Aktivan — klik za deaktivaciju', 'Active — click to deactivate') }}
+              </span>
+            </div>
+            <span class="case-id">{{ caseEntry.id }}</span>
+
+            <dl class="case-meta">
+              <div>
+                <dt>{{ t('Analitičar', 'Analyst') }}</dt>
+                <dd>{{ caseEntry.analyst }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('Dokazi', 'Evidence') }}</dt>
+                <dd>{{ caseEntry.evidence_count }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('Veličina', 'Size') }}</dt>
+                <dd>{{ formatBytes(caseEntry.total_size_bytes) }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('Poslednji unos', 'Last import') }}</dt>
+                <dd>{{ formatDate(caseEntry.last_imported_at) }}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="case-card-actions" (click)="$event.stopPropagation()">
+            <button type="button" class="ghost-button" (click)="toggleCaseStatus(caseEntry)">
+              {{ caseEntry.status === 'open' ? t('Zatvori', 'Close') : t('Otvori', 'Open') }}
+            </button>
+            <button type="button" class="danger-button" (click)="removeCase(caseEntry)">
+              {{ t('Obriši', 'Delete') }}
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <div class="pager" *ngIf="totalPages > 1">
+        <span class="pager-count">
+          {{ rangeStart }}–{{ rangeEnd }} {{ t('od', 'of') }} {{ cases.length }}
+        </span>
+        <div class="pager-controls">
+          <button type="button" class="pager-btn" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1" aria-label="Prethodna">‹</button>
+          <button
+            type="button"
+            class="pager-btn"
+            *ngFor="let page of pageNumbers"
+            [class.active]="page === currentPage"
+            (click)="goToPage(page)"
+          >
+            {{ page }}
+          </button>
+          <button type="button" class="pager-btn" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages" aria-label="Sledeća">›</button>
+        </div>
+      </div>
+    </ng-container>
 
     <ng-template #emptyCases>
-      <p class="empty-state">Još uvek nema slučajeva. Kreirajte jedan levo da biste započeli istragu.</p>
+      <p class="empty-state" *ngIf="searchQuery; else noCasesAtAll">
+        {{ t('Nijedan slučaj ne odgovara pretrazi', 'No case matches') }} “{{ searchQuery }}”.
+        <button type="button" class="link-button" (click)="clearSearch()">{{ t('Obriši pretragu', 'Clear search') }}</button>
+      </p>
+      <ng-template #noCasesAtAll>
+        <p class="empty-state">
+          {{ t('Još uvek nema slučajeva. Kreirajte jedan levo da biste započeli istragu.',
+                'No cases yet. Create one on the left to start an investigation.') }}
+        </p>
+      </ng-template>
     </ng-template>
   </article>
 
   <article class="panel evidence-panel" *ngIf="selectedCase as caseDetail">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Depo dokaza</p>
+        <p class="panel-kicker">{{ t('Depo dokaza', 'Evidence locker') }}</p>
         <h2>{{ caseDetail.name }}</h2>
       </div>
-      <span class="pill">{{ caseDetail.evidence.length }} fajl(ova)</span>
+      <span class="pill">{{ caseDetail.evidence.length }} {{ t('fajl(ova)', 'file(s)') }}</span>
     </div>
 
-    <div class="table-wrapper" *ngIf="caseDetail.evidence.length > 0; else emptyEvidence">
-      <table>
-        <thead>
-          <tr>
-            <th>Fajl</th>
-            <th>SHA-256</th>
-            <th>Veličina</th>
-            <th>Analitičar</th>
-            <th>Vreme unosa</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let evidence of caseDetail.evidence">
-            <td>{{ evidence.file_name }}</td>
-            <td class="hash-cell" [title]="evidence.sha256">{{ evidence.sha256 }}</td>
-            <td>{{ formatBytes(evidence.size_bytes) }}</td>
-            <td>{{ evidence.analyst }}</td>
-            <td>{{ evidence.imported_at }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="evidence-list" *ngIf="caseDetail.evidence.length > 0; else emptyEvidence">
+      <article class="evidence-row" *ngFor="let evidence of caseDetail.evidence">
+        <div class="evidence-main">
+          <strong>{{ evidence.file_name }}</strong>
+          <span class="hash" [title]="evidence.sha256">SHA-256: {{ evidence.sha256 }}</span>
+        </div>
+        <dl class="case-meta">
+          <div>
+            <dt>{{ t('Veličina', 'Size') }}</dt>
+            <dd>{{ formatBytes(evidence.size_bytes) }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Analitičar', 'Analyst') }}</dt>
+            <dd>{{ evidence.analyst }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Vreme unosa', 'Imported at') }}</dt>
+            <dd>{{ formatDate(evidence.imported_at) }}</dd>
+          </div>
+        </dl>
+        <div class="evidence-actions">
+          <button
+            type="button"
+            class="danger-button icon"
+            (click)="removeEvidence(evidence)"
+            [disabled]="removingEvidence.has(evidence.stored_name)"
+            [attr.aria-label]="t('Ukloni dokaz', 'Remove evidence')"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+            <span>{{ removingEvidence.has(evidence.stored_name) ? t('Uklanjanje...', 'Removing...') : t('Ukloni', 'Remove') }}</span>
+          </button>
+        </div>
+      </article>
     </div>
 
     <ng-template #emptyEvidence>
-      <p class="empty-state">Za ovaj slučaj još nije učitan nijedan dokaz. Učitajte CSV sa kontrolne table dok je ovaj slučaj izabran.</p>
+      <p class="empty-state">
+        {{ t('Za ovaj slučaj još nije učitan nijedan dokaz. Učitajte CSV sa kontrolne table dok je ovaj slučaj izabran.',
+              'No evidence has been uploaded for this case yet. Upload a CSV from the dashboard while this case is selected.') }}
+      </p>
     </ng-template>
   </article>
 </section>

@@ -537,17 +537,18 @@ def build_gexf_export(graph: nx.MultiDiGraph) -> str:
     return '\n'.join(lines)
 
 
-def build_case_artifacts_from_evidence(
+def build_case_report_context(
     *,
     case: dict[str, object],
     evidence_paths: list[tuple[dict[str, object], Path]],
     audit_entries: list[dict[str, object]],
-) -> dict[str, str | bytes]:
-    """Builds every export artifact from ALL evidence in the case combined into one graph.
+) -> tuple[dict[str, object], nx.MultiDiGraph]:
+    """Runs the full case analysis pipeline once and returns the export context + graph.
 
-    Analyzing evidence files together (rather than only the most recently imported one)
-    means later imports no longer hide the analysis of earlier ones, and relationships
-    between addresses pulled in from different evidence files become visible too.
+    Shared by every case export: the artifact builders below layer CSV/PDF/GraphML/GEXF on
+    top of this, and the JSON `report-context` endpoint returns the context as-is so the
+    frontend can render its own (client-side, bilingual) PDF without re-deriving any of the
+    numbers or the evidence-contribution breakdown.
     """
     per_evidence_frames = clean_evidence_frames(evidence_paths)
     combined_frame = combine_frames(per_evidence_frames)
@@ -563,6 +564,26 @@ def build_case_artifacts_from_evidence(
         analytics=analytics,
         audit_entries=audit_entries,
         evidence_contributions=evidence_contributions,
+    )
+    return context, graph
+
+
+def build_case_artifacts_from_evidence(
+    *,
+    case: dict[str, object],
+    evidence_paths: list[tuple[dict[str, object], Path]],
+    audit_entries: list[dict[str, object]],
+) -> dict[str, str | bytes]:
+    """Builds every export artifact from ALL evidence in the case combined into one graph.
+
+    Analyzing evidence files together (rather than only the most recently imported one)
+    means later imports no longer hide the analysis of earlier ones, and relationships
+    between addresses pulled in from different evidence files become visible too.
+    """
+    context, graph = build_case_report_context(
+        case=case,
+        evidence_paths=evidence_paths,
+        audit_entries=audit_entries,
     )
 
     return {

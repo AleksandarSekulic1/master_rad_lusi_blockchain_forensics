@@ -1,26 +1,55 @@
 <main class="app-shell">
   <header class="topbar">
-    <div>
-      <p class="eyebrow">Lusi v1.0</p>
-      <h1>Radni prostor za blockchain forenziku</h1>
-      <p class="subtitle">Učitajte dokaze, pregledajte grafove transakcija i izvezite izveštaje sa jedne konzole.</p>
+    <div class="topbar-top">
+      <div class="brand">
+        <img class="brand-mark" src="assets/cat.png" alt="Lusi" />
+        <div class="brand-text">
+          <p class="eyebrow">Lusi v1.0</p>
+          <h1>
+            {{
+              settings.lang() === 'sr'
+                ? 'Digitalna forenzika blockchain transakcija'
+                : 'Digital forensics of blockchain transactions'
+            }}
+          </h1>
+        </div>
+      </div>
+      <div class="session" *ngIf="auth.currentUser$ | async as user">
+        <div class="prefs" role="group" aria-label="Podešavanja">
+          <button
+            type="button"
+            class="pref-toggle"
+            (click)="settings.toggleTheme()"
+            [title]="settings.theme() === 'dark' ? 'Svetla tema' : 'Tamna tema'"
+            [attr.aria-label]="settings.theme() === 'dark' ? 'Uključi svetlu temu' : 'Uključi tamnu temu'"
+          >
+            <span aria-hidden="true">{{ settings.theme() === 'dark' ? '☀' : '☾' }}</span>
+          </button>
+          <button
+            type="button"
+            class="pref-toggle pref-lang"
+            (click)="settings.toggleLang()"
+            [title]="settings.lang() === 'sr' ? 'English' : 'Srpski'"
+            [attr.aria-label]="settings.lang() === 'sr' ? 'Switch to English' : 'Prebaci na srpski'"
+          >
+            {{ settings.lang() === 'sr' ? 'EN' : 'SR' }}
+          </button>
+        </div>
+        <span class="user-chip">{{ user.username }}</span>
+        <button type="button" class="logout-button" (click)="logout()">
+          {{ settings.lang() === 'sr' ? 'Odjava' : 'Log out' }}
+        </button>
+      </div>
     </div>
     <nav class="topbar-nav" *ngIf="auth.currentUser$ | async as user">
-      <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Kontrolna tabla</a>
-      <a routerLink="/cases" routerLinkActive="active">Slučajevi</a>
-      <a routerLink="/graph" routerLinkActive="active">Graf</a>
-      <a routerLink="/taint" routerLinkActive="active">Taint analiza</a>
-      <a routerLink="/pathfinding" routerLinkActive="active">Pathfinding</a>
-      <a routerLink="/behavioral" routerLinkActive="active">Behavioral</a>
-      <a routerLink="/dex-swaps" routerLinkActive="active">DEX Swaps</a>
-      <a routerLink="/reports" routerLinkActive="active">Izveštaji</a>
-      <a routerLink="/verify-report" routerLinkActive="active">Provera izveštaja</a>
-      <a routerLink="/activity-log" routerLinkActive="active">Log</a>
-      <a routerLink="/lanac-dokaza" routerLinkActive="active">Lanac dokaza</a>
-      <a routerLink="/tests" routerLinkActive="active" *ngIf="user.role === 'admin'">Testovi</a>
-      <a routerLink="/admin/users" routerLinkActive="active" *ngIf="user.role === 'admin'">Administracija</a>
-      <span class="user-chip">{{ user.username }}</span>
-      <button type="button" class="logout-button" (click)="logout()">Odjava</button>
+      <ng-container *ngFor="let item of navItems">
+        <a
+          *ngIf="!item.adminOnly || user.role === 'admin'"
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: !!item.exact }"
+        >{{ settings.lang() === 'sr' ? item.sr : item.en }}</a>
+      </ng-container>
     </nav>
   </header>
 

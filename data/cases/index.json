@@ -1,6 +1,18 @@
 {
   "cases": [
     {
+      "id": "1ba51cb4472e",
+      "name": "Default investigation case",
+      "description": null,
+      "analyst": "Aleksandar",
+      "status": "closed",
+      "created_at": "2026-07-14T22:26:13.306952+00:00",
+      "updated_at": "2026-09-09T19:43:51.058053+00:00",
+      "evidence_count": 2,
+      "total_size_bytes": 389809,
+      "last_imported_at": "2026-07-15T19:09:35.824530+00:00"
+    },
+    {
       "id": "46ae7f91db9b",
       "name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
       "description": "Demonstracioni slucaj koji pokriva sve heuristike: crna lista, visok rizik, anomalija, peel lanac, skok lanca, i obogacivanje adrese realnom on-chain adresom (poslednja adresa u lancu je stvarna Ethereum adresa).",
@@ -35,18 +47,6 @@
       "evidence_count": 3,
       "total_size_bytes": 168801,
       "last_imported_at": "2026-07-15T19:33:56.649843+00:00"
-    },
-    {
-      "id": "1ba51cb4472e",
-      "name": "Default investigation case",
-      "description": null,
-      "analyst": "Aleksandar",
-      "status": "closed",
-      "created_at": "2026-07-14T22:26:13.306952+00:00",
-      "updated_at": "2026-07-15T19:32:00.567787+00:00",
-      "evidence_count": 3,
-      "total_size_bytes": 390564,
-      "last_imported_at": "2026-07-15T19:09:35.824530+00:00"
     },
     {
       "id": "b8f23617148c",

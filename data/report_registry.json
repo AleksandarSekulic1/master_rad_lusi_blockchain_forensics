@@ -172,5 +172,302 @@
       "address": "0xInvestorWallet"
     },
     "registered_at": "2026-09-08T15:18:20.307924+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-D334-7QN7",
+    "content_hash": "2fc2cd27b74ba7b84921f9c38ccb7aeeb9f139a494f8f90b17b80c188e863773",
+    "case_id": "c23db4afd0f3",
+    "case_name": "Moj slucaj",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 1010,
+      "nodes": 176,
+      "edges": 175,
+      "blacklisted": 0,
+      "high_risk": 0,
+      "clusters": 0
+    },
+    "registered_at": "2026-09-09T13:59:42.641653+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-NFL2-QA54",
+    "content_hash": "a9d415356327dba6bae13ef613088938eca2904776303e95bee2b06216d22861",
+    "case_id": "c23db4afd0f3",
+    "case_name": "Moj slucaj",
+    "analyst": "admin",
+    "declaration": "I confirm that I have reviewed the collected evidence for the stated case and that this triage report was produced to decide on further transaction analysis. The signature above is mine.",
+    "summary": {
+      "rows": 1010,
+      "nodes": 176,
+      "edges": 175,
+      "blacklisted": 0,
+      "high_risk": 0,
+      "clusters": 0
+    },
+    "registered_at": "2026-09-09T14:01:42.577626+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-DBSR-QWQP",
+    "content_hash": "501247470e2b7d8eeedfbe58d041f23439c51dccb28c41a69f7a8b21e9d28e7c",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:09:18.716773+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-PZYP-N68M",
+    "content_hash": "0f6259db529a5050cc824b1fad8bd51f40e3b8a4da490fd78ed627b5a8c05942",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:15:34.266133+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZS5K-KFQ9",
+    "content_hash": "0fd86194f920525aae4ca8a173f7dbda53ee356752c93255a0a4a08b9586aa2e",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:19:25.071759+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-7Y9U-MS8N",
+    "content_hash": "66e80dc3ba03238ab8afb3db42f7f32cdea1fffc86d9bf6dd41f47fa3b4568cb",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "I confirm that I have reviewed the collected evidence for the stated case and that this triage report was produced to decide on further transaction analysis. The signature above is mine.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T14:23:23.013036+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-R6M2-2ER3",
+    "content_hash": "a7c53a85ca315fbe0162bf8d80bc0d860a8a9bc2bf29a275bb7647dd9ad2aa09",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T19:17:12.699249+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-DHUW-UGA8",
+    "content_hash": "c0364c3d1650dce3ea31b5c07163232e2f2325d2f9668b9e92b2632d426b7bec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T21:14:53.716578+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZN6N-U4HT",
+    "content_hash": "0d68875b106a07460941aa4451370ada281821c973e35ca5e1d9f13184f52197",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "I confirm that I have reviewed the transaction graph of the stated case and that this report faithfully presents the graph and the analytic findings as the application computed them at export time. The signature above is mine.",
+    "summary": {
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4,
+      "flagged_nodes": 12,
+      "analyzed": true
+    },
+    "registered_at": "2026-09-09T21:31:15.748344+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-23R2-ZA8R",
+    "content_hash": "f83ed8587b5666557cce2348c67df8b9897a10192aeac01311a4235a7cb44e51",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 58,
+      "nodes": 34,
+      "edges": 34,
+      "blacklisted": 1,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-09T21:31:47.785519+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-5W9E-KBA8",
+    "content_hash": "a62ae6ca80dfc968d1e63123a34033cbaf3acfd4a9b1a23bd8846527bd098a00",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 5,
+      "cash_out_points": 0,
+      "seeds": 1
+    },
+    "registered_at": "2026-09-10T09:16:58.585663+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-HE6J-24S6",
+    "content_hash": "faa924fc9ec622ac821b09121ce661a306c62fa00318023831316f7337521ef6",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 19,
+      "cash_out_points": 3,
+      "seeds": 12
+    },
+    "registered_at": "2026-09-10T09:45:46.964303+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-V2JY-E86S",
+    "content_hash": "faa924fc9ec622ac821b09121ce661a306c62fa00318023831316f7337521ef6",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "tainted_addresses": 19,
+      "cash_out_points": 3,
+      "seeds": 12
+    },
+    "registered_at": "2026-09-10T09:54:24.259212+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-SCEP-6V4F",
+    "content_hash": "faa924fc9ec622ac821b09121ce661a306c62fa00318023831316f7337521ef6",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 19,
+      "cash_out_points": 3,
+      "seeds": 12
+    },
+    "registered_at": "2026-09-10T10:00:41.243304+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-LXY5-E8JX",
+    "content_hash": "faa924fc9ec622ac821b09121ce661a306c62fa00318023831316f7337521ef6",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "tainted_addresses": 19,
+      "cash_out_points": 3,
+      "seeds": 12
+    },
+    "registered_at": "2026-09-10T10:01:06.609434+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-UW77-JGP3",
+    "content_hash": "6e16b7664495a9aeedb522fe8c3285f6176d328778481a2dad434e6c37696ea9",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 9,
+      "cash_out_points": 1,
+      "seeds": 3
+    },
+    "registered_at": "2026-09-10T11:13:23.314241+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-TLJW-8MKW",
+    "content_hash": "6e16b7664495a9aeedb522fe8c3285f6176d328778481a2dad434e6c37696ea9",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 9,
+      "cash_out_points": 1,
+      "seeds": 3
+    },
+    "registered_at": "2026-09-10T11:18:54.880579+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-FRCB-JKRK",
+    "content_hash": "6e16b7664495a9aeedb522fe8c3285f6176d328778481a2dad434e6c37696ea9",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "tainted_addresses": 9,
+      "cash_out_points": 1,
+      "seeds": 3
+    },
+    "registered_at": "2026-09-10T11:21:49.827071+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-WHBJ-5XEV",
+    "content_hash": "6e16b7664495a9aeedb522fe8c3285f6176d328778481a2dad434e6c37696ea9",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "tainted_addresses": 9,
+      "cash_out_points": 1,
+      "seeds": 3
+    },
+    "registered_at": "2026-09-10T11:22:38.217892+00:00"
   }
 ]

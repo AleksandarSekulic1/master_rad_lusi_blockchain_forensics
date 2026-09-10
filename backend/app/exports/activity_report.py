@@ -36,6 +36,7 @@ _CARD_BG = (243, 247, 252)
 
 ACTION_LABELS: dict[str, str] = {
     'csv_upload': 'Otpremljena CSV evidencija',
+    'evidence_removed': 'Uklonjena evidencija iz slučaja',
     'analytics_run': 'Pokrenuta analiza',
     'path_finding': 'Pretraga putanja',
     'dex_swap_analysis_run': 'Pokrenuta DEX swap analiza',
@@ -58,6 +59,8 @@ _REPORT_TYPE_LABELS: dict[str, str] = {
     'taint': 'Taint izveštaj',
     'pathfinding': 'Pathfinding izveštaj',
     'dex_swap': 'DEX Swap izveštaj',
+    'case_triage': 'Izveštaj za trijažu',
+    'graph_analysis': 'Izveštaj analize grafa',
 }
 
 
@@ -84,7 +87,7 @@ def action_color(action: str) -> tuple[int, int, int]:
         return _GROUP_CASE
     if action in ('analytics_run', 'path_finding', 'dex_swap_analysis_run'):
         return _GROUP_ANALYSIS
-    if action == 'csv_upload' or action.startswith('onchain_fetch'):
+    if action in ('csv_upload', 'evidence_removed') or action.startswith('onchain_fetch'):
         return _GROUP_EVIDENCE
     if action == 'activity_report_exported':
         return _GROUP_REPORT
@@ -226,6 +229,8 @@ def _report_signed_summary(details: dict[str, Any]) -> str:
         extra = f' · {details.get("hops", 0)} skokova'
     elif report_type == 'dex_swap':
         extra = f' · {details.get("total_events", 0)} događaja'
+    elif report_type in ('case_triage', 'graph_analysis'):
+        extra = f' · {details.get("nodes", 0)} čvorova, {details.get("edges", 0)} veza, {details.get("blacklisted", 0)} na crnoj listi'
 
     return f'{type_label} · {code}{extra}'
 

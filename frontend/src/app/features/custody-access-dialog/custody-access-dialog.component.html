@@ -1,17 +1,18 @@
 <div class="custody-overlay" (click)="cancel()">
   <div class="custody-dialog" (click)="$event.stopPropagation()">
-    <p class="panel-kicker">Lanac dokaza</p>
-    <h3>Razlog pristupa i potpis</h3>
+    <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+    <h3>{{ t('Razlog pristupa i potpis', 'Access reason and signature') }}</h3>
 
     <p class="custody-intro">
-      Pokretanje analize se beleži kao <strong>pristup svakoj transakciji</strong> koju obuhvata - u lanac dokaza
-      svake od njih dodaje se novi red sa vremenom, razlogom i potpisom, isto kao u obrascu evidencije rukovanja
-      dokaznim materijalom.
+      {{ t('Pokretanje analize se beleži kao', 'Running an analysis is recorded as') }}
+      <strong>{{ t('pristup svakoj transakciji', 'access to every transaction') }}</strong>
+      {{ t('koju obuhvata - u lanac dokaza svake od njih dodaje se novi red sa vremenom, razlogom i potpisom, isto kao u obrascu evidencije rukovanja dokaznim materijalom.',
+            'it covers — a new row with the time, reason and signature is added to the chain of custody of each of them, just like in an evidence-handling record form.') }}
     </p>
 
     <div class="custody-grid">
       <label>
-        Identifikator predmeta
+        {{ t('Identifikator predmeta', 'Case identifier') }}
         <input type="text" [(ngModel)]="identifikatorPredmeta" list="custody-predmet-suggestions" name="identifikatorPredmeta" />
         <datalist id="custody-predmet-suggestions">
           <option *ngFor="let value of suggestions.identifikator_predmeta" [value]="value"></option>
@@ -19,7 +20,7 @@
       </label>
 
       <label>
-        Identifikator dokaznog materijala
+        {{ t('Identifikator dokaznog materijala', 'Evidence item identifier') }}
         <input
           type="text"
           [(ngModel)]="identifikatorDokaznogMaterijala"
@@ -32,7 +33,7 @@
       </label>
 
       <label>
-        Proizvođač
+        {{ t('Proizvođač', 'Manufacturer') }}
         <input type="text" [(ngModel)]="proizvodjac" list="custody-proizvodjac-suggestions" name="proizvodjac" />
         <datalist id="custody-proizvodjac-suggestions">
           <option *ngFor="let value of suggestions.proizvodjac" [value]="value"></option>
@@ -40,7 +41,7 @@
       </label>
 
       <label>
-        Model
+        {{ t('Model', 'Model') }}
         <input type="text" [(ngModel)]="model" list="custody-model-suggestions" name="model" />
         <datalist id="custody-model-suggestions">
           <option *ngFor="let value of suggestions.model" [value]="value"></option>
@@ -48,7 +49,7 @@
       </label>
 
       <label>
-        Serijski broj
+        {{ t('Serijski broj', 'Serial number') }}
         <input type="text" [(ngModel)]="serijskiBroj" list="custody-serijski-suggestions" name="serijskiBroj" />
         <datalist id="custody-serijski-suggestions">
           <option *ngFor="let value of suggestions.serijski_broj" [value]="value"></option>
@@ -56,33 +57,34 @@
       </label>
 
       <label>
-        Ime i prezime
-        <input type="text" [(ngModel)]="imePrezime" name="imePrezime" placeholder="Ime i prezime analitičara" />
+        {{ t('Ime i prezime', 'Full name') }}
+        <input type="text" [(ngModel)]="imePrezime" name="imePrezime" [placeholder]="t('Ime i prezime analitičara', 'Analyst full name')" />
       </label>
     </div>
 
     <label class="custody-field">
-      Opis radnje (razlog i cilj pristupa)
-      <textarea rows="3" [(ngModel)]="opisRadnje" name="opisRadnje" placeholder="Npr. provera povezanosti sa žrtvom X, po nalogu br. ..."></textarea>
+      {{ t('Opis radnje (razlog i cilj pristupa)', 'Action description (reason and goal of access)') }}
+      <textarea rows="3" [(ngModel)]="opisRadnje" name="opisRadnje"
+                [placeholder]="t('Npr. provera povezanosti sa žrtvom X, po nalogu br. ...', 'e.g. checking a link to victim X, per order no. ...')"></textarea>
     </label>
 
-    <p class="custody-signature-label">Potpis</p>
+    <p class="custody-signature-label">{{ t('Potpis', 'Signature') }}</p>
     <app-signature-pad></app-signature-pad>
 
     <label class="custody-declaration">
       <input type="checkbox" [(ngModel)]="declarationAccepted" name="declarationAccepted" />
       <span>
-        Potvrđujem da pristupam navedenoj evidenciji u okviru navedenog predmeta, u svrhu opisanu iznad, i da je
-        potpis iznad moj.
+        {{ t('Potvrđujem da pristupam navedenoj evidenciji u okviru navedenog predmeta, u svrhu opisanu iznad, i da je potpis iznad moj.',
+              'I confirm that I am accessing the stated evidence within the stated case, for the purpose described above, and that the signature above is mine.') }}
       </span>
     </label>
 
     <p class="error-inline" *ngIf="submitError">{{ submitError }}</p>
 
     <div class="custody-actions">
-      <button type="button" class="ghost-button" (click)="cancel()" [disabled]="isSubmitting">Odustani</button>
+      <button type="button" class="ghost-button" (click)="cancel()" [disabled]="isSubmitting">{{ t('Odustani', 'Cancel') }}</button>
       <button type="button" class="primary-button" (click)="submit()" [disabled]="!canSubmit">
-        {{ isSubmitting ? 'Pokretanje...' : 'Potpiši i pokreni analizu' }}
+        {{ isSubmitting ? t('Pokretanje...', 'Starting...') : t('Potpiši i pokreni analizu', 'Sign and run the analysis') }}
       </button>
     </div>
   </div>

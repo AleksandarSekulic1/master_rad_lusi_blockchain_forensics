@@ -1,0 +1,17 @@
+{
+  "links": [
+    {
+      "id": "6a89c23c565c",
+      "investigation_id": "804444a9ad1b",
+      "source_address": "0xHacker2",
+      "target_address": "0xHacker1",
+      "directed": false,
+      "reason": "ip",
+      "evidence": "Server log #42, #57",
+      "confidence": "Medium",
+      "author": "admin",
+      "created_at": "2026-09-09T21:34:09.256841+00:00",
+      "updated_at": "2026-09-09T21:34:09.256841+00:00"
+    }
+  ]
+}

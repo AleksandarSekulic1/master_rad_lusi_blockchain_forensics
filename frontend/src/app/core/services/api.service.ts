@@ -12,6 +12,7 @@ import {
   BehavioralAnalysisResult,
   Case,
   CasePathfindingResult,
+  CaseReportContext,
   CaseStatus,
   CaseSummary,
   CreateCaseRequest,
@@ -79,8 +80,10 @@ export class ApiService {
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/onchain/fetch`, request);
   }
 
-  listCases(): Observable<{ cases: CaseSummary[] }> {
-    return this.http.get<{ cases: CaseSummary[] }>(`${this.apiUrl}/api/v1/cases`);
+  listCases(search?: string | null): Observable<{ cases: CaseSummary[] }> {
+    const trimmed = search?.trim();
+    const params = trimmed ? new HttpParams().set('search', trimmed) : undefined;
+    return this.http.get<{ cases: CaseSummary[] }>(`${this.apiUrl}/api/v1/cases`, { params });
   }
 
   createCase(request: CreateCaseRequest): Observable<Case> {
@@ -99,6 +102,12 @@ export class ApiService {
     return this.http.delete<void>(`${this.apiUrl}/api/v1/cases/${caseId}`);
   }
 
+  /** Removes one evidence file from a case (inverse of a CSV upload). Returns the updated
+   * case so the evidence locker can refresh in place. */
+  removeCaseEvidence(caseId: string, storedName: string): Observable<Case> {
+    return this.http.delete<Case>(`${this.apiUrl}/api/v1/cases/${caseId}/evidence/${encodeURIComponent(storedName)}`);
+  }
+
   // --- Investigator layer: investigations + investigator links (see
   // CASE-MANAGEMENT-IMPLEMENTATION.md). Separate from the evidence-Case endpoints above;
   // links are an additional forensic layer, never a blockchain fact. ---
@@ -109,6 +118,12 @@ export class ApiService {
 
   createInvestigation(body: { name: string; description?: string | null }): Observable<Investigation> {
     return this.http.post<Investigation>(`${this.apiUrl}/api/v1/investigations`, body);
+  }
+
+  /** Permanently removes an investigation and everything in it (notes, pinned nodes,
+   * investigator links). Does not touch the evidence case. */
+  deleteInvestigation(investigationId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/investigations/${investigationId}`);
   }
 
   /** Every investigator link in an investigation (optionally only those touching one
@@ -188,6 +203,13 @@ export class ApiService {
 
   exportCaseReportPdf(caseId: string): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/report.pdf`, { responseType: 'blob' });
+  }
+
+  /** Full case analysis context (case metadata, summary, evidence locker + contribution
+   * breakdown, audit log). The dashboard's "Izvoz izveštaja" panel renders its own signed,
+   * bilingual triage PDF from this on the client. */
+  getCaseReportContext(caseId: string): Observable<CaseReportContext> {
+    return this.http.get<CaseReportContext>(`${this.apiUrl}/api/v1/exports/cases/${caseId}/report-context`);
   }
 
   exportCaseGraphml(caseId: string): Observable<Blob> {

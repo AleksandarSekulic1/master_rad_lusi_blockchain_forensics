@@ -6,6 +6,7 @@ import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
@@ -19,15 +20,17 @@ import { ReportExportComponent } from '../report-export/report-export.component'
 })
 export class DashboardComponent implements OnInit {
   protected selectedFile: File | null = null;
-  protected selectedFileLabel = 'Nijedan fajl nije izabran';
-  protected searchQuery = '';
   protected isDragging = false;
   protected isUploading = false;
   protected isRefreshing = false;
-  protected statusMessage = 'Spremno za učitavanje dokaza.';
+  /**
+   * Held as a thunk (not a plain string) so the message re-renders in the
+   * active language: `t()` is re-evaluated by the template on every change
+   * detection pass, including right after the language toggle.
+   */
+  protected statusMessage: () => string = () => '';
   protected uploadResult: UploadCsvResponse | null = null;
   protected graphResult: NodeLinkGraphResponse | null = null;
-  protected searchResults: Array<{ node: GraphNodeData; score: number }> = [];
 
   protected onchainQuery = '';
   protected onchainNetwork: OnchainNetwork = 'mainnet';
@@ -39,7 +42,19 @@ export class DashboardComponent implements OnInit {
   constructor(
     private readonly api: ApiService,
     public readonly state: AnalysisStateService,
-  ) {}
+    public readonly settings: SettingsService,
+  ) {
+    this.statusMessage = () => this.t('Spremno za učitavanje dokaza.', 'Ready to upload evidence.');
+  }
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  protected get selectedFileLabel(): string {
+    return this.selectedFile ? this.selectedFile.name : this.t('Nijedan fajl nije izabran', 'No file selected');
+  }
 
   ngOnInit(): void {
     this.bootstrapLatestCase();
@@ -150,18 +165,18 @@ export class DashboardComponent implements OnInit {
 
   uploadEvidence(): void {
     if (!this.selectedFile) {
-      this.statusMessage = 'Prvo izaberite CSV fajl.';
+      this.statusMessage = () => this.t('Prvo izaberite CSV fajl.', 'Select a CSV file first.');
       return;
     }
 
     const caseId = this.state.selectedCaseSnapshot?.id;
     if (!caseId) {
-      this.statusMessage = 'Izaberite slučaj pre učitavanja dokaza.';
+      this.statusMessage = () => this.t('Izaberite slučaj pre učitavanja dokaza.', 'Select a case before uploading evidence.');
       return;
     }
 
     this.isUploading = true;
-    this.statusMessage = 'Učitavanje i heš-ovanje dokaza...';
+    this.statusMessage = () => this.t('Učitavanje i heš-ovanje dokaza...', 'Uploading and hashing evidence...');
 
     this.api.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
@@ -170,13 +185,14 @@ export class DashboardComponent implements OnInit {
         if (uploadResult.case) {
           this.state.setSelectedCase(uploadResult.case);
         }
-        this.statusMessage = `Dokaz sačuvan kao ${uploadResult.file_name}. Učitavanje kombinovanog grafa slučaja...`;
+        this.statusMessage = () =>
+          `${this.t('Dokaz sačuvan kao', 'Evidence saved as')} ${uploadResult.file_name}. ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
         this.loadCaseViews(caseId);
         this.loadOpenCases();
       },
       error: (error: unknown) => {
         this.isUploading = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje nije uspelo.');
+        this.statusMessage = () => this.extractErrorMessage(error, this.t('Učitavanje nije uspelo.', 'Upload failed.'));
       },
     });
   }
@@ -191,18 +207,28 @@ export class DashboardComponent implements OnInit {
     const isTxHash = /^0x[0-9a-fA-F]{64}$/.test(query);
 
     if (!isAddress && !isTxHash) {
-      this.statusMessage = 'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera).';
+      this.statusMessage = () =>
+        this.t(
+          'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera).',
+          'Enter a valid address (0x + 40 chars) or transaction hash (0x + 64 chars).',
+        );
       return;
     }
 
     const caseId = this.state.selectedCaseSnapshot?.id;
     if (!caseId) {
-      this.statusMessage = 'Izaberite slučaj pre povlačenja transakcija.';
+      this.statusMessage = () => this.t('Izaberite slučaj pre povlačenja transakcija.', 'Select a case before fetching transactions.');
       return;
     }
 
     this.isFetchingOnchain = true;
-    this.statusMessage = `Povlačenje sa ${this.onchainNetwork === 'mainnet' ? 'Ethereum mainnet-a' : 'Sepolia testnet-a'}...`;
+    this.statusMessage = () => {
+      const networkLabel =
+        this.onchainNetwork === 'mainnet'
+          ? this.t('Ethereum mainnet-a', 'Ethereum mainnet')
+          : this.t('Sepolia testnet-a', 'the Sepolia testnet');
+      return `${this.t('Povlačenje sa', 'Fetching from')} ${networkLabel}...`;
+    };
 
     const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
     this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
@@ -213,13 +239,18 @@ export class DashboardComponent implements OnInit {
           this.state.setSelectedCase(result.case);
         }
         this.isFetchingOnchain = false;
-        this.statusMessage = `Povučeno ${result.rows_total} transakcija (${result.resolved_query ?? query}). Učitavanje kombinovanog grafa slučaja...`;
+        this.statusMessage = () =>
+          `${this.t('Povučeno', 'Fetched')} ${result.rows_total} ${this.t('transakcija', 'transactions')} (${result.resolved_query ?? query}). ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
         this.loadCaseViews(caseId);
         this.loadOpenCases();
       },
       error: (error: unknown) => {
         this.isFetchingOnchain = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Povlačenje transakcija sa blockchain-a nije uspelo.');
+        this.statusMessage = () =>
+          this.extractErrorMessage(
+            error,
+            this.t('Povlačenje transakcija sa blockchain-a nije uspelo.', 'Fetching transactions from the blockchain failed.'),
+          );
       },
     });
   }
@@ -227,68 +258,45 @@ export class DashboardComponent implements OnInit {
   refreshLatestEvidence(): void {
     const selectedCase = this.state.selectedCaseSnapshot;
     if (!selectedCase) {
-      this.statusMessage = 'Izaberite slučaj da biste osvežili prikaz.';
+      this.statusMessage = () => this.t('Izaberite slučaj da biste osvežili prikaz.', 'Select a case to refresh the view.');
       return;
     }
 
     if (!selectedCase.evidence_count) {
-      this.statusMessage = 'Slučaj još uvek nema učitane dokaze.';
+      this.statusMessage = () => this.t('Slučaj još uvek nema učitane dokaze.', 'This case has no uploaded evidence yet.');
       return;
     }
 
     this.isRefreshing = true;
-    this.statusMessage = 'Osvežavanje prikaza slučaja...';
+    this.statusMessage = () => this.t('Osvežavanje prikaza slučaja...', 'Refreshing case view...');
     this.loadCaseViews(selectedCase.id);
-  }
-
-  executeSearch(): void {
-    const query = this.searchQuery.trim().toLowerCase();
-    const graph = this.graphResult ?? this.state.graphSnapshot;
-    if (!query || !graph) {
-      this.searchResults = [];
-      return;
-    }
-
-    const matches = graph.nodes
-      .map((node) => ({ node, score: this.scoreNode(node, query) }))
-      .filter(({ score }) => score > 0)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, 12);
-
-    this.searchResults = matches;
-    this.statusMessage = matches.length > 0 ? `Pronađeno ${matches.length} odgovarajućih adresa.` : 'Nema pronađenih adresa.';
-  }
-
-  selectSearchResult(result: { node: GraphNodeData; score: number }): void {
-    this.state.setSelectedNode(result.node);
-    this.statusMessage = `Izabrano: ${result.node.address ?? result.node.id}.`;
-  }
-
-  clearSearch(): void {
-    this.searchQuery = '';
-    this.searchResults = [];
   }
 
   private setSelectedFile(file: File | null): void {
     this.selectedFile = file;
-    this.selectedFileLabel = file ? file.name : 'Nijedan fajl nije izabran';
-    this.statusMessage = file ? `Fajl ${file.name} je spreman za učitavanje.` : 'Nijedan fajl nije izabran.';
+    this.statusMessage = file
+      ? () => `${this.t('Fajl', 'File')} ${file.name} ${this.t('je spreman za učitavanje.', 'is ready to upload.')}`
+      : () => this.t('Nijedan fajl nije izabran.', 'No file selected.');
   }
 
   private bootstrapLatestCase(): void {
     const selectedCase = this.state.selectedCaseSnapshot;
     if (!selectedCase) {
-      this.statusMessage = 'Izaberite slučaj da biste videli kombinovani graf i analitiku.';
+      this.statusMessage = () =>
+        this.t(
+          'Izaberite slučaj da biste videli kombinovani graf i analitiku.',
+          'Select a case to see the combined graph and analytics.',
+        );
       return;
     }
 
     if (!selectedCase.evidence_count) {
-      this.statusMessage = 'Slučaj još uvek nema učitane dokaze.';
+      this.statusMessage = () => this.t('Slučaj još uvek nema učitane dokaze.', 'This case has no uploaded evidence yet.');
       return;
     }
 
     this.isRefreshing = true;
-    this.statusMessage = 'Učitavanje kombinovanog grafa slučaja...';
+    this.statusMessage = () => this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...');
     this.loadCaseViews(selectedCase.id);
   }
 
@@ -301,12 +309,13 @@ export class DashboardComponent implements OnInit {
         this.applyGraphAndAnalytics(graph, analytics);
         this.isUploading = false;
         this.isRefreshing = false;
-        this.statusMessage = `Učitan kombinovani graf slučaja (${graph.rows ?? graph.nodes.length} redova).`;
+        this.statusMessage = () =>
+          `${this.t('Učitan kombinovani graf slučaja', 'Combined case graph loaded')} (${graph.rows ?? graph.nodes.length} ${this.t('redova', 'rows')}).`;
       },
       error: (error: unknown) => {
         this.isUploading = false;
         this.isRefreshing = false;
-        this.statusMessage = this.extractErrorMessage(error, 'Učitavanje grafa za slučaj nije uspelo.');
+        this.statusMessage = () => this.extractErrorMessage(error, this.t('Učitavanje grafa za slučaj nije uspelo.', 'Loading the case graph failed.'));
       },
     });
   }
@@ -316,33 +325,6 @@ export class DashboardComponent implements OnInit {
     this.state.setGraph(graph);
     this.state.setAnalytics(analytics);
     this.state.ensureValidSelectedNode(analytics.nodes);
-  }
-
-  private scoreNode(node: GraphNodeData, query: string): number {
-    const address = String(node.address ?? node.id ?? '').toLowerCase();
-    const label = String(node.label ?? '').toLowerCase();
-
-    if (address === query || label === query) {
-      return 100;
-    }
-
-    let score = 0;
-    if (address.includes(query)) {
-      score += 5;
-    }
-    if (label.includes(query)) {
-      score += 3;
-    }
-    if (String(node.cluster_id ?? '').toLowerCase().includes(query)) {
-      score += 2;
-    }
-    if (Boolean(node.blacklist_flag)) {
-      score += 1;
-    }
-    if (Boolean(node.anomaly_flag)) {
-      score += 1;
-    }
-    return score;
   }
 
   private isFlagged(node: GraphNodeData): boolean {

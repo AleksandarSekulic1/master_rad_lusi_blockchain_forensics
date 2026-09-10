@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { CustodyFieldSuggestions, TransactionCustodyEntry } from '../../models/blockchain-forensics.models';
 
 const EMPTY_SUGGESTIONS: CustodyFieldSuggestions = {
@@ -55,11 +56,17 @@ export class CustodyAccessDialogComponent implements OnInit {
   constructor(
     private readonly api: ApiService,
     private readonly auth: AuthService,
+    public readonly settings: SettingsService,
   ) {}
+
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.identifikatorPredmeta = this.caseName || this.caseId;
-    this.identifikatorDokaznogMaterijala = this.evidenceFileName || 'sva evidencija (kombinovano)';
+    this.identifikatorDokaznogMaterijala =
+      this.evidenceFileName || this.t('sva evidencija (kombinovano)', 'all evidence (combined)');
     // Convenience starting point only - the analyst's real name still has to be typed/
     // confirmed by hand, a login handle is not necessarily their legal name.
     this.imePrezime = this.auth.currentUser?.username || '';

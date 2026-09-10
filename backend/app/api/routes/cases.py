@@ -27,6 +27,7 @@ from app.services.case_management import (
     get_case,
     get_case_evidence_paths,
     list_cases,
+    remove_evidence,
     set_case_status,
 )
 
@@ -81,8 +82,10 @@ class RunAnalyticsRequest(BaseModel):
 
 
 @router.get('')
-def get_cases() -> dict[str, object]:
-    return {'cases': list_cases()}
+def get_cases(
+    search: str | None = Query(default=None, description='Filter po nazivu slučaja (bez razlike u veličini slova).'),
+) -> dict[str, object]:
+    return {'cases': list_cases(search=search)}
 
 
 @router.post('')
@@ -106,6 +109,38 @@ def get_case_detail(case_id: str) -> dict[str, object]:
 def get_case_evidence(case_id: str) -> dict[str, object]:
     case = _get_case_or_404(case_id)
     return {'case_id': case_id, 'evidence': case.get('evidence', [])}
+
+
+@router.delete('/{case_id}/evidence/{stored_name}')
+def delete_case_evidence(
+    case_id: str,
+    stored_name: str,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    """Removes one evidence file from a case (the inverse of a CSV upload). Returns the
+    updated case so the client can refresh its evidence locker in place."""
+    case = _get_case_or_404(case_id)
+    entry = next(
+        (e for e in case.get('evidence', []) if isinstance(e, dict) and str(e.get('stored_name')) == stored_name),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f'Evidence {stored_name} not found in case')
+
+    try:
+        updated = remove_evidence(case_id, stored_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    write_audit_log(
+        action='evidence_removed',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        file_name=str(entry.get('file_name') or ''),
+        sha256_hash=str(entry.get('sha256') or ''),
+    )
+    return updated
 
 
 @router.patch('/{case_id}/status')

@@ -2,25 +2,25 @@
   <div class="inv-dialog" (click)="$event.stopPropagation()">
     <div class="inv-header">
       <div>
-        <p class="inv-kicker">Istražiteljski sloj<ng-container *ngIf="investigationName"> — {{ investigationName }}</ng-container></p>
+        <p class="inv-kicker">{{ t('Istražiteljski sloj', 'Investigator layer') }}<ng-container *ngIf="investigationName"> — {{ investigationName }}</ng-container></p>
         <h3 class="inv-address">{{ address }}</h3>
       </div>
-      <button type="button" class="inv-close" (click)="close()" aria-label="Zatvori">✕</button>
+      <button type="button" class="inv-close" (click)="close()" [attr.aria-label]="t('Zatvori', 'Close')">✕</button>
     </div>
 
     <div class="inv-tabs">
       <button type="button" [class.active]="activeTab === 'notes'" (click)="activeTab = 'notes'">
-        Beleške<ng-container *ngIf="notes.length"> ({{ notes.length }})</ng-container>
+        {{ t('Beleške', 'Notes') }}<ng-container *ngIf="notes.length"> ({{ notes.length }})</ng-container>
       </button>
-      <button type="button" [class.active]="activeTab === 'link'" (click)="activeTab = 'link'">Nova veza</button>
+      <button type="button" [class.active]="activeTab === 'link'" (click)="activeTab = 'link'">{{ t('Nova veza', 'New link') }}</button>
     </div>
 
     <!-- NOTES -->
     <section *ngIf="activeTab === 'notes'" class="inv-section">
-      <p class="inv-muted" *ngIf="isLoadingNotes">Učitavanje...</p>
+      <p class="inv-muted" *ngIf="isLoadingNotes">{{ t('Učitavanje...', 'Loading...') }}</p>
       <p class="inv-error" *ngIf="notesError">{{ notesError }}</p>
       <p class="inv-muted" *ngIf="!isLoadingNotes && !notesError && notes.length === 0">
-        Nema beleški za ovu adresu u izabranoj istrazi.
+        {{ t('Nema beleški za ovu adresu u izabranoj istrazi.', 'No notes for this address in the selected investigation.') }}
       </p>
 
       <ul class="inv-note-list">
@@ -29,9 +29,9 @@
             <textarea rows="3" maxlength="10000" [(ngModel)]="editNoteText" name="editNoteText_{{ note.id }}"></textarea>
             <div class="inv-note-actions">
               <button type="button" class="inv-btn small" (click)="saveEdit(note)" [disabled]="isSavingNote || !editNoteText.trim()">
-                {{ isSavingNote ? 'Čuvanje...' : 'Sačuvaj' }}
+                {{ isSavingNote ? t('Čuvanje...', 'Saving...') : t('Sačuvaj', 'Save') }}
               </button>
-              <button type="button" class="inv-btn small" (click)="cancelEdit()">Otkaži</button>
+              <button type="button" class="inv-btn small" (click)="cancelEdit()">{{ t('Otkaži', 'Cancel') }}</button>
             </div>
           </ng-container>
           <ng-template #noteRead>
@@ -40,30 +40,30 @@
               {{ note.author }} · {{ note.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
                 *ngIf="note.updated_at !== note.created_at"
               >
-                · izmenjeno</ng-container
+                · {{ t('izmenjeno', 'edited') }}</ng-container
               >
             </p>
             <div class="inv-note-actions">
-              <button type="button" class="inv-btn small" (click)="startEdit(note)">Izmeni</button>
-              <button type="button" class="inv-btn small danger" (click)="deleteNote(note)">Obriši</button>
+              <button type="button" class="inv-btn small" (click)="startEdit(note)">{{ t('Izmeni', 'Edit') }}</button>
+              <button type="button" class="inv-btn small danger" (click)="deleteNote(note)">{{ t('Obriši', 'Delete') }}</button>
             </div>
           </ng-template>
         </li>
       </ul>
 
       <label class="inv-field">
-        Nova beleška
+        {{ t('Nova beleška', 'New note') }}
         <textarea
           rows="3"
           maxlength="10000"
           [(ngModel)]="newNoteText"
           name="newNoteText"
-          placeholder="Npr. Sumnja se da je ovo cold wallet. Čeka se dodatna provera."
+          [placeholder]="t('Npr. Sumnja se da je ovo cold wallet. Čeka se dodatna provera.', 'e.g. Suspected to be a cold wallet. Awaiting further checks.')"
         ></textarea>
       </label>
       <div class="inv-actions">
         <button type="button" class="inv-btn primary" (click)="addNote()" [disabled]="!canAddNote">
-          {{ isAddingNote ? 'Dodavanje...' : 'Dodaj belešku' }}
+          {{ isAddingNote ? t('Dodavanje...', 'Adding...') : t('Dodaj belešku', 'Add note') }}
         </button>
       </div>
     </section>
@@ -71,33 +71,35 @@
     <!-- NEW LINK -->
     <section *ngIf="activeTab === 'link'" class="inv-section">
       <p class="inv-hint">
-        Ručno zabeležena <strong>pretpostavljena</strong> veza sa drugom adresom na osnovu vanlančanih (off-chain) dokaza —
-        <strong>nije blockchain činjenica</strong> i ne menja transakcioni graf.
+        {{ t('Ručno zabeležena', 'A manually recorded') }} <strong>{{ t('pretpostavljena', 'suspected') }}</strong>
+        {{ t('veza sa drugom adresom na osnovu vanlančanih (off-chain) dokaza —', 'link to another address based on off-chain evidence —') }}
+        <strong>{{ t('nije blockchain činjenica', 'not a blockchain fact') }}</strong>
+        {{ t('i ne menja transakcioni graf.', 'and it does not change the transaction graph.') }}
       </p>
       <label class="inv-field">
-        Izvorna adresa
+        {{ t('Izvorna adresa', 'Source address') }}
         <input type="text" class="inv-address-input" [value]="address" readonly />
       </label>
       <label class="inv-field">
-        Ciljna adresa
+        {{ t('Ciljna adresa', 'Target address') }}
         <input type="text" [(ngModel)]="linkTarget" name="linkTarget" placeholder="0x..." class="inv-address-input" />
       </label>
       <label class="inv-field">
-        Razlog
+        {{ t('Razlog', 'Reason') }}
         <textarea
           rows="2"
           maxlength="5000"
           [(ngModel)]="linkReason"
           name="linkReason"
-          placeholder="Npr. IP adresa iz logova servera povezuje obe adrese."
+          [placeholder]="t('Npr. IP adresa iz logova servera povezuje obe adrese.', 'e.g. A server-log IP address links both addresses.')"
         ></textarea>
       </label>
       <label class="inv-field">
-        Dokaz / referenca
-        <input type="text" maxlength="2000" [(ngModel)]="linkEvidence" name="linkEvidence" placeholder="Npr. Server log #42" />
+        {{ t('Dokaz / referenca', 'Evidence / reference') }}
+        <input type="text" maxlength="2000" [(ngModel)]="linkEvidence" name="linkEvidence" [placeholder]="t('Npr. Server log #42', 'e.g. Server log #42')" />
       </label>
       <label class="inv-field">
-        Pouzdanost
+        {{ t('Pouzdanost', 'Confidence') }}
         <select [(ngModel)]="linkConfidence" name="linkConfidence">
           <option *ngFor="let level of confidenceOptions" [ngValue]="level">{{ level }}</option>
         </select>
@@ -105,7 +107,7 @@
       <p class="inv-error" *ngIf="linkError">{{ linkError }}</p>
       <div class="inv-actions">
         <button type="button" class="inv-btn primary" (click)="createLink()" [disabled]="!canCreateLink">
-          {{ isCreatingLink ? 'Kreiranje...' : 'Kreiraj vezu' }}
+          {{ isCreatingLink ? t('Kreiranje...', 'Creating...') : t('Kreiraj vezu', 'Create link') }}
         </button>
       </div>
     </section>
