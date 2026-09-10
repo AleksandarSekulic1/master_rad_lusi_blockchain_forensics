@@ -15,6 +15,7 @@ import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup'
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   AddressEnrichment,
   AddressType,
@@ -168,8 +169,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     private readonly api: ApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {
     ensureCytoscapeExtensionsRegistered();
+  }
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
   }
 
   ngOnInit(): void {
@@ -254,7 +261,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isLoadingGraph = false;
-        this.graphError = 'Neuspešno učitavanje grafa za izabrani slučaj.';
+        this.graphError = this.t('Neuspešno učitavanje grafa za izabrani slučaj.', 'Failed to load the graph for the selected case.');
       },
     });
   }
@@ -375,7 +382,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isSuggestingSeeds = false;
-        this.taintError = 'Neuspešno predlaganje čvorova.';
+        this.taintError = this.t('Neuspešno predlaganje čvorova.', 'Failed to suggest nodes.');
       },
     });
   }
@@ -509,7 +516,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         // Shown INSIDE the dialog (still open) rather than the outer taintError banner,
         // which is behind the overlay and would not be visible - nothing typed/signed is
         // lost, the analyst can just retry.
-        this.custodyDialogError = 'Neuspešno pokretanje taint analize.';
+        this.custodyDialogError = this.t('Neuspešno pokretanje taint analize.', 'Failed to start the taint analysis.');
       },
     });
   }
@@ -951,22 +958,22 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private typeLabel(type: AddressType | null | undefined): string {
     switch (type) {
       case 'contract':
-        return 'Pametni ugovor';
+        return this.t('Pametni ugovor', 'Smart contract');
       case 'eoa':
-        return 'Obična adresa (EOA)';
+        return this.t('Obična adresa (EOA)', 'Externally owned account (EOA)');
       default:
-        return 'Nepoznato';
+        return this.t('Nepoznato', 'Unknown');
     }
   }
 
   entityCategoryLabel(category: KnownEntityCategory): string {
     switch (category) {
       case 'exchange':
-        return 'berza';
+        return this.t('berza', 'exchange');
       case 'mixer':
-        return 'mikser za prikrivanje sredstava';
+        return this.t('mikser za prikrivanje sredstava', 'coin mixer');
       case 'sanctioned':
-        return 'OFAC sankcionisano';
+        return this.t('OFAC sankcionisano', 'OFAC-sanctioned');
       default:
         return category;
     }
@@ -1810,7 +1817,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       this.buildTaintPdf(graphImage, imageSize, { signatureImage, declaration, registration });
       this.isSignatureDialogOpen = false;
     } catch {
-      this.signatureError = 'Neuspesno generisanje PDF izvestaja.';
+      this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
     } finally {
       this.isExportingPdf = false;
     }
