@@ -37,17 +37,17 @@
 
   <div class="graph-header">
     <div class="graph-header-text">
-      <p class="panel-kicker">Pathfinding Analysis</p>
-      <h2>Kojim putem se sredstva kreću između dve adrese?</h2>
+      <p class="panel-kicker">{{ t('Pathfinding analiza', 'Pathfinding analysis') }}</p>
+      <h2>{{ t('Kojim putem se sredstva kreću između dve adrese?', 'Which route do funds take between two addresses?') }}</h2>
       <p>
-        Za razliku od Taint analize (koja prati kako se zaprljana sredstva PROPAGIRAJU kroz celu mrežu), ovde se traži
-        konkretan put stvarnih transakcija između dve tačno određene adrese.
+        {{ t('Za razliku od Taint analize (koja prati kako se zaprljana sredstva PROPAGIRAJU kroz celu mrežu), ovde se traži konkretan put stvarnih transakcija između dve tačno određene adrese.',
+              'Unlike taint analysis (which traces how tainted funds PROPAGATE through the whole network), this looks for a concrete path of real transactions between two specific addresses.') }}
       </p>
     </div>
     <div class="stats" *ngIf="graph">
-      <span>{{ graph.nodes.length }} čvorova</span>
-      <span>{{ graph.links.length }} veza</span>
-      <button type="button" class="ghost-button" (click)="fitWholeGraph()">Prikaži ceo graf</button>
+      <span>{{ graph.nodes.length }} {{ t('čvorova', 'nodes') }}</span>
+      <span>{{ graph.links.length }} {{ t('veza', 'links') }}</span>
+      <button type="button" class="ghost-button" (click)="fitWholeGraph()">{{ t('Prikaži ceo graf', 'Fit whole graph') }}</button>
     </div>
   </div>
 
@@ -57,15 +57,16 @@
     </div>
 
     <aside class="pathfinding-panel">
-      <p class="panel-kicker">Pretraga puta</p>
-      <h3>Pronađi put</h3>
+      <p class="panel-kicker">{{ t('Pretraga puta', 'Path search') }}</p>
+      <h3>{{ t('Pronađi put', 'Find a path') }}</h3>
       <p class="selection-hint">
-        Klikni na čvor na grafu da postaviš <span class="mono-address node-from-swatch">From</span>, pa na drugi čvor za
-        <span class="mono-address node-to-swatch">To</span>. Klik na već izabran čvor ga uklanja.
+        {{ t('Klikni na čvor na grafu da postaviš', 'Click a node on the graph to set') }}
+        <span class="mono-address node-from-swatch">{{ t('Od', 'From') }}</span>{{ t(', pa na drugi čvor za', ', then another node for') }}
+        <span class="mono-address node-to-swatch">{{ t('Do', 'To') }}</span>. {{ t('Klik na već izabran čvor ga uklanja.', 'Clicking an already selected node removes it.') }}
       </p>
 
       <label class="address-field">
-        From
+        {{ t('Od', 'From') }}
         <input
           type="text"
           [(ngModel)]="fromAddress"
@@ -76,16 +77,16 @@
       </label>
 
       <label class="address-field">
-        Destination
+        {{ t('Odredište', 'Destination') }}
         <select [ngModel]="destinationMode" (ngModelChange)="onDestinationModeChange($event)" [disabled]="!activeCase">
-          <option value="specific_address">Specific address</option>
-          <option value="nearest_cex">Nearest known CEX</option>
+          <option value="specific_address">{{ t('Određena adresa', 'Specific address') }}</option>
+          <option value="nearest_cex">{{ t('Najbliža poznata berza (CEX)', 'Nearest known CEX') }}</option>
           <!-- option value="cash_out_point" disabled>Cash-out point (uskoro)</option -->
         </select>
       </label>
 
       <label class="address-field" *ngIf="destinationMode === 'specific_address'">
-        To
+        {{ t('Do', 'To') }}
         <input
           type="text"
           [(ngModel)]="toAddress"
@@ -96,8 +97,8 @@
       </label>
 
       <p class="destination-hint" *ngIf="destinationMode === 'nearest_cex'">
-        Odredište se automatski određuje — najbliža adresa (po broju skokova) koju lokalni registar poznatih entiteta
-        prepoznaje kao berzu (CEX), među adresama koje se stvarno pojavljuju u ovoj evidenciji.
+        {{ t('Odredište se automatski određuje — najbliža adresa (po broju skokova) koju lokalni registar poznatih entiteta prepoznaje kao berzu (CEX), među adresama koje se stvarno pojavljuju u ovoj evidenciji.',
+              'The destination is determined automatically — the nearest address (by hop count) that the local known-entity registry recognizes as an exchange (CEX), among the addresses that actually appear in this evidence.') }}
       </p>
 
       <button
@@ -106,7 +107,7 @@
         (click)="openFindPathDialog()"
         [disabled]="!canSearch"
       >
-        {{ isSearching ? 'Pretraga...' : 'FIND PATH' }}
+        {{ isSearching ? t('Pretraga...', 'Searching...') : t('Pronađi put', 'Find path') }}
       </button>
 
       <p class="error-inline" *ngIf="searchError">{{ searchError }}</p>
@@ -114,7 +115,7 @@
       <ng-container *ngIf="result">
         <div class="path-result" *ngIf="result.found; else notFound">
           <p class="destination-resolved" *ngIf="result.destination_label">
-            Pronađeno odredište: <span class="mono-address">{{ result.destination_address }}</span>
+            {{ t('Pronađeno odredište:', 'Destination found:') }} <span class="mono-address">{{ result.destination_address }}</span>
             <span class="destination-label">{{ result.destination_label }}</span>
           </p>
 
@@ -126,35 +127,35 @@
           </ol>
 
           <div class="path-analysis-card">
-            <p class="panel-kicker">Path Analysis</p>
+            <p class="panel-kicker">{{ t('Analiza puta', 'Path analysis') }}</p>
             <dl>
               <div>
-                <dt>Path length</dt>
-                <dd>{{ result.hops }} {{ result.hops === 1 ? 'hop' : 'hops' }}</dd>
+                <dt>{{ t('Dužina puta', 'Path length') }}</dt>
+                <dd>{{ result.hops }} {{ result.hops === 1 ? t('skok', 'hop') : t('skokova', 'hops') }}</dd>
               </div>
               <div *ngIf="initialAmount !== null">
-                <dt>Initial amount</dt>
+                <dt>{{ t('Početni iznos', 'Initial amount') }}</dt>
                 <dd>{{ initialAmount | number : '1.2-6' }}</dd>
               </div>
               <div *ngIf="finalAmount !== null">
-                <dt>Final amount</dt>
+                <dt>{{ t('Konačni iznos', 'Final amount') }}</dt>
                 <dd>{{ finalAmount | number : '1.2-6' }}</dd>
               </div>
               <div *ngIf="pathDurationLabel">
-                <dt>Duration</dt>
+                <dt>{{ t('Trajanje', 'Duration') }}</dt>
                 <dd>{{ pathDurationLabel }}</dd>
               </div>
               <ng-container *ngIf="pathTaintResult">
                 <div>
-                  <dt>Initial taint</dt>
+                  <dt>{{ t('Početna zaprljanost', 'Initial taint') }}</dt>
                   <dd>{{ initialTaint | number : '1.0-2' }}%</dd>
                 </div>
                 <div>
-                  <dt>Final taint</dt>
+                  <dt>{{ t('Konačna zaprljanost', 'Final taint') }}</dt>
                   <dd>{{ finalTaint | number : '1.0-2' }}%</dd>
                 </div>
                 <div>
-                  <dt>Taint dilution</dt>
+                  <dt>{{ t('Razblaženje zaprljanosti', 'Taint dilution') }}</dt>
                   <dd>{{ taintDilution | number : '1.0-2' }}%</dd>
                 </div>
               </ng-container>
@@ -167,17 +168,17 @@
                 (click)="openTaintDialog()"
                 [disabled]="isRunningTaint"
               >
-                Pokreni taint analizu za ovu putanju
+                {{ t('Pokreni taint analizu za ovu putanju', 'Run taint analysis for this path') }}
               </button>
               <p class="taint-hint">
-                Opciono: prati koliko zaprljanosti sa polazne adrese (uvek 100% kao izvor) stigne do krajnje adrese,
-                baš kroz ovu putanju.
+                {{ t('Opciono: prati koliko zaprljanosti sa polazne adrese (uvek 100% kao izvor) stigne do krajnje adrese, baš kroz ovu putanju.',
+                      'Optional: traces how much taint from the start address (always 100% as the source) reaches the end address, along this exact path.') }}
               </p>
             </ng-container>
           </div>
 
           <div class="hop-list">
-            <p class="panel-kicker">Transakcije na putu</p>
+            <p class="panel-kicker">{{ t('Transakcije na putu', 'Transactions along the path') }}</p>
             <ol>
               <li *ngFor="let hop of pathHops; let i = index" class="hop-item">
                 <p class="hop-title">
@@ -186,24 +187,24 @@
                 </p>
                 <dl>
                   <div>
-                    <dt>Amount</dt>
+                    <dt>{{ t('Iznos', 'Amount') }}</dt>
                     <dd>{{ hop.amount !== null ? (hop.amount | number : '1.2-6') : 'n/a' }}</dd>
                   </div>
                   <div *ngIf="hop.taintPercentage !== null">
-                    <dt>Taint</dt>
+                    <dt>{{ t('Zaprljanost', 'Taint') }}</dt>
                     <dd>{{ hop.taintPercentage | number : '1.0-2' }}%</dd>
                   </div>
                   <div>
-                    <dt>Time</dt>
+                    <dt>{{ t('Vreme', 'Time') }}</dt>
                     <dd>{{ hop.timestamp ? (hop.timestamp | date : 'medium') : 'n/a' }}</dd>
                   </div>
                   <div>
-                    <dt>Transaction hash</dt>
-                    <dd class="mono-address">{{ hop.txHash ?? 'n/a — evidencija nema heš' }}</dd>
+                    <dt>{{ t('Heš transakcije', 'Transaction hash') }}</dt>
+                    <dd class="mono-address">{{ hop.txHash ?? t('n/a — evidencija nema heš', 'n/a — the evidence has no hash') }}</dd>
                   </div>
                 </dl>
                 <p class="hop-extra" *ngIf="hop.extraTransactionCount > 0">
-                  + {{ hop.extraTransactionCount }} dodatnih transakcija na ovoj vezi (prikazana je najranija)
+                  + {{ hop.extraTransactionCount }} {{ t('dodatnih transakcija na ovoj vezi (prikazana je najranija)', 'more transactions on this link (the earliest one is shown)') }}
                 </p>
               </li>
             </ol>
@@ -214,24 +215,25 @@
             class="primary-button export-pdf-button"
             (click)="openSignatureDialog()"
             [disabled]="isExportingPdf"
-            title="Izvezi PDF izveštaj sa potpisom, pečatom i kontrolnim brojem za proveru verodostojnosti"
+            [title]="t('Izvezi PDF izveštaj sa potpisom, pečatom i kontrolnim brojem za proveru verodostojnosti', 'Export a PDF report with a signature, seal and verification code for authenticity checking')"
           >
-            {{ isExportingPdf ? 'Generisanje...' : 'Izvezi PDF izveštaj' }}
+            {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
           </button>
         </div>
         <ng-template #notFound>
           <p class="no-path-message" *ngIf="result.message as message; else genericNotFound">{{ message }}</p>
           <ng-template #genericNotFound>
             <p class="no-path-message">
-              Putanja nije pronađena — u izabranoj evidenciji ne postoji niz transakcija koji vodi od adrese
-              <strong>From</strong> do izabranog odredišta.
+              {{ t('Putanja nije pronađena — u izabranoj evidenciji ne postoji niz transakcija koji vodi od adrese „Od" do izabranog odredišta.',
+                    'No path found — in the selected evidence there is no sequence of transactions leading from the “From” address to the chosen destination.') }}
             </p>
           </ng-template>
         </ng-template>
       </ng-container>
 
       <p class="empty-hint" *ngIf="!result && !searchError">
-        Unesi polaznu adresu, izaberi odredište i klikni "FIND PATH" da vidiš najkraći put stvarnih transakcija.
+        {{ t('Unesi polaznu adresu, izaberi odredište i klikni „Pronađi put" da vidiš najkraći put stvarnih transakcija.',
+              'Enter a start address, pick a destination and click “Find path” to see the shortest path of real transactions.') }}
       </p>
     </aside>
   </div>
@@ -263,12 +265,14 @@
   <!-- Potpisivanje pre izvoza PDF izveštaja - ista struktura kao Taint analiza -->
   <div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
     <div class="signature-dialog" (click)="$event.stopPropagation()">
-      <p class="panel-kicker">Overa izveštaja</p>
-      <h3>Potpis analitičara</h3>
+      <p class="panel-kicker">{{ t('Overa izveštaja', 'Report certification') }}</p>
+      <h3>{{ t('Potpis analitičara', 'Analyst signature') }}</h3>
 
       <p class="signature-intro">
-        Potpišite se mišem u polju ispod. Uz potpis se generiše <strong>pečat aplikacije Lusi</strong> sa kontrolnim
-        brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.
+        {{ t('Potpišite se mišem u polju ispod. Uz potpis se generiše', 'Sign with the mouse in the field below. Together with the signature, a') }}
+        <strong>{{ t('pečat aplikacije Lusi', 'Lusi application seal') }}</strong>
+        {{ t('sa kontrolnim brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.',
+              'is generated with a verification code and a content hash, which can later be used to check whether the report was altered.') }}
       </p>
 
       <app-signature-pad></app-signature-pad>
@@ -276,22 +280,23 @@
       <label class="signature-declaration">
         <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
         <span>
-          Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati
-          onakvi kakve je aplikacija izračunala nad navedenom evidencijom.
+          {{ t('Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.',
+                'I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.') }}
         </span>
       </label>
 
       <p class="signature-limit">
-        Napomena: potpis je <strong>izjava</strong>, a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni
-        dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.
+        {{ t('Napomena: potpis je', 'Note: the signature is a') }} <strong>{{ t('izjava', 'declaration') }}</strong>
+        {{ t(', a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.',
+              ', not a cryptographic proof — it stays intact even if someone edits the document. An alteration is detected only by comparing the content hash against the verification code.') }}
       </p>
 
       <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
 
       <div class="signature-actions">
-        <button type="button" class="ghost-button" (click)="closeSignatureDialog()">Odustani</button>
+        <button type="button" class="ghost-button" (click)="closeSignatureDialog()">{{ t('Odustani', 'Cancel') }}</button>
         <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
-          {{ isExportingPdf ? 'Generisanje...' : 'Potpiši i izvezi PDF' }}
+          {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign and export PDF') }}
         </button>
       </div>
     </div>
