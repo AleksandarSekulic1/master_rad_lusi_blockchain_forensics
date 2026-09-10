@@ -49,7 +49,7 @@
       />
     </label>
     <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
-      {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
+      {{ isAnalyzing ? t('Analiza...', 'Analyzing...') : t('ANALIZIRAJ', 'ANALYZE') }}
     </button>
   </div>
 
@@ -57,15 +57,28 @@
 
   <ng-container *ngIf="result">
     <div class="result-meta">
-      <span class="tx-count-pill">{{ result.total_events }} swap{{ result.total_events === 1 ? '' : 's' }} detected</span>
+      <span class="tx-count-pill">
+        {{ result.total_events }}
+        {{
+          t(
+            result.total_events === 1 ? 'swap detektovan' : 'swap događaja detektovano',
+            'swap' + (result.total_events === 1 ? '' : 's') + ' detected'
+          )
+        }}
+      </span>
       <button
         type="button"
         class="ghost-button"
         (click)="openSignatureDialog()"
         [disabled]="isExportingPdf"
-        title="Izvezi PDF izveštaj sa trenutnim nalazima, potpisan i sa kontrolnim brojem za proveru"
+        [title]="
+          t(
+            'Izvezi PDF izveštaj sa trenutnim nalazima, potpisan i sa kontrolnim brojem za proveru',
+            'Export a PDF report with the current findings, signed and with a verification code'
+          )
+        "
       >
-        {{ isExportingPdf ? 'Generisanje PDF-a...' : 'Izvezi PDF izveštaj' }}
+        {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
       </button>
     </div>
 
@@ -99,10 +112,10 @@
 
         <div class="swap-footer">
           <span
-            >Time: {{ event.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
+            >{{ t('Vreme', 'Time') }}: {{ event.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
               *ngIf="event.time_gap_seconds > 0"
             >
-              · gap {{ event.time_gap_seconds }}s</ng-container
+              · {{ t('razmak', 'gap') }} {{ event.time_gap_seconds }}s</ng-container
             ></span
           >
           <span *ngFor="let line of txHashLines(event)">{{ line.label }}: {{ line.hash }}</span>
@@ -111,7 +124,7 @@
     </div>
 
     <ng-template #noSwaps>
-      <p class="empty-hint">No DEX swaps detected for this address.</p>
+      <p class="empty-hint">{{ t('Nijedan DEX swap nije detektovan za ovu adresu.', 'No DEX swaps detected for this address.') }}</p>
     </ng-template>
 
     <p class="disclaimer-note">{{ result.disclaimer }}</p>
