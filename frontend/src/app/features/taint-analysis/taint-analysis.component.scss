@@ -35,58 +35,15 @@
   gap: 1rem;
 }
 
-.active-case-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1rem;
-  border-radius: 1rem;
-  border: 1px solid var(--tx-border);
-  background: rgba(125, 211, 252, 0.06);
-}
-
-.active-case-banner strong {
-  display: block;
-  color: var(--tx-heading);
-}
-
-.active-case-banner .muted,
 .muted {
   color: var(--tx-muted);
   font-size: 0.9rem;
-}
-
-.active-case-banner .muted a {
-  color: var(--tx-kicker);
 }
 
 .case-graph-error,
 .taint-error {
   margin: 0;
   color: #fca5a5;
-}
-
-.evidence-picker label {
-  display: grid;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  color: var(--tx-muted);
-}
-
-.evidence-picker select {
-  width: 100%;
-  padding: 0.8rem 0.95rem;
-  border-radius: 0.9rem;
-  border: 1px solid var(--tx-border);
-  color: var(--tx-heading);
-  background: var(--tx-chip-bg);
-}
-
-.evidence-picker select option {
-  color: #0b1526;
-  background: #ffffff;
 }
 
 .panel-kicker {
@@ -102,36 +59,168 @@ h3 {
   margin: 0;
 }
 
-.taint-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-end;
-  flex-wrap: wrap;
+/* ---------- compact top controls ---------- */
+
+.taint-controls {
+  border: 1px solid var(--tx-border);
+  border-radius: 1rem;
+  background: var(--tx-surface);
+  overflow: hidden;
 }
 
-.taint-header-text {
-  flex: 1 1 auto;
+.tc-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.tc-case {
+  display: grid;
+  gap: 0.1rem;
+  align-self: center;
+}
+
+.tc-eyebrow {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tx-kicker);
+}
+
+.tc-case strong {
+  font-size: 0.92rem;
+  color: var(--tx-heading);
+}
+
+.tc-nocase {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--tx-dim);
+}
+
+.tc-nocase a {
+  color: var(--tx-kicker);
+}
+
+.tc-field {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
-.taint-header p {
+.tc-field-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--tx-dim);
-  max-width: 60rem;
 }
 
-.intro-hint {
+.tc-field select {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--tx-border);
+  color: var(--tx-heading);
+  background: var(--tx-chip-bg);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.tc-field select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.tc-fit {
+  align-self: center;
+  margin-left: auto;
+}
+
+.tc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
   padding: 0.7rem 1rem;
-  margin: 0;
-  border-radius: 1rem;
-  border: 1px solid rgba(125, 211, 252, 0.25);
-  background: rgba(125, 211, 252, 0.06);
-  color: var(--tx-text);
-  font-size: 0.88rem;
+  border-top: 1px solid var(--tx-border);
 }
 
-.intro-hint strong {
+.tc-head h2 {
+  font-size: 1.25rem;
+  color: var(--tx-heading);
+  letter-spacing: -0.02em;
+}
+
+.tc-instruction {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--tx-dim);
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.tc-about {
+  border-top: 1px solid var(--tx-border);
+}
+
+.tc-about summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.55rem 1rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tx-dim);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.tc-about summary::-webkit-details-marker {
+  display: none;
+}
+
+.tc-about summary::before {
+  content: '▸';
+  font-size: 0.7rem;
   color: var(--tx-kicker);
+  transition: transform 0.14s ease;
+}
+
+.tc-about[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.tc-about summary:hover {
+  color: var(--tx-heading);
+  background: var(--tx-chip-bg);
+}
+
+.tc-about p {
+  margin: 0;
+  padding: 0 1rem 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--tx-text);
+}
+
+.tc-about p strong {
+  color: var(--tx-kicker);
+}
+
+.taint-header {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
 }
 
 .stats {

@@ -1,44 +1,62 @@
 <div class="taint-shell">
-  <div class="active-case-banner">
-    <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">{{ t('Aktivan slučaj', 'Active case') }}</span>
-      <strong>{{ activeCase.name }}</strong>
+  <div class="taint-controls">
+    <div class="tc-bar">
+      <div class="tc-case" *ngIf="activeCase; else noCase">
+        <span class="tc-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="tc-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
+
+      <label class="tc-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="tc-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+
+      <button type="button" class="ghost-button tc-fit" (click)="fitWholeGraph()" [disabled]="!graph">
+        {{ t('Prikaži ceo graf', 'Fit whole graph') }}
+      </button>
     </div>
-    <ng-template #noCase>
-      <span class="muted">
-        {{ t('Nije izabran slučaj — idi na', 'No case selected — go to') }}
-        <a routerLink="/cases">{{ t('Slučajevi', 'Cases') }}</a>
-        {{ t('da izabereš jedan.', 'to pick one.') }}
-      </span>
-    </ng-template>
+
+    <div class="tc-head">
+      <div>
+        <p class="panel-kicker">{{ t('Praćenje zaprljanih sredstava', 'Tracing tainted funds') }}</p>
+        <h2>{{ t('Taint analiza', 'Taint analysis') }}</h2>
+      </div>
+      <p class="tc-instruction" *ngIf="!hasRunTaint">
+        {{ t('Klikni čvorove na grafu da ih označiš kao izvor, ili unesi adresu ručno ispod.',
+              'Click nodes on the graph to mark them as a source, or enter an address manually below.') }}
+      </p>
+      <p class="tc-instruction" *ngIf="hasRunTaint">
+        {{ t('Boja čvora = procenat zaprljanosti (tamno 0% → crveno 100%). Klikni čvor za detalje.',
+              'Node color = taint percentage (dark 0% → red 100%). Click a node for details.') }}
+      </p>
+    </div>
+
+    <details class="tc-about">
+      <summary>{{ t('Šta radi taint analiza?', 'What does taint analysis do?') }}</summary>
+      <p>
+        {{ t('Kad se sumnjiv/ukraden novac pomeša sa tuđim, čistim sredstvima (npr. u mikseru), ova analiza pokazuje',
+              'When suspicious/stolen money is mixed with someone else’s clean funds (e.g. in a mixer), this analysis shows') }}
+        <strong>{{ t('koliko tačno', 'exactly how much') }}</strong>
+        {{ t('od sredstava na svakoj adresi zapravo potiče od tog izvora — ne samo „da li je umešana", nego i koliki procenat.',
+              'of the funds at each address actually originate from that source — not just “whether it is involved”, but what percentage.') }}
+      </p>
+    </details>
   </div>
 
-  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
-    <label>
-      {{ t('Prikaz transakcija', 'Transaction view') }}
-      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
-        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
-          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
-        </option>
-      </select>
-    </label>
-  </div>
   <p class="case-graph-error" *ngIf="graphError">{{ graphError }}</p>
 
-  <div class="taint-header">
-    <div class="taint-header-text">
-      <p class="panel-kicker">{{ t('Praćenje zaprljanih sredstava', 'Tracing tainted funds') }}</p>
-      <h2>{{ t('Taint analiza', 'Taint analysis') }}</h2>
-      <p *ngIf="!hasRunTaint">
-        {{ t('Klikni na jedan ili više čvorova na grafu da ih označiš kao izvor („prljav" čvor), ili unesi adresu ručno ispod.',
-              'Click one or more nodes on the graph to mark them as a source (“tainted” node), or enter an address manually below.') }}
-      </p>
-      <p *ngIf="hasRunTaint">
-        {{ t('Boja čvora pokazuje procenat zaprljanosti — od tamne (0%) do crvene (100%). Klikni na čvor za detalje.',
-              'A node’s color shows its taint percentage — from dark (0%) to red (100%). Click a node for details.') }}
-      </p>
-    </div>
+  <div class="taint-header" *ngIf="hasRunTaint">
     <div class="stats">
       <button type="button" class="ghost-button" (click)="fitWholeGraph()" [disabled]="!graph">{{ t('Prikaži ceo graf', 'Fit whole graph') }}</button>
       <button
@@ -96,14 +114,6 @@
   </div>
 
   <p class="taint-error" *ngIf="hasRunTaint && taintError">{{ taintError }}</p>
-
-  <p class="intro-hint">
-    {{ t('Cilj: kad se sumnjiv/ukraden novac pomeša sa tuđim, čistim sredstvima (npr. u mikseru), ova analiza pokazuje',
-          'Goal: when suspicious/stolen money is mixed with someone else’s clean funds (e.g. in a mixer), this analysis shows') }}
-    <strong>{{ t('koliko tačno', 'exactly how much') }}</strong>
-    {{ t('od sredstava na svakoj adresi zapravo potiče od tog izvora — ne samo „da li je umešana", nego i koliki procenat.',
-          'of the funds at each address actually originate from that source — not just “whether it is involved”, but what percentage.') }}
-  </p>
 
   <p class="currency-warning" *ngIf="hasRunTaint && taintResult?.single_hop_evidence">
     ⚠ <strong>{{ t('Evidencija prati novac samo jedan skok.', 'The evidence traces money for one hop only.') }}</strong>
