@@ -636,6 +636,52 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return this.getNodeTaintAtRank(String(this.selectedNode.id), this.timelinePosition);
   }
 
+  /** Coarse band for the node-details verdict header, by taint %. */
+  protected get selectedNodeTaintBand(): 'high' | 'medium' | 'low' | 'none' {
+    const pct = this.selectedNodeTaintPercentage;
+    if (pct >= 75) {
+      return 'high';
+    }
+    if (pct >= 40) {
+      return 'medium';
+    }
+    return pct > 0 ? 'low' : 'none';
+  }
+
+  /** On-chain red flags for the selected address, as short chip labels. */
+  protected get selectedNodeOnchainWarnings(): string[] {
+    if (this.isEnrichingAddress) {
+      return [];
+    }
+    const warnings: string[] = [];
+    if (this.addressEnrichment?.known_entity_category === 'sanctioned') {
+      warnings.push(this.t('Sankcionisan entitet', 'Sanctioned entity'));
+    }
+    if (this.isDustFunding) {
+      warnings.push(this.t('Dust finansiranje', 'Dust funding'));
+    }
+    if (this.fundingSourceBlacklistMatch) {
+      warnings.push(this.t('Izvor na crnoj listi', 'Blacklisted funding source'));
+    }
+    if (this.addressEnrichment?.funding_source_entity_category === 'sanctioned') {
+      warnings.push(this.t('Sankcionisan izvor', 'Sanctioned source'));
+    }
+    return warnings;
+  }
+
+  protected get taintIdentityGroupWarn(): boolean {
+    return !this.isEnrichingAddress && this.addressEnrichment?.known_entity_category === 'sanctioned';
+  }
+
+  protected get taintFundingGroupWarn(): boolean {
+    return (
+      !this.isEnrichingAddress &&
+      (this.isDustFunding ||
+        Boolean(this.fundingSourceBlacklistMatch) ||
+        this.addressEnrichment?.funding_source_entity_category === 'sanctioned')
+    );
+  }
+
   get selectedNodeHops(): TaintedHop[] {
     if (!this.selectedNode || !this.taintResult) {
       return [];

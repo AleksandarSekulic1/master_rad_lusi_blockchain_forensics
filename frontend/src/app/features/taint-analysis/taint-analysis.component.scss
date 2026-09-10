@@ -1213,3 +1213,170 @@ h3 {
   font-size: 0.7rem;
   color: var(--tx-muted);
 }
+
+/* ---------- node-details: verdict header + collapsible groups ---------- */
+
+.ni-verdict {
+  display: flex;
+  align-items: stretch;
+  gap: 0.85rem;
+  margin: 0.9rem 0 0.5rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--tx-border);
+  background: var(--tx-chip-bg);
+}
+
+.ni-verdict.band-high {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.1);
+}
+.ni-verdict.band-medium {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(217, 119, 6, 0.1);
+}
+.ni-verdict.band-low {
+  border-color: rgba(234, 179, 8, 0.4);
+  background: rgba(234, 179, 8, 0.08);
+}
+
+.ni-score {
+  flex: none;
+  display: grid;
+  place-items: center;
+  gap: 0.05rem;
+  min-width: 3.6rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.7rem;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.ni-verdict.band-high .ni-score {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+.ni-verdict.band-medium .ni-score {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+.ni-verdict.band-low .ni-score {
+  background: linear-gradient(135deg, #eab308, #ca8a04);
+}
+
+.ni-score-num {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--tx-heading);
+}
+.ni-verdict.band-high .ni-score-num,
+.ni-verdict.band-medium .ni-score-num,
+.ni-verdict.band-low .ni-score-num {
+  color: #ffffff;
+}
+
+.ni-score-cap {
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tx-dim);
+}
+.ni-verdict.band-high .ni-score-cap,
+.ni-verdict.band-medium .ni-score-cap,
+.ni-verdict.band-low .ni-score-cap {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ni-verdict-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.ni-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.ni-flag {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--tx-heading);
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.ni-flag.seed {
+  color: #92400e;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-color: transparent;
+}
+
+.ni-ok {
+  font-size: 0.8rem;
+  color: #16a34a;
+}
+
+.ni-group {
+  border-top: 1px solid var(--tx-border);
+}
+
+.ni-group summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.1rem;
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-dim);
+  transition: color 0.14s ease;
+}
+
+.ni-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.ni-group summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  color: var(--tx-kicker);
+  transition: transform 0.14s ease;
+}
+
+.ni-group[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.ni-group summary:hover {
+  color: var(--tx-heading);
+}
+
+.ni-count {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  background: var(--tx-border);
+  color: var(--tx-text-2);
+}
+
+.ni-warn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.ni-group dl {
+  margin: 0 0 0.7rem;
+  padding-left: 1.2rem;
+}
