@@ -30,29 +30,93 @@
     <p>{{ t('Analiza vremenskog obrasca aktivnosti blockchain adrese.', 'Analysis of the time-of-activity pattern of a blockchain address.') }}</p>
   </div>
 
-  <div class="address-form">
-    <label class="address-field">
-      {{ t('Adresa', 'Address') }}
-      <input
-        type="text"
-        [(ngModel)]="address"
-        placeholder="0x..."
-        (keydown.enter)="analyze()"
-        [disabled]="!activeCase"
-      />
-    </label>
+  <div class="address-picker">
+    <div class="address-picker-row">
+      <label class="address-field" *ngIf="caseAddresses.length > 0 || isLoadingCaseAddresses">
+        {{ t('Adrese iz slučaja', 'Case addresses') }}
+        <select
+          class="case-address-select"
+          [disabled]="!activeCase || isLoadingCaseAddresses || availableCaseAddresses.length === 0"
+          [ngModel]="''"
+          (ngModelChange)="onPickAddress($event)"
+        >
+          <option value="" disabled>
+            {{ isLoadingCaseAddresses
+                ? t('Učitavanje adresa…', 'Loading addresses…')
+                : availableCaseAddresses.length === 0
+                  ? t('Sve adrese su već dodate', 'All addresses already added')
+                  : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…') }}
+          </option>
+          <option *ngFor="let addr of availableCaseAddresses" [value]="addr">{{ addr }}</option>
+        </select>
+      </label>
+
+      <label class="address-field">
+        {{ t('Ili unesi adresu ručno', 'Or enter an address manually') }}
+        <input
+          type="text"
+          [(ngModel)]="address"
+          placeholder="0x..."
+          (keydown.enter)="addTypedAddress()"
+          [disabled]="!activeCase"
+        />
+      </label>
+
+      <button
+        type="button"
+        class="ghost-button add-address-button"
+        (click)="addTypedAddress()"
+        [disabled]="!activeCase || !address.trim()"
+      >
+        {{ t('Dodaj', 'Add') }}
+      </button>
+    </div>
+
+    <div class="queue-chips" *ngIf="queue.length > 0">
+      <span class="queue-label">{{ t('Za analizu', 'To analyse') }}:</span>
+      <span class="queue-chip" *ngFor="let addr of queue">
+        <span class="mono-clip">{{ addr }}</span>
+        <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
+      </span>
+    </div>
+
     <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
-      {{ isAnalyzing ? t('Analiza...', 'Analyzing...') : t('Analiziraj', 'Analyze') }}
+      {{ isAnalyzing
+          ? t('Analiza…', 'Analysing…')
+          : queue.length > 1
+            ? t('Analiziraj', 'Analyse') + ' (' + queue.length + ')'
+            : t('Analiziraj', 'Analyse') }}
     </button>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
 
-  <ng-container *ngIf="result">
+  <p class="error-inline" *ngFor="let run of failedRuns">
+    <span class="mono-clip">{{ run.address }}</span> — {{ run.error }}
+  </p>
+
+  <div class="result-tabs" *ngIf="runs.length > 1">
+    <button
+      type="button"
+      class="result-tab"
+      *ngFor="let run of runs"
+      [class.active]="run.address === activeAddress"
+      [class.failed]="!run.result"
+      (click)="setActiveAddress(run.address)"
+    >
+      <span class="mono-clip">{{ run.address }}</span>
+      <span class="result-tab-remove" (click)="$event.stopPropagation(); removeRun(run.address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</span>
+    </button>
+  </div>
+
+  <ng-container *ngIf="activeResult as result">
     <div class="behavioral-content">
       <section class="heatmap-panel">
         <div class="heatmap-panel-header">
-          <p class="panel-kicker">{{ t('Mapa aktivnosti', 'Activity heatmap') }}</p>
+          <div>
+            <p class="panel-kicker">{{ t('Mapa aktivnosti', 'Activity heatmap') }}</p>
+            <p class="heatmap-address mono-clip">{{ activeAddress }}</p>
+          </div>
           <span class="tx-count-pill">{{ result.total_transactions }} {{ t('transakcija', 'transactions') }} (UTC)</span>
         </div>
 
@@ -162,8 +226,8 @@
     </div>
   </ng-container>
 
-  <p class="empty-hint" *ngIf="!result && !analysisError">
-    {{ t('Unesi Ethereum adresu i klikni „Analiziraj" da vidiš mapu njene vremenske aktivnosti (UTC).',
-          'Enter an Ethereum address and click “Analyze” to see the heatmap of its time-of-day activity (UTC).') }}
+  <p class="empty-hint" *ngIf="runs.length === 0 && queue.length === 0 && !analysisError && !isAnalyzing">
+    {{ t('Izaberi jednu ili više adresa iz slučaja (ili ih unesi ručno), dodaj ih i klikni „Analiziraj" da vidiš mapu njihove vremenske aktivnosti (UTC).',
+          'Pick one or more addresses from the case (or enter them manually), add them and click “Analyse” to see the heatmap of their time-of-day activity (UTC).') }}
   </p>
 </div>

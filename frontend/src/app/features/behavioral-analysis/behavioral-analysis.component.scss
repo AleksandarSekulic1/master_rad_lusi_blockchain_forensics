@@ -152,7 +152,16 @@
   color: var(--ba-dim);
 }
 
-.address-form {
+.address-picker {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--ba-border);
+  background: var(--ba-panel-bg);
+}
+
+.address-picker-row {
   display: flex;
   align-items: flex-end;
   gap: 0.75rem;
@@ -163,30 +172,190 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   color: var(--ba-dim);
-  flex: 1 1 22rem;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
-.address-field input {
-  padding: 0.75rem 0.9rem;
-  border-radius: 0.8rem;
+.address-field input,
+.case-address-select {
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem;
   border: 1px solid var(--ba-border);
   background: var(--ba-field-bg);
   color: var(--ba-field-text);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+}
+
+.address-field input {
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
 }
 
-.address-field input:focus {
+.case-address-select {
+  text-overflow: ellipsis;
+}
+
+.case-address-select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.address-field input:focus,
+.case-address-select:focus {
   outline: none;
   border-color: var(--ba-accent);
 }
 
-.address-field input:disabled {
+.address-field input:disabled,
+.case-address-select:disabled {
   opacity: 0.5;
+}
+
+.ghost-button {
+  padding: 0.7rem 1rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--ba-border);
+  background: var(--ba-chip-bg);
+  color: var(--ba-text-2);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease;
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: var(--ba-accent);
+  color: var(--ba-heading);
+}
+
+.ghost-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.add-address-button {
+  flex: none;
+  align-self: flex-end;
+}
+
+.queue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.queue-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ba-muted);
+}
+
+.queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 16rem;
+  padding: 0.32rem 0.4rem 0.32rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ba-accent) 32%, transparent);
+  background: color-mix(in srgb, var(--ba-accent) 12%, transparent);
+  font-size: 0.74rem;
+  color: var(--ba-text-2);
+}
+
+.queue-chip button {
+  flex: none;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.queue-chip button:hover {
+  opacity: 1;
+}
+
+.mono-clip {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analyze-button {
+  justify-self: start;
+}
+
+/* --- result switcher (one tab per analysed address) --- */
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.result-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 15rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.7rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--ba-border);
+  background: var(--ba-chip-bg);
+  font: inherit;
+  font-size: 0.74rem;
+  color: var(--ba-dim);
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.result-tab:hover {
+  color: var(--ba-heading);
+}
+
+.result-tab.active {
+  border-color: var(--ba-accent);
+  color: var(--ba-heading);
+  background: color-mix(in srgb, var(--ba-accent) 12%, transparent);
+}
+
+.result-tab.failed {
+  color: var(--ba-error);
+  border-color: color-mix(in srgb, var(--ba-error) 40%, transparent);
+}
+
+.result-tab-remove {
+  flex: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  opacity: 0.6;
+}
+
+.result-tab-remove:hover {
+  opacity: 1;
+}
+
+.heatmap-address {
+  margin: 0.15rem 0 0;
+  max-width: 22rem;
+  font-size: 0.72rem;
+  color: var(--ba-muted);
 }
 
 .primary-button {
@@ -244,10 +413,14 @@
 .heatmap-panel-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
   margin-bottom: 0.85rem;
+}
+
+.heatmap-panel-header > div {
+  min-width: 0;
 }
 
 .tx-count-pill {
