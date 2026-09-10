@@ -251,12 +251,14 @@
 }
 
 .tx-count-pill {
-  padding: 0.4rem 0.75rem;
+  padding: 0.4rem 0.8rem;
   border-radius: 999px;
-  background: var(--ba-chip-bg);
-  border: 1px solid var(--ba-border-soft);
-  color: var(--ba-dim);
-  font-size: 0.78rem;
+  background: color-mix(in srgb, var(--ba-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ba-accent) 32%, transparent);
+  color: var(--ba-text-2);
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .heatmap-scroll {
@@ -332,39 +334,107 @@
 }
 
 .heatmap-table-toggle {
-  margin-top: 1rem;
+  margin-top: 1.1rem;
 }
 
 .heatmap-table-toggle summary {
-  font-size: 0.78rem;
-  color: var(--ba-link);
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  list-style: none;
   width: fit-content;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--ba-border);
+  background: var(--ba-chip-bg);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ba-dim);
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.heatmap-table-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.heatmap-table-toggle summary:hover {
+  color: var(--ba-heading);
+  border-color: var(--ba-accent);
+}
+
+.ht-chevron {
+  font-size: 0.6rem;
+  color: var(--ba-faint);
+  transition: transform 0.14s ease;
+}
+
+.heatmap-table-toggle[open] .ht-chevron {
+  transform: rotate(90deg);
 }
 
 .heatmap-table-scroll {
   overflow-x: auto;
-  margin-top: 0.7rem;
+  margin-top: 0.85rem;
+  border: 1px solid var(--ba-border-soft);
+  border-radius: 0.75rem;
 }
 
 .heatmap-table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
-  color: var(--ba-text-2);
+  color: var(--ba-text);
   min-width: 44rem;
 }
 
 .heatmap-table th,
 .heatmap-table td {
-  padding: 0.3rem 0.4rem;
+  padding: 0.34rem 0.5rem;
   text-align: center;
-  border: 1px solid var(--ba-border-soft);
+  border-bottom: 1px solid var(--ba-border-soft);
 }
 
-.heatmap-table th {
+.heatmap-table tr:last-child th,
+.heatmap-table tr:last-child td {
+  border-bottom: none;
+}
+
+.heatmap-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--ba-panel-bg);
+  color: var(--ba-faint);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ba-border);
+}
+
+.heatmap-table tbody th {
+  position: sticky;
+  left: 0;
+  background: var(--ba-panel-bg);
   color: var(--ba-dim);
-  font-weight: 500;
+  font-weight: 600;
+  text-align: left;
+  border-right: 1px solid var(--ba-border-soft);
+}
+
+.heatmap-table tbody tr:nth-child(even) td {
+  background: var(--ba-chip-bg);
+}
+
+.heatmap-table td {
+  font-weight: 600;
+}
+
+.heatmap-table td.zero {
+  color: var(--ba-faint);
+  font-weight: 400;
+  opacity: 0.5;
 }
 
 .sr-only {
@@ -384,26 +454,37 @@
 .stats-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 1rem;
+  gap: 0.5rem;
+  padding: 1.1rem;
   border-radius: 1rem;
   border: 1px solid var(--ba-border);
   background: var(--ba-panel-bg);
   height: fit-content;
 }
 
+.stats-panel > .panel-kicker {
+  margin-bottom: 0.25rem;
+}
+
 .stat-tile {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.55rem 0.7rem;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
   border-radius: 0.75rem;
   background: var(--ba-chip-bg);
   border: 1px solid var(--ba-border-soft);
+  transition: border-color 0.14s ease, transform 0.14s ease;
+}
+
+.stat-tile:hover {
+  border-color: color-mix(in srgb, var(--ba-accent) 40%, transparent);
+  transform: translateY(-1px);
 }
 
 .stat-label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
   color: var(--ba-muted);
 }
 
@@ -411,6 +492,7 @@
   font-size: 1.05rem;
   font-weight: 600;
   color: var(--ba-text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Timezone heuristic: visually set apart from the 4 observed-fact tiles above (this

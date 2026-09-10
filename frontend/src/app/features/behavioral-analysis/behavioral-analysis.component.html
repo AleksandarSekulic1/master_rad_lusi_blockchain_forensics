@@ -82,7 +82,10 @@
         </div>
 
         <details class="heatmap-table-toggle">
-          <summary>{{ t('Prikaži kao tabelu', 'Show as table') }}</summary>
+          <summary>
+            <span class="ht-chevron" aria-hidden="true">▸</span>
+            {{ t('Prikaži kao tabelu', 'Show as table') }}
+          </summary>
           <div class="heatmap-table-scroll">
             <table class="heatmap-table">
               <caption class="sr-only">{{ t('Broj transakcija po danu u nedelji i UTC satu', 'Transaction count by weekday and UTC hour') }}</caption>
@@ -95,7 +98,7 @@
               <tbody>
                 <tr *ngFor="let day of days">
                   <th scope="row">{{ dayShortLabels[day] }}</th>
-                  <td *ngFor="let hour of hours">{{ cellCount(day, hour) }}</td>
+                  <td *ngFor="let hour of hours" [class.zero]="!cellCount(day, hour)">{{ cellCount(day, hour) }}</td>
                 </tr>
               </tbody>
             </table>
