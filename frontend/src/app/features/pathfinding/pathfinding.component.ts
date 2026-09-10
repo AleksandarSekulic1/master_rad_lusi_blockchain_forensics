@@ -15,6 +15,7 @@ import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup'
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   CasePathfindingResult,
   CaseSummary,
@@ -112,8 +113,14 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     private readonly api: ApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {
     ensureCytoscapeExtensionsRegistered();
+  }
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
   }
 
   ngOnInit(): void {

@@ -1,22 +1,26 @@
 <div class="graph-shell">
   <div class="active-case-banner">
     <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">Aktivan slučaj</span>
+      <span class="panel-kicker">{{ t('Aktivan slučaj', 'Active case') }}</span>
       <strong>{{ activeCase.name }}</strong>
     </div>
     <ng-template #noCase>
-      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
+      <span class="muted">
+        {{ t('Nije izabran slučaj — idi na', 'No case selected — go to') }}
+        <a routerLink="/cases">{{ t('Slučajevi', 'Cases') }}</a>
+        {{ t('da izabereš jedan.', 'to pick one.') }}
+      </span>
     </ng-template>
     <button type="button" class="ghost-button" (click)="loadGraph()" [disabled]="!activeCase || isLoadingGraph">
-      {{ isLoadingGraph ? 'Učitavanje...' : 'Osveži graf' }}
+      {{ isLoadingGraph ? t('Učitavanje...', 'Loading...') : t('Osveži graf', 'Refresh graph') }}
     </button>
   </div>
 
   <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
     <label>
-      Prikaz transakcija
+      {{ t('Prikaz transakcija', 'Transaction view') }}
       <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">Sve transakcije (kombinovano)</option>
+        <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
         <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
           {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
         </option>
