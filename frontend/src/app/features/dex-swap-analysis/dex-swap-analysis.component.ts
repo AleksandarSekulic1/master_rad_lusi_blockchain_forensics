@@ -14,6 +14,7 @@ import { SignaturePadComponent } from '../../core/components/signature-pad/signa
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   CaseSummary,
   DexSwapAnalysisResult,
@@ -73,7 +74,14 @@ export class DexSwapAnalysisComponent implements OnInit {
     private readonly api: ApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as taint-analysis.component.ts's t()). */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.state.selectedCase$

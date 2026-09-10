@@ -3,6 +3,33 @@
    the relevant shell rules, not a shared import) - kept consistent on purpose so DEX Swap
    Analysis reads as a sibling of the other analysis pages, not a different app. */
 
+/* Theme tokens for the page's top section (case banner, evidence picker, header) - dark
+   by default, overridden under [data-theme='light']. Same approach as
+   taint-analysis.component.scss's :host / :host-context block. */
+:host {
+  --dx-banner-border: rgba(148, 163, 184, 0.18);
+  --dx-banner-bg: rgba(125, 211, 252, 0.06);
+  --dx-heading: #f4f7fe;
+  --dx-muted: #8ea6c7;
+  --dx-kicker: #7bd6ff;
+  --dx-dim: #9ab1d0;
+  --dx-field-border: rgba(148, 163, 184, 0.18);
+  --dx-field-text: #eef4ff;
+  --dx-field-bg: rgba(255, 255, 255, 0.03);
+}
+
+:host-context([data-theme='light']) {
+  --dx-banner-border: rgba(15, 23, 42, 0.12);
+  --dx-banner-bg: rgba(37, 99, 235, 0.07);
+  --dx-heading: #16233b;
+  --dx-muted: #55658c;
+  --dx-kicker: #2563eb;
+  --dx-dim: #55658c;
+  --dx-field-border: rgba(15, 23, 42, 0.14);
+  --dx-field-text: #16233b;
+  --dx-field-bg: rgba(15, 23, 42, 0.03);
+}
+
 .dex-swap-shell {
   display: grid;
   gap: 1rem;
@@ -16,29 +43,29 @@
   flex-wrap: wrap;
   padding: 0.85rem 1rem;
   border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(125, 211, 252, 0.06);
+  border: 1px solid var(--dx-banner-border);
+  background: var(--dx-banner-bg);
 }
 
 .active-case-banner strong {
   display: block;
-  color: #f4f7fe;
+  color: var(--dx-heading);
 }
 
 .active-case-banner .muted {
-  color: #8ea6c7;
+  color: var(--dx-muted);
   font-size: 0.9rem;
 }
 
 .active-case-banner .muted a {
-  color: #7bd6ff;
+  color: var(--dx-kicker);
 }
 
 .evidence-picker label {
   display: grid;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: #8ea6c7;
+  color: var(--dx-muted);
   max-width: 28rem;
 }
 
@@ -46,9 +73,9 @@
   width: 100%;
   padding: 0.8rem 0.95rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--dx-field-border);
+  color: var(--dx-field-text);
+  background: var(--dx-field-bg);
 }
 
 .evidence-picker select option {
@@ -61,14 +88,14 @@
   font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--dx-kicker);
 }
 
 .dex-swap-header h2 {
   margin: 0;
   font-size: clamp(1.8rem, 3.4vw, 2.5rem);
   letter-spacing: 0.02em;
-  color: #f4f7fe;
+  color: var(--dx-heading);
 }
 
 .dex-swap-header p:not(.panel-kicker) {
@@ -76,7 +103,7 @@
   max-width: 46rem;
   font-size: 0.9rem;
   line-height: 1.55;
-  color: #9ab1d0;
+  color: var(--dx-dim);
 }
 
 .address-form {
