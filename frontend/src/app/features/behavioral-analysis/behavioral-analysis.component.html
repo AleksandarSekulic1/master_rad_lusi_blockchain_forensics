@@ -210,16 +210,16 @@
             </div>
             <div class="stat-tile">
               <span class="stat-label">{{ (tz.possible_regions?.length ?? 0) > 1 ? t('Mogući regioni', 'Possible regions') : t('Mogući region', 'Possible region') }}</span>
-              <span class="stat-value">{{ tz.possible_regions?.join(', ') }}</span>
+              <span class="stat-value">{{ regionLabels(tz.possible_regions) }}</span>
             </div>
             <div class="stat-tile">
               <span class="stat-label">{{ t('Pouzdanost', 'Confidence') }}</span>
-              <span class="stat-value">{{ tz.confidence }}</span>
+              <span class="stat-value">{{ confidenceLabel(tz.confidence) }}</span>
             </div>
-            <p class="timezone-disclaimer"><span class="disclaimer-label">{{ t('Napomena:', 'Note:') }}</span> {{ tz.disclaimer }}</p>
+            <p class="timezone-disclaimer"><span class="disclaimer-label">{{ t('Napomena:', 'Note:') }}</span> {{ timezoneDisclaimer(tz) }}</p>
           </ng-container>
           <ng-template #timezoneUnavailable>
-            <p class="timezone-disclaimer">{{ tz.message }}</p>
+            <p class="timezone-disclaimer">{{ timezoneUnavailableMessage(tz) }}</p>
           </ng-template>
         </div>
       </aside>

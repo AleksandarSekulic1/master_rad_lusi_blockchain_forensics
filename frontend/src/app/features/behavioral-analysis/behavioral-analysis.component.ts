@@ -15,6 +15,7 @@ import {
   CaseSummary,
   EvidenceEntry,
   NodeLinkGraphResponse,
+  TimezoneEstimate,
 } from '../../models/blockchain-forensics.models';
 
 /** One completed (or failed) per-address behavioral run. Kept as a flat list so the page
@@ -332,5 +333,60 @@ export class BehavioralAnalysisComponent implements OnInit {
     const first = activeHours[0];
     const last = activeHours[activeHours.length - 1];
     return `${first}:00–${last}:00 UTC`;
+  }
+
+  // --- Timezone-estimate labels: the backend sends English/Serbian-only strings for a few
+  // of these fields, so they are re-derived here in the active UI language. ---
+
+  private static readonly REGION_LABELS_SR: Record<string, string> = {
+    Europe: 'Evropa',
+    Africa: 'Afrika',
+    'Middle East': 'Bliski istok',
+    Asia: 'Azija',
+    Oceania: 'Okeanija',
+    'North America': 'Severna Amerika',
+    'South America': 'Južna Amerika',
+  };
+
+  protected timezoneUnavailableMessage(tz: TimezoneEstimate): string {
+    if (tz.reason === 'no_compatible_offset') {
+      return this.t(
+        'Aktivnost je razvučena kroz ceo dan — nijedna vremenska zona nije dovoljno kompatibilna za procenu.',
+        'Activity is spread across the whole day — no time zone is compatible enough for an estimate.',
+      );
+    }
+    // insufficient_transactions (and any future reason) fall back to the count message.
+    return this.t(
+      'Nedovoljno podataka za pouzdanu procenu vremenske zone (potrebno je bar 8 transakcija).',
+      'Insufficient data for a reliable timezone estimate (at least 8 transactions are needed).',
+    );
+  }
+
+  protected timezoneDisclaimer(tz: TimezoneEstimate): string {
+    return this.t(
+      tz.disclaimer ??
+        'Vremenski obrazac predstavlja heuristički indikator i ne predstavlja dokaz stvarne lokacije vlasnika adrese.',
+      'The time pattern is a heuristic indicator, not proof of the address owner’s actual location.',
+    );
+  }
+
+  protected confidenceLabel(confidence: TimezoneEstimate['confidence']): string {
+    if (confidence === 'High') {
+      return this.t('visoka', 'high');
+    }
+    if (confidence === 'Medium') {
+      return this.t('srednja', 'medium');
+    }
+    return this.t('niska', 'low');
+  }
+
+  protected regionLabels(regions: readonly string[] | undefined): string {
+    if (!regions?.length) {
+      return '—';
+    }
+    if (this.settings.lang() !== 'sr') {
+      return regions.join(', ');
+    }
+    return regions.map((region) => BehavioralAnalysisComponent.REGION_LABELS_SR[region] ?? region).join(', ');
   }
 }

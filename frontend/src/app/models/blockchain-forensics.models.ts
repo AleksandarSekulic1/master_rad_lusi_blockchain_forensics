@@ -265,6 +265,9 @@ export interface TimezoneEstimate {
   disclaimer?: string;
   /** Only present when `available` is false - e.g. "Insufficient data for reliable timezone inference." */
   message?: string;
+  /** Only present when `available` is false: 'insufficient_transactions' | 'no_compatible_offset'.
+   * Lets the UI show a language-specific, reason-specific fallback instead of `message`. */
+  reason?: string;
 }
 
 /** Result of the case-scoped Behavioral / Time-of-Day Analysis endpoint
