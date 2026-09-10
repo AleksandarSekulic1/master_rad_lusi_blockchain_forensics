@@ -1973,7 +1973,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       .map(([address, pct]) => `${truncate ? this.truncateAddress(address) : address}: ${pct}%`)
       .join(separator);
     const remaining = entries.length - maxEntries;
-    return remaining > 0 ? `${shown}${separator}+${remaining} drugih` : shown;
+    return remaining > 0 ? `${shown}${separator}+${remaining} ${this.lx('drugih', 'others')}` : shown;
   }
 
   /** Auto-composed plain-language wrap-up for the very end of the report - the same facts
@@ -1988,28 +1988,55 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     const multiSourceNode = tainted.find((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
 
     const sentences: string[] = [
-      `Analiza je identifikovala ${tainted.length} adresa koje sadrze zaprljana sredstva, od ukupno ${totalNodes} adresa obuhvacenih ovom evidencijom.`,
+      this.lx(
+        `Analiza je identifikovala ${tainted.length} adresa koje sadrze zaprljana sredstva, od ukupno ${totalNodes} adresa obuhvacenih ovom evidencijom.`,
+        `The analysis identified ${tainted.length} addresses holding tainted funds, out of ${totalNodes} addresses covered by this evidence.`,
+      ),
     ];
 
     if (cashOut.length === 0) {
-      sentences.push('Nije detektovana nijedna verovatna tacka unovcavanja u ovoj evidenciji.');
+      sentences.push(
+        this.lx(
+          'Nije detektovana nijedna verovatna tacka unovcavanja u ovoj evidenciji.',
+          'No likely cash-out point was detected in this evidence.',
+        ),
+      );
     } else if (cashOut.length === 1) {
       sentences.push(
-        `Detektovana je jedna verovatna tacka unovcavanja (adresa ${cashOut[0].address}) sa konacnim procentom zaprljanosti od ${cashOut[0].taint_percentage}%.`,
+        this.lx(
+          `Detektovana je jedna verovatna tacka unovcavanja (adresa ${cashOut[0].address}) sa konacnim procentom zaprljanosti od ${cashOut[0].taint_percentage}%.`,
+          `One likely cash-out point was detected (address ${cashOut[0].address}) with a final taint percentage of ${cashOut[0].taint_percentage}%.`,
+        ),
       );
     } else {
       const pcts = cashOut.map((item) => item.taint_percentage);
       sentences.push(
-        `Detektovano je ${cashOut.length} verovatnih tacaka unovcavanja, sa procentom zaprljanosti u rasponu od ${Math.min(...pcts)}% do ${Math.max(...pcts)}%.`,
+        this.lx(
+          `Detektovano je ${cashOut.length} verovatnih tacaka unovcavanja, sa procentom zaprljanosti u rasponu od ${Math.min(...pcts)}% do ${Math.max(...pcts)}%.`,
+          `${cashOut.length} likely cash-out points were detected, with taint percentages ranging from ${Math.min(...pcts)}% to ${Math.max(...pcts)}%.`,
+        ),
       );
     }
 
-    sentences.push(`Koriscen je ${seedCount} ${seedCount === 1 ? 'pocetni izvor' : 'pocetnih izvora'} (seed adresa).`);
-    sentences.push(`Najveci zabelezeni procenat zaprljanosti iznosio je ${maxPct}% (nivo rizika: ${this.riskLabel(maxPct)}).`);
+    sentences.push(
+      this.lx(
+        `Koriscen je ${seedCount} ${seedCount === 1 ? 'pocetni izvor' : 'pocetnih izvora'} (seed adresa).`,
+        `${seedCount} ${seedCount === 1 ? 'seed source' : 'seed sources'} (seed addresses) were used.`,
+      ),
+    );
+    sentences.push(
+      this.lx(
+        `Najveci zabelezeni procenat zaprljanosti iznosio je ${maxPct}% (nivo rizika: ${this.riskLabel(maxPct)}).`,
+        `The highest recorded taint percentage was ${maxPct}% (risk level: ${this.riskLabel(maxPct)}).`,
+      ),
+    );
 
     if (multiSourceNode) {
       sentences.push(
-        `Pracena adresa ${multiSourceNode.address} sadrzala je sredstva poreklom iz vise razlicitih izvora (${this.formatBreakdownForPdf(multiSourceNode.taint_by_source)}).`,
+        this.lx(
+          `Pracena adresa ${multiSourceNode.address} sadrzala je sredstva poreklom iz vise razlicitih izvora (${this.formatBreakdownForPdf(multiSourceNode.taint_by_source)}).`,
+          `The traced address ${multiSourceNode.address} held funds originating from several different sources (${this.formatBreakdownForPdf(multiSourceNode.taint_by_source)}).`,
+        ),
       );
     }
 
@@ -2368,7 +2395,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
       const breakdownNote = doc.splitTextToSize(
-        'Pun spisak doprinosa svakog izvora za adrese cija su sredstva poreklom iz vise razlicitih seed adresa, sortiran od najveceg ka najmanjem procentu.',
+        L(
+          'Pun spisak doprinosa svakog izvora za adrese cija su sredstva poreklom iz vise razlicitih seed adresa, sortiran od najveceg ka najmanjem procentu.',
+          'The full list of each source’s contribution for addresses whose funds originate from several different seed addresses, sorted from the highest to the lowest percentage.',
+        ),
         usableWidth,
       );
       doc.text(breakdownNote, marginX, y);
@@ -2417,8 +2447,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
       const note = doc.splitTextToSize(
-        'Primili su zaprljana sredstva i nikad ih dalje nisu poslali u ovoj evidenciji - verovatno mesto gde je novac ' +
-          'napustio pracenu mrezu.',
+        L(
+          'Primili su zaprljana sredstva i nikad ih dalje nisu poslali u ovoj evidenciji - verovatno mesto gde je novac ' +
+            'napustio pracenu mrezu.',
+          'They received tainted funds and never sent them onward in this evidence - the likely place where the money ' +
+            'left the traced network.',
+        ),
         usableWidth,
       );
       doc.text(note, marginX, y);
@@ -2430,10 +2464,16 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       // than a finding.
       if (result.single_hop_evidence) {
         const shapeLines = doc.splitTextToSize(
-          `UPOZORENJE: ova evidencija prati novac samo jedan skok - od ${result.node_count} adresa samo ` +
-            `${result.relay_count} i prima i prosledjuje sredstva. Adrese navedene ovde nisu utvrdjene tacke ` +
-            'unovcavanja nego ivica prikupljenih podataka: sta su radile dalje nije ni povuceno u ovaj slucaj. ' +
-            'Iz istog razloga procenti stoje na 100% - nista se nije mesalo, pa nema razblazivanja.',
+          L(
+            `UPOZORENJE: ova evidencija prati novac samo jedan skok - od ${result.node_count} adresa samo ` +
+              `${result.relay_count} i prima i prosledjuje sredstva. Adrese navedene ovde nisu utvrdjene tacke ` +
+              'unovcavanja nego ivica prikupljenih podataka: sta su radile dalje nije ni povuceno u ovaj slucaj. ' +
+              'Iz istog razloga procenti stoje na 100% - nista se nije mesalo, pa nema razblazivanja.',
+            `WARNING: this evidence traces the money only one hop - of ${result.node_count} addresses only ` +
+              `${result.relay_count} both receive and forward funds. The addresses listed here are not confirmed ` +
+              'cash-out points but the edge of the collected data: what they did next was never pulled into this case. ' +
+              'For the same reason the percentages stand at 100% - nothing was mixed, so there is no dilution.',
+          ),
           usableWidth - 8,
         );
         const warnHeight = shapeLines.length * 4.2 + 6;
@@ -2466,7 +2506,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFontSize(8.5);
         doc.setTextColor(...TEXT_GRAY);
         const overflowLines = doc.splitTextToSize(
-          `+ ${this.hiddenCashOutCount} dodatnih tacaka unovcavanja detektovano (potpun spisak dostupan kroz CSV/GraphML izvoz slucaja).`,
+          L(
+            `+ ${this.hiddenCashOutCount} dodatnih tacaka unovcavanja detektovano (potpun spisak dostupan kroz CSV/GraphML izvoz slucaja).`,
+            `+ ${this.hiddenCashOutCount} additional cash-out points detected (the full list is available through the case CSV/GraphML export).`,
+          ),
           usableWidth,
         );
         doc.text(overflowLines, marginX, y);
@@ -2489,8 +2532,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
       const historyNote = doc.splitTextToSize(
-        'Kompletna hronologija transakcija koje su promenile balans gorenavedenih adresa, ukljucujuci i cist(ij)e ' +
-          'prilive koji su razblazili procenat, ne samo one koje su ga povecale.',
+        L(
+          'Kompletna hronologija transakcija koje su promenile balans gorenavedenih adresa, ukljucujuci i cist(ij)e ' +
+            'prilive koji su razblazili procenat, ne samo one koje su ga povecale.',
+          'The complete chronology of transactions that changed the balance of the addresses above, including the ' +
+            'clean(er) inflows that diluted the percentage, not only those that raised it.',
+        ),
         usableWidth,
       );
       doc.text(historyNote, marginX, y);
@@ -2556,8 +2603,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
           doc.setFontSize(8);
           doc.setTextColor(...TEXT_GRAY);
           const hiddenLines = doc.splitTextToSize(
-            `+ ${hiddenCount} dodatnih transakcija (dalja neto promena procenta: ${netDelta > 0 ? '+' : ''}${netDelta} p.p.) - ` +
-              'kompletna istorija dostupna u aplikaciji, klikom na cvor.',
+            L(
+              `+ ${hiddenCount} dodatnih transakcija (dalja neto promena procenta: ${netDelta > 0 ? '+' : ''}${netDelta} p.p.) - ` +
+                'kompletna istorija dostupna u aplikaciji, klikom na cvor.',
+              `+ ${hiddenCount} additional transactions (further net change in percentage: ${netDelta > 0 ? '+' : ''}${netDelta} pp) - ` +
+                'the complete history is available in the application, by clicking the node.',
+            ),
             usableWidth,
           );
           doc.text(hiddenLines, marginX, y);
@@ -2589,7 +2640,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
       doc.text(
-        `Ukupno preneto (svih ${edgeDetails.transactions.length} transakcija): ${TaintAnalysisComponent.formatPdfAmount(edgeDetails.totalAmount)}`,
+        L(
+          `Ukupno preneto (svih ${edgeDetails.transactions.length} transakcija): ${TaintAnalysisComponent.formatPdfAmount(edgeDetails.totalAmount)}`,
+          `Total transferred (all ${edgeDetails.transactions.length} transactions): ${TaintAnalysisComponent.formatPdfAmount(edgeDetails.totalAmount)}`,
+        ),
         marginX,
         y,
       );
@@ -2627,7 +2681,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFontSize(8);
         doc.setTextColor(...TEXT_GRAY);
         const hiddenTxLines = doc.splitTextToSize(
-          `+ ${hiddenTxCount} dodatnih transakcija na ovoj grani - kompletan spisak dostupan u aplikaciji, klikom na granu.`,
+          L(
+            `+ ${hiddenTxCount} dodatnih transakcija na ovoj grani - kompletan spisak dostupan u aplikaciji, klikom na granu.`,
+            `+ ${hiddenTxCount} additional transactions on this edge - the full list is available in the application, by clicking the edge.`,
+          ),
           usableWidth,
         );
         doc.text(hiddenTxLines, marginX, y);
@@ -2824,9 +2881,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_DARK);
     const verifyLines = doc.splitTextToSize(
-      'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
-        + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
-        + 'posle izvoza.',
+      L(
+        'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
+          + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
+          + 'posle izvoza.',
+        'Authenticity is verified in the Lusi application by entering the verification code above. If the content hash '
+          + 'matches the recorded one, the data in this report is the same as at export time. If it does not match, the '
+          + 'report was altered after export.',
+      ),
       usableWidth,
     );
     doc.text(verifyLines, marginX, y);
@@ -2836,10 +2898,16 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
     const limitLines = doc.splitTextToSize(
-      'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
-        + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
-        + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
-        + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+      L(
+        'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
+          + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
+          + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
+          + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+        'Limitation: the signature above is the analyst’s declaration, not a cryptographic proof — it stays intact '
+          + 'even if someone edits the document. An alteration is detected solely by comparing the content hash. The check '
+          + 'confirms that the DATA matches what was registered, not that the PDF file is byte-for-byte identical; that '
+          + 'would require a cryptographic document signature (e.g. PAdES), which is not part of this application.',
+      ),
       usableWidth,
     );
     doc.text(limitLines, marginX, y);
@@ -2850,7 +2918,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text(`Lusi v1.0 forensic export | Strana ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.text(
+        `Lusi v1.0 forensic export | ${L('Strana', 'Page')} ${page}/${pageCount}`,
+        pageWidth / 2,
+        pageHeight - 8,
+        { align: 'center' },
+      );
     }
 
     doc.save(`${caseSummary.id}_taint_report.pdf`);
