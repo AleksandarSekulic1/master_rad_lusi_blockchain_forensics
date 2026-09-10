@@ -77,29 +77,43 @@
     <p class="data-note" *ngIf="!result.data_completeness.currency_declared">{{ result.data_completeness.note }}</p>
 
     <div class="swap-list" *ngIf="result.events.length > 0; else noSwaps">
-      <article class="swap-card" *ngFor="let event of result.events">
-        <span
-          class="confidence-badge"
-          [class.confidence-detected]="event.confidence === 'Detected'"
-          [class.confidence-potential]="event.confidence === 'Potential'"
-        >
-          {{ event.label }}
-        </span>
-
-        <p class="swap-route">{{ event.user_address }} → {{ event.dex_name }}</p>
+      <article
+        class="swap-card"
+        *ngFor="let event of result.events"
+        [class.card-detected]="event.confidence === 'Detected'"
+        [class.card-potential]="event.confidence === 'Potential'"
+      >
+        <div class="swap-card-top">
+          <span
+            class="confidence-badge"
+            [class.confidence-detected]="event.confidence === 'Detected'"
+            [class.confidence-potential]="event.confidence === 'Potential'"
+          >
+            {{
+              event.confidence === 'Detected'
+                ? t('Detektovan swap', 'Detected swap')
+                : t('Mogući swap', 'Potential swap')
+            }}
+          </span>
+          <span class="swap-route">{{ event.user_address }} → {{ event.dex_name }}</span>
+        </div>
 
         <p class="swap-headline">
-          <span class="amount">{{ event.input_amount | number : '1.0-6' }}</span>
-          <span class="token" [class.token-unknown]="!event.input_token" [title]="tokenTitle(event.input_token)">{{
-            tokenLabel(event.input_token)
-          }}</span>
+          <span class="leg">
+            <span class="amount">{{ event.input_amount | number : '1.0-6' }}</span>
+            <span class="token" [class.token-unknown]="!event.input_token" [title]="tokenTitle(event.input_token)">{{
+              tokenLabel(event.input_token)
+            }}</span>
+          </span>
           <span class="arrow">→</span>
           <span class="dex-name">{{ event.dex_name }}</span>
           <span class="arrow">→</span>
-          <span class="amount">{{ event.output_amount | number : '1.0-6' }}</span>
-          <span class="token" [class.token-unknown]="!event.output_token" [title]="tokenTitle(event.output_token)">{{
-            tokenLabel(event.output_token)
-          }}</span>
+          <span class="leg">
+            <span class="amount">{{ event.output_amount | number : '1.0-6' }}</span>
+            <span class="token" [class.token-unknown]="!event.output_token" [title]="tokenTitle(event.output_token)">{{
+              tokenLabel(event.output_token)
+            }}</span>
+          </span>
         </p>
 
         <div class="swap-footer">

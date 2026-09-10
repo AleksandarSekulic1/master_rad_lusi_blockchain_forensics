@@ -36,6 +36,13 @@
   --dx-badge-neutral-text: #eef4ff;
   --dx-note-bg: rgba(255, 255, 255, 0.03);
   --dx-note-border: rgba(148, 163, 184, 0.22);
+  --dx-leg-bg: rgba(255, 255, 255, 0.04);
+  --dx-leg-border: rgba(148, 163, 184, 0.16);
+  --dx-dex-chip-bg: rgba(125, 211, 252, 0.12);
+  --dx-dex-chip-border: rgba(125, 211, 252, 0.28);
+  --dx-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --dx-card-detected-stripe: #7dd3fc;
+  --dx-card-potential-stripe: rgba(148, 163, 184, 0.5);
 }
 
 :host-context([data-theme='light']) {
@@ -67,6 +74,13 @@
   --dx-badge-neutral-text: #16233b;
   --dx-note-bg: rgba(15, 23, 42, 0.03);
   --dx-note-border: rgba(15, 23, 42, 0.16);
+  --dx-leg-bg: rgba(15, 23, 42, 0.04);
+  --dx-leg-border: rgba(15, 23, 42, 0.1);
+  --dx-dex-chip-bg: rgba(37, 99, 235, 0.1);
+  --dx-dex-chip-border: rgba(37, 99, 235, 0.24);
+  --dx-card-shadow: 0 1px 3px rgba(37, 71, 128, 0.12);
+  --dx-card-detected-stripe: #2563eb;
+  --dx-card-potential-stripe: rgba(100, 116, 139, 0.5);
 }
 
 .dex-swap-shell {
@@ -164,17 +178,28 @@
 
 .dex-swap-header {
   display: grid;
-  gap: 0.25rem;
-  padding-bottom: 0.9rem;
-  border-bottom: 1px solid var(--dx-border-soft);
+  gap: 0.3rem;
 }
 
 .dex-swap-header h2 {
+  position: relative;
   margin: 0;
+  padding-bottom: 0.6rem;
   font-size: clamp(1.6rem, 2.8vw, 2.1rem);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--dx-heading);
+}
+
+.dex-swap-header h2::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 3.5rem;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dx-accent), transparent);
 }
 
 .address-form {
@@ -330,26 +355,56 @@
 }
 
 .swap-card {
+  position: relative;
   display: grid;
-  gap: 0.55rem;
-  padding: 1.1rem 1.15rem;
+  gap: 0.7rem;
+  padding: 1.05rem 1.15rem 1.05rem 1.4rem;
   border-radius: 1rem;
   border: 1px solid var(--dx-border);
   background: var(--dx-card-bg);
-  transition: border-color 0.14s ease;
+  box-shadow: var(--dx-card-shadow);
+  overflow: hidden;
+  transition: border-color 0.14s ease, transform 0.14s ease;
+}
+
+/* Left accent stripe by confidence - the fastest read on the card: strong (Detected)
+   vs. muted (Potential), same idea as the badge but visible at a glance down the list. */
+.swap-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.swap-card.card-detected::before {
+  background: var(--dx-card-detected-stripe);
+}
+
+.swap-card.card-potential::before {
+  background: var(--dx-card-potential-stripe);
 }
 
 .swap-card:hover {
   border-color: var(--dx-card-hover-border);
+  transform: translateY(-1px);
+}
+
+.swap-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
 }
 
 .confidence-badge {
-  justify-self: start;
-  padding: 0.32rem 0.72rem;
+  flex: none;
+  padding: 0.3rem 0.7rem;
   border-radius: 999px;
-  font-size: 0.66rem;
+  font-size: 0.64rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
@@ -369,9 +424,10 @@
 
 .swap-route {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
   color: var(--dx-muted);
+  overflow-wrap: anywhere;
 }
 
 /* The headline: INPUT TOKEN -> DEX -> OUTPUT TOKEN. This is the one number an
@@ -379,33 +435,54 @@
 .swap-headline {
   margin: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  font-size: 1.3rem;
-  font-weight: 600;
+  gap: 0.5rem;
   font-variant-numeric: tabular-nums;
   color: var(--dx-text);
 }
 
+.swap-headline .leg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--dx-leg-bg);
+  border: 1px solid var(--dx-leg-border);
+}
+
+.swap-headline .amount {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
 .swap-headline .token {
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--dx-dim);
 }
 
 .swap-headline .token-unknown {
   font-style: italic;
+  text-transform: none;
   color: var(--dx-arrow);
 }
 
 .swap-headline .arrow {
-  color: var(--dx-arrow);
+  font-size: 1.1rem;
+  color: var(--dx-accent);
   font-weight: 400;
 }
 
 .swap-headline .dex-name {
-  font-size: 1rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--dx-dex-chip-bg);
+  border: 1px solid var(--dx-dex-chip-border);
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--dx-kicker);
 }
