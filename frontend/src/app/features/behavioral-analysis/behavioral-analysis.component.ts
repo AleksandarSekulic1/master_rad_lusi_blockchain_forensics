@@ -8,6 +8,7 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { BehavioralAnalysisResult, CaseSummary, EvidenceEntry } from '../../models/blockchain-forensics.models';
 
 /** Behavioral Analysis / Time-of-Day Analysis - "kad je ova adresa aktivna, po satu i danu
@@ -64,7 +65,13 @@ export class BehavioralAnalysisComponent implements OnInit {
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.state.selectedCase$

@@ -3,6 +3,31 @@
    shared import) - kept consistent on purpose so Behavioral Analysis reads as a sibling of
    Graf/Taint/Pathfinding, not a different app. */
 
+/* Theme tokens - dark by default, overridden under [data-theme='light'] (same approach as
+   pathfinding / taint). For now only the top strip (active-case banner + evidence picker)
+   consumes these; the rest of the page follows in a later step. */
+:host {
+  --ba-border: rgba(148, 163, 184, 0.18);
+  --ba-banner-bg: rgba(125, 211, 252, 0.06);
+  --ba-kicker: #7bd6ff;
+  --ba-heading: #f4f7fe;
+  --ba-muted: #8ea6c7;
+  --ba-link: #7bd6ff;
+  --ba-field-bg: rgba(255, 255, 255, 0.03);
+  --ba-field-text: #eef4ff;
+}
+
+:host-context([data-theme='light']) {
+  --ba-border: rgba(15, 23, 42, 0.12);
+  --ba-banner-bg: rgba(37, 99, 235, 0.06);
+  --ba-kicker: #2563eb;
+  --ba-heading: #16233b;
+  --ba-muted: #55658c;
+  --ba-link: #2563eb;
+  --ba-field-bg: rgba(15, 23, 42, 0.045);
+  --ba-field-text: #1e293b;
+}
+
 .behavioral-shell {
   display: grid;
   gap: 1rem;
@@ -16,29 +41,33 @@
   flex-wrap: wrap;
   padding: 0.85rem 1rem;
   border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(125, 211, 252, 0.06);
+  border: 1px solid var(--ba-border);
+  background: var(--ba-banner-bg);
 }
 
 .active-case-banner strong {
   display: block;
-  color: #f4f7fe;
+  color: var(--ba-heading);
+}
+
+.active-case-banner .panel-kicker {
+  color: var(--ba-kicker);
 }
 
 .active-case-banner .muted {
-  color: #8ea6c7;
+  color: var(--ba-muted);
   font-size: 0.9rem;
 }
 
 .active-case-banner .muted a {
-  color: #7bd6ff;
+  color: var(--ba-link);
 }
 
 .evidence-picker label {
   display: grid;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: #8ea6c7;
+  color: var(--ba-muted);
   max-width: 28rem;
 }
 
@@ -46,9 +75,9 @@
   width: 100%;
   padding: 0.8rem 0.95rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ba-border);
+  color: var(--ba-field-text);
+  background: var(--ba-field-bg);
 }
 
 .evidence-picker select option {
