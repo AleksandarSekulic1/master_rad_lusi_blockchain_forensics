@@ -371,5 +371,19 @@
       "seeds": 12
     },
     "registered_at": "2026-09-10T09:45:46.964303+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-V2JY-E86S",
+    "content_hash": "faa924fc9ec622ac821b09121ce661a306c62fa00318023831316f7337521ef6",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "tainted_addresses": 19,
+      "cash_out_points": 3,
+      "seeds": 12
+    },
+    "registered_at": "2026-09-10T09:54:24.259212+00:00"
   }
 ]
