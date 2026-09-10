@@ -15,7 +15,7 @@ import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup'
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
-import { SettingsService } from '../../core/services/settings.service';
+import { AppLang, SettingsService } from '../../core/services/settings.service';
 import {
   AddressEnrichment,
   AddressType,
@@ -118,6 +118,9 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   protected signaturePad?: SignaturePadComponent;
   protected isSignatureDialogOpen = false;
   protected signatureDeclarationAccepted = false;
+  /** Language the exported PDF is produced in - seeded from the app toggle when the signing
+   * dialog opens, then confirmed by the analyst. */
+  protected taintPdfLang: AppLang = 'sr';
   protected signatureError: string | null = null;
 
   // --- Lanac dokaza: gate in front of every analysis run (see openCustodyDialog) ---
@@ -1783,14 +1786,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   /** Same 3-tier split the on-canvas color ramp already uses at 50% (dark/amber pivot) -
    * reusing it here means a node reads as the same risk tier in the PDF table as it does
    * by color on screen, instead of inventing a second, inconsistent scale. */
-  private static riskLabel(pct: number): string {
+  private riskLabel(pct: number): string {
     if (pct >= 50) {
-      return 'VISOK';
+      return this.lx('VISOK', 'HIGH');
     }
     if (pct >= 10) {
-      return 'SREDNJI';
+      return this.lx('SREDNJI', 'MEDIUM');
     }
-    return 'NIZAK';
+    return this.lx('NIZAK', 'LOW');
   }
 
   private static riskColor(pct: number): [number, number, number] {
@@ -1848,7 +1851,30 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.isSignatureDialogOpen = true;
     this.signatureDeclarationAccepted = false;
     this.signatureError = null;
+    this.taintPdfLang = this.settings.lang();
     setTimeout(() => this.signaturePad?.clear());
+  }
+
+  /** PDF-string translator: picks SR or EN by the chosen report language, then transliterates
+   * to ASCII (harmless for English) since the PDF font is Latin-1 only. */
+  private lx(sr: string, en: string): string {
+    return this.asciiSafe(this.taintPdfLang === 'sr' ? sr : en);
+  }
+
+  private async loadPdfImage(path: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const response = await fetch(path);
+    if (!response.ok) {
+      throw new Error(`asset not found: ${path}`);
+    }
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('asset read failed'));
+      reader.readAsDataURL(blob);
+    });
+    const size = await TaintAnalysisComponent.loadImageSize(dataUrl);
+    return { dataUrl, width: size.width, height: size.height };
   }
 
   closeSignatureDialog(): void {
@@ -1885,7 +1911,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.signatureError = null;
     try {
       const signatureImage = this.signaturePad!.getDataUrl();
-      const declaration = TaintAnalysisComponent.SIGNATURE_DECLARATION;
+      const declaration =
+        this.taintPdfLang === 'sr'
+          ? 'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati '
+            + 'onakvi kakve je aplikacija izračunala nad navedenom evidencijom.'
+          : 'I confirm that I produced this report within the stated case and that the results shown in it are those '
+            + 'the application computed over the stated evidence.';
 
       // Registered BEFORE the document is built: the verification code has to be printed
       // inside the very report it identifies.
@@ -1906,7 +1937,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
       const graphImage = this.cy.png({ full: true, scale: 2, bg: TaintAnalysisComponent.PDF_CANVAS_BG });
       const imageSize = await TaintAnalysisComponent.loadImageSize(graphImage);
-      this.buildTaintPdf(graphImage, imageSize, { signatureImage, declaration, registration });
+      await this.buildTaintPdf(graphImage, imageSize, { signatureImage, declaration, registration });
       this.isSignatureDialogOpen = false;
     } catch {
       this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
@@ -1974,7 +2005,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
 
     sentences.push(`Koriscen je ${seedCount} ${seedCount === 1 ? 'pocetni izvor' : 'pocetnih izvora'} (seed adresa).`);
-    sentences.push(`Najveci zabelezeni procenat zaprljanosti iznosio je ${maxPct}% (nivo rizika: ${TaintAnalysisComponent.riskLabel(maxPct)}).`);
+    sentences.push(`Najveci zabelezeni procenat zaprljanosti iznosio je ${maxPct}% (nivo rizika: ${this.riskLabel(maxPct)}).`);
 
     if (multiSourceNode) {
       sentences.push(
@@ -1985,7 +2016,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     return sentences.join(' ');
   }
 
-  private buildTaintPdf(
+  private async buildTaintPdf(
     graphImage: string,
     imageSize: { width: number; height: number },
     signing: {
@@ -1993,7 +2024,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       declaration: string;
       registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
     },
-  ): void {
+  ): Promise<void> {
+    const L = (sr: string, en: string): string => this.lx(sr, en);
+    const catEmblem = await this.loadPdfImage('assets/cat_pdf.png').catch(() => null);
+    const sealImage = await this.loadPdfImage('assets/seal.png').catch(() => null);
     const result = this.taintResult!;
     const caseSummary = this.activeCase!;
     const NAVY = TaintAnalysisComponent.PDF_NAVY;
@@ -2009,16 +2043,26 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     const usableWidth = pageWidth - marginX * 2;
     let y = 32;
 
+    const barHeight = 26;
     doc.setFillColor(...NAVY);
-    doc.rect(0, 0, pageWidth, 24, 'F');
+    doc.rect(0, 0, pageWidth, barHeight, 'F');
+
+    let titleX = marginX;
+    if (catEmblem) {
+      const emblem = 20;
+      const emblemW = (catEmblem.width / catEmblem.height) * emblem;
+      doc.addImage(catEmblem.dataUrl, 'PNG', marginX, (barHeight - emblem) / 2, emblemW, emblem);
+      titleX = marginX + emblemW + 5;
+    }
     doc.setTextColor(...WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
-    doc.text('Lusi v1.0 - Izvestaj taint analize', marginX, 11);
+    doc.text(L('Lusi v1.0 — Izveštaj taint analize', 'Lusi v1.0 — Taint analysis report'), titleX, 11);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, marginX, 19);
+    doc.text(`${L('Predmet', 'Case')}: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
     doc.setTextColor(...TEXT_DARK);
+    y = barHeight + 8;
 
     const kv = (label: string, value: string): void => {
       doc.setFont('helvetica', 'bold');
@@ -2033,21 +2077,21 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       y += Math.max(6, lines.length * 5);
     };
 
-    kv('CASE ID', caseSummary.id);
-    kv('IZVEZAO', this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
-    kv('EVIDENCIJA', this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : 'Sve transakcije (kombinovano)');
+    kv(L('IDENTIFIKATOR', 'CASE ID'), caseSummary.id);
+    kv(L('IZVEZAO', 'EXPORTED BY'), this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
+    kv(L('EVIDENCIJA', 'EVIDENCE'), this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : L('Sve transakcije (kombinovano)', 'All transactions (combined)'));
     // Stated explicitly because the percentages only mean anything if every amount is in
     // the same unit - and "not declared" must read as exactly that, never as an assumed ETH.
     const currencies = this.mixedCurrencies;
     kv(
-      'VALUTA',
+      L('VALUTA', 'CURRENCY'),
       currencies.length === 0
-        ? 'Nije navedena u evidenciji'
+        ? L('Nije navedena u evidenciji', 'Not declared in the evidence')
         : currencies.length === 1
           ? currencies[0]
-          : `UPOZORENJE: pomesane valute (${currencies.join(', ')}) - procenti nisu smisleni`,
+          : L(`UPOZORENJE: pomešane valute (${currencies.join(', ')}) — procenti nisu smisleni`, `WARNING: mixed currencies (${currencies.join(', ')}) — percentages are not meaningful`),
     );
-    kv('GENERISANO', new Date().toLocaleString());
+    kv(L('GENERISANO', 'GENERATED AT'), new Date().toLocaleString(this.taintPdfLang === 'sr' ? 'sr-RS' : 'en-GB'));
     y += 2;
 
     // A short "how to read the numbers below" note, deliberately placed BEFORE any result:
@@ -2055,9 +2099,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     // report actually means, and a reader who never sees the source code has no other way
     // of knowing. The full version is the last section of the report.
     const methodologyNoteLines = doc.splitTextToSize(
-      'Ovaj izvestaj koristi proporcionalni ("haircut") model pracenja sredstava i obuhvata iskljucivo transakcije iz ' +
-        'navedene evidencije. Procenat od 0% znaci da u ovoj evidenciji nema traga o prilivu sa navedenih izvora - ' +
-        'ne znaci da je adresa cista. Detaljno objasnjenje i ogranicenja nalaze se na kraju izvestaja.',
+      L(
+        'Ovaj izveštaj koristi proporcionalni („haircut") model i obuhvata samo transakcije iz navedene evidencije. ' +
+          '0% znači da nema traga priliva sa navedenih izvora — ne i da je adresa čista. Detaljna metodologija je na ' +
+          'kraju izveštaja.',
+        'This report uses a proportional (“haircut”) model and covers only the transactions in the stated evidence. ' +
+          '0% means there is no trace of an inflow from the stated sources — not that the address is clean. The full ' +
+          'methodology is at the end of the report.',
+      ),
       usableWidth - 8,
     );
     const noteBoxHeight = methodologyNoteLines.length * 4.2 + 7;
@@ -2106,28 +2155,28 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setTextColor(...TEXT_DARK);
     };
 
-    sectionTitle('Rezime analize');
+    sectionTitle(L('Rezime analize', 'Analysis summary'));
     const maxTaintPct = this.nonZeroTaintedNodes.reduce((max, item) => Math.max(max, item.taint_percentage), 0);
     const hasMultiSourceOverall = this.nonZeroTaintedNodes.some((item) => Object.keys(item.taint_by_source ?? {}).length > 1);
     drawSummaryCards([
-      ['Ukupno adresa', this.graph?.nodes.length ?? 0, ACCENT],
-      ['Zaprljanih adresa', this.nonZeroTaintedNodes.length, ACCENT],
-      ['Izvora (seed)', result.seed_addresses.length, ACCENT],
-      ['Tacaka unovcavanja', this.cashOutCandidates.length, this.cashOutCandidates.length > 0 ? TaintAnalysisComponent.PDF_AMBER : TEXT_GRAY],
+      [L('Ukupno adresa','Total addresses'), this.graph?.nodes.length ?? 0, ACCENT],
+      [L('Zaprljanih adresa','Tainted addresses'), this.nonZeroTaintedNodes.length, ACCENT],
+      [L('Izvora (seed)','Sources (seed)'), result.seed_addresses.length, ACCENT],
+      [L('Tačaka unovčavanja','Cash-out points'), this.cashOutCandidates.length, this.cashOutCandidates.length > 0 ? TaintAnalysisComponent.PDF_AMBER : TEXT_GRAY],
     ]);
 
-    const findingLines: string[] = [`${this.nonZeroTaintedNodes.length} adresa sa zaprljanim sredstvima identifikovano`];
+    const findingLines: string[] = [L(`${this.nonZeroTaintedNodes.length} adresa sa zaprljanim sredstvima identifikovano`, `${this.nonZeroTaintedNodes.length} addresses with tainted funds identified`)];
     if (this.cashOutCandidates.length > 0) {
       findingLines.push(
-        `${this.cashOutCandidates.length} ${this.cashOutCandidates.length === 1 ? 'verovatna tacka unovcavanja' : 'verovatnih tacaka unovcavanja'} detektovano`,
+        L(`${this.cashOutCandidates.length} ${this.cashOutCandidates.length === 1 ? 'verovatna tačka unovčavanja' : 'verovatnih tačaka unovčavanja'} detektovano`, `${this.cashOutCandidates.length} likely cash-out point(s) detected`),
       );
     }
-    findingLines.push(`Najveci procenat zaprljanosti: ${maxTaintPct}%`);
+    findingLines.push(L(`Najveći procenat zaprljanosti: ${maxTaintPct}%`, `Highest taint percentage: ${maxTaintPct}%`));
     if (hasMultiSourceOverall) {
-      findingLines.push('Otkriveno mesanje sredstava iz vise razlicitih izvora');
+      findingLines.push(L('Otkriveno mešanje sredstava iz više različitih izvora', 'Mixing of funds from several different sources detected'));
     }
 
-    sectionTitle('Kljucni nalazi');
+    sectionTitle(L('Ključni nalazi', 'Key findings'));
     const findingsLineHeight = 6.5;
     const findingsBoxTop = y - 5;
     const findingsBoxHeight = (findingLines.length + 1) * findingsLineHeight + 6;
@@ -2163,23 +2212,23 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
     drawCheckmark(marginX + 4, findingY);
     doc.setFont('helvetica', 'bold');
-    doc.text('Nivo rizika: ', marginX + 11, findingY);
-    const riskPrefixWidth = doc.getTextWidth('Nivo rizika: ');
+    doc.text(L('Nivo rizika: ','Risk level: '), marginX + 11, findingY);
+    const riskPrefixWidth = doc.getTextWidth(L('Nivo rizika: ','Risk level: '));
     doc.setTextColor(...TaintAnalysisComponent.riskColor(maxTaintPct));
-    doc.text(TaintAnalysisComponent.riskLabel(maxTaintPct), marginX + 11 + riskPrefixWidth, findingY);
+    doc.text(this.riskLabel(maxTaintPct), marginX + 11 + riskPrefixWidth, findingY);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...TEXT_DARK);
     y = findingsBoxTop + findingsBoxHeight + 9;
 
-    sectionTitle('Izvori (seed adrese)');
+    sectionTitle(L('Izvori (seed adrese)', 'Sources (seed addresses)'));
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['#', 'Seed adresa']],
+      head: [['#', L('Seed adresa','Seed address')]],
       body:
         result.seed_addresses.length > 0
           ? result.seed_addresses.map((address, index) => [`Seed #${index + 1}`, address])
-          : [['-', '(automatski, sa crne liste)']],
+          : [['-', L('(automatski, sa crne liste)','(automatic, from the blacklist)')]],
       styles: { fontSize: 8.5, cellPadding: 1.8, font: 'courier', textColor: TEXT_DARK },
       headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 245, 250] },
@@ -2187,7 +2236,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
 
-    sectionTitle('Evidencija (SHA-256)');
+    sectionTitle(L('Evidencija (SHA-256)', 'Evidence (SHA-256)'));
     const relevantEvidence = this.selectedEvidence
       ? this.evidenceOptions.filter((entry) => entry.stored_name === this.selectedEvidence)
       : this.evidenceOptions;
@@ -2195,7 +2244,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(9);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text('Podaci o evidenciji nisu dostupni.', marginX, y);
+      doc.text(L('Podaci o evidenciji nisu dostupni.','Evidence data is not available.'), marginX, y);
       y += 6;
       doc.setTextColor(...TEXT_DARK);
     } else {
@@ -2215,25 +2264,25 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
     y += 1;
 
-    sectionTitle('Podesavanja prikaza u trenutku izvoza');
+    sectionTitle(L('Podešavanja prikaza u trenutku izvoza', 'Display settings at export time'));
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     const settingsRows: Array<[string, string]> = [
       [
-        'Filter praga',
+        L('Filter praga', 'Threshold filter'),
         this.hideNonTaintedNodes
-          ? `Ukljucen - sakriveni cvorovi sa taint % <= ${this.taintHideThreshold}%`
-          : 'Iskljucen - prikazani svi cvorovi',
+          ? L(`Uključen — sakriveni čvorovi sa taint % <= ${this.taintHideThreshold}%`, `On — nodes with taint % <= ${this.taintHideThreshold}% hidden`)
+          : L('Isključen — prikazani svi čvorovi', 'Off — all nodes shown'),
       ],
       [
-        'Vremenska traka',
+        L('Vremenska traka', 'Timeline'),
         this.timelineEnabled
-          ? `Ukljucena - snimak stanja na transakciji ${this.timelinePosition} / ${this.timelineMaxRank}`
-          : 'Iskljucena - prikazan konacan, potpun rezultat analize',
+          ? L(`Uključena — snimak stanja na transakciji ${this.timelinePosition} / ${this.timelineMaxRank}`, `On — snapshot at transaction ${this.timelinePosition} / ${this.timelineMaxRank}`)
+          : L('Isključena — prikazan konačan, potpun rezultat analize', 'Off — the final, complete analysis result is shown'),
       ],
     ];
     if (this.selectedNode) {
-      settingsRows.push(['Istaknuta putanja', `Cvor ${this.asciiSafe(String(this.selectedNode.address ?? this.selectedNode.id))}`]);
+      settingsRows.push([L('Istaknuta putanja', 'Highlighted path'), `${L('Čvor', 'Node')} ${this.asciiSafe(String(this.selectedNode.address ?? this.selectedNode.id))}`]);
     }
     for (const [label, value] of settingsRows) {
       doc.setFont('helvetica', 'bold');
@@ -2260,7 +2309,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Graficki prikaz mreze');
+    sectionTitle(L('Grafički prikaz mreže', 'Network graph'));
     const imgX = marginX + (usableWidth - renderWidth) / 2;
     doc.setFillColor(7, 13, 26);
     doc.rect(imgX, y, renderWidth, renderHeight, 'F');
@@ -2270,26 +2319,29 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
-    const legendText =
-      'Boja cvora: tamno (0%) -> zuto/narandzasto (50%) -> crveno (100%). Duplo zlatna ivica = izvor (seed adresa). ' +
-      'Slika prikazuje tacno ono sto je bilo vidljivo na ekranu u trenutku izvoza (ukljucujuci aktivni filter praga).';
+    const legendText = L(
+      'Boja čvora: tamno (0%) → žuto/narandžasto (50%) → crveno (100%). Dvostruka zlatna ivica = izvor (seed adresa). ' +
+        'Slika prikazuje tačno ono što je bilo vidljivo na ekranu u trenutku izvoza (uključujući aktivni filter praga).',
+      'Node color: dark (0%) → yellow/orange (50%) → red (100%). Gold double border = source (seed address). ' +
+        'The image shows exactly what was visible on screen at export time (including the active threshold filter).',
+    );
     doc.text(doc.splitTextToSize(legendText, usableWidth), marginX, y);
     doc.setTextColor(...TEXT_DARK);
 
     const topRows = this.nonZeroTaintedNodes.map((item, index) => [
       String(index + 1),
       item.address,
-      `${item.taint_percentage}% (${TaintAnalysisComponent.riskLabel(item.taint_percentage)})`,
-      item.is_taint_seed ? 'Da' : 'Ne',
+      `${item.taint_percentage}% (${this.riskLabel(item.taint_percentage)})`,
+      item.is_taint_seed ? L('Da','Yes') : L('Ne','No'),
     ]);
 
     doc.addPage();
     y = 16;
-    sectionTitle('Najvise zaprljane adrese');
+    sectionTitle(L('Najviše zaprljane adrese', 'Most tainted addresses'));
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['#', 'Adresa', 'Taint %', 'Izvor?']],
+      head: [['#', L('Adresa','Address'), 'Taint %', L('Izvor?','Seed?')]],
       body: topRows,
       styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
       headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
@@ -2311,7 +2363,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Detaljna raspodela po izvoru');
+      sectionTitle(L('Detaljna raspodela po izvoru', 'Detailed breakdown by source'));
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
@@ -2333,7 +2385,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFontSize(9);
         doc.setTextColor(...NAVY);
         doc.text(
-          `${node.address}  -  ${node.taint_percentage}% (${TaintAnalysisComponent.riskLabel(node.taint_percentage)})`,
+          `${node.address}  -  ${node.taint_percentage}% (${this.riskLabel(node.taint_percentage)})`,
           marginX,
           y,
         );
@@ -2343,7 +2395,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         autoTable(doc, {
           startY: y,
           margin: { left: marginX, right: marginX },
-          head: [['Izvor (seed adresa)', 'Procenat']],
+          head: [[L('Izvor (seed adresa)','Source (seed address)'), L('Procenat','Percentage')]],
           body: entries.map(([address, pct]) => [address, `${pct}%`]),
           styles: { fontSize: 8, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
           headStyles: { fillColor: ACCENT, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
@@ -2360,7 +2412,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Verovatne tacke unovcavanja');
+      sectionTitle(L('Verovatne tačke unovčavanja', 'Likely cash-out points'));
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
@@ -2400,7 +2452,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['#', 'Adresa', 'Taint %']],
+        head: [['#', L('Adresa','Address'), 'Taint %']],
         body: this.topCashOutCandidates.map((item, index) => [String(index + 1), item.address, `${item.taint_percentage}%`]),
         styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
         headStyles: { fillColor: TaintAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
@@ -2432,7 +2484,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Detaljna istorija razblazivanja - tacke unovcavanja');
+      sectionTitle(L('Detaljna istorija razblaživanja — tačke unovčavanja', 'Detailed dilution history — cash-out points'));
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
@@ -2462,7 +2514,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.setFontSize(9);
         doc.setTextColor(...NAVY);
         doc.text(
-          `${item.address}  -  ${item.taint_percentage}% (${TaintAnalysisComponent.riskLabel(item.taint_percentage)})${entityTag}`,
+          `${item.address}  -  ${item.taint_percentage}% (${this.riskLabel(item.taint_percentage)})${entityTag}`,
           marginX,
           y,
         );
@@ -2473,10 +2525,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         autoTable(doc, {
           startY: y,
           margin: { left: marginX, right: marginX },
-          head: [['#', 'Smer', 'Suprotna strana', 'Iznos', 'Zaprljano', 'Pre %', 'Posle %']],
+          head: [['#', L('Smer','Dir.'), L('Suprotna strana','Counterparty'), L('Iznos','Amount'), L('Zaprljano','Tainted'), L('Pre %','Before %'), L('Posle %','After %')]],
           body: shown.map((entry) => [
             String(entry.rank),
-            entry.direction === 'in' ? 'Prijem' : 'Slanje',
+            entry.direction === 'in' ? L('Prijem','In') : L('Slanje','Out'),
             entry.counterparty,
             TaintAnalysisComponent.formatPdfAmount(entry.amount),
             TaintAnalysisComponent.formatPdfAmount(entry.taintedAmount),
@@ -2527,7 +2579,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Detalji izabrane transakcije');
+      sectionTitle(L('Detalji izabrane transakcije', 'Selected transaction details'));
       doc.setFont('courier', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(...NAVY);
@@ -2548,7 +2600,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['#', 'Vreme', 'Iznos', 'Zaprljano', '%', 'ID transakcije']],
+        head: [['#', L('Vreme','Time'), L('Iznos','Amount'), L('Zaprljano','Tainted'), '%', L('ID transakcije','Transaction ID')]],
         body: shownTx.map((tx, index) => [
           String(index + 1),
           new Date(tx.timestamp).toLocaleString(),
@@ -2589,7 +2641,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Zakljucak analize');
+    sectionTitle(L('Zaključak analize', 'Analysis conclusion'));
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(...TEXT_DARK);
@@ -2636,69 +2688,39 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Metodologija i ogranicenja');
+    sectionTitle(L('Metodologija i ograničenja', 'Methodology and limitations'));
 
-    paragraph('Primenjeni model pracenja', { bold: true, size: 10, gap: 2 });
-    paragraph(
-      'Koriscen je proporcionalni model, u praksi poznat kao "haircut". Kada se na jednoj adresi pomesaju zaprljana i ' +
-        'cista sredstva, svaki naredni odliv sa te adrese nosi isti procenat zaprljanosti kao balans sa kojeg je poslat. ' +
-        'Primer: ako adresa primi 1000 zaprljanih i 500 cistih jedinica, njen balans je 66.67% zaprljan, i svaka naredna ' +
-        'isplata sa te adrese nosi tacno 66.67% zaprljanih sredstava.',
-    );
-    paragraph(
-      'Izbor modela nije neutralan - isti podaci daju razlicite procente pod razlicitim modelima, pa se rezultati iz ovog ' +
-        'izvestaja ne mogu direktno porediti sa nalazom dobijenim drugom metodom. Najcesce alternative su:',
+    bullet(
+      L(
+        'Model: proporcionalni („haircut"). Kod mešanja zaprljanih i čistih sredstava svaki odliv nosi isti procenat ' +
+          'zaprljanosti kao balans. Drugi modeli (FIFO, LIFO, taint-by-contact) daju drugačije rezultate.',
+        'Model: proportional (“haircut”). When tainted and clean funds mix, every outflow carries the same taint ' +
+          'percentage as the balance. Other models (FIFO, LIFO, taint-by-contact) give different results.',
+      ),
     );
     bullet(
-      'FIFO (first in, first out) - smatra se da prvi primljeni novac prvi i odlazi. Primenjuje se u nekim ' +
-        'jurisdikcijama zbog ustaljene sudske prakse u vezi sa mesanim sredstvima.',
-    );
-    bullet('LIFO (last in, first out) - obrnuta pretpostavka: poslednji priliv prvi napusta adresu.');
-    bullet(
-      'Poison / taint-by-contact - svaka adresa koja je ikada primila zaprljana sredstva ostaje trajno 100% zaprljana. ' +
-        'Daje najsire rezultate i po pravilu obuhvata veliki broj adresa bez stvarne veze sa delom.',
-    );
-    paragraph(
-      'Proporcionalni model je izabran jer ne prosiruje sumnju na adrese cija je stvarna izlozenost zanemarljiva, a ' +
-        'istovremeno zadrzava trag i posle visestrukog mesanja sredstava.',
-      { gap: 5 },
-    );
-
-    paragraph('Ogranicenje zatvorenog sveta (closed-world)', { bold: true, size: 10, gap: 2 });
-    paragraph(
-      'Analiza vidi iskljucivo transakcije sadrzane u evidenciji navedenoj na pocetku ovog izvestaja. Prilivi i odlivi ' +
-        'koji postoje na blokcejnu ali nisu uvezeni u ovaj slucaj ne ulaze u racun. Posledica je da procenat moze biti ' +
-        'i visi i nizi od stvarnog: nedostajuci cist priliv znaci da razblazivanje nije uracunato (procenat je precenjen), ' +
-        'a nedostajuci zaprljan priliv znaci da deo tereta nije ni vidljiv (procenat je potcenjen).',
-      { gap: 5 },
-    );
-
-    paragraph('Kako se tumaci rezultat od 0%', { bold: true, size: 10, gap: 2 });
-    paragraph(
-      'Vrednost 0% znaci da u ovoj evidenciji ne postoji trag da je do te adrese stigao novac sa navedenih pocetnih izvora. ' +
-        'To NIJE utvrdjenje da je adresa cista, niti da njen vlasnik nije povezan sa predmetom - odsustvo dokaza u ' +
-        'ogranicenom skupu podataka nije dokaz odsustva.',
-      { gap: 5 },
-    );
-
-    paragraph('Ostala ogranicenja', { bold: true, size: 10, gap: 2 });
-    bullet(
-      'Rezultat u potpunosti zavisi od izbora pocetnih izvora (seed adresa). Drugaciji izbor daje drugacije procente, ' +
-        'pa se uz svaki nalaz mora navesti i koje su adrese uzete kao polazne (videti sekciju "Izvori").',
+      L(
+        'Zatvoreni svet: vidi se samo navedena evidencija. Nedostajući čist priliv precenjuje, a nedostajući zaprljan ' +
+          'priliv potcenjuje procenat.',
+        'Closed world: only the stated evidence is visible. A missing clean inflow overestimates, a missing tainted ' +
+          'inflow underestimates the percentage.',
+      ),
     );
     bullet(
-      'Adresa nije isto sto i identitet. Jedno lice moze kontrolisati veliki broj adresa, dok jedna adresa (na primer ' +
-        'berzanski novcanik) moze pripadati hiljadama korisnika - povezivanje adrese sa licem zahteva dokaze van ove analize.',
+      L(
+        '0% znači da u ovoj evidenciji nema traga priliva sa navedenih izvora — ne i da je adresa čista. Rezultat ' +
+          'zavisi od izbora seed adresa (vidi „Izvori").',
+        '0% means no trace of an inflow from the stated sources in this evidence — not that the address is clean. ' +
+          'The result depends on the choice of seed addresses (see “Sources”).',
+      ),
     );
     bullet(
-      'Analiza posmatra iznose kao medjusobno uporedive. Ako uvezena evidencija mesa razlicite valute ili tokene bez ' +
-        'razdvajanja, izracunati procenti nisu smisleni.',
-    );
-    bullet('Sredstva se ne prate izmedju razlicitih blokcejn mreza (cross-chain), niti kroz konverzije van lanca.');
-    bullet('Svi procenti su zaokruzeni na dve decimale, pa zbir pojedinacnih udela moze odstupati za stoti deo procenta.');
-    bullet(
-      'Oznake poznatih entiteta (berza, mikser, sankcionisana adresa) poticu iz lokalne baze poznatih adresa i pokazuju ' +
-        'samo poklapanja koja u toj bazi postoje - izostanak oznake ne znaci da adresa nije berza ili mikser.',
+      L(
+        'Adresa nije identitet; nema cross-chain praćenja; procenti su zaokruženi na dve decimale; oznake entiteta su ' +
+          'iz lokalne baze poznatih adresa.',
+        'An address is not an identity; no cross-chain tracing; percentages are rounded to two decimals; entity ' +
+          'labels come from a local database of known addresses.',
+      ),
     );
 
     // --- Signature and seal ---------------------------------------------------------
@@ -2709,7 +2731,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     // edit made to the document around it.
     doc.addPage();
     y = 16;
-    sectionTitle('Potpis i overa');
+    sectionTitle(L('Potpis i overa', 'Signature and certification'));
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -2727,44 +2749,61 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('Potpis analiticara', marginX, y + signatureBoxHeight + 4);
+    doc.text(L('Potpis analitičara','Analyst signature'), marginX, y + signatureBoxHeight + 4);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(...TEXT_DARK);
     doc.text(this.asciiSafe(signing.registration.analyst), marginX, y + signatureBoxHeight + 9);
 
-    // Round stamp, drawn as vectors rather than an image so it stays crisp at any zoom.
+    // Certification stamp: the prepared seal image when it loaded, with a vector-drawn
+    // fallback so the page still certifies if the asset is missing. The certification date
+    // is case-specific, so it stays as a caption regardless of which variant is drawn.
     const sealCenterX = marginX + signatureBoxWidth + (usableWidth - signatureBoxWidth) / 2;
     const sealCenterY = y + signatureBoxHeight / 2;
-    const sealRadius = 19;
-    doc.setDrawColor(...NAVY);
-    doc.setLineWidth(1.1);
-    doc.circle(sealCenterX, sealCenterY, sealRadius);
-    doc.setLineWidth(0.4);
-    doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+    if (sealImage) {
+      const sealHeight = 34;
+      const sealWidth = (sealImage.width / sealImage.height) * sealHeight;
+      doc.addImage(
+        sealImage.dataUrl,
+        'PNG',
+        sealCenterX - sealWidth / 2,
+        sealCenterY - sealHeight / 2,
+        sealWidth,
+        sealHeight,
+      );
+    } else {
+      const sealRadius = 19;
+      doc.setDrawColor(...NAVY);
+      doc.setLineWidth(1.1);
+      doc.circle(sealCenterX, sealCenterY, sealRadius);
+      doc.setLineWidth(0.4);
+      doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+      doc.setTextColor(...NAVY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('LUSI', sealCenterX, sealCenterY - 3, { align: 'center' });
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(L('DIGITALNA FORENZIKA', 'DIGITAL FORENSICS'), sealCenterX, sealCenterY + 2, { align: 'center' });
+    }
     doc.setTextColor(...NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('LUSI', sealCenterX, sealCenterY - 5, { align: 'center' });
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY - 0.5, { align: 'center' });
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.text('OVERENO', sealCenterX, sealCenterY + 4.5, { align: 'center' });
+    doc.text(
+      `${L('OVERENO', 'CERTIFIED')} ${new Date(signing.registration.registered_at).toLocaleDateString()}`,
+      sealCenterX,
+      y + signatureBoxHeight + 4,
+      { align: 'center' },
+    );
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
-    doc.text(new Date(signing.registration.registered_at).toLocaleDateString(), sealCenterX, sealCenterY + 9, {
-      align: 'center',
-    });
 
     y += signatureBoxHeight + 16;
 
-    sectionTitle('Provera verodostojnosti');
+    sectionTitle(L('Provera verodostojnosti', 'Authenticity check'));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('KONTROLNI BROJ', marginX, y);
+    doc.text(L('KONTROLNI BROJ','VERIFICATION CODE'), marginX, y);
     doc.setFont('courier', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(...NAVY);
@@ -2774,7 +2813,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('OTISAK SADRZAJA', marginX, y);
+    doc.text(L('OTISAK SADRŽAJA','CONTENT HASH'), marginX, y);
     doc.setFont('courier', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...TEXT_DARK);
