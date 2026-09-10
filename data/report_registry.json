@@ -497,5 +497,19 @@
       "taint_trace": "ne"
     },
     "registered_at": "2026-09-10T12:30:05.882059+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-HZMS-CHBF",
+    "content_hash": "0825f3266de6a16d8e9e643a004de0482564dfb3ec5664dd7dace56c7e3a1dec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence.",
+    "summary": {
+      "hops": 1,
+      "destination_mode": "specific_address",
+      "taint_trace": "da"
+    },
+    "registered_at": "2026-09-10T12:51:39.144020+00:00"
   }
 ]

@@ -369,6 +369,22 @@
               'is generated with a verification code and a content hash, which can later be used to check whether the report was altered.') }}
       </p>
 
+      <fieldset class="signature-lang" [disabled]="isExportingPdf">
+        <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+        <label>
+          <input type="radio" name="pathfindingPdfLang" value="sr" [(ngModel)]="pathfindingPdfLang" />
+          {{ t('Srpski', 'Serbian') }}
+        </label>
+        <label>
+          <input type="radio" name="pathfindingPdfLang" value="en" [(ngModel)]="pathfindingPdfLang" />
+          {{ t('Engleski', 'English') }}
+        </label>
+        <p class="signature-lang-hint">
+          {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+          <strong>{{ pathfindingPdfLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+        </p>
+      </fieldset>
+
       <app-signature-pad></app-signature-pad>
 
       <label class="signature-declaration">
