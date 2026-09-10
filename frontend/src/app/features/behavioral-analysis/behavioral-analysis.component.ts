@@ -16,6 +16,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
 import {
+  BehavioralAnalysisPeakPeriod,
   BehavioralAnalysisResult,
   CaseSummary,
   EvidenceEntry,
@@ -24,6 +25,7 @@ import {
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
+import { estimateTimezoneCompatibility } from './timezone-heuristic';
 
 /** One completed (or failed) per-address behavioral run. Kept as a flat list so the page
  * can analyse several addresses at once and let the investigator flip between them. */
@@ -330,17 +332,136 @@ export class BehavioralAnalysisComponent implements OnInit {
 
   protected removeRun(address: string): void {
     this.runs = this.runs.filter((run) => run.address !== address);
-    if (this.activeAddress === address) {
+    if (this.activeAddress === address || (this.isCombinedActive && !this.canShowCombined)) {
       this.activeAddress = this.runs.find((run) => run.result)?.address ?? this.runs[0]?.address ?? null;
     }
   }
 
+  // --- Optional "all addresses combined" view -------------------------------------------
+  // A synthetic run whose distributions are the element-wise SUM of every successful
+  // per-address result. It does NOT change any individual run - it is a separate, opt-in
+  // tab. Internal transfers between two analysed addresses are counted once per side (i.e.
+  // twice) - stated in the UI/report. The timezone estimate is recomputed from the summed
+  // hourly distribution with the same heuristic the backend uses (see ./timezone-heuristic).
+  private static readonly COMBINED_KEY = '__combined__';
+
+  protected get combinedKey(): string {
+    return BehavioralAnalysisComponent.COMBINED_KEY;
+  }
+
+  protected get canShowCombined(): boolean {
+    return this.exportableRuns.length >= 2;
+  }
+
+  protected get isCombinedActive(): boolean {
+    return this.activeAddress === BehavioralAnalysisComponent.COMBINED_KEY;
+  }
+
+  protected showCombined(): void {
+    this.activeAddress = BehavioralAnalysisComponent.COMBINED_KEY;
+  }
+
+  protected get combinedRun(): AddressBehavioralRun | null {
+    const runs = this.exportableRuns;
+    if (runs.length < 2) {
+      return null;
+    }
+    const hourly: Record<string, number> = {};
+    const daily: Record<string, number> = {};
+    const grid: Record<string, Record<string, number>> = {};
+    for (const day of this.days) {
+      daily[day] = 0;
+      grid[day] = {};
+      for (const hour of this.hours) {
+        grid[day][hour] = 0;
+      }
+    }
+    for (const hour of this.hours) {
+      hourly[hour] = 0;
+    }
+
+    let total = 0;
+    for (const run of runs) {
+      const r = run.result!;
+      total += r.total_transactions;
+      for (const hour of this.hours) {
+        hourly[hour] += r.hourly_distribution[hour] ?? 0;
+      }
+      for (const day of this.days) {
+        daily[day] += r.day_of_week_distribution[day] ?? 0;
+        for (const hour of this.hours) {
+          grid[day][hour] += r.hour_by_day_distribution?.[day]?.[hour] ?? 0;
+        }
+      }
+    }
+
+    let mostActiveHour: string | null = null;
+    let mostActiveHourCount = 0;
+    for (const hour of this.hours) {
+      if (hourly[hour] > mostActiveHourCount) {
+        mostActiveHourCount = hourly[hour];
+        mostActiveHour = hour;
+      }
+    }
+    let mostActiveDay: string | null = null;
+    let mostActiveDayCount = 0;
+    for (const day of this.days) {
+      if (daily[day] > mostActiveDayCount) {
+        mostActiveDayCount = daily[day];
+        mostActiveDay = day;
+      }
+    }
+    let peak: BehavioralAnalysisPeakPeriod | null = null;
+    let peakCount = 0;
+    for (const day of this.days) {
+      for (const hour of this.hours) {
+        if (grid[day][hour] > peakCount) {
+          peakCount = grid[day][hour];
+          peak = { day, hour, count: grid[day][hour], label: `${day} ${hour}:00 UTC` };
+        }
+      }
+    }
+
+    const first = runs[0].result!;
+    const combined: BehavioralAnalysisResult = {
+      case_id: first.case_id,
+      evidence: first.evidence,
+      address: BehavioralAnalysisComponent.COMBINED_KEY,
+      total_transactions: total,
+      hourly_distribution: hourly,
+      day_of_week_distribution: daily,
+      hour_by_day_distribution: grid,
+      timezone_estimate: estimateTimezoneCompatibility(hourly, total),
+      stats: {
+        most_active_hour: mostActiveHour,
+        most_active_hour_count: mostActiveHourCount,
+        most_active_day: mostActiveDay,
+        most_active_day_count: mostActiveDayCount,
+        peak_period: peak,
+        total_analyzed_transactions: total,
+      },
+      generated_at: first.generated_at,
+    };
+    return { address: BehavioralAnalysisComponent.COMBINED_KEY, result: combined, error: null };
+  }
+
   protected get activeRun(): AddressBehavioralRun | null {
+    if (this.isCombinedActive) {
+      return this.combinedRun;
+    }
     return this.runs.find((run) => run.address === this.activeAddress) ?? null;
   }
 
   protected get activeResult(): BehavioralAnalysisResult | null {
     return this.activeRun?.result ?? null;
+  }
+
+  /** Friendly label for the currently shown run - the address, or "N addresses combined". */
+  protected get activeAddressLabel(): string {
+    if (this.isCombinedActive) {
+      return this.t(`${this.exportableRuns.length} adresa zajedno`, `${this.exportableRuns.length} addresses combined`);
+    }
+    return this.activeAddress ?? '';
   }
 
   protected get failedRuns(): AddressBehavioralRun[] {
@@ -530,7 +651,7 @@ export class BehavioralAnalysisComponent implements OnInit {
   }
 
   /** Runs with at least a result, in the order they were analysed - what the report covers. */
-  private get exportableRuns(): AddressBehavioralRun[] {
+  protected get exportableRuns(): AddressBehavioralRun[] {
     return this.runs.filter((run) => run.result);
   }
 
@@ -639,6 +760,8 @@ export class BehavioralAnalysisComponent implements OnInit {
     const L = (sr: string, en: string): string => this.lx(sr, en);
     const stats = result.stats;
     const n = result.total_transactions;
+    const isCombined = run.address === BehavioralAnalysisComponent.COMBINED_KEY;
+    const addrCount = this.exportableRuns.length;
 
     if (n === 0) {
       return L(
@@ -648,10 +771,15 @@ export class BehavioralAnalysisComponent implements OnInit {
     }
 
     const parts: string[] = [
-      L(
-        `Adresa je u ovoj evidenciji zabelezila ${n} ${n === 1 ? 'transakciju' : 'transakcija'}.`,
-        `The address recorded ${n} ${n === 1 ? 'transaction' : 'transactions'} in this evidence.`,
-      ),
+      isCombined
+        ? L(
+            `Skup od ${addrCount} adresa je zajedno zabelezio ${n} ${n === 1 ? 'transakciju' : 'transakcija'} (zbir obrazaca; interni prenosi izmedju ovih adresa broje se dvaput).`,
+            `A set of ${addrCount} addresses together recorded ${n} ${n === 1 ? 'transaction' : 'transactions'} (sum of patterns; internal transfers between these addresses are counted twice).`,
+          )
+        : L(
+            `Adresa je u ovoj evidenciji zabelezila ${n} ${n === 1 ? 'transakciju' : 'transakcija'}.`,
+            `The address recorded ${n} ${n === 1 ? 'transaction' : 'transactions'} in this evidence.`,
+          ),
     ];
 
     if (stats.most_active_hour) {
@@ -868,13 +996,20 @@ export class BehavioralAnalysisComponent implements OnInit {
       y += lines.length * 4.6 + 3;
     };
 
-    runs.forEach((run, index) => {
+    const renderRunSection = (run: AddressBehavioralRun, heading: string): void => {
       const result = run.result!;
-      if (index > 0) {
-        doc.addPage();
-        y = 16;
+      sectionTitle(heading);
+
+      if (run.address === BehavioralAnalysisComponent.COMBINED_KEY) {
+        paragraph(L(
+          `Zbir vremenskih obrazaca svih ${runs.length} gore analiziranih adresa. Interne transakcije izmedju ovih `
+            + 'adresa uracunate su dvaput (jednom po svakoj strani). Smisleno samo ako se skup adresa smatra jednim '
+            + 'entitetom.',
+          `The sum of the activity patterns of all ${runs.length} addresses analysed above. Internal transactions `
+            + 'between these addresses are counted twice (once per side). Meaningful only if the set of addresses is '
+            + 'treated as a single entity.',
+        ));
       }
-      sectionTitle(`${index + 1}. ${run.address}`);
 
       drawSummaryCards([
         [L('Ukupno transakcija', 'Total transactions'), String(result.total_transactions), ACCENT],
@@ -969,7 +1104,25 @@ export class BehavioralAnalysisComponent implements OnInit {
         alternateRowStyles: { fillColor: [240, 245, 250] },
       });
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+    };
+
+    runs.forEach((run, index) => {
+      if (index > 0) {
+        doc.addPage();
+        y = 16;
+      }
+      renderRunSection(run, `${index + 1}. ${run.address}`);
     });
+
+    const combined = this.combinedRun;
+    if (combined) {
+      doc.addPage();
+      y = 16;
+      renderRunSection(
+        combined,
+        L(`Sve adrese zajedno (${runs.length})`, `All addresses combined (${runs.length})`),
+      );
+    }
 
     // --- Methodology appendix -----------------------------------------------------------
     doc.addPage();

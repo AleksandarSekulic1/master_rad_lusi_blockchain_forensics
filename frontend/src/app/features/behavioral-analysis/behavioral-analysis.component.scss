@@ -351,6 +351,30 @@
   border-color: color-mix(in srgb, var(--ba-error) 40%, transparent);
 }
 
+.result-tab.combined {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  border-style: dashed;
+  color: var(--ba-text-2);
+}
+
+.result-tab.combined.active {
+  border-style: solid;
+}
+
+.combined-note {
+  margin: 0 0 0.85rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--ba-border-soft);
+  background: var(--ba-chip-bg);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--ba-muted);
+}
+
 .result-tab-remove {
   flex: none;
   font-size: 0.9rem;

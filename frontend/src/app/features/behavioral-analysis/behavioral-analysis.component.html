@@ -115,9 +115,19 @@
     <div class="result-tabs" *ngIf="runs.length > 1">
       <button
         type="button"
+        class="result-tab combined"
+        *ngIf="canShowCombined"
+        [class.active]="isCombinedActive"
+        (click)="showCombined()"
+        [title]="t('Zbir obrazaca svih analiziranih adresa (interni prenosi se broje dvaput)', 'Sum of every analysed address’s pattern (internal transfers counted twice)')"
+      >
+        {{ t('Sve zajedno', 'Combined') }} ({{ exportableRuns.length }})
+      </button>
+      <button
+        type="button"
         class="result-tab"
         *ngFor="let run of runs"
-        [class.active]="run.address === activeAddress"
+        [class.active]="!isCombinedActive && run.address === activeAddress"
         [class.failed]="!run.result"
         (click)="setActiveAddress(run.address)"
       >
@@ -144,10 +154,15 @@
         <div class="heatmap-panel-header">
           <div>
             <p class="panel-kicker">{{ t('Mapa aktivnosti', 'Activity heatmap') }}</p>
-            <p class="heatmap-address mono-clip">{{ activeAddress }}</p>
+            <p class="heatmap-address" [class.mono-clip]="!isCombinedActive">{{ activeAddressLabel }}</p>
           </div>
           <span class="tx-count-pill">{{ result.total_transactions }} {{ t('transakcija', 'transactions') }} (UTC)</span>
         </div>
+
+        <p class="combined-note" *ngIf="isCombinedActive">
+          {{ t('Zbir obrazaca svih analiziranih adresa. Interni prenosi između ovih adresa broje se dvaput. Smisleno samo ako se skup smatra jednim entitetom.',
+                'Sum of every analysed address’s pattern. Internal transfers between these addresses are counted twice. Meaningful only if the set is treated as a single entity.') }}
+        </p>
 
         <div class="heatmap-scroll">
           <div class="heatmap-grid">

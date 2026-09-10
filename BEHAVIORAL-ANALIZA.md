@@ -160,6 +160,15 @@ Ruta `/behavioral`, link **„Behavioral"** u glavnom meniju.
   najranijeg do najkasnijeg UTC sata sa bilo kakvom aktivnošću (agregirano preko svih
   dana), iz `hourly_distribution` koji stranica već ima učitan. Vidi §8 za posledicu ove
   definicije (jedna izdvojena transakcija ume znatno da proširi prikazani raspon).
+- **Više adresa u jednom pokretanju** — može se dodati više adresa u red (padajući meni
+  „Adrese iz slučaja", ručni unos, ili „Dodaj sve adrese"); po završetku svaka ima svoj
+  tab (heatmap + rezime). Custody se potpisuje jednom za ceo red (§3).
+- **Opcioni tab „Sve zajedno / Combined"** (kad ima ≥ 2 uspešna rezultata) — sintetički
+  prikaz čije su raspodele **zbir** svih pojedinačnih; ne menja pojedinačne rezultate.
+  Procena vremenske zone se za njega računa na frontend-u (`timezone-heuristic.ts`, doslovni
+  port `timezone_heuristics.py` sa istim pragovima), pa mali uzorci mogu zajedno preći prag
+  od 8 transakcija. Interni prenosi između analiziranih adresa broje se dvaput — jasno
+  navedeno na prikazu i u PDF-u; smisleno samo ako se skup smatra jednim entitetom.
 
 ## 5. Heatmap vizuelizacija
 
@@ -492,7 +501,7 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
 | Šta | Fajl |
 |---|---|
 | Algoritam (bucketing, statistike) | `backend/app/analytics/behavioral_analysis.py` (`analyze_time_of_day`) |
-| Timezone/region heuristika (§7) | `backend/app/analytics/timezone_heuristics.py` (`estimate_timezone_compatibility`) |
+| Timezone/region heuristika (§7) | `backend/app/analytics/timezone_heuristics.py` (`estimate_timezone_compatibility`); frontend port za „Sve zajedno" tab: `frontend/src/app/features/behavioral-analysis/timezone-heuristic.ts` |
 | Rute | `backend/app/api/routes/cases.py` (`get_case_behavioral_analysis` — GET/pasivna, `run_case_behavioral_analysis` — POST/deliberatna sa `custody`) |
 | Lanac dokaza (upis) | `backend/app/api/routes/cases.py` (`_record_custody_access`), `LANAC-DOKAZA.md` §2 |
 | Testovi | `backend/tests/test_behavioral_analysis.py`, `backend/tests/test_timezone_heuristics.py` |
