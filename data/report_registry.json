@@ -483,5 +483,19 @@
       "taint_trace": "da"
     },
     "registered_at": "2026-09-10T12:02:02.590750+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-TLSS-UJE2",
+    "content_hash": "6c82d74349bb0e5ab42add689d563f9cdb3751785557a13ec5f801e7ca3aebec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "hops": 2,
+      "destination_mode": "specific_address",
+      "taint_trace": "ne"
+    },
+    "registered_at": "2026-09-10T12:30:05.882059+00:00"
   }
 ]

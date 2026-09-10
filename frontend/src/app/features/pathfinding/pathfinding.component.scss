@@ -767,6 +767,10 @@ h3 {
   color: var(--pf-text-2);
 }
 
+.hop-summary:hover {
+  background: var(--pf-chip-bg);
+}
+
 .hop-summary::before {
   content: '▸';
   flex: none;

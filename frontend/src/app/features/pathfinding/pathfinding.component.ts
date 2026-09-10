@@ -466,7 +466,8 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.taintDialogError = null;
     this.applyPathHighlight(null);
     this.clearInspectedNode();
-    this.expandedHops.clear();
+    this.expandedHops = new Set<number>();
+    this.pathHopsCache = null;
   }
 
   // --- Per-hop detail is collapsed by default so a long path doesn't bury the rest of the
@@ -475,11 +476,13 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   protected expandedHops = new Set<number>();
 
   protected toggleHop(index: number): void {
-    if (this.expandedHops.has(index)) {
-      this.expandedHops.delete(index);
+    const next = new Set(this.expandedHops);
+    if (next.has(index)) {
+      next.delete(index);
     } else {
-      this.expandedHops.add(index);
+      next.add(index);
     }
+    this.expandedHops = next;
   }
 
   protected get allHopsExpanded(): boolean {
@@ -487,11 +490,9 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   }
 
   protected toggleAllHops(): void {
-    if (this.allHopsExpanded) {
-      this.expandedHops.clear();
-    } else {
-      this.expandedHops = new Set(this.pathHops.map((_hop, index) => index));
-    }
+    this.expandedHops = this.allHopsExpanded
+      ? new Set<number>()
+      : new Set(this.pathHops.map((_hop, index) => index));
   }
 
   // --- Path Analysis: forensic details for the found path -------------------------------
@@ -557,10 +558,22 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   /** One row per hop, built entirely from data already on the page (this.graph.links) -
    * no extra request. See PathHopDetail for why the EARLIEST transaction on an edge is
    * the one shown when a hop aggregates more than one. */
+  /** Memoised so the getter returns a STABLE array reference across change-detection
+   * cycles: without this the template rebuilt every hop row on every CD tick, which threw
+   * away in-progress UI state (an expanded row would snap shut again). Recomputed only
+   * when the path, the per-path taint result or the scoped evidence actually changes. */
+  private pathHopsCache: { key: string; hops: PathHopDetail[] } | null = null;
+
   get pathHops(): PathHopDetail[] {
     const path = this.result?.found ? this.result.path : null;
     if (!path || !this.graph) {
+      this.pathHopsCache = null;
       return [];
+    }
+
+    const cacheKey = `${path.join('>')}|${this.pathTaintResult ? 'T' : '-'}|${this.selectedEvidence ?? ''}`;
+    if (this.pathHopsCache && this.pathHopsCache.key === cacheKey) {
+      return this.pathHopsCache.hops;
     }
 
     const taint = this.taintByAddress;
@@ -586,7 +599,12 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       });
     }
 
+    this.pathHopsCache = { key: cacheKey, hops };
     return hops;
+  }
+
+  protected trackHopIndex(index: number): number {
+    return index;
   }
 
   get initialAmount(): number | null {

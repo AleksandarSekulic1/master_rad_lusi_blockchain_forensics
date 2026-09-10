@@ -260,7 +260,7 @@
               </button>
             </div>
             <ol>
-              <li *ngFor="let hop of pathHops; let i = index">
+              <li *ngFor="let hop of pathHops; let i = index; trackBy: trackHopIndex">
                 <div class="hop-item" [class.open]="expandedHops.has(i)">
                   <button
                     type="button"
