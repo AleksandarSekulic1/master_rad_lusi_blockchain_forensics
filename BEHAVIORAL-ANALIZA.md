@@ -473,9 +473,14 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
   se ne ocenjuje kao „sumnjivo" na osnovu nje.
 - **Adresa se traži tačnim poklapanjem** (case-sensitive), isto kao Pathfinding — ne
   normalizuje se na mala slova (§2.5).
-- **Nema PDF izveštaja** (za razliku od Taint/Pathfinding) — prva verzija je samo prikaz na
-  ekranu; izveštaj sa potpisom/pečatom/kontrolnim brojem može se dodati kasnije po istom
-  obrascu (`report_registry.py` je već generički, vidi PATHFINDING-ANALIZA.md §8.2).
+- **PDF izveštaj** — dugme „Izvezi PDF izveštaj" (kad postoji bar jedan uspešan rezultat)
+  otvara isti dijalog za potpis kao Taint/Pathfinding (izbor jezika SR/EN, potpis mišem,
+  checkbox izjave), registruje izveštaj (`report_type: 'behavioral'`) i gradi PDF sa:
+  zaglavljem (mačka + naslov), meta-poljima, uvodnom napomenom, po jednom sekcijom za svaku
+  analiziranu adresu (kartice sa ključnim brojevima, auto-generisan **zaključak** u prozi,
+  procena vremenske zone, tabela aktivnosti po satu i po danu), metodološkim dodatkom, pa
+  stranom „Potpis i overa" (pečat = `assets/seal.png`) i „Provera verodostojnosti"
+  (kontrolni broj + otisak sadržaja). `buildBehavioralPdf` u `behavioral-analysis.component.ts`.
 - **Dijalog za lanac dokaza** — dugme „Analiziraj" prolazi kroz isti
   `CustodyAccessDialogComponent` (razlog pristupa, ime/prezime, potpis, checkbox izjave) kao
   Taint/Pathfinding/DEX Swaps i poziva `POST .../behavioral-analysis/run` sa `custody`
@@ -493,6 +498,7 @@ Namerno izostavljeno iz ove verzije (videti zahtev — dodaje se tek kad zatreba
 | Testovi | `backend/tests/test_behavioral_analysis.py`, `backend/tests/test_timezone_heuristics.py` |
 | Demo podaci (§6.2, §7.5) | `backend/scripts/seed_demo_behavioral_evidence.py` |
 | Frontend stranica | `frontend/src/app/features/behavioral-analysis/` (`analyze` otvara dijalog, `confirmCustodyAndAnalyze` pokreće) |
+| PDF izveštaj | `frontend/src/app/features/behavioral-analysis/behavioral-analysis.component.ts` (`openSignatureDialog`, `confirmSignatureAndExport`, `buildBehavioralPdf`, `buildAddressConclusion`) — `report_type: 'behavioral'` |
 | API poziv | `frontend/src/app/core/services/api.service.ts` (`getBehavioralAnalysis` pasivno, `runBehavioralAnalysis` sa `custody`) |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`BehavioralAnalysisResult`, `BehavioralAnalysisStats`, `BehavioralAnalysisPeakPeriod`, `TimezoneEstimate`) |
 

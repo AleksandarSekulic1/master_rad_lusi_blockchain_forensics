@@ -89,6 +89,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     taint: 'Taint izveštaj',
     pathfinding: 'Pathfinding izveštaj',
     dex_swap: 'DEX Swap izveštaj',
+    behavioral: 'Bihevioralni izveštaj',
   };
 
   constructor(

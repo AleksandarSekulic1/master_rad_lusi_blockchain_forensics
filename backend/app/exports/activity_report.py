@@ -60,6 +60,7 @@ _REPORT_TYPE_LABELS: dict[str, str] = {
     'taint': 'Taint izveštaj',
     'pathfinding': 'Pathfinding izveštaj',
     'dex_swap': 'DEX Swap izveštaj',
+    'behavioral': 'Bihevioralni izveštaj',
     'case_triage': 'Izveštaj za trijažu',
     'graph_analysis': 'Izveštaj analize grafa',
 }
