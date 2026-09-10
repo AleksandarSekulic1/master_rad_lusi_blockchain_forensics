@@ -466,6 +466,32 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.taintDialogError = null;
     this.applyPathHighlight(null);
     this.clearInspectedNode();
+    this.expandedHops.clear();
+  }
+
+  // --- Per-hop detail is collapsed by default so a long path doesn't bury the rest of the
+  // panel under a wall of amount/taint/time/hash rows the investigator may not need yet.
+  // The summary still shows the route and the amount; a click opens the full detail. ---
+  protected expandedHops = new Set<number>();
+
+  protected toggleHop(index: number): void {
+    if (this.expandedHops.has(index)) {
+      this.expandedHops.delete(index);
+    } else {
+      this.expandedHops.add(index);
+    }
+  }
+
+  protected get allHopsExpanded(): boolean {
+    return this.pathHops.length > 0 && this.expandedHops.size >= this.pathHops.length;
+  }
+
+  protected toggleAllHops(): void {
+    if (this.allHopsExpanded) {
+      this.expandedHops.clear();
+    } else {
+      this.expandedHops = new Set(this.pathHops.map((_hop, index) => index));
+    }
   }
 
   // --- Path Analysis: forensic details for the found path -------------------------------

@@ -248,34 +248,58 @@
           </div>
 
           <div class="hop-list">
-            <p class="panel-kicker">{{ t('Transakcije na putu', 'Transactions along the path') }}</p>
+            <div class="hop-list-head">
+              <p class="panel-kicker">{{ t('Transakcije na putu', 'Transactions along the path') }}</p>
+              <button
+                type="button"
+                class="hop-toggle-all"
+                *ngIf="pathHops.length > 1"
+                (click)="toggleAllHops()"
+              >
+                {{ allHopsExpanded ? t('Skupi sve', 'Collapse all') : t('Razvij sve', 'Expand all') }}
+              </button>
+            </div>
             <ol>
-              <li *ngFor="let hop of pathHops; let i = index" class="hop-item">
-                <p class="hop-title">
-                  {{ i + 1 }}. <span class="mono-address">{{ hop.source }}</span> →
-                  <span class="mono-address">{{ hop.target }}</span>
-                </p>
-                <dl>
-                  <div>
-                    <dt>{{ t('Iznos', 'Amount') }}</dt>
-                    <dd>{{ hop.amount !== null ? (hop.amount | number : '1.2-6') : 'n/a' }}</dd>
+              <li *ngFor="let hop of pathHops; let i = index">
+                <div class="hop-item" [class.open]="expandedHops.has(i)">
+                  <button
+                    type="button"
+                    class="hop-summary"
+                    (click)="toggleHop(i)"
+                    [attr.aria-expanded]="expandedHops.has(i)"
+                  >
+                    <span class="hop-index">{{ i + 1 }}</span>
+                    <span class="hop-route">
+                      <span class="mono-address">{{ hop.source }}</span>
+                      <span class="hop-arrow">→</span>
+                      <span class="mono-address">{{ hop.target }}</span>
+                    </span>
+                    <span class="hop-amount">{{ hop.amount !== null ? (hop.amount | number : '1.2-6') : 'n/a' }}</span>
+                  </button>
+                  <div class="hop-body" *ngIf="expandedHops.has(i)">
+                    <dl>
+                      <div>
+                        <dt>{{ t('Iznos', 'Amount') }}</dt>
+                        <dd>{{ hop.amount !== null ? (hop.amount | number : '1.2-6') : 'n/a' }}</dd>
+                      </div>
+                      <div *ngIf="hop.taintPercentage !== null">
+                        <dt>{{ t('Zaprljanost', 'Taint') }}</dt>
+                        <dd>{{ hop.taintPercentage | number : '1.0-2' }}%</dd>
+                      </div>
+                      <div>
+                        <dt>{{ t('Vreme', 'Time') }}</dt>
+                        <dd>{{ hop.timestamp ? (hop.timestamp | date : 'medium') : 'n/a' }}</dd>
+                      </div>
+                      <div>
+                        <dt>{{ t('Heš transakcije', 'Transaction hash') }}</dt>
+                        <dd class="mono-address">{{ hop.txHash ?? t('n/a — evidencija nema heš', 'n/a — the evidence has no hash') }}</dd>
+                      </div>
+                    </dl>
+                    <p class="hop-extra" *ngIf="hop.extraTransactionCount > 0">
+                      + {{ hop.extraTransactionCount }} {{ t('dodatnih transakcija na ovoj vezi (prikazana je najranija)', 'more transactions on this link (the earliest one is shown)') }}
+                    </p>
                   </div>
-                  <div *ngIf="hop.taintPercentage !== null">
-                    <dt>{{ t('Zaprljanost', 'Taint') }}</dt>
-                    <dd>{{ hop.taintPercentage | number : '1.0-2' }}%</dd>
-                  </div>
-                  <div>
-                    <dt>{{ t('Vreme', 'Time') }}</dt>
-                    <dd>{{ hop.timestamp ? (hop.timestamp | date : 'medium') : 'n/a' }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ t('Heš transakcije', 'Transaction hash') }}</dt>
-                    <dd class="mono-address">{{ hop.txHash ?? t('n/a — evidencija nema heš', 'n/a — the evidence has no hash') }}</dd>
-                  </div>
-                </dl>
-                <p class="hop-extra" *ngIf="hop.extraTransactionCount > 0">
-                  + {{ hop.extraTransactionCount }} {{ t('dodatnih transakcija na ovoj vezi (prikazana je najranija)', 'more transactions on this link (the earliest one is shown)') }}
-                </p>
+                </div>
               </li>
             </ol>
           </div>
