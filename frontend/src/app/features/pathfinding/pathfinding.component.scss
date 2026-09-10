@@ -8,10 +8,11 @@
    later step. */
 :host {
   --pf-border: rgba(148, 163, 184, 0.18);
-  --pf-banner-bg: rgba(125, 211, 252, 0.06);
+  --pf-surface: rgba(4, 9, 18, 0.78);
   --pf-kicker: #7bd6ff;
   --pf-heading: #f4f7fe;
   --pf-muted: #8ea6c7;
+  --pf-dim: #9ab1d0;
   --pf-link: #7bd6ff;
   --pf-field-bg: rgba(255, 255, 255, 0.03);
   --pf-field-text: #eef4ff;
@@ -25,10 +26,11 @@
 
 :host-context([data-theme='light']) {
   --pf-border: rgba(15, 23, 42, 0.12);
-  --pf-banner-bg: rgba(37, 99, 235, 0.06);
+  --pf-surface: #ffffff;
   --pf-kicker: #2563eb;
   --pf-heading: #16233b;
   --pf-muted: #55658c;
+  --pf-dim: #55658c;
   --pf-link: #2563eb;
   --pf-field-bg: rgba(15, 23, 42, 0.045);
   --pf-field-text: #1e293b;
@@ -45,34 +47,86 @@
   gap: 1rem;
 }
 
-.active-case-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1rem;
-  border-radius: 1rem;
+/* ---------- unified top control card (case + evidence + refresh) ---------- */
+
+.pf-controls {
   border: 1px solid var(--pf-border);
-  background: var(--pf-banner-bg);
+  border-radius: 1rem;
+  background: var(--pf-surface);
+  overflow: hidden;
 }
 
-.active-case-banner strong {
-  display: block;
-  color: var(--pf-heading);
+.pf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
 }
 
-.active-case-banner .panel-kicker {
+.pf-case {
+  display: grid;
+  gap: 0.1rem;
+  align-self: center;
+}
+
+.pf-eyebrow {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: var(--pf-kicker);
 }
 
-.active-case-banner .muted {
-  color: var(--pf-muted);
-  font-size: 0.9rem;
+.pf-case strong {
+  font-size: 0.92rem;
+  color: var(--pf-heading);
 }
 
-.active-case-banner .muted a {
-  color: var(--pf-link);
+.pf-nocase {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--pf-dim);
+}
+
+.pf-nocase a {
+  color: var(--pf-kicker);
+}
+
+.pf-field {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.pf-field-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pf-dim);
+}
+
+.pf-field select {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--pf-border);
+  color: var(--pf-field-text);
+  background: var(--pf-field-bg);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.pf-field select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.pf-refresh {
+  align-self: center;
+  margin-left: auto;
 }
 
 .ghost-button,
@@ -113,28 +167,6 @@
 
 .primary-button:hover:not(:disabled) {
   transform: translateY(-1px);
-}
-
-.evidence-picker label {
-  display: grid;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  color: var(--pf-muted);
-  max-width: 28rem;
-}
-
-.evidence-picker select {
-  width: 100%;
-  padding: 0.8rem 0.95rem;
-  border-radius: 0.9rem;
-  border: 1px solid var(--pf-border);
-  color: var(--pf-field-text);
-  background: var(--pf-field-bg);
-}
-
-.evidence-picker select option {
-  color: #0b1526;
-  background: #ffffff;
 }
 
 .case-graph-error {

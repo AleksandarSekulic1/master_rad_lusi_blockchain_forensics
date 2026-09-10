@@ -1,31 +1,36 @@
 <div class="graph-shell">
-  <div class="active-case-banner">
-    <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">{{ t('Aktivan slučaj', 'Active case') }}</span>
-      <strong>{{ activeCase.name }}</strong>
-    </div>
-    <ng-template #noCase>
-      <span class="muted">
-        {{ t('Nije izabran slučaj — idi na', 'No case selected — go to') }}
-        <a routerLink="/cases">{{ t('Slučajevi', 'Cases') }}</a>
-        {{ t('da izabereš jedan.', 'to pick one.') }}
-      </span>
-    </ng-template>
-    <button type="button" class="ghost-button" (click)="loadGraph()" [disabled]="!activeCase || isLoadingGraph">
-      {{ isLoadingGraph ? t('Učitavanje...', 'Loading...') : t('Osveži graf', 'Refresh graph') }}
-    </button>
-  </div>
+  <div class="pf-controls">
+    <div class="pf-bar">
+      <div class="pf-case" *ngIf="activeCase; else noCase">
+        <span class="pf-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="pf-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
 
-  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
-    <label>
-      {{ t('Prikaz transakcija', 'Transaction view') }}
-      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
-        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
-          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
-        </option>
-      </select>
-    </label>
+      <label class="pf-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="pf-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+
+      <button
+        type="button"
+        class="ghost-button pf-refresh"
+        (click)="loadGraph()"
+        [disabled]="!activeCase || isLoadingGraph"
+      >
+        {{ isLoadingGraph ? t('Učitavanje...', 'Loading...') : t('Osveži graf', 'Refresh graph') }}
+      </button>
+    </div>
   </div>
 
   <p class="case-graph-error" *ngIf="graphError">{{ graphError }}</p>
