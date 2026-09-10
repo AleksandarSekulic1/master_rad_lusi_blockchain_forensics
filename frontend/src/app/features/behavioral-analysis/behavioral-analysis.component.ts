@@ -131,8 +131,8 @@ export class BehavioralAnalysisComponent implements OnInit {
         this.isAnalyzing = false;
         this.analysisError =
           error.status === 404
-            ? 'Adresa nije pronađena u evidenciji ovog slučaja.'
-            : 'Neuspešna analiza vremenskog obrasca.';
+            ? this.t('Adresa nije pronađena u evidenciji ovog slučaja.', 'The address was not found in this case’s evidence.')
+            : this.t('Neuspešna analiza vremenskog obrasca.', 'The time-of-activity analysis failed.');
       },
     });
   }
@@ -182,7 +182,8 @@ export class BehavioralAnalysisComponent implements OnInit {
 
   protected cellLabel(day: string, hour: string): string {
     const count = this.cellCount(day, hour);
-    return `${day} ${hour}:00 UTC — ${count} ${count === 1 ? 'transaction' : 'transactions'}`;
+    const unit = count === 1 ? this.t('transakcija', 'transaction') : this.t('transakcija', 'transactions');
+    return `${day} ${hour}:00 UTC — ${count} ${unit}`;
   }
 
   /** Envelope from the earliest to the latest UTC hour-of-day with any activity at all
