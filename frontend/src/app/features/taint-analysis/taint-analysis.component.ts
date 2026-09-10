@@ -2391,6 +2391,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
 
+    if (y > pageHeight - 40) {
+      doc.addPage();
+      y = 16;
+    }
     sectionTitle(L('Evidencija (SHA-256)', 'Evidence (SHA-256)'));
     const relevantEvidence = this.selectedEvidence
       ? this.evidenceOptions.filter((entry) => entry.stored_name === this.selectedEvidence)
@@ -2406,14 +2410,25 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       for (const entry of relevantEvidence) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
-        doc.setTextColor(...TEXT_DARK);
         const nameLines = doc.splitTextToSize(this.asciiSafe(entry.file_name), usableWidth);
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(7.5);
+        const hashLines = doc.splitTextToSize(entry.sha256, usableWidth);
+        // Page-break BEFORE the entry so a long evidence list (a demo case has ~10 files)
+        // doesn't run off the bottom of the page and print over the footer.
+        const entryHeight = nameLines.length * 4 + hashLines.length * 4 + 1.5;
+        if (y + entryHeight > pageHeight - 16) {
+          doc.addPage();
+          y = 16;
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...TEXT_DARK);
         doc.text(nameLines, marginX, y);
         y += nameLines.length * 4;
         doc.setFont('courier', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(...TEXT_GRAY);
-        const hashLines = doc.splitTextToSize(entry.sha256, usableWidth);
         doc.text(hashLines, marginX, y);
         y += hashLines.length * 4 + 1.5;
       }
@@ -2421,6 +2436,10 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
     y += 1;
 
+    if (y > pageHeight - 40) {
+      doc.addPage();
+      y = 16;
+    }
     sectionTitle(L('Podešavanja prikaza u trenutku izvoza', 'Display settings at export time'));
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
