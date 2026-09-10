@@ -22,6 +22,7 @@ import {
   CaseSummary,
   EvidenceEntry,
   GraphNodeData,
+  InvestigatorNote,
   KnownEntity,
   KnownEntityCategory,
   NodeLinkGraphResponse,
@@ -393,6 +394,12 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
   addAllOriginCandidates(): void {
     for (const item of this.seedSuggestions?.origin_candidates ?? []) {
+      this.addSeedAddress(item.address);
+    }
+  }
+
+  addAllLaunderingPoints(): void {
+    for (const item of this.seedSuggestions?.laundering_points ?? []) {
       this.addSeedAddress(item.address);
     }
   }
@@ -909,6 +916,44 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.hoveredChartIndex = null;
     this.applyPathHighlight(String(node.id));
     this.loadAddressEnrichment();
+    this.loadInvestigatorNotes();
+  }
+
+  // --- Investigator notes (read-only) -------------------------------------------------
+  // Notes are created on the Graph page's investigator layer and persisted per
+  // investigation (server-side), keyed by address. Here we only surface them for the
+  // selected node, using whichever investigation the Graph page last had active.
+
+  protected investigatorNotes: InvestigatorNote[] = [];
+  protected isLoadingInvestigatorNotes = false;
+
+  private get storedInvestigationId(): string | null {
+    try {
+      return localStorage.getItem('lusi_selected_investigation');
+    } catch {
+      return null;
+    }
+  }
+
+  private loadInvestigatorNotes(): void {
+    this.investigatorNotes = [];
+    const investigationId = this.storedInvestigationId;
+    const address = this.selectedNode?.address ?? this.selectedNode?.id;
+    if (!investigationId || !address) {
+      return;
+    }
+
+    this.isLoadingInvestigatorNotes = true;
+    this.api.getInvestigatorNotes(investigationId, String(address)).subscribe({
+      next: (response) => {
+        this.investigatorNotes = response.notes;
+        this.isLoadingInvestigatorNotes = false;
+      },
+      error: () => {
+        this.investigatorNotes = [];
+        this.isLoadingInvestigatorNotes = false;
+      },
+    });
   }
 
   /** Clears the current node selection (inspector panel + path highlight + enrichment) -
@@ -917,6 +962,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   private deselectNode(): void {
     this.selectedNode = null;
     this.addressEnrichment = null;
+    this.investigatorNotes = [];
     this.showAllEventLog = false;
     this.hoveredChartIndex = null;
     this.applyPathHighlight(null);

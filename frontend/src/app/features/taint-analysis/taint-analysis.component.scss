@@ -12,6 +12,10 @@
   --tx-btn-bg: rgba(255, 255, 255, 0.02);
   --tx-canvas-bg: #0a1425;
   --tx-accent: #7dd3fc;
+  --tx-btn-text: #d9e6ff;
+  --tx-amber-text: #fde68a;
+  --tx-amber-bg: rgba(251, 191, 36, 0.16);
+  --tx-amber-border: rgba(251, 191, 36, 0.4);
 }
 
 :host-context([data-theme='light']) {
@@ -28,6 +32,10 @@
   --tx-btn-bg: rgba(15, 23, 42, 0.03);
   --tx-canvas-bg: #0f1b30;
   --tx-accent: #2563eb;
+  --tx-btn-text: #1e293b;
+  --tx-amber-text: #92400e;
+  --tx-amber-bg: rgba(217, 119, 6, 0.12);
+  --tx-amber-border: rgba(217, 119, 6, 0.4);
 }
 
 .taint-shell {
@@ -243,7 +251,7 @@ h3 {
 
 .ghost-button {
   background: var(--tx-btn-bg);
-  color: #d9e6ff;
+  color: var(--tx-btn-text);
 }
 
 .ghost-button:hover:not(:disabled) {
@@ -254,9 +262,9 @@ h3 {
 }
 
 .primary-button {
-  background: rgba(251, 191, 36, 0.16);
-  border-color: rgba(251, 191, 36, 0.4);
-  color: #fde68a;
+  background: var(--tx-amber-bg);
+  border-color: var(--tx-amber-border);
+  color: var(--tx-amber-text);
 }
 
 .primary-button:hover:not(:disabled) {
@@ -270,9 +278,9 @@ h3 {
 }
 
 .ghost-button.active {
-  border-color: rgba(125, 211, 252, 0.6);
-  background: rgba(125, 211, 252, 0.22);
-  color: #eaf7ff;
+  border-color: var(--tx-accent);
+  background: var(--tx-accent-soft, rgba(125, 211, 252, 0.22));
+  color: var(--tx-heading);
   box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.25) inset;
 }
 
@@ -427,9 +435,9 @@ h3 {
   gap: 0.4rem;
   padding: 0.4rem 0.7rem;
   border-radius: 999px;
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  background: rgba(251, 191, 36, 0.1);
-  color: #fde68a;
+  border: 1px solid var(--tx-amber-border);
+  background: var(--tx-amber-bg);
+  color: var(--tx-amber-text);
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
   font-size: 0.78rem;
 }
@@ -958,7 +966,7 @@ h3 {
   padding-left: 1rem;
   font-size: 0.78rem;
   line-height: 1.5;
-  color: #b9c8e4;
+  color: var(--tx-dim);
 }
 
 .suggestion-empty {
@@ -988,7 +996,7 @@ h3 {
   border-radius: 0.7rem;
   border: 1px solid var(--tx-border);
   background: var(--tx-btn-bg);
-  color: #9fb6d8;
+  color: var(--tx-dim);
   font-size: 0.76rem;
   cursor: pointer;
 }
@@ -1028,9 +1036,9 @@ h3 {
 /* "Zero results because the evidence cannot show it" reads as a caution, not as an
    all-clear - the two conclusions are opposites. */
 .suggestion-empty.structural {
-  border-color: rgba(251, 191, 36, 0.45);
-  background: rgba(251, 191, 36, 0.07);
-  color: #e6d7ae;
+  border-color: var(--tx-amber-border);
+  background: var(--tx-amber-bg);
+  color: var(--tx-text);
 }
 
 .suggestion-empty.structural strong {
@@ -1164,3 +1172,44 @@ h3 {
 
 /* graph viewport stays dark in both themes so taint colors stay legible */
 .graph-canvas { background: var(--tx-canvas-bg); }
+
+/* investigator notes carried over from the Graph page (read-only) */
+.inv-notes-block {
+  margin: 0.6rem 0 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 146, 60, 0.35);
+  background: rgba(251, 146, 60, 0.08);
+}
+
+.inv-notes-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fdba74;
+}
+
+.inv-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inv-note-text {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--tx-text);
+  overflow-wrap: anywhere;
+}
+
+.inv-note-meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  color: var(--tx-muted);
+}

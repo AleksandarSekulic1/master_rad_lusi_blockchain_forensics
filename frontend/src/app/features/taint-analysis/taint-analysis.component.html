@@ -205,6 +205,9 @@
             {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Ipak dodaj', 'Add anyway') }}
           </button>
         </div>
+        <button type="button" class="ghost-button small" (click)="addAllLaunderingPoints()">
+          {{ t('Ipak dodaj sve tačke pranja', 'Add all laundering points anyway') }}
+        </button>
       </div>
 
       <div class="suggestion-empty" *ngIf="!hasAnySuggestion" [class.structural]="suggestions.coverage_note">
@@ -354,6 +357,18 @@
       <ng-container *ngIf="selectedNode as node; else noSelection">
         <p class="panel-kicker">{{ t('Detalji čvora', 'Node details') }}</p>
         <h3>{{ node.address ?? node.id }}</h3>
+
+        <div class="inv-notes-block" *ngIf="investigatorNotes.length > 0 || isLoadingInvestigatorNotes">
+          <span class="inv-notes-label">{{ t('Istražiteljske beleške (sa Graf stranice)', 'Investigator notes (from the Graph page)') }}</span>
+          <p class="muted" *ngIf="isLoadingInvestigatorNotes">{{ t('Učitavanje...', 'Loading...') }}</p>
+          <ul class="inv-notes-list" *ngIf="!isLoadingInvestigatorNotes">
+            <li *ngFor="let inote of investigatorNotes">
+              <p class="inv-note-text">{{ inote.text }}</p>
+              <p class="inv-note-meta">{{ inote.author }} · {{ inote.created_at | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</p>
+            </li>
+          </ul>
+        </div>
+
         <dl>
           <div>
             <dt>{{ timelineEnabled ? t('Taint % (na trenutnoj poziciji trake)', 'Taint % (at the current timeline position)') : 'Taint %' }}</dt>
