@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ActivityReportOptions, ApiService } from '../../core/services/api.service';
@@ -53,6 +53,10 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   protected readonly pageSizeOptions = [10, 20, 50] as const;
   protected pageSize: (typeof this.pageSizeOptions)[number] = 20;
   protected currentPage = 1;
+  /** Anchor right above the table - scrolled into view on every page change, so flipping
+   * to page 2 doesn't leave the analyst looking at the (now different) pagination bar at
+   * the bottom with no idea what changed above. */
+  @ViewChild('tableTop') private tableTopRef?: ElementRef<HTMLElement>;
 
   // --- Report export ---
   protected isReportPanelOpen = false;
@@ -219,10 +223,20 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   protected setPageSize(size: number): void {
     this.pageSize = size as (typeof this.pageSizeOptions)[number];
     this.currentPage = 1;
+    this.scrollToTableTop();
   }
 
   protected goToPage(page: number): void {
-    this.currentPage = Math.min(Math.max(1, page), this.totalPages);
+    const next = Math.min(Math.max(1, page), this.totalPages);
+    if (next === this.currentPage) {
+      return;
+    }
+    this.currentPage = next;
+    this.scrollToTableTop();
+  }
+
+  private scrollToTableTop(): void {
+    this.tableTopRef?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   toggleAutoRefresh(): void {

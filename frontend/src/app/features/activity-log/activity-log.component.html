@@ -159,7 +159,7 @@
       <p class="error-banner" *ngIf="reportError">{{ reportError }}</p>
     </div>
 
-    <div class="meta-row">
+    <div class="meta-row" #tableTop>
       <span class="count-chip">{{ entries.length }} {{ t(entries.length === 1 ? 'zapis' : 'zapisa', entries.length === 1 ? 'entry' : 'entries') }}</span>
       <span class="muted" *ngIf="lastRefreshed">{{ t('Poslednje osveženo', 'Last refreshed') }}: {{ lastRefreshed | date : 'HH:mm:ss' }}</span>
       <span class="muted" *ngIf="scope === 'self'">{{ t('Vidite isključivo sopstvene akcije.', 'You see only your own actions.') }}</span>
