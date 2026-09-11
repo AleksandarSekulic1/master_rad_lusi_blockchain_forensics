@@ -537,6 +537,35 @@ export class DexSwapAnalysisComponent implements OnInit {
     return `${DexSwapAnalysisComponent.formatPdfAmount(amount)} ${token ?? '?'}`;
   }
 
+  /** Loads the cat emblem/seal PNGs for the PDF header and signature block - same helper
+   * as taint-analysis/pathfinding/behavioral-analysis.component.ts's own loadPdfImage, not
+   * a shared module (small per-component PDF helpers are copied in this app, not
+   * centralized). */
+  private static loadImageSize(dataUrl: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error('image load failed'));
+      image.src = dataUrl;
+    });
+  }
+
+  private async loadPdfImage(path: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const response = await fetch(path);
+    if (!response.ok) {
+      throw new Error(`asset not found: ${path}`);
+    }
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('asset read failed'));
+      reader.readAsDataURL(blob);
+    });
+    const size = await DexSwapAnalysisComponent.loadImageSize(dataUrl);
+    return { dataUrl, width: size.width, height: size.height };
+  }
+
   openSignatureDialog(): void {
     if (this.exportableRuns.length === 0 || this.isExportingPdf) {
       return;
@@ -620,7 +649,9 @@ export class DexSwapAnalysisComponent implements OnInit {
         }),
       );
 
-      this.buildDexSwapPdf({ signatureImage, declaration, registration });
+      const catEmblem = await this.loadPdfImage('assets/cat_pdf.png').catch(() => null);
+      const sealImage = await this.loadPdfImage('assets/seal.png').catch(() => null);
+      this.buildDexSwapPdf({ signatureImage, declaration, registration }, { catEmblem, sealImage });
       this.isSignatureDialogOpen = false;
     } catch {
       this.signatureError = 'Neuspešno generisanje PDF izveštaja.';
@@ -629,11 +660,17 @@ export class DexSwapAnalysisComponent implements OnInit {
     }
   }
 
-  private buildDexSwapPdf(signing: {
-    signatureImage: string;
-    declaration: string;
-    registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
-  }): void {
+  private buildDexSwapPdf(
+    signing: {
+      signatureImage: string;
+      declaration: string;
+      registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
+    },
+    assets: {
+      catEmblem: { dataUrl: string; width: number; height: number } | null;
+      sealImage: { dataUrl: string; width: number; height: number } | null;
+    },
+  ): void {
     const caseSummary = this.activeCase!;
     const runs = this.exportableRuns;
     const NAVY = DexSwapAnalysisComponent.PDF_NAVY;
@@ -649,15 +686,23 @@ export class DexSwapAnalysisComponent implements OnInit {
     const usableWidth = pageWidth - marginX * 2;
     let y = 32;
 
+    const barHeight = 24;
     doc.setFillColor(...NAVY);
-    doc.rect(0, 0, pageWidth, 24, 'F');
+    doc.rect(0, 0, pageWidth, barHeight, 'F');
+    let titleX = marginX;
+    if (assets.catEmblem) {
+      const emblem = 19;
+      const emblemW = (assets.catEmblem.width / assets.catEmblem.height) * emblem;
+      doc.addImage(assets.catEmblem.dataUrl, 'PNG', marginX, (barHeight - emblem) / 2, emblemW, emblem);
+      titleX = marginX + emblemW + 5;
+    }
     doc.setTextColor(...WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
-    doc.text('Lusi v1.0 - Izvestaj DEX Swap analize', marginX, 11);
+    doc.text('Lusi v1.0 - Izvestaj DEX Swap analize', titleX, 11);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, marginX, 19);
+    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
     doc.setTextColor(...TEXT_DARK);
 
     const kv = (label: string, value: string): void => {
@@ -1033,27 +1078,42 @@ export class DexSwapAnalysisComponent implements OnInit {
 
     const sealCenterX = marginX + signatureBoxWidth + (usableWidth - signatureBoxWidth) / 2;
     const sealCenterY = y + signatureBoxHeight / 2;
-    const sealRadius = 19;
-    doc.setDrawColor(...NAVY);
-    doc.setLineWidth(1.1);
-    doc.circle(sealCenterX, sealCenterY, sealRadius);
-    doc.setLineWidth(0.4);
-    doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+    if (assets.sealImage) {
+      const sealHeight = 34;
+      const sealWidth = (assets.sealImage.width / assets.sealImage.height) * sealHeight;
+      doc.addImage(
+        assets.sealImage.dataUrl,
+        'PNG',
+        sealCenterX - sealWidth / 2,
+        sealCenterY - sealHeight / 2,
+        sealWidth,
+        sealHeight,
+      );
+    } else {
+      const sealRadius = 19;
+      doc.setDrawColor(...NAVY);
+      doc.setLineWidth(1.1);
+      doc.circle(sealCenterX, sealCenterY, sealRadius);
+      doc.setLineWidth(0.4);
+      doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+      doc.setTextColor(...NAVY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('LUSI', sealCenterX, sealCenterY - 3, { align: 'center' });
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY + 2, { align: 'center' });
+    }
     doc.setTextColor(...NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('LUSI', sealCenterX, sealCenterY - 5, { align: 'center' });
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY - 0.5, { align: 'center' });
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.text('OVERENO', sealCenterX, sealCenterY + 4.5, { align: 'center' });
+    doc.text(
+      `OVERENO ${new Date(signing.registration.registered_at).toLocaleDateString()}`,
+      sealCenterX,
+      y + signatureBoxHeight + 4,
+      { align: 'center' },
+    );
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
-    doc.text(new Date(signing.registration.registered_at).toLocaleDateString(), sealCenterX, sealCenterY + 9, {
-      align: 'center',
-    });
 
     y += signatureBoxHeight + 16;
 
