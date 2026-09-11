@@ -1,38 +1,133 @@
+/* Temski tokeni - tamna tema podrazumevano, prepisani pod [data-theme='light'] (isti
+   pristup kao dex-swap-analysis / taint-analysis / pathfinding .scss), tako da ova
+   stranica u obe teme izgleda kao sestra ostalih stranica analize. */
+:host {
+  --vr-border: rgba(148, 163, 184, 0.18);
+  --vr-border-soft: rgba(148, 163, 184, 0.14);
+  --vr-surface: rgba(8, 15, 29, 0.74);
+  --vr-heading: #f4f7fe;
+  --vr-muted: #8ea6c7;
+  --vr-dim: #cdd9ef;
+  --vr-kicker: #7bd6ff;
+  --vr-field-border: rgba(148, 163, 184, 0.2);
+  --vr-field-bg: rgba(255, 255, 255, 0.03);
+  --vr-field-text: #eef4ff;
+  --vr-field-focus-border: rgba(123, 214, 255, 0.5);
+  --vr-btn-bg: rgba(255, 255, 255, 0.02);
+  --vr-btn-text: #d9e6ff;
+  --vr-accent: #7dd3fc;
+  --vr-mono: #a5c9f0;
+  --vr-error-bg: rgba(220, 38, 38, 0.14);
+  --vr-error-border: rgba(248, 113, 113, 0.28);
+  --vr-error-text: #fecaca;
+  --vr-good-bg: rgba(74, 222, 128, 0.1);
+  --vr-good-border: rgba(134, 239, 172, 0.32);
+  --vr-good-icon-bg: #4ade80;
+  --vr-good-icon-text: #052e16;
+  --vr-good-title: #bbf7d0;
+  --vr-bad-bg: rgba(220, 38, 38, 0.14);
+  --vr-bad-border: rgba(248, 113, 113, 0.35);
+  --vr-bad-icon-bg: #f87171;
+  --vr-bad-icon-text: #450a0a;
+  --vr-bad-title: #fecaca;
+  --vr-neutral-bg: rgba(148, 163, 184, 0.09);
+  --vr-neutral-border: rgba(148, 163, 184, 0.26);
+  --vr-neutral-icon-bg: #94a3b8;
+  --vr-neutral-icon-text: #0b1526;
+  --vr-neutral-title: #cbd5e1;
+  --vr-chip-bg: rgba(255, 255, 255, 0.05);
+}
+
+:host-context([data-theme='light']) {
+  --vr-border: rgba(15, 23, 42, 0.12);
+  --vr-border-soft: rgba(15, 23, 42, 0.1);
+  --vr-surface: #ffffff;
+  --vr-heading: #16233b;
+  --vr-muted: #55658c;
+  --vr-dim: #33415c;
+  --vr-kicker: #2563eb;
+  --vr-field-border: rgba(15, 23, 42, 0.16);
+  --vr-field-bg: #f6f8fc;
+  --vr-field-text: #16233b;
+  --vr-field-focus-border: rgba(37, 99, 235, 0.5);
+  --vr-btn-bg: rgba(15, 23, 42, 0.03);
+  --vr-btn-text: #1e293b;
+  --vr-accent: #2563eb;
+  --vr-mono: #1d4ed8;
+  --vr-error-bg: rgba(220, 38, 38, 0.08);
+  --vr-error-border: rgba(220, 38, 38, 0.28);
+  --vr-error-text: #b91c1c;
+  --vr-good-bg: rgba(22, 163, 74, 0.08);
+  --vr-good-border: rgba(22, 163, 74, 0.3);
+  --vr-good-icon-bg: #16a34a;
+  --vr-good-icon-text: #ffffff;
+  --vr-good-title: #15803d;
+  --vr-bad-bg: rgba(220, 38, 38, 0.08);
+  --vr-bad-border: rgba(220, 38, 38, 0.3);
+  --vr-bad-icon-bg: #dc2626;
+  --vr-bad-icon-text: #ffffff;
+  --vr-bad-title: #b91c1c;
+  --vr-neutral-bg: rgba(15, 23, 42, 0.045);
+  --vr-neutral-border: rgba(15, 23, 42, 0.14);
+  --vr-neutral-icon-bg: #64748b;
+  --vr-neutral-icon-text: #ffffff;
+  --vr-neutral-title: #33415c;
+  --vr-chip-bg: rgba(15, 23, 42, 0.045);
+}
+
 .verify-page {
   display: grid;
-  gap: 1rem;
+  justify-content: center;
 }
 
 .panel {
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--vr-border);
   border-radius: 1.25rem;
-  background: rgba(8, 15, 29, 0.74);
-  box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
+  background: var(--vr-surface);
+  box-shadow: 0 24px 50px rgba(4, 10, 20, 0.18);
   backdrop-filter: blur(16px);
-  padding: 1.4rem 1.5rem;
-  max-width: 60rem;
+  padding: 1.6rem 1.7rem;
+  width: min(38rem, 100%);
+}
+
+.panel-head {
+  margin-bottom: 1.3rem;
 }
 
 .panel-kicker {
-  margin: 0 0 0.15rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  margin: 0 0 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--vr-kicker);
 }
 
 h2 {
+  position: relative;
   margin: 0;
-  font-size: 1.15rem;
+  padding-bottom: 0.55rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--vr-heading);
+}
+
+h2::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 3rem;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--vr-accent), transparent);
 }
 
 .panel-subtitle {
-  margin: 0.5rem 0 1.2rem;
-  max-width: 78ch;
-  font-size: 0.86rem;
-  line-height: 1.6;
-  color: #8ea6c7;
-  text-wrap: balance;
+  margin: 0.55rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--vr-muted);
 }
 
 .verify-form {
@@ -43,50 +138,55 @@ h2 {
 .field {
   display: grid;
   gap: 0.35rem;
-  font-size: 0.8rem;
-  color: #8ea6c7;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--vr-muted);
 }
 
 .field em {
   font-style: normal;
-  opacity: 0.7;
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 .field input {
   padding: 0.75rem 0.9rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  border: 1px solid var(--vr-field-border);
+  color: var(--vr-field-text);
+  background: var(--vr-field-bg);
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.9rem;
   letter-spacing: 0.02em;
 }
 
-.field input:focus {
-  outline: none;
-  border-color: rgba(123, 214, 255, 0.5);
+.field input::placeholder {
+  color: var(--vr-muted);
+  opacity: 0.7;
 }
 
-.field-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  color: #7788a4;
+.field input:focus {
+  outline: none;
+  border-color: var(--vr-field-focus-border);
 }
 
 .verify-actions {
   display: flex;
   gap: 0.6rem;
-  margin-top: 0.3rem;
+  margin-top: 0.2rem;
 }
 
 .primary-button,
 .ghost-button {
-  padding: 0.72rem 1.1rem;
+  padding: 0.72rem 1.2rem;
   border: none;
   border-radius: 0.9rem;
   cursor: pointer;
-  font-size: 0.87rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  transition: transform 0.14s ease, opacity 0.14s ease, border-color 0.14s ease;
 }
 
 .primary-button {
@@ -94,24 +194,32 @@ h2 {
   background: linear-gradient(135deg, #7dd3fc, #93c5fd);
 }
 
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
 .primary-button:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .ghost-button {
-  color: #d9e6ff;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.02);
+  color: var(--vr-btn-text);
+  border: 1px solid var(--vr-field-border);
+  background: var(--vr-btn-bg);
+}
+
+.ghost-button:hover {
+  border-color: var(--vr-accent);
 }
 
 .error-banner {
   margin: 1rem 0 0;
   padding: 0.75rem 0.9rem;
   border-radius: 0.85rem;
-  color: #fecaca;
-  background: rgba(220, 38, 38, 0.14);
-  border: 1px solid rgba(248, 113, 113, 0.28);
+  color: var(--vr-error-text);
+  background: var(--vr-error-bg);
+  border: 1px solid var(--vr-error-border);
   font-size: 0.85rem;
 }
 
@@ -124,29 +232,29 @@ h2 {
   border: 1px solid transparent;
 }
 
-/* The three outcomes are colour-separated because confusing them is the whole risk:
-   "not in the registry" is not the same conclusion as "the document was altered". */
+/* Tri ishoda su namerno vizuelno razdvojena bojom - pobrkati ih je ceo rizik ove
+   stranice: "nije u registru" nije isti zaključak kao "izveštaj je izmenjen". */
 .verify-result.outcome-valid {
-  background: rgba(74, 222, 128, 0.1);
-  border-color: rgba(134, 239, 172, 0.32);
+  background: var(--vr-good-bg);
+  border-color: var(--vr-good-border);
 }
 
 .verify-result.outcome-tampered {
-  background: rgba(220, 38, 38, 0.14);
-  border-color: rgba(248, 113, 113, 0.35);
+  background: var(--vr-bad-bg);
+  border-color: var(--vr-bad-border);
 }
 
 .verify-result.outcome-unknown,
 .verify-result.outcome-found-unchecked {
-  background: rgba(148, 163, 184, 0.09);
-  border-color: rgba(148, 163, 184, 0.26);
+  background: var(--vr-neutral-bg);
+  border-color: var(--vr-neutral-border);
 }
 
 .result-head {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  font-size: 1.05rem;
+  font-size: 1.02rem;
 }
 
 .result-icon {
@@ -161,49 +269,49 @@ h2 {
 }
 
 .outcome-valid .result-icon {
-  color: #052e16;
-  background: #4ade80;
+  color: var(--vr-good-icon-text);
+  background: var(--vr-good-icon-bg);
 }
 
 .outcome-valid strong {
-  color: #bbf7d0;
+  color: var(--vr-good-title);
 }
 
 .outcome-tampered .result-icon {
-  color: #450a0a;
-  background: #f87171;
+  color: var(--vr-bad-icon-text);
+  background: var(--vr-bad-icon-bg);
 }
 
 .outcome-tampered strong {
-  color: #fecaca;
-  letter-spacing: 0.02em;
+  color: var(--vr-bad-title);
+  letter-spacing: 0.01em;
 }
 
 .outcome-unknown .result-icon,
 .outcome-found-unchecked .result-icon {
-  color: #0b1526;
-  background: #94a3b8;
+  color: var(--vr-neutral-icon-text);
+  background: var(--vr-neutral-icon-bg);
 }
 
 .outcome-unknown strong,
 .outcome-found-unchecked strong {
-  color: #cbd5e1;
+  color: var(--vr-neutral-title);
 }
 
 .result-message {
-  margin: 0.6rem 0 0;
-  font-size: 0.86rem;
-  line-height: 1.6;
-  color: #cdd9ef;
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--vr-dim);
 }
 
 .result-details {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.8rem 1.5rem;
-  margin: 1.1rem 0 0;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem 1.4rem;
+  margin: 1rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--vr-border-soft);
 }
 
 .result-details .full {
@@ -211,28 +319,29 @@ h2 {
 }
 
 .result-details dt {
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: #8ea6c7;
-  margin-bottom: 0.25rem;
+  color: var(--vr-muted);
+  margin-bottom: 0.22rem;
 }
 
 .result-details dd {
   margin: 0;
-  font-size: 0.88rem;
-  color: #eef4ff;
+  font-size: 0.86rem;
+  color: var(--vr-heading);
 }
 
 .mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.82rem;
-  color: #a5c9f0;
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: var(--vr-mono);
 }
 
 .mono.muted {
-  color: #7788a4;
-  font-size: 0.76rem;
+  color: var(--vr-muted);
+  font-size: 0.74rem;
 }
 
 .hash {
@@ -241,25 +350,22 @@ h2 {
 }
 
 .hash.mismatch {
-  color: #fca5a5;
+  color: var(--vr-error-text);
 }
 
 .result-summary {
-  margin-top: 1.1rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--vr-border-soft);
 }
 
 .summary-title {
-  margin: 0;
-  font-size: 0.82rem;
-  color: #eef4ff;
-}
-
-.summary-hint {
-  margin: 0.25rem 0 0.7rem;
-  font-size: 0.78rem;
-  color: #8ea6c7;
+  margin: 0 0 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vr-muted);
 }
 
 .summary-chips {
@@ -271,39 +377,63 @@ h2 {
 .summary-chip {
   padding: 0.4rem 0.8rem;
   border-radius: 999px;
-  font-size: 0.8rem;
-  color: #cdd9ef;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 0.78rem;
+  color: var(--vr-dim);
+  background: var(--vr-chip-bg);
+  border: 1px solid var(--vr-border-soft);
 }
 
 .summary-chip strong {
-  color: #7bd6ff;
+  color: var(--vr-kicker);
   margin-right: 0.15rem;
 }
 
 .result-declaration {
-  margin: 1rem 0 0;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  color: #8ea6c7;
+  margin: 0.9rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--vr-muted);
   font-style: italic;
 }
 
-.declaration-label {
-  font-style: normal;
-  color: #cdd9ef;
-}
+/* ---------- Sažet disklejmer (sklopljen po difoltu - vidi "što manje teksta") ---------- */
 
 .verify-limit {
-  margin: 1.4rem 0 0;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
-  font-size: 0.8rem;
-  line-height: 1.6;
-  color: #8ea6c7;
+  margin: 1.3rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--vr-border-soft);
 }
 
-.verify-limit strong {
-  color: #cdd9ef;
+.verify-limit summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vr-muted);
+  list-style: none;
+}
+
+.verify-limit summary::-webkit-details-marker {
+  display: none;
+}
+
+.verify-limit summary::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 0.4rem;
+  transition: transform 0.14s ease;
+}
+
+.verify-limit[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.verify-limit summary:hover {
+  color: var(--vr-heading);
+}
+
+.verify-limit p {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--vr-muted);
 }
