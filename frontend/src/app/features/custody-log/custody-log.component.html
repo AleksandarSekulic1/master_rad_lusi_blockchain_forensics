@@ -47,7 +47,7 @@
             }}
           </p>
 
-          <div class="table-wrapper" *ngIf="transactions.length > 0">
+          <div class="table-wrapper" #tableTop *ngIf="transactions.length > 0">
             <table>
               <thead>
                 <tr>
@@ -60,7 +60,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr class="tx-row" *ngFor="let item of transactions; trackBy: trackByTx" (click)="openTransaction(item.tx_id)">
+                <tr class="tx-row" *ngFor="let item of pagedTransactions; trackBy: trackByTx" (click)="openTransaction(item.tx_id)">
                   <td>
                     <span class="mono">{{ item.sender_address || '?' }}</span>
                     <span class="arrow">→</span>
@@ -74,6 +74,27 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div class="pagination" *ngIf="transactions.length > 0">
+            <label class="page-size">
+              {{ t('Po strani', 'Per page') }}
+              <select [ngModel]="pageSize" (ngModelChange)="setPageSize($event)">
+                <option *ngFor="let size of pageSizeOptions" [ngValue]="size">{{ size }}</option>
+              </select>
+            </label>
+
+            <span class="page-range muted">{{ pageRangeLabel }} {{ t('od', 'of') }} {{ transactions.length }}</span>
+
+            <div class="page-nav">
+              <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+                ‹ {{ t('Prethodna', 'Previous') }}
+              </button>
+              <span class="page-indicator">{{ currentPage }} / {{ totalPages }}</span>
+              <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+                {{ t('Sledeća', 'Next') }} ›
+              </button>
+            </div>
           </div>
         </ng-container>
 

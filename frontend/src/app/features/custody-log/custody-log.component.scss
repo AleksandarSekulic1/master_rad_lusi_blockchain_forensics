@@ -190,6 +190,77 @@ h2 {
   margin-top: 0.8rem;
 }
 
+/* ---------- Paginacija (Po transakciji) - isti obrazac kao activity-log.component.scss ---------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--cl-border-soft);
+  font-size: 0.8rem;
+}
+
+.page-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--cl-muted);
+}
+
+.page-size select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--cl-border);
+  color: var(--cl-heading);
+  background: var(--cl-field-bg);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.page-size select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.page-range {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.page-nav-button {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+}
+
+.page-indicator {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--cl-text-2);
+}
+
+@media (max-width: 30rem) {
+  .pagination {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .page-range {
+    order: 1;
+    flex-basis: 100%;
+  }
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

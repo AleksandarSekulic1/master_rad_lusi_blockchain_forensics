@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
@@ -25,7 +26,7 @@ type CustodyTab = 'transaction' | 'evidence';
 @Component({
   selector: 'app-custody-log',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './custody-log.component.html',
   styleUrl: './custody-log.component.scss',
 })
@@ -41,6 +42,14 @@ export class CustodyLogComponent implements OnInit {
   protected chainError: string | null = null;
   protected isExportingPdf = false;
   protected exportError: string | null = null;
+
+  // --- Paginacija (samo "Po transakciji" - taj spisak zna da naraste na stotine redova;
+  // "Po dokaznom fajlu" ostaje bez nje, obično svega par fajlova po slučaju). Isti obrazac
+  // kao activity-log.component.ts (pageSizeOptions/pageSize/currentPage/scrollToTableTop). ---
+  protected readonly pageSizeOptions = [10, 20, 50] as const;
+  protected pageSize: (typeof this.pageSizeOptions)[number] = 20;
+  protected currentPage = 1;
+  @ViewChild('tableTop') private tableTopRef?: ElementRef<HTMLElement>;
 
   // --- Po dokaznom fajlu ---
   protected evidenceList: CustodyEvidenceSummary[] = [];
@@ -135,6 +144,7 @@ export class CustodyLogComponent implements OnInit {
         this.transactions = response.transactions;
         this.transactionsLoaded = true;
         this.isLoadingList = false;
+        this.currentPage = 1;
       },
       error: () => {
         this.isLoadingList = false;
@@ -191,6 +201,46 @@ export class CustodyLogComponent implements OnInit {
 
   trackByTx(_index: number, item: CustodyTransactionSummary): string {
     return item.tx_id;
+  }
+
+  // --- Paginacija (Po transakciji) -------------------------------------------------------
+
+  protected get totalPages(): number {
+    return Math.max(1, Math.ceil(this.transactions.length / this.pageSize));
+  }
+
+  protected get pagedTransactions(): CustodyTransactionSummary[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.transactions.slice(start, start + this.pageSize);
+  }
+
+  /** First/last row numbers on the current page (1-based), for "21–40 od 137". */
+  protected get pageRangeLabel(): string {
+    if (this.transactions.length === 0) {
+      return '0';
+    }
+    const start = (this.currentPage - 1) * this.pageSize + 1;
+    const end = Math.min(this.transactions.length, this.currentPage * this.pageSize);
+    return `${start}–${end}`;
+  }
+
+  protected setPageSize(size: number): void {
+    this.pageSize = size as (typeof this.pageSizeOptions)[number];
+    this.currentPage = 1;
+    this.scrollToTableTop();
+  }
+
+  protected goToPage(page: number): void {
+    const next = Math.min(Math.max(1, page), this.totalPages);
+    if (next === this.currentPage) {
+      return;
+    }
+    this.currentPage = next;
+    this.scrollToTableTop();
+  }
+
+  private scrollToTableTop(): void {
+    this.tableTopRef?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // --- Po dokaznom fajlu -----------------------------------------------------------------
