@@ -30,11 +30,6 @@
   --vr-bad-icon-bg: #f87171;
   --vr-bad-icon-text: #450a0a;
   --vr-bad-title: #fecaca;
-  --vr-neutral-bg: rgba(148, 163, 184, 0.09);
-  --vr-neutral-border: rgba(148, 163, 184, 0.26);
-  --vr-neutral-icon-bg: #94a3b8;
-  --vr-neutral-icon-text: #0b1526;
-  --vr-neutral-title: #cbd5e1;
   --vr-chip-bg: rgba(255, 255, 255, 0.05);
 }
 
@@ -67,11 +62,6 @@
   --vr-bad-icon-bg: #dc2626;
   --vr-bad-icon-text: #ffffff;
   --vr-bad-title: #b91c1c;
-  --vr-neutral-bg: rgba(15, 23, 42, 0.045);
-  --vr-neutral-border: rgba(15, 23, 42, 0.14);
-  --vr-neutral-icon-bg: #64748b;
-  --vr-neutral-icon-text: #ffffff;
-  --vr-neutral-title: #33415c;
   --vr-chip-bg: rgba(15, 23, 42, 0.045);
 }
 
@@ -291,22 +281,20 @@ h2::after {
   border: 1px solid transparent;
 }
 
-/* Tri ishoda su namerno vizuelno razdvojena bojom - pobrkati ih je ceo rizik ove
-   stranice: "nije u registru" nije isti zaključak kao "izveštaj je izmenjen". */
-.verify-result.outcome-valid {
+/* Boja prati "da li je izveštaj pronađen u registru", ne samo punu proveru otiska:
+   pronađen (validan ILI pronađen bez unetog otiska) = zeleno, nepronađen ILI izmenjen =
+   crveno. Sivo se namerno ne koristi - jedini pravi rizik ove stranice je da neko pobrka
+   "nije u registru" sa "izveštaj je izmenjen", pa oba moraju biti podjednako upadljiva. */
+.verify-result.outcome-valid,
+.verify-result.outcome-found-unchecked {
   background: var(--vr-good-bg);
   border-color: var(--vr-good-border);
 }
 
-.verify-result.outcome-tampered {
+.verify-result.outcome-tampered,
+.verify-result.outcome-unknown {
   background: var(--vr-bad-bg);
   border-color: var(--vr-bad-border);
-}
-
-.verify-result.outcome-unknown,
-.verify-result.outcome-found-unchecked {
-  background: var(--vr-neutral-bg);
-  border-color: var(--vr-neutral-border);
 }
 
 .result-head {
@@ -327,34 +315,27 @@ h2::after {
   flex: none;
 }
 
-.outcome-valid .result-icon {
+.outcome-valid .result-icon,
+.outcome-found-unchecked .result-icon {
   color: var(--vr-good-icon-text);
   background: var(--vr-good-icon-bg);
 }
 
-.outcome-valid strong {
+.outcome-valid strong,
+.outcome-found-unchecked strong {
   color: var(--vr-good-title);
 }
 
-.outcome-tampered .result-icon {
+.outcome-tampered .result-icon,
+.outcome-unknown .result-icon {
   color: var(--vr-bad-icon-text);
   background: var(--vr-bad-icon-bg);
 }
 
-.outcome-tampered strong {
+.outcome-tampered strong,
+.outcome-unknown strong {
   color: var(--vr-bad-title);
   letter-spacing: 0.01em;
-}
-
-.outcome-unknown .result-icon,
-.outcome-found-unchecked .result-icon {
-  color: var(--vr-neutral-icon-text);
-  background: var(--vr-neutral-icon-bg);
-}
-
-.outcome-unknown strong,
-.outcome-found-unchecked strong {
-  color: var(--vr-neutral-title);
 }
 
 .result-message {
@@ -449,9 +430,25 @@ h2::after {
 
 .result-declaration {
   margin: 0.9rem 0 0;
+}
+
+/* Ova izjava je istorijski, nepromenljiv zapis onoga što je analitičar stvarno potpisao u
+   trenutku izvoza (na jeziku izabranom TADA, na modalu za potpis) - namerno se NE prevodi
+   naknadno na trenutni jezik interfejsa, jer bi to izmenilo šta je zapravo potpisano. Da
+   to ne izgleda kao propust, dodata je kratka napomena iznad citata. */
+.declaration-label {
+  margin: 0 0 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--vr-muted);
+}
+
+.declaration-text {
+  margin: 0;
   font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--vr-muted);
+  color: var(--vr-dim);
   font-style: italic;
 }
 

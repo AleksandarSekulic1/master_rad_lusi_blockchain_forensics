@@ -122,7 +122,12 @@
               </div>
             </div>
 
-            <p class="result-declaration" *ngIf="entry.declaration">„{{ entry.declaration }}"</p>
+            <div class="result-declaration" *ngIf="entry.declaration">
+              <p class="declaration-label">
+                {{ t('Potpisana izjava (zabeležena tačno onako kako je potpisana, bez naknadnog prevoda)', 'Signed declaration (kept exactly as signed, not translated afterwards)') }}
+              </p>
+              <p class="declaration-text">„{{ entry.declaration }}"</p>
+            </div>
           </ng-container>
         </div>
       </div>

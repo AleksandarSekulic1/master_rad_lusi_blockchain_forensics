@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 
 import { ActivityReportOptions, ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { ActivityLogEntry, ActivityPeriodMode } from '../../models/blockchain-forensics.models';
 
 /** How each raw `action` string is presented: a short human label, a one-word group used
@@ -11,7 +12,7 @@ import { ActivityLogEntry, ActivityPeriodMode } from '../../models/blockchain-fo
  * rather than being hidden - a log that silently drops entries it doesn't recognise would
  * be worse than useless in a forensic context. */
 interface ActionPresentation {
-  label: string;
+  label: [sr: string, en: string];
   group: 'evidence' | 'analysis' | 'case' | 'test' | 'report' | 'custody' | 'other';
   icon: string;
 }
@@ -64,38 +65,46 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   private static readonly AUTO_REFRESH_MS = 20_000;
 
   private static readonly ACTION_PRESENTATION: Record<string, ActionPresentation> = {
-    csv_upload: { label: 'Otpremljena CSV evidencija', group: 'evidence', icon: '⬆' },
-    analytics_run: { label: 'Pokrenuta analiza', group: 'analysis', icon: '⚙' },
-    path_finding: { label: 'Pretraga putanja', group: 'analysis', icon: '↝' },
-    dex_swap_analysis_run: { label: 'Pokrenuta DEX swap analiza', group: 'analysis', icon: '⇌' },
-    behavioral_analysis_run: { label: 'Pokrenuta bihevioralna analiza', group: 'analysis', icon: '◔' },
-    case_created: { label: 'Kreiran slučaj', group: 'case', icon: '＋' },
-    case_status_changed: { label: 'Promenjen status slučaja', group: 'case', icon: '⇄' },
-    case_deleted: { label: 'Obrisan slučaj', group: 'case', icon: '✕' },
-    test_suite_run: { label: 'Pokrenuti sistemski testovi', group: 'test', icon: '✓' },
-    test_scenarios_run: { label: 'Pokrenuti validacioni scenariji', group: 'test', icon: '✓' },
-    test_scenario_created: { label: 'Kreiran validacioni scenario', group: 'test', icon: '＋' },
-    test_scenario_updated: { label: 'Izmenjen validacioni scenario', group: 'test', icon: '✎' },
-    test_scenario_deleted: { label: 'Obrisan validacioni scenario', group: 'test', icon: '✕' },
-    activity_report_exported: { label: 'Izvezen izveštaj aktivnosti', group: 'report', icon: '⭳' },
-    custody_pdf_exported: { label: 'Izvezen lanac dokaza (PDF)', group: 'custody', icon: '🖉' },
-    report_signed: { label: 'Izvezen potpisan izveštaj (PDF)', group: 'report', icon: '🖋' },
+    csv_upload: { label: ['Otpremljena CSV evidencija', 'Uploaded CSV evidence'], group: 'evidence', icon: '⬆' },
+    analytics_run: { label: ['Pokrenuta analiza', 'Ran analysis'], group: 'analysis', icon: '⚙' },
+    path_finding: { label: ['Pretraga putanja', 'Pathfinding search'], group: 'analysis', icon: '↝' },
+    dex_swap_analysis_run: { label: ['Pokrenuta DEX swap analiza', 'Ran DEX swap analysis'], group: 'analysis', icon: '⇌' },
+    behavioral_analysis_run: { label: ['Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'], group: 'analysis', icon: '◔' },
+    case_created: { label: ['Kreiran slučaj', 'Case created'], group: 'case', icon: '＋' },
+    case_status_changed: { label: ['Promenjen status slučaja', 'Case status changed'], group: 'case', icon: '⇄' },
+    case_deleted: { label: ['Obrisan slučaj', 'Case deleted'], group: 'case', icon: '✕' },
+    test_suite_run: { label: ['Pokrenuti sistemski testovi', 'Ran system tests'], group: 'test', icon: '✓' },
+    test_scenarios_run: { label: ['Pokrenuti validacioni scenariji', 'Ran validation scenarios'], group: 'test', icon: '✓' },
+    test_scenario_created: { label: ['Kreiran validacioni scenario', 'Validation scenario created'], group: 'test', icon: '＋' },
+    test_scenario_updated: { label: ['Izmenjen validacioni scenario', 'Validation scenario updated'], group: 'test', icon: '✎' },
+    test_scenario_deleted: { label: ['Obrisan validacioni scenario', 'Validation scenario deleted'], group: 'test', icon: '✕' },
+    activity_report_exported: { label: ['Izvezen izveštaj aktivnosti', 'Activity report exported'], group: 'report', icon: '⭳' },
+    custody_pdf_exported: { label: ['Izvezen lanac dokaza (PDF)', 'Chain of custody exported (PDF)'], group: 'custody', icon: '🖉' },
+    report_signed: { label: ['Izvezen potpisan izveštaj (PDF)', 'Signed report exported (PDF)'], group: 'report', icon: '🖋' },
   };
 
-  /** Report type (see reports.py's RegisterReportRequest.report_type) -> human label -
-   * mirrors backend/app/exports/activity_report.py's _REPORT_TYPE_LABELS exactly, so the
-   * on-screen log and the exported PDF/CSV activity report never disagree. */
-  private static readonly REPORT_TYPE_LABELS: Record<string, string> = {
-    taint: 'Taint izveštaj',
-    pathfinding: 'Pathfinding izveštaj',
-    dex_swap: 'DEX Swap izveštaj',
-    behavioral: 'Bihevioralni izveštaj',
+  /** Report type (see reports.py's RegisterReportRequest.report_type) -> human label. The
+   * backend's own exported PDF/CSV activity report (activity_report.py's
+   * _REPORT_TYPE_LABELS) is Serbian-only - this on-screen label is independently
+   * translated, so only the exported file itself stays fixed. */
+  private static readonly REPORT_TYPE_LABELS: Record<string, [sr: string, en: string]> = {
+    taint: ['Taint izveštaj', 'Taint report'],
+    pathfinding: ['Pathfinding izveštaj', 'Pathfinding report'],
+    dex_swap: ['DEX Swap izveštaj', 'DEX Swap report'],
+    behavioral: ['Bihevioralni izveštaj', 'Behavioral report'],
   };
 
   constructor(
     private readonly api: ApiService,
     protected readonly auth: AuthService,
+    public readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as the other analysis pages' own t()). */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.loadEntries();
@@ -123,7 +132,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isLoading = false;
-        this.errorMessage = 'Neuspešno učitavanje loga aktivnosti.';
+        this.errorMessage = this.t('Neuspešno učitavanje loga aktivnosti.', 'Failed to load the activity log.');
       },
     });
   }
@@ -157,16 +166,16 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     return entry.details != null && Object.keys(entry.details).length > 0;
   }
 
-  presentation(action: string): ActionPresentation {
+  presentation(action: string): { label: string; group: ActionPresentation['group']; icon: string } {
     const known = ActivityLogComponent.ACTION_PRESENTATION[action];
     if (known) {
-      return known;
+      return { label: this.t(known.label[0], known.label[1]), group: known.group, icon: known.icon };
     }
     // On-chain fetches encode network+mode into the action name
     // (onchain_fetch_mainnet_address), so they're matched by prefix rather than listed
     // one row per combination.
     if (action.startsWith('onchain_fetch')) {
-      return { label: 'Povučene transakcije sa blockchain-a', group: 'evidence', icon: '⛓' };
+      return { label: this.t('Povučene transakcije sa blockchain-a', 'Fetched transactions from the blockchain'), group: 'evidence', icon: '⛓' };
     }
     return { label: action, group: 'other', icon: '•' };
   }
@@ -178,13 +187,13 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
       return { label: entry.case_name || '', sub: entry.case_id, kind: 'case' };
     }
     if (entry.action.startsWith('test_')) {
-      return { label: 'Testovi', sub: 'provera ispravnosti', kind: 'scope' };
+      return { label: this.t('Testovi', 'Tests'), sub: this.t('provera ispravnosti', 'correctness check'), kind: 'scope' };
     }
     if (entry.action === 'path_finding') {
-      return { label: 'Graf', sub: entry.file_name, kind: 'scope' };
+      return { label: this.t('Graf', 'Graph'), sub: entry.file_name, kind: 'scope' };
     }
     if (entry.action === 'activity_report_exported') {
-      return { label: 'Izveštaj', sub: 'izvoz aktivnosti', kind: 'scope' };
+      return { label: this.t('Izveštaj', 'Report'), sub: this.t('izvoz aktivnosti', 'activity export'), kind: 'scope' };
     }
     return { label: '', sub: null, kind: 'none' };
   }
@@ -193,22 +202,25 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   private dmy(value: unknown): string {
     const text = String(value ?? '');
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-    return match ? `${match[3]}.${match[2]}.${match[1]}.` : text;
+    if (!match) {
+      return text;
+    }
+    return this.settings.lang() === 'sr' ? `${match[3]}.${match[2]}.${match[1]}.` : `${match[1]}-${match[2]}-${match[3]}`;
   }
 
   /** Which time window an exported report covered - the whole point of recording the
    * export is being able to tell two reports apart later. */
   private reportPeriodText(from: unknown, to: unknown): string {
     if (!from && !to) {
-      return 'sve aktivnosti';
+      return this.t('sve aktivnosti', 'all activity');
     }
     if (from && to && from === to) {
-      return `jedan dan: ${this.dmy(from)}`;
+      return `${this.t('jedan dan', 'one day')}: ${this.dmy(from)}`;
     }
     if (from && to) {
       return `${this.dmy(from)} – ${this.dmy(to)}`;
     }
-    return from ? `od ${this.dmy(from)}` : `do ${this.dmy(to)}`;
+    return from ? `${this.t('od', 'from')} ${this.dmy(from)}` : `${this.t('do', 'to')} ${this.dmy(to)}`;
   }
 
   /** A one-line "what exactly happened" summary built from the action's own details, so
@@ -220,16 +232,18 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         const total = Number(details['total'] ?? 0);
         const passed = Number(details['passed'] ?? 0);
         const failed = Number(details['failed'] ?? 0);
-        const outcome = failed > 0 ? `${failed} palo` : 'sve prošlo';
-        return `${passed}/${total} testova prošlo · ${outcome}`;
+        const outcome = failed > 0 ? this.t(`${failed} palo`, `${failed} failed`) : this.t('sve prošlo', 'all passed');
+        return `${passed}/${total} ${this.t('testova prošlo', 'tests passed')} · ${outcome}`;
       }
       case 'test_scenarios_run': {
         const total = Number(details['total'] ?? 0);
         const passed = Number(details['passed'] ?? 0);
         const errors = Number(details['errors'] ?? 0);
-        const single = details['scenario_id'] ? 'jedan scenario' : `${total} ${total === 1 ? 'scenario' : 'scenarija'}`;
-        const errorText = errors > 0 ? ` · ${errors} sa greškom` : '';
-        return `${single} · ${passed}/${total} prošlo${errorText}`;
+        const single = details['scenario_id']
+          ? this.t('jedan scenario', 'one scenario')
+          : this.t(`${total} ${total === 1 ? 'scenario' : 'scenarija'}`, `${total} ${total === 1 ? 'scenario' : 'scenarios'}`);
+        const errorText = errors > 0 ? ` · ${this.t(`${errors} sa greškom`, `${errors} with errors`)}` : '';
+        return `${single} · ${passed}/${total} ${this.t('prošlo', 'passed')}${errorText}`;
       }
       case 'test_scenario_created':
       case 'test_scenario_updated':
@@ -241,13 +255,14 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         const period = this.reportPeriodText(details['date_from'], details['date_to']);
         const users = details['users'];
         const usersText = Array.isArray(users) && users.length > 0 ? ` · ${users.join(', ')}` : '';
-        return `${format} · ${count} zapisa · ${period}${usersText}`;
+        return `${format} · ${count} ${this.t('zapisa', 'entries')} · ${period}${usersText}`;
       }
       case 'analytics_run': {
         const seedCount = Number(details['seed_count'] ?? 0);
         const scope = String(details['evidence_scope'] ?? 'combined');
-        const scopeText = scope === 'combined' ? 'sva evidencija (kombinovano)' : scope;
-        const seedText = seedCount === 1 ? '1 izvor (seed)' : `${seedCount} izvora (seed)`;
+        const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        const seedText =
+          seedCount === 1 ? this.t('1 izvor (seed)', '1 seed address') : this.t(`${seedCount} izvora (seed)`, `${seedCount} seed addresses`);
         let summary = `${seedText} · ${scopeText}`;
         // Only deliberate runs (Taint analiza / "Analiziraj graf") carry this - a passive
         // preview load never writes into the lanac dokaza, so this line is exactly what
@@ -255,38 +270,42 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         if (details['custody_recorded']) {
           const txRows = Number(details['custody_transaction_rows'] ?? 0);
           const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
-          summary += ` · lanac dokaza: ${txRows} transakcija, ${evidenceFiles} fajl(ova)`;
+          summary += ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}`;
         }
         return summary;
       }
       case 'dex_swap_analysis_run': {
-        const address = String(details['address'] ?? '') || 'sve adrese';
+        const address = String(details['address'] ?? '') || this.t('sve adrese', 'all addresses');
         const scope = String(details['evidence_scope'] ?? 'combined');
-        const scopeText = scope === 'combined' ? 'sva evidencija (kombinovano)' : scope;
-        let summary = `${address} · ${scopeText} · ${Number(details['total_events'] ?? 0)} događaja`;
+        const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        let summary = `${address} · ${scopeText} · ${Number(details['total_events'] ?? 0)} ${this.t('događaja', 'events')}`;
         if (details['custody_recorded']) {
           const txRows = Number(details['custody_transaction_rows'] ?? 0);
           const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
-          summary += ` · lanac dokaza: ${txRows} transakcija, ${evidenceFiles} fajl(ova)`;
+          summary += ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}`;
         }
         return summary;
       }
       case 'custody_pdf_exported': {
-        const scope = details['scope'] === 'transaction' ? 'transakcija' : 'dokazni fajl';
+        const scope = details['scope'] === 'transaction' ? this.t('transakcija', 'transaction') : this.t('dokazni fajl', 'evidence file');
         const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
-        return `${scope}: ${target} · ${Number(details['entry_count'] ?? 0)} zapisa`;
+        return `${scope}: ${target} · ${Number(details['entry_count'] ?? 0)} ${this.t('zapisa', 'entries')}`;
       }
       case 'report_signed': {
         const reportType = String(details['report_type'] ?? '');
-        const typeLabel = ActivityLogComponent.REPORT_TYPE_LABELS[reportType] ?? 'Izveštaj';
+        const typeLabelPair = ActivityLogComponent.REPORT_TYPE_LABELS[reportType];
+        const typeLabel = typeLabelPair ? this.t(typeLabelPair[0], typeLabelPair[1]) : this.t('Izveštaj', 'Report');
         const code = String(details['verification_code'] ?? '?');
         let extra = '';
         if (reportType === 'taint') {
-          extra = ` · ${Number(details['tainted_addresses'] ?? 0)} zaprljanih adresa, ${Number(details['cash_out_points'] ?? 0)} tačaka unovčavanja`;
+          extra = ` · ${this.t(
+            `${Number(details['tainted_addresses'] ?? 0)} zaprljanih adresa, ${Number(details['cash_out_points'] ?? 0)} tačaka unovčavanja`,
+            `${Number(details['tainted_addresses'] ?? 0)} tainted addresses, ${Number(details['cash_out_points'] ?? 0)} cash-out points`,
+          )}`;
         } else if (reportType === 'pathfinding') {
-          extra = ` · ${Number(details['hops'] ?? 0)} skokova`;
+          extra = ` · ${this.t(`${Number(details['hops'] ?? 0)} skokova`, `${Number(details['hops'] ?? 0)} hops`)}`;
         } else if (reportType === 'dex_swap') {
-          extra = ` · ${Number(details['total_events'] ?? 0)} događaja`;
+          extra = ` · ${Number(details['total_events'] ?? 0)} ${this.t('događaja', 'events')}`;
         }
         return `${typeLabel} · ${code}${extra}`;
       }
@@ -300,7 +319,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         if (entry.action.startsWith('onchain_fetch')) {
           const query = String(details['query'] ?? '');
           const rows = details['rows_fetched'];
-          return rows != null ? `${query} · ${rows} transakcija` : query;
+          return rows != null ? `${query} · ${rows} ${this.t('transakcija', 'transactions')}` : query;
         }
         return entry.file_name ?? '';
     }
@@ -310,7 +329,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     const details = entry.details ?? {};
     return Object.entries(details).map(([key, value]) => ({
       key,
-      value: Array.isArray(value) ? (value.length > 0 ? value.join(', ') : '(prazno)') : String(value),
+      value: Array.isArray(value) ? (value.length > 0 ? value.join(', ') : this.t('(prazno)', '(empty)')) : String(value),
     }));
   }
 
@@ -405,7 +424,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
       error: () => {
         this.isCountingReport = false;
         this.reportCount = null;
-        this.reportError = 'Neuspešna provera broja zapisa.';
+        this.reportError = this.t('Neuspešna provera broja zapisa.', 'Failed to check the entry count.');
       },
     });
   }
@@ -423,7 +442,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.isDownloadingReport = false;
-        this.reportError = 'Neuspešno generisanje izveštaja.';
+        this.reportError = this.t('Neuspešno generisanje izveštaja.', 'Failed to generate the report.');
       },
     });
   }

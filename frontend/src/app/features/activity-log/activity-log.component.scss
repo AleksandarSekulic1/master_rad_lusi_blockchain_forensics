@@ -1,12 +1,147 @@
+/* Temski tokeni - tamna tema podrazumevano, prepisani pod [data-theme='light'] (isti
+   pristup kao dex-swap-analysis / taint-analysis / pathfinding .scss), tako da ova
+   stranica u obe teme izgleda kao sestra ostalih stranica analize. */
+:host {
+  --al-border: rgba(148, 163, 184, 0.18);
+  --al-border-soft: rgba(148, 163, 184, 0.12);
+  --al-surface: rgba(8, 15, 29, 0.74);
+  --al-kicker: #7bd6ff;
+  --al-heading: #f4f7fe;
+  --al-text: #d5e0f6;
+  --al-text-2: #cdd9ef;
+  --al-muted: #8ea6c7;
+  --al-summary-text: #b9c8e4;
+  --al-field-border: rgba(148, 163, 184, 0.2);
+  --al-field-bg: rgba(255, 255, 255, 0.03);
+  --al-field-text: #eef4ff;
+  --al-btn-bg: rgba(255, 255, 255, 0.02);
+  --al-btn-text: #d9e6ff;
+  --al-chip-bg: rgba(255, 255, 255, 0.03);
+  --al-chip-text: #cdd9ef;
+  --al-chip-hover-text: #ffffff;
+  --al-chip-hover-border: rgba(148, 163, 184, 0.4);
+  --al-row-hover: rgba(96, 165, 250, 0.06);
+  --al-row-expanded: rgba(96, 165, 250, 0.08);
+  --al-detail-bg: rgba(4, 10, 20, 0.4);
+  --al-mono: #a5c9f0;
+  --al-hash: #7bd6ff;
+  --al-error-bg: rgba(220, 38, 38, 0.14);
+  --al-error-border: rgba(248, 113, 113, 0.28);
+  --al-error-text: #fecaca;
+  --al-warning-text: #fbbf24;
+  --al-warning-bg: rgba(251, 191, 36, 0.1);
+  --al-warning-border: rgba(251, 191, 36, 0.25);
+  --al-good-border: rgba(134, 239, 172, 0.35);
+  --al-good-bg: rgba(74, 222, 128, 0.1);
+  --al-report-panel-bg: rgba(96, 165, 250, 0.06);
+  --al-report-panel-border: rgba(123, 214, 255, 0.22);
+  --al-count-chip-text: #7bd6ff;
+  --al-count-chip-bg: rgba(123, 214, 255, 0.1);
+  --al-count-chip-border: rgba(123, 214, 255, 0.2);
+  --al-ghost-active-text: #7bd6ff;
+  --al-ghost-active-bg: rgba(123, 214, 255, 0.1);
+  --al-ghost-active-border: rgba(123, 214, 255, 0.4);
+  --al-scope-text: #9fb6d8;
+  --al-historical-bg: rgba(148, 163, 184, 0.25);
+
+  --al-group-evidence-text: #7bd6ff;
+  --al-group-evidence-bg: rgba(123, 214, 255, 0.1);
+  --al-group-evidence-border: rgba(123, 214, 255, 0.24);
+  --al-group-analysis-text: #fbbf24;
+  --al-group-analysis-bg: rgba(251, 191, 36, 0.1);
+  --al-group-analysis-border: rgba(251, 191, 36, 0.24);
+  --al-group-case-text: #c4b5fd;
+  --al-group-case-bg: rgba(196, 181, 253, 0.1);
+  --al-group-case-border: rgba(196, 181, 253, 0.24);
+  --al-group-test-text: #86efac;
+  --al-group-test-bg: rgba(134, 239, 172, 0.1);
+  --al-group-test-border: rgba(134, 239, 172, 0.24);
+  --al-group-report-text: #a5b4fc;
+  --al-group-report-bg: rgba(165, 180, 252, 0.1);
+  --al-group-report-border: rgba(165, 180, 252, 0.26);
+  --al-group-custody-text: #f0abd8;
+  --al-group-custody-bg: rgba(240, 171, 216, 0.1);
+  --al-group-custody-border: rgba(240, 171, 216, 0.26);
+  --al-group-other-text: #cbd5e1;
+  --al-group-other-bg: rgba(203, 213, 225, 0.08);
+  --al-group-other-border: rgba(203, 213, 225, 0.18);
+}
+
+:host-context([data-theme='light']) {
+  --al-border: rgba(15, 23, 42, 0.12);
+  --al-border-soft: rgba(15, 23, 42, 0.1);
+  --al-surface: #ffffff;
+  --al-kicker: #2563eb;
+  --al-heading: #16233b;
+  --al-text: #26344c;
+  --al-text-2: #33415c;
+  --al-muted: #55658c;
+  --al-summary-text: #33415c;
+  --al-field-border: rgba(15, 23, 42, 0.16);
+  --al-field-bg: #f6f8fc;
+  --al-field-text: #16233b;
+  --al-btn-bg: rgba(15, 23, 42, 0.03);
+  --al-btn-text: #1e293b;
+  --al-chip-bg: rgba(15, 23, 42, 0.045);
+  --al-chip-text: #33415c;
+  --al-chip-hover-text: #0f1b30;
+  --al-chip-hover-border: rgba(15, 23, 42, 0.32);
+  --al-row-hover: rgba(37, 99, 235, 0.05);
+  --al-row-expanded: rgba(37, 99, 235, 0.07);
+  --al-detail-bg: rgba(15, 23, 42, 0.03);
+  --al-mono: #1d4ed8;
+  --al-hash: #2563eb;
+  --al-error-bg: rgba(220, 38, 38, 0.08);
+  --al-error-border: rgba(220, 38, 38, 0.28);
+  --al-error-text: #b91c1c;
+  --al-warning-text: #b45309;
+  --al-warning-bg: rgba(180, 83, 9, 0.1);
+  --al-warning-border: rgba(180, 83, 9, 0.3);
+  --al-good-border: rgba(22, 163, 74, 0.35);
+  --al-good-bg: rgba(22, 163, 74, 0.08);
+  --al-report-panel-bg: rgba(37, 99, 235, 0.05);
+  --al-report-panel-border: rgba(37, 99, 235, 0.25);
+  --al-count-chip-text: #2563eb;
+  --al-count-chip-bg: rgba(37, 99, 235, 0.08);
+  --al-count-chip-border: rgba(37, 99, 235, 0.22);
+  --al-ghost-active-text: #2563eb;
+  --al-ghost-active-bg: rgba(37, 99, 235, 0.08);
+  --al-ghost-active-border: rgba(37, 99, 235, 0.35);
+  --al-scope-text: #475569;
+  --al-historical-bg: rgba(15, 23, 42, 0.12);
+
+  --al-group-evidence-text: #0e7490;
+  --al-group-evidence-bg: rgba(14, 116, 144, 0.08);
+  --al-group-evidence-border: rgba(14, 116, 144, 0.22);
+  --al-group-analysis-text: #b45309;
+  --al-group-analysis-bg: rgba(180, 83, 9, 0.08);
+  --al-group-analysis-border: rgba(180, 83, 9, 0.22);
+  --al-group-case-text: #7c3aed;
+  --al-group-case-bg: rgba(124, 58, 237, 0.08);
+  --al-group-case-border: rgba(124, 58, 237, 0.22);
+  --al-group-test-text: #15803d;
+  --al-group-test-bg: rgba(21, 128, 61, 0.08);
+  --al-group-test-border: rgba(21, 128, 61, 0.22);
+  --al-group-report-text: #4338ca;
+  --al-group-report-bg: rgba(67, 56, 202, 0.08);
+  --al-group-report-border: rgba(67, 56, 202, 0.22);
+  --al-group-custody-text: #be185d;
+  --al-group-custody-bg: rgba(190, 24, 93, 0.08);
+  --al-group-custody-border: rgba(190, 24, 93, 0.22);
+  --al-group-other-text: #475569;
+  --al-group-other-bg: rgba(71, 85, 105, 0.06);
+  --al-group-other-border: rgba(71, 85, 105, 0.16);
+}
+
 .activity-page {
   display: grid;
   gap: 1rem;
 }
 
 .panel {
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--al-border);
   border-radius: 1.25rem;
-  background: rgba(8, 15, 29, 0.74);
+  background: var(--al-surface);
   box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
   backdrop-filter: blur(16px);
   padding: 1.15rem;
@@ -35,14 +170,16 @@
 .panel-kicker {
   margin: 0 0 0.15rem;
   font-size: 0.72rem;
+  font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--al-kicker);
 }
 
 h2 {
   margin: 0;
   font-size: 1.15rem;
+  color: var(--al-heading);
 }
 
 .panel-subtitle {
@@ -52,12 +189,12 @@ h2 {
   max-width: 112ch;
   font-size: 0.85rem;
   line-height: 1.6;
-  color: #8ea6c7;
+  color: var(--al-muted);
   text-wrap: balance;
 }
 
 .panel-subtitle strong {
-  color: #cdd9ef;
+  color: var(--al-text-2);
 }
 
 .toolbar {
@@ -72,15 +209,15 @@ h2 {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.78rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .user-filter select {
   padding: 0.6rem 0.8rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--al-field-border);
+  color: var(--al-field-text);
+  background: var(--al-field-bg);
   font-size: 0.85rem;
 }
 
@@ -95,11 +232,15 @@ h2 {
   border: none;
   border-radius: 0.9rem;
   cursor: pointer;
+  font: inherit;
   font-size: 0.85rem;
+  font-weight: 500;
+  transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
 }
 
 .primary-button {
   color: #04111f;
+  font-weight: 600;
   background: linear-gradient(135deg, #7dd3fc, #93c5fd);
 }
 
@@ -109,9 +250,13 @@ h2 {
 }
 
 .ghost-button {
-  color: #d9e6ff;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.02);
+  color: var(--al-btn-text);
+  border: 1px solid var(--al-field-border);
+  background: var(--al-btn-bg);
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: var(--al-chip-hover-border);
 }
 
 .auto-toggle {
@@ -121,9 +266,13 @@ h2 {
 }
 
 .auto-toggle.active {
-  color: #86efac;
-  border-color: rgba(134, 239, 172, 0.35);
-  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border-color: var(--al-good-border);
+  background: var(--al-good-bg);
+}
+
+:host-context([data-theme='light']) .auto-toggle.active {
+  color: #15803d;
 }
 
 .pulse-dot {
@@ -158,8 +307,8 @@ h2 {
   margin: 0.2rem 0 1rem;
   padding: 1rem 1.1rem;
   border-radius: 1rem;
-  background: rgba(96, 165, 250, 0.06);
-  border: 1px solid rgba(123, 214, 255, 0.22);
+  background: var(--al-report-panel-bg);
+  border: 1px solid var(--al-report-panel-border);
   display: grid;
   gap: 0.75rem;
 }
@@ -167,7 +316,8 @@ h2 {
 .report-title {
   margin: 0;
   font-size: 0.95rem;
-  color: #eef4ff;
+  font-weight: 600;
+  color: var(--al-field-text);
 }
 
 .report-row {
@@ -180,9 +330,10 @@ h2 {
 .report-label {
   min-width: 5.5rem;
   font-size: 0.74rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .mode-chips,
@@ -198,16 +349,18 @@ h2 {
   gap: 0.4rem;
   padding: 0.45rem 0.8rem;
   border-radius: 999px;
+  font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
-  color: #cdd9ef;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--al-chip-text);
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-field-border);
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
 
 .mode-chip:hover {
-  color: #ffffff;
-  border-color: rgba(148, 163, 184, 0.4);
+  color: var(--al-chip-hover-text);
+  border-color: var(--al-chip-hover-border);
 }
 
 .mode-chip.active {
@@ -220,7 +373,7 @@ h2 {
   font-size: 0.66rem;
   padding: 0.1rem 0.35rem;
   border-radius: 0.35rem;
-  background: rgba(148, 163, 184, 0.25);
+  background: var(--al-historical-bg);
   color: inherit;
   opacity: 0.85;
 }
@@ -228,21 +381,22 @@ h2 {
 .report-panel input[type='date'] {
   padding: 0.55rem 0.75rem;
   border-radius: 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--al-field-border);
+  color: var(--al-field-text);
+  background: var(--al-field-bg);
+  font: inherit;
   font-size: 0.85rem;
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 .dash {
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .report-hint {
   margin: 0;
   font-size: 0.8rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .report-status {
@@ -251,18 +405,18 @@ h2 {
   gap: 0.7rem;
   flex-wrap: wrap;
   padding-top: 0.6rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  border-top: 1px solid var(--al-border-soft);
   font-size: 0.82rem;
 }
 
 .count-chip.empty {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.25);
+  color: var(--al-warning-text);
+  background: var(--al-warning-bg);
+  border-color: var(--al-warning-border);
 }
 
 .report-warning {
-  color: #fbbf24;
+  color: var(--al-warning-text);
 }
 
 .report-actions {
@@ -272,9 +426,9 @@ h2 {
 }
 
 .ghost-button.active {
-  color: #7bd6ff;
-  border-color: rgba(123, 214, 255, 0.4);
-  background: rgba(123, 214, 255, 0.1);
+  color: var(--al-ghost-active-text);
+  border-color: var(--al-ghost-active-border);
+  background: var(--al-ghost-active-bg);
 }
 
 .meta-row {
@@ -284,7 +438,7 @@ h2 {
   flex-wrap: wrap;
   padding-bottom: 0.85rem;
   margin-bottom: 0.35rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid var(--al-border-soft);
   font-size: 0.8rem;
 }
 
@@ -292,29 +446,30 @@ h2 {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.76rem;
-  color: #7bd6ff;
-  background: rgba(123, 214, 255, 0.1);
-  border: 1px solid rgba(123, 214, 255, 0.2);
+  font-weight: 500;
+  color: var(--al-count-chip-text);
+  background: var(--al-count-chip-bg);
+  border: 1px solid var(--al-count-chip-border);
 }
 
 .muted {
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .error-banner {
   margin: 0.85rem 0 0;
   padding: 0.75rem 0.9rem;
   border-radius: 0.85rem;
-  color: #fecaca;
-  background: rgba(220, 38, 38, 0.14);
-  border: 1px solid rgba(248, 113, 113, 0.28);
+  color: var(--al-error-text);
+  background: var(--al-error-bg);
+  border: 1px solid var(--al-error-border);
   font-size: 0.85rem;
 }
 
 .empty-state {
   margin: 1.5rem 0 0.5rem;
   text-align: center;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .table-wrapper {
@@ -331,19 +486,20 @@ th {
   padding: 0.7rem 0.6rem;
   text-align: left;
   white-space: nowrap;
-  color: #8ea6c7;
+  color: var(--al-muted);
   font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid var(--al-border);
 }
 
 td {
   padding: 0.7rem 0.6rem;
   text-align: left;
   vertical-align: top;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  color: #d5e0f6;
+  border-bottom: 1px solid var(--al-border-soft);
+  color: var(--al-text);
 }
 
 .log-row {
@@ -351,11 +507,11 @@ td {
 }
 
 .log-row:hover {
-  background: rgba(96, 165, 250, 0.06);
+  background: var(--al-row-hover);
 }
 
 .log-row.is-expanded {
-  background: rgba(96, 165, 250, 0.08);
+  background: var(--al-row-expanded);
 }
 
 .log-row.is-expanded td {
@@ -368,13 +524,13 @@ td {
 
 .time-main {
   display: block;
-  color: #d5e0f6;
+  color: var(--al-text);
 }
 
 .time-sub {
   display: block;
   font-size: 0.76rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -383,9 +539,9 @@ td {
   padding: 0.28rem 0.65rem;
   border-radius: 999px;
   font-size: 0.78rem;
-  color: #cdd9ef;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--al-text-2);
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-field-border);
   white-space: nowrap;
 }
 
@@ -396,6 +552,7 @@ td {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.78rem;
+  font-weight: 500;
   white-space: nowrap;
   border: 1px solid transparent;
 }
@@ -408,54 +565,54 @@ td {
 /* Colour follows what KIND of action it is, so scanning a long log for "who ran an
    analysis" doesn't mean reading every row's text. */
 .action-tag.group-evidence {
-  color: #7bd6ff;
-  background: rgba(123, 214, 255, 0.1);
-  border-color: rgba(123, 214, 255, 0.24);
+  color: var(--al-group-evidence-text);
+  background: var(--al-group-evidence-bg);
+  border-color: var(--al-group-evidence-border);
 }
 
 .action-tag.group-analysis {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.24);
+  color: var(--al-group-analysis-text);
+  background: var(--al-group-analysis-bg);
+  border-color: var(--al-group-analysis-border);
 }
 
 .action-tag.group-case {
-  color: #c4b5fd;
-  background: rgba(196, 181, 253, 0.1);
-  border-color: rgba(196, 181, 253, 0.24);
+  color: var(--al-group-case-text);
+  background: var(--al-group-case-bg);
+  border-color: var(--al-group-case-border);
 }
 
 .action-tag.group-test {
-  color: #86efac;
-  background: rgba(134, 239, 172, 0.1);
-  border-color: rgba(134, 239, 172, 0.24);
+  color: var(--al-group-test-text);
+  background: var(--al-group-test-bg);
+  border-color: var(--al-group-test-border);
 }
 
 /* Export is the one action that is about the log itself rather than about the
    investigation, so it gets its own colour instead of sharing with evidence. */
 .action-tag.group-report {
-  color: #a5b4fc;
-  background: rgba(165, 180, 252, 0.1);
-  border-color: rgba(165, 180, 252, 0.26);
+  color: var(--al-group-report-text);
+  background: var(--al-group-report-bg);
+  border-color: var(--al-group-report-border);
 }
 
 /* Lanac dokaza gets its own colour too - taking a copy of a custody record out of the
    application is a distinct kind of event from a routine report export. */
 .action-tag.group-custody {
-  color: #f0abd8;
-  background: rgba(240, 171, 216, 0.1);
-  border-color: rgba(240, 171, 216, 0.26);
+  color: var(--al-group-custody-text);
+  background: var(--al-group-custody-bg);
+  border-color: var(--al-group-custody-border);
 }
 
 .action-tag.group-other {
-  color: #cbd5e1;
-  background: rgba(203, 213, 225, 0.08);
-  border-color: rgba(203, 213, 225, 0.18);
+  color: var(--al-group-other-text);
+  background: var(--al-group-other-bg);
+  border-color: var(--al-group-other-border);
 }
 
 .case-name {
   display: block;
-  color: #d5e0f6;
+  color: var(--al-text);
   max-width: 26ch;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -469,23 +626,23 @@ td {
   padding: 0.2rem 0.55rem;
   border-radius: 0.5rem;
   font-size: 0.76rem;
-  color: #9fb6d8;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--al-scope-text);
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-field-border);
 }
 
 /* Historical entries written before case names were recorded - visually de-emphasised so
    they read as "not captured back then" rather than as a real case name. */
 .case-name.unrecorded {
-  color: #7788a4;
+  color: var(--al-muted);
   font-style: italic;
 }
 
 .case-id {
   display: block;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.72rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .summary-text {
@@ -494,7 +651,7 @@ td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #b9c8e4;
+  color: var(--al-summary-text);
 }
 
 .col-toggle {
@@ -505,28 +662,30 @@ td {
 .detail-toggle {
   padding: 0.35rem 0.7rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.02);
-  color: #9fb6d8;
+  border: 1px solid var(--al-field-border);
+  background: var(--al-btn-bg);
+  color: var(--al-scope-text);
+  font: inherit;
   font-size: 0.76rem;
   cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
 }
 
 .detail-toggle:hover {
-  color: #eef4ff;
-  border-color: rgba(148, 163, 184, 0.34);
+  color: var(--al-field-text);
+  border-color: var(--al-chip-hover-border);
 }
 
 .detail-row td {
   padding-top: 0;
-  background: rgba(96, 165, 250, 0.08);
+  background: var(--al-row-expanded);
 }
 
 .detail-panel {
   padding: 0.6rem 0.9rem 0.9rem;
   border-radius: 0.9rem;
-  background: rgba(4, 10, 20, 0.4);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: var(--al-detail-bg);
+  border: 1px solid var(--al-border-soft);
 }
 
 .detail-panel dl {
@@ -538,27 +697,28 @@ td {
 
 .detail-panel dt {
   font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8ea6c7;
+  color: var(--al-muted);
   margin-bottom: 0.2rem;
 }
 
 .detail-panel dd {
   margin: 0;
   font-size: 0.82rem;
-  color: #d5e0f6;
+  color: var(--al-text);
   word-break: break-word;
 }
 
 .detail-panel .mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.78rem;
-  color: #a5c9f0;
+  color: var(--al-mono);
 }
 
 .detail-panel .hash {
-  color: #7bd6ff;
+  color: var(--al-hash);
 }
 
 @media (max-width: 900px) {
