@@ -48,6 +48,12 @@ export class ReportExportComponent {
   protected isExporting = false;
   protected exportError: string | null = null;
 
+  // --- CSV export: raw, cleaned per-transaction rows of the case's combined evidence -
+  // plain, unsigned download (no signing dialog, no control number) since it is raw data,
+  // not a presentation document that needs an examiner's signature like the PDF report. ---
+  protected isExportingCsv = false;
+  protected csvExportError: string | null = null;
+
   protected isSigningOpen = false;
   protected isLoadingContext = false;
   protected reportContext: CaseReportContext | null = null;
@@ -144,6 +150,39 @@ export class ReportExportComponent {
       return;
     }
     this.isSigningOpen = false;
+  }
+
+  /** Downloads the case's combined, cleaned transactions as CSV - straight from the API
+   * (no client-side PDF-style assembly needed, the backend already has the DataFrame).
+   * Deliberately skips the signing dialog: this is raw data for further processing
+   * (spreadsheet, another tool), not a report that leaves the app as a vouched-for
+   * document, so it doesn't need an examiner's signature/control number. */
+  exportCsv(): void {
+    const caseId = this.activeCaseId;
+    if (!caseId || this.isExportingCsv) {
+      return;
+    }
+    this.isExportingCsv = true;
+    this.csvExportError = null;
+    this.api.exportCaseTransactionsCsv(caseId).subscribe({
+      next: (blob) => {
+        this.isExportingCsv = false;
+        this.saveBlob(blob, `${caseId}_transactions.csv`);
+      },
+      error: () => {
+        this.isExportingCsv = false;
+        this.csvExportError = this.t('Neuspešan izvoz CSV-a.', 'Failed to export the CSV.');
+      },
+    });
+  }
+
+  private saveBlob(blob: Blob, fileName: string): void {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async confirmAndExport(): Promise<void> {

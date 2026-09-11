@@ -18,9 +18,24 @@
     <button type="button" class="primary-button" (click)="openSigning()" [disabled]="!activeCaseId || isExporting">
       {{ isExporting ? t('Izrada...', 'Generating...') : t('Generiši PDF izveštaj', 'Generate PDF report') }}
     </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="exportCsv()"
+      [disabled]="!activeCaseId || isExportingCsv"
+      [title]="
+        t(
+          'Sirove, očišćene transakcije ovog slučaja kao CSV — bez potpisa, za dalju obradu (tabelarni prikaz, drugi alati).',
+          'Raw, cleaned transactions of this case as CSV — unsigned, for further processing (spreadsheets, other tools).'
+        )
+      "
+    >
+      {{ isExportingCsv ? t('Izvoz...', 'Exporting...') : t('Izvezi CSV', 'Export CSV') }}
+    </button>
   </div>
 
   <p class="export-error" *ngIf="exportError">{{ exportError }}</p>
+  <p class="export-error" *ngIf="csvExportError">{{ csvExportError }}</p>
 </div>
 
 <!-- Compact trigger for a toolbar (e.g. the graph page's button row). -->

@@ -220,6 +220,15 @@ export class ApiService {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.gexf`, { responseType: 'blob' });
   }
 
+  /** Raw, cleaned per-transaction CSV of the case's combined evidence (or one evidence
+   * file when `evidence` is given) - the same rows every analysis page reads from, not
+   * the section/field/value summary in exportCaseReportCsv's report.csv. Plain, unsigned
+   * download: no custody dialog, no audit log entry, same as getCaseGraph. */
+  exportCaseTransactionsCsv(caseId: string, evidence?: string | null): Observable<Blob> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/transactions/export`, { params, responseType: 'blob' });
+  }
+
   getCaseGraph(caseId: string, evidence?: string | null): Observable<NodeLinkGraphResponse> {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
     return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`, { params });
