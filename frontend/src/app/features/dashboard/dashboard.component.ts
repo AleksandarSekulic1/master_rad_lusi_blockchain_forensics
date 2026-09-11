@@ -185,8 +185,11 @@ export class DashboardComponent implements OnInit {
         if (uploadResult.case) {
           this.state.setSelectedCase(uploadResult.case);
         }
-        this.statusMessage = () =>
-          `${this.t('Dokaz sačuvan kao', 'Evidence saved as')} ${uploadResult.file_name}. ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
+        this.statusMessage = uploadResult.split
+          ? () =>
+              `${this.splitSummaryLabel(uploadResult)} ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`
+          : () =>
+              `${this.t('Dokaz sačuvan kao', 'Evidence saved as')} ${uploadResult.file_name}. ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
         this.loadCaseViews(caseId);
         this.loadOpenCases();
       },
@@ -270,6 +273,21 @@ export class DashboardComponent implements OnInit {
     this.isRefreshing = true;
     this.statusMessage = () => this.t('Osvežavanje prikaza slučaja...', 'Refreshing case view...');
     this.loadCaseViews(selectedCase.id);
+  }
+
+  /** "Evidencija je sadržala 3 valute — automatski razdvojena u 3 fajla: ETH (2), USDC
+   * (1), DAI (1)." - the per-currency split summary shown after an auto-split upload (see
+   * ApiService.uploadCsv / upload.py's _split_and_store_by_currency). A file with no
+   * declared currency at all is labeled distinctly from a real currency code. */
+  private splitSummaryLabel(result: UploadCsvResponse): string {
+    const files = result.files ?? [];
+    const parts = files
+      .map((file) => `${file.currency ?? this.t('bez valute', 'no currency')} (${file.rows_total})`)
+      .join(', ');
+    return this.t(
+      `Evidencija je sadržala ${files.length} valuta — automatski razdvojena u ${files.length} fajla: ${parts}.`,
+      `The evidence declared ${files.length} currencies — automatically split into ${files.length} files: ${parts}.`,
+    );
   }
 
   private setSelectedFile(file: File | null): void {

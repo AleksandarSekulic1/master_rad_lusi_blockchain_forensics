@@ -1,0 +1,2 @@
+sender_address,recipient_address,amount,timestamp,metadata,currency
+0xSushiRouter,0xInvestorWallet,6000.0,2026-08-28 18:00:00+00:00,,USDT

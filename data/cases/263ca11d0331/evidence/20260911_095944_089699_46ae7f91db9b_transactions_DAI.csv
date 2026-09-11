@@ -1,0 +1,2 @@
+sender_address,recipient_address,amount,timestamp,metadata,currency
+0xUniswapRouter,0xInvestorWallet,3200.0,2026-08-25 11:16:10+00:00,,DAI

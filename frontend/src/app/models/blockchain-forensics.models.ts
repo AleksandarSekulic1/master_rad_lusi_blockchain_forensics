@@ -14,12 +14,33 @@ export interface TransactionPreviewRow {
   metadata?: string | null;
 }
 
-export interface UploadCsvResponse {
+/** One evidence file produced by an automatic multi-currency split (see
+ * UploadCsvResponse.split below) - `currency` is null for the bucket of rows that never
+ * declared one at all (kept apart rather than guessed into one of the other groups). */
+export interface UploadCsvSplitFile {
   file_name: string;
-  sha256: string;
-  audit_log: AuditLogEntry;
+  currency: string | null;
   rows_total: number;
-  preview: TransactionPreviewRow[];
+  sha256: string;
+  evidence?: EvidenceEntry;
+}
+
+export interface UploadCsvResponse {
+  /** True when the uploaded file declared more than one currency and was split into one
+   * evidence file per currency instead of being stored as-is (see `files` below) - the
+   * taint model would otherwise sum amounts across currencies as if they were the same
+   * unit. The top-level file_name/sha256/preview/evidence fields are not meaningful for a
+   * split response; read `files` instead. */
+  split?: boolean;
+  /** Original name of the file the analyst dropped, when `split` is true. */
+  source_file_name?: string;
+  files?: UploadCsvSplitFile[];
+  /** Present for a normal (non-split) upload; absent when `split` is true. */
+  file_name?: string;
+  sha256?: string;
+  audit_log?: AuditLogEntry;
+  rows_total: number;
+  preview?: TransactionPreviewRow[];
   case?: CaseSummary;
   evidence?: EvidenceEntry;
   resolved_query?: string;

@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from app.analytics.ingestion import clean_transaction_csv, detect_currencies
+from app.analytics.ingestion import clean_transaction_csv, detect_currencies, split_by_currency
 from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
 from app.evidence.hashing import calculate_sha256
@@ -51,19 +51,13 @@ async def upload_csv(
 
     # The taint model sums and divides `amount` values, so a file mixing ETH and USDT rows
     # would yield percentages that are arithmetically meaningless while looking precise.
-    # That cannot be corrected after the fact - every later figure would be wrong - so the
-    # file is rejected here rather than accepted with a warning.
+    # That cannot be corrected after the fact - every later figure would be wrong - so a
+    # mixed file is split into one evidence file per currency here (see
+    # _split_and_store_by_currency below) rather than accepted, or rejected and left for
+    # the analyst to split by hand outside the app.
     currencies = detect_currencies(stored_path)
     if len(currencies) > 1:
-        stored_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f'Evidencija sadrži više valuta ({", ".join(currencies)}). Taint procenat bi bio besmislen jer '
-                'se iznosi različitih valuta sabiraju kao da su isti. Razdvojite transakcije u posebne fajlove, '
-                'po jednu valutu u svakom.'
-            ),
-        )
+        return _split_and_store_by_currency(stored_path, safe_name, str(case['id']), user)
     currency = currencies[0] if currencies else None
 
     sha256_hash = calculate_sha256(stored_path)
@@ -106,4 +100,78 @@ async def upload_csv(
         'preview': preview_frame.to_dict(orient='records'),
         'case': evidence_entry['case'],
         'evidence': evidence_entry,
+    }
+
+
+def _split_and_store_by_currency(
+    stored_path: Path,
+    original_name: str,
+    case_id: str,
+    user: str,
+) -> dict[str, object]:
+    """Splits a multi-currency upload into one evidence file per currency (see
+    ingestion.split_by_currency) and stores/hashes/logs each exactly like a normal
+    single-currency upload above. The combined file the analyst actually dropped is
+    never itself stored as evidence - only its per-currency parts are, since only those
+    are internally consistent for the taint model.
+    """
+    groups = split_by_currency(stored_path)
+    stored_path.unlink(missing_ok=True)
+
+    raw_dir = stored_path.parent
+    stem = Path(original_name).stem
+    suffix = Path(original_name).suffix or '.csv'
+
+    files: list[dict[str, object]] = []
+    case_summary: dict[str, object] | None = None
+
+    for label in sorted(groups, key=lambda value: (value is None, value or '')):
+        subset = groups[label]
+        label_tag = label or 'UNSPECIFIED'
+        split_original_name = f'{stem}_{label_tag}{suffix}'
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')
+        split_stored_name = f'{timestamp}_{split_original_name}'
+        split_path = raw_dir / split_stored_name
+        subset.to_csv(split_path, index=False)
+
+        sha256_hash = calculate_sha256(split_path)
+        size_bytes = split_path.stat().st_size
+
+        store_case_evidence(case_id, split_path, split_stored_name)
+        evidence_entry = append_evidence(
+            case_id,
+            original_name=split_original_name,
+            stored_name=split_stored_name,
+            size_bytes=size_bytes,
+            sha256_hash=sha256_hash,
+            analyst=user,
+            currency=label,
+        )
+        case_summary = evidence_entry.get('case')  # type: ignore[assignment]
+
+        write_audit_log(
+            file_name=split_stored_name,
+            sha256_hash=sha256_hash,
+            action='csv_upload_split',
+            user=user,
+            case_id=case_id,
+            case_name=str((case_summary or {}).get('name') or ''),
+            details={'source_file': original_name, 'currency': label, 'size_bytes': size_bytes},
+        )
+
+        cleaned_frame = clean_transaction_csv(split_path)
+        files.append({
+            'file_name': split_stored_name,
+            'currency': label,
+            'rows_total': int(len(cleaned_frame)),
+            'sha256': sha256_hash,
+            'evidence': evidence_entry,
+        })
+
+    return {
+        'split': True,
+        'source_file_name': original_name,
+        'files': files,
+        'rows_total': sum(int(item['rows_total']) for item in files),
+        'case': case_summary,
     }

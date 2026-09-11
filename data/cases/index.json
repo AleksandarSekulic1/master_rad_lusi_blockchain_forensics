@@ -7,10 +7,10 @@
       "analyst": "aco",
       "status": "open",
       "created_at": "2026-09-11T09:42:04.449570+00:00",
-      "updated_at": "2026-09-11T09:42:04.449570+00:00",
-      "evidence_count": 0,
-      "total_size_bytes": 0,
-      "last_imported_at": null
+      "updated_at": "2026-09-11T09:59:44.684670+00:00",
+      "evidence_count": 5,
+      "total_size_bytes": 4393,
+      "last_imported_at": "2026-09-11T09:59:44.684670+00:00"
     },
     {
       "id": "1ba51cb4472e",

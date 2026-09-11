@@ -1,0 +1,5 @@
+sender_address,recipient_address,amount,timestamp,metadata,currency
+0xUniswapRouter,0xInvestorWallet,25000.0,2026-08-24 09:00:00+00:00,0xswap0001,USDC
+0xSushiRouter,0xOtherWallet,4500.0,2026-08-29 09:01:00+00:00,,USDC
+0xInvestorWallet,0xPeerWalletB,100.0,2026-08-30 08:00:00+00:00,,USDC
+0xPeerWalletB,0xInvestorWallet,100.0,2026-08-30 08:01:00+00:00,,USDC
