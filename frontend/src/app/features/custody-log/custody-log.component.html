@@ -8,14 +8,6 @@
              stvarni, prevedeni naslov STRANICE, pa se dva reda ne poklapaju reč za reč. -->
         <p class="panel-kicker">Chain of custody</p>
         <h2>{{ t('Lanac dokaza', 'Chain of custody') }}</h2>
-        <p class="panel-subtitle">
-          {{
-            t(
-              'Evidencija pristupa dokaznom materijalu na dva nivoa — po transakciji i po dokaznom fajlu. Svako pokretanje analize upisuje novi red: datum, ime, razlog i potpis analitičara.',
-              'An evidence-access record kept at two levels — per transaction and per evidence file. Every analysis run adds a row: date, name, reason, and the analyst\'s signature.'
-            )
-          }}
-        </p>
       </div>
       <span class="pill" *ngIf="activeCaseId; else noCase">{{ t('Slučaj', 'Case') }}: {{ activeCaseName || activeCaseId }}</span>
       <ng-template #noCase>

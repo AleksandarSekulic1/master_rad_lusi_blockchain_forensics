@@ -90,14 +90,9 @@
   display: flex;
   justify-content: space-between;
   gap: 1.5rem;
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 0.9rem;
-}
-
-.panel-heading > div:first-child {
-  flex: 1 1 26rem;
-  min-width: 0;
+  margin-bottom: 0.6rem;
 }
 
 .panel-kicker {
@@ -114,18 +109,6 @@ h2 {
   font-size: 1.3rem;
   letter-spacing: -0.02em;
   color: var(--cl-heading);
-}
-
-.panel-subtitle {
-  margin: 0.45rem 0 0;
-  /* A comfortable reading measure (~60ch) rather than letting the line stretch the full
-     panel width - shorter, more even lines instead of one paragraph ragged across three
-     long rows. */
-  max-width: 60ch;
-  font-size: 0.85rem;
-  line-height: 1.55;
-  color: var(--cl-muted);
-  text-wrap: balance;
 }
 
 .pill {
