@@ -305,31 +305,70 @@ h2 {
 
 .report-panel {
   margin: 0.2rem 0 1rem;
-  padding: 1rem 1.1rem;
-  border-radius: 1rem;
+  padding: 1.15rem 1.3rem;
+  border-radius: 1.1rem;
   background: var(--al-report-panel-bg);
   border: 1px solid var(--al-report-panel-border);
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
+}
+
+.report-header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.report-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 999px;
+  font-size: 1rem;
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
 }
 
 .report-title {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.98rem;
+  font-weight: 700;
   color: var(--al-field-text);
 }
 
+.report-header .report-hint {
+  margin: 0.15rem 0 0;
+}
+
+/* Sva polja jedne ispod drugog, u sopstvenoj kartici - vizuelno odvojena od zaglavlja i
+   od footera (broj zapisa + dugmad), umesto da sve pluta u istom razmaku. */
+.report-fields {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.95rem 1rem;
+  border-radius: 0.85rem;
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-border-soft);
+}
+
 .report-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 6rem 1fr;
   align-items: center;
   gap: 0.7rem;
-  flex-wrap: wrap;
+}
+
+@media (max-width: 30rem) {
+  .report-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .report-label {
-  min-width: 5.5rem;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -337,8 +376,10 @@ h2 {
 }
 
 .mode-chips,
-.user-chips {
+.user-chips,
+.report-row-value {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
 }
@@ -399,13 +440,24 @@ h2 {
   color: var(--al-muted);
 }
 
+/* Status levo, dugmad desno, odvojeno tankom linijom od polja iznad - čita se kao
+   sledeći korak ("evo koliko će izveštaj imati zapisa, sad ga preuzmi"), isti obrazac
+   kao DEX Swap/Provera izveštaja stranica. */
+.report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--al-report-panel-border);
+}
+
 .report-status {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--al-border-soft);
   font-size: 0.82rem;
 }
 
@@ -423,6 +475,7 @@ h2 {
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
+  flex: none;
 }
 
 .ghost-button.active {

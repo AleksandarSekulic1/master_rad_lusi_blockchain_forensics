@@ -63,85 +63,97 @@
     </div>
 
     <div class="report-panel" *ngIf="isReportPanelOpen">
-      <p class="report-title">{{ t('Izvoz izveštaja aktivnosti', 'Export activity report') }}</p>
-
-      <div class="report-row">
-        <span class="report-label">{{ t('Period', 'Period') }}</span>
-        <div class="mode-chips">
-          <button type="button" class="mode-chip" [class.active]="periodMode === 'all'" (click)="setPeriodMode('all')">
-            {{ t('Sve aktivnosti', 'All activity') }}
-          </button>
-          <button type="button" class="mode-chip" [class.active]="periodMode === 'day'" (click)="setPeriodMode('day')">
-            {{ t('Jedan dan', 'One day') }}
-          </button>
-          <button type="button" class="mode-chip" [class.active]="periodMode === 'range'" (click)="setPeriodMode('range')">
-            {{ t('Od — do', 'From — to') }}
-          </button>
+      <div class="report-header">
+        <span class="report-header-icon" aria-hidden="true">⭳</span>
+        <div>
+          <p class="report-title">{{ t('Izvoz izveštaja aktivnosti', 'Export activity report') }}</p>
+          <p class="report-hint" *ngIf="!isAdmin">{{ t('Izveštaj obuhvata isključivo vaše akcije.', 'The report covers only your own actions.') }}</p>
         </div>
       </div>
 
-      <div class="report-row" *ngIf="periodMode === 'day'">
-        <span class="report-label">{{ t('Datum', 'Date') }}</span>
-        <input type="date" [(ngModel)]="reportDay" (ngModelChange)="refreshReportCount()" />
-      </div>
+      <div class="report-fields">
+        <div class="report-row">
+          <span class="report-label">{{ t('Period', 'Period') }}</span>
+          <div class="mode-chips">
+            <button type="button" class="mode-chip" [class.active]="periodMode === 'all'" (click)="setPeriodMode('all')">
+              {{ t('Sve aktivnosti', 'All activity') }}
+            </button>
+            <button type="button" class="mode-chip" [class.active]="periodMode === 'day'" (click)="setPeriodMode('day')">
+              {{ t('Jedan dan', 'One day') }}
+            </button>
+            <button type="button" class="mode-chip" [class.active]="periodMode === 'range'" (click)="setPeriodMode('range')">
+              {{ t('Od — do', 'From — to') }}
+            </button>
+          </div>
+        </div>
 
-      <div class="report-row" *ngIf="periodMode === 'range'">
-        <span class="report-label">{{ t('Od — do', 'From — to') }}</span>
-        <input type="date" [(ngModel)]="reportFrom" (ngModelChange)="refreshReportCount()" />
-        <span class="dash">—</span>
-        <input type="date" [(ngModel)]="reportTo" (ngModelChange)="refreshReportCount()" />
-      </div>
+        <div class="report-row" *ngIf="periodMode === 'day'">
+          <span class="report-label">{{ t('Datum', 'Date') }}</span>
+          <div class="report-row-value">
+            <input type="date" [(ngModel)]="reportDay" (ngModelChange)="refreshReportCount()" />
+          </div>
+        </div>
 
-      <div class="report-row" *ngIf="isAdmin && availableUsers.length > 0">
-        <span class="report-label">{{ t('Korisnici', 'Users') }}</span>
-        <div class="user-chips">
-          <button type="button" class="mode-chip" [class.active]="isAllUsersSelected" (click)="selectAllReportUsers()">
-            {{ t('Svi korisnici', 'All users') }}
-          </button>
-          <button
-            type="button"
-            class="mode-chip"
-            *ngFor="let username of availableUsers"
-            [class.active]="reportUsers.has(username)"
-            (click)="toggleReportUser(username)"
-            [title]="isHistoricalUser(username) ? t('Nalog više ne postoji u sistemu, ali njegove akcije ostaju u logu', 'The account no longer exists, but its actions remain in the log') : ''"
-          >
-            {{ username }}
-            <span class="historical-mark" *ngIf="isHistoricalUser(username)">{{ t('neaktivan', 'inactive') }}</span>
-          </button>
+        <div class="report-row" *ngIf="periodMode === 'range'">
+          <span class="report-label">{{ t('Od — do', 'From — to') }}</span>
+          <div class="report-row-value">
+            <input type="date" [(ngModel)]="reportFrom" (ngModelChange)="refreshReportCount()" />
+            <span class="dash">—</span>
+            <input type="date" [(ngModel)]="reportTo" (ngModelChange)="refreshReportCount()" />
+          </div>
+        </div>
+
+        <div class="report-row" *ngIf="isAdmin && availableUsers.length > 0">
+          <span class="report-label">{{ t('Korisnici', 'Users') }}</span>
+          <div class="user-chips">
+            <button type="button" class="mode-chip" [class.active]="isAllUsersSelected" (click)="selectAllReportUsers()">
+              {{ t('Svi korisnici', 'All users') }}
+            </button>
+            <button
+              type="button"
+              class="mode-chip"
+              *ngFor="let username of availableUsers"
+              [class.active]="reportUsers.has(username)"
+              (click)="toggleReportUser(username)"
+              [title]="isHistoricalUser(username) ? t('Nalog više ne postoji u sistemu, ali njegove akcije ostaju u logu', 'The account no longer exists, but its actions remain in the log') : ''"
+            >
+              {{ username }}
+              <span class="historical-mark" *ngIf="isHistoricalUser(username)">{{ t('neaktivan', 'inactive') }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <p class="report-hint" *ngIf="!isAdmin">{{ t('Izveštaj obuhvata isključivo vaše akcije.', 'The report covers only your own actions.') }}</p>
-
-      <div class="report-status">
-        <ng-container *ngIf="isRangeInverted; else countState">
-          <span class="report-warning">{{ t('Datum „od" je posle datuma „do".', 'The "from" date is after the "to" date.') }}</span>
-        </ng-container>
-        <ng-template #countState>
-          <ng-container *ngIf="isPeriodIncomplete; else haveCount">
-            <span class="muted">{{ t('Izaberite datum da vidite broj zapisa.', 'Pick a date to see the entry count.') }}</span>
+      <div class="report-footer">
+        <div class="report-status">
+          <ng-container *ngIf="isRangeInverted; else countState">
+            <span class="report-warning">{{ t('Datum „od" je posle datuma „do".', 'The "from" date is after the "to" date.') }}</span>
           </ng-container>
-          <ng-template #haveCount>
-            <span *ngIf="isCountingReport" class="muted">{{ t('Provera...', 'Checking...') }}</span>
-            <ng-container *ngIf="!isCountingReport && reportCount !== null">
-              <span class="count-chip" [class.empty]="reportCount === 0">{{ reportCount }} {{ t('zapisa', 'entries') }}</span>
-              <span class="muted">{{ reportPeriodLabel }}</span>
-              <span class="report-warning" *ngIf="reportCount === 0">
-                {{ t('Za izabrani period nema aktivnosti — izveštaj se ne može generisati.', 'There is no activity for the selected period — the report cannot be generated.') }}
-              </span>
+          <ng-template #countState>
+            <ng-container *ngIf="isPeriodIncomplete; else haveCount">
+              <span class="muted">{{ t('Izaberite datum da vidite broj zapisa.', 'Pick a date to see the entry count.') }}</span>
             </ng-container>
+            <ng-template #haveCount>
+              <span *ngIf="isCountingReport" class="muted">{{ t('Provera...', 'Checking...') }}</span>
+              <ng-container *ngIf="!isCountingReport && reportCount !== null">
+                <span class="count-chip" [class.empty]="reportCount === 0">{{ reportCount }} {{ t('zapisa', 'entries') }}</span>
+                <span class="muted">{{ reportPeriodLabel }}</span>
+                <span class="report-warning" *ngIf="reportCount === 0">
+                  {{ t('Za izabrani period nema aktivnosti — izveštaj se ne može generisati.', 'There is no activity for the selected period — the report cannot be generated.') }}
+                </span>
+              </ng-container>
+            </ng-template>
           </ng-template>
-        </ng-template>
-      </div>
+        </div>
 
-      <div class="report-actions">
-        <button type="button" class="primary-button" (click)="downloadReport('pdf')" [disabled]="!canGenerateReport">
-          {{ isDownloadingReport ? t('Generisanje...', 'Generating...') : t('Preuzmi PDF', 'Download PDF') }}
-        </button>
-        <button type="button" class="ghost-button" (click)="downloadReport('csv')" [disabled]="!canGenerateReport">
-          {{ t('Preuzmi CSV', 'Download CSV') }}
-        </button>
+        <div class="report-actions">
+          <button type="button" class="primary-button" (click)="downloadReport('pdf')" [disabled]="!canGenerateReport">
+            {{ isDownloadingReport ? t('Generisanje...', 'Generating...') : t('Preuzmi PDF', 'Download PDF') }}
+          </button>
+          <button type="button" class="ghost-button" (click)="downloadReport('csv')" [disabled]="!canGenerateReport">
+            {{ t('Preuzmi CSV', 'Download CSV') }}
+          </button>
+        </div>
       </div>
 
       <p class="error-banner" *ngIf="reportError">{{ reportError }}</p>
