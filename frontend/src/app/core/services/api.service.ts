@@ -383,6 +383,14 @@ export class ApiService {
     return this.http.post<ResetLinkResponse>(`${this.apiUrl}/api/v1/users/${userId}/reset-link`, {});
   }
 
+  renameUser(userId: string, username: string): Observable<AuthUser> {
+    return this.http.patch<AuthUser>(`${this.apiUrl}/api/v1/users/${userId}`, { username });
+  }
+
+  deleteUser(userId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/users/${userId}`);
+  }
+
   /** Registers a report before the PDF is built, returning the verification code that
    * gets printed into it. The code has to exist first - it cannot be derived from a
    * document it is itself part of. */

@@ -88,6 +88,43 @@ def authenticate(username: str, password: str) -> dict[str, object] | None:
     return _sanitize(user)
 
 
+def rename_user(user_id: str, new_username: str) -> dict[str, object]:
+    new_username = new_username.strip()
+    if not new_username:
+        raise ValueError('Korisničko ime ne sme biti prazno.')
+
+    users = _load_users()
+    target = next((user for user in users if user.get('id') == user_id), None)
+    if target is None:
+        raise FileNotFoundError(f'Korisnik nije pronađen: {user_id}')
+
+    normalized = new_username.lower()
+    if any(user is not target and str(user.get('username', '')).lower() == normalized for user in users):
+        raise ValueError(f'Korisničko ime "{new_username}" je već zauzeto.')
+
+    target['username'] = new_username
+    target['updated_at'] = datetime.now(timezone.utc).isoformat()
+    _save_users(users)
+    return _sanitize(target)
+
+
+def delete_user(user_id: str) -> None:
+    """Permanently removes the account. Refuses to delete the last remaining admin -
+    unlike blocking (reversible), a deletion that locks every admin out of the system has
+    no way back short of editing the JSON file by hand."""
+    users = _load_users()
+    target = next((user for user in users if user.get('id') == user_id), None)
+    if target is None:
+        raise FileNotFoundError(f'Korisnik nije pronađen: {user_id}')
+
+    if target.get('role') == 'admin':
+        other_admins = [user for user in users if user.get('role') == 'admin' and user.get('id') != user_id]
+        if not other_admins:
+            raise ValueError('Ne možete obrisati jedinog administratora.')
+
+    _save_users([user for user in users if user.get('id') != user_id])
+
+
 def set_user_status(user_id: str, status: str) -> dict[str, object]:
     if status not in ('active', 'blocked'):
         raise ValueError('Status mora biti "active" ili "blocked".')

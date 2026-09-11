@@ -27,6 +27,12 @@
   --um-info-text: #c4b5fd;
   --um-info-bg: rgba(167, 139, 250, 0.12);
   --um-info-border: rgba(167, 139, 250, 0.32);
+  --um-danger-text: #f87171;
+  --um-danger-bg: rgba(248, 113, 113, 0.12);
+  --um-danger-border: rgba(248, 113, 113, 0.32);
+  --um-row-expanded: rgba(96, 165, 250, 0.08);
+  --um-detail-bg: rgba(4, 10, 20, 0.4);
+  --um-danger-zone-bg: rgba(248, 113, 113, 0.05);
 }
 
 :host-context([data-theme='light']) {
@@ -52,6 +58,12 @@
   --um-info-text: #7c3aed;
   --um-info-bg: rgba(124, 58, 237, 0.08);
   --um-info-border: rgba(124, 58, 237, 0.28);
+  --um-danger-text: #b91c1c;
+  --um-danger-bg: rgba(220, 38, 38, 0.08);
+  --um-danger-border: rgba(220, 38, 38, 0.28);
+  --um-row-expanded: rgba(37, 99, 235, 0.07);
+  --um-detail-bg: rgba(15, 23, 42, 0.03);
+  --um-danger-zone-bg: rgba(220, 38, 38, 0.04);
 }
 
 .admin-grid {
@@ -285,8 +297,125 @@ tbody tr:hover {
   border-color: var(--um-info-border);
 }
 
-.action-button:hover {
+.action-button.danger {
+  color: var(--um-danger-text);
+  background: var(--um-danger-bg);
+  border-color: var(--um-danger-border);
+}
+
+.action-button:hover:not(:disabled) {
   filter: brightness(1.15);
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ---------- Red korisnika (klik otvara detalje: preimenovanje i brisanje) ---------- */
+
+.col-toggle {
+  width: 1.6rem;
+  padding-right: 0;
+}
+
+.chevron {
+  display: inline-block;
+  color: var(--um-muted);
+  transition: transform 0.16s ease;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.user-row {
+  cursor: pointer;
+}
+
+.user-row.is-expanded {
+  background: var(--um-row-expanded);
+}
+
+.user-row.is-expanded td {
+  border-bottom-color: transparent;
+}
+
+.detail-row td {
+  padding-top: 0;
+  background: var(--um-row-expanded);
+  white-space: normal;
+}
+
+.detail-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 0.9rem 1rem 1rem;
+  margin-bottom: 0.4rem;
+  border-radius: 0.9rem;
+  background: var(--um-detail-bg);
+  border: 1px solid var(--um-border-soft);
+}
+
+.detail-block {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.detail-danger {
+  padding: 0.9rem 1rem 1rem;
+  margin: 0 -1rem -1rem;
+  border-top: 1px solid var(--um-border-soft);
+  border-radius: 0 0 0.9rem 0.9rem;
+  background: var(--um-danger-zone-bg);
+}
+
+.detail-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--um-muted);
+}
+
+.detail-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.detail-edit-row input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--um-border);
+  color: var(--um-heading);
+  background: var(--um-field-bg);
+  font: inherit;
+}
+
+.detail-edit-row input:focus {
+  outline: none;
+  border-color: var(--um-kicker);
+}
+
+.detail-confirm-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--um-text);
+}
+
+.detail-confirm-text strong {
+  color: var(--um-heading);
+}
+
+.detail-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--um-danger-text);
 }
 
 /* ---------- Paginacija ---------- */

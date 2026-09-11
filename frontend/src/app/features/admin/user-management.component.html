@@ -25,7 +25,6 @@
         </select>
       </label>
       <button type="button" class="primary-button" (click)="createUser()" [disabled]="isCreating">
-        <span aria-hidden="true">＋</span>
         {{ isCreating ? t('Kreiranje...', 'Creating...') : t('Kreiraj nalog', 'Create account') }}
       </button>
     </div>
@@ -50,6 +49,7 @@
       <table>
         <thead>
           <tr>
+            <th></th>
             <th>{{ t('Korisničko ime', 'Username') }}</th>
             <th>{{ t('Uloga', 'Role') }}</th>
             <th>{{ t('Status', 'Status') }}</th>
@@ -58,28 +58,80 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let user of pagedUsers">
-            <td>{{ user.username }}</td>
-            <td>{{ user.role === 'admin' ? t('Administrator', 'Administrator') : t('Analitičar', 'Analyst') }}</td>
-            <td>
-              <span class="pill" [class.blocked]="user.status === 'blocked'">
-                {{ user.status === 'blocked' ? t('Blokiran', 'Blocked') : t('Aktivan', 'Active') }}
-              </span>
-            </td>
-            <td>{{ user.created_at }}</td>
-            <td class="actions">
-              <button
-                type="button"
-                class="action-button"
-                [class.warning]="user.status !== 'blocked'"
-                [class.success]="user.status === 'blocked'"
-                (click)="toggleStatus(user)"
-              >
-                {{ user.status === 'blocked' ? t('Odblokiraj', 'Unblock') : t('Blokiraj', 'Block') }}
-              </button>
-              <button type="button" class="action-button info" (click)="generateResetLink(user)">{{ t('Reset lozinke', 'Reset password') }}</button>
-            </td>
-          </tr>
+          <ng-container *ngFor="let user of pagedUsers">
+            <tr class="user-row" [class.is-expanded]="isExpanded(user)" (click)="toggleUserDetails(user)">
+              <td class="col-toggle">
+                <span class="chevron" [class.open]="isExpanded(user)" aria-hidden="true">›</span>
+              </td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.role === 'admin' ? t('Administrator', 'Administrator') : t('Analitičar', 'Analyst') }}</td>
+              <td>
+                <span class="pill" [class.blocked]="user.status === 'blocked'">
+                  {{ user.status === 'blocked' ? t('Blokiran', 'Blocked') : t('Aktivan', 'Active') }}
+                </span>
+              </td>
+              <td>{{ formatDateTime(user.created_at) }}</td>
+              <td class="actions" (click)="$event.stopPropagation()">
+                <button
+                  type="button"
+                  class="action-button"
+                  [class.warning]="user.status !== 'blocked'"
+                  [class.success]="user.status === 'blocked'"
+                  (click)="toggleStatus(user)"
+                >
+                  {{ user.status === 'blocked' ? t('Odblokiraj', 'Unblock') : t('Blokiraj', 'Block') }}
+                </button>
+                <button type="button" class="action-button info" (click)="generateResetLink(user)">{{ t('Reset lozinke', 'Reset password') }}</button>
+              </td>
+            </tr>
+
+            <tr class="detail-row" *ngIf="isExpanded(user)">
+              <td colspan="6" (click)="$event.stopPropagation()">
+                <div class="detail-panel">
+                  <div class="detail-block">
+                    <label class="detail-label">{{ t('Korisničko ime', 'Username') }}</label>
+                    <div class="detail-edit-row">
+                      <input type="text" [(ngModel)]="editUsername" (keydown.enter)="renameUser(user)" />
+                      <button
+                        type="button"
+                        class="action-button info"
+                        (click)="renameUser(user)"
+                        [disabled]="isRenaming || !editUsername.trim() || editUsername.trim() === user.username"
+                      >
+                        {{ isRenaming ? t('Čuvanje...', 'Saving...') : t('Sačuvaj', 'Save') }}
+                      </button>
+                    </div>
+                    <p class="detail-error" *ngIf="renameError">{{ renameError }}</p>
+                  </div>
+
+                  <div class="detail-block detail-danger">
+                    <label class="detail-label">{{ t('Opasna zona', 'Danger zone') }}</label>
+
+                    <ng-container *ngIf="confirmingDeleteId !== user.id; else confirmDelete">
+                      <button type="button" class="action-button danger" (click)="askDeleteUser(user)">
+                        {{ t('Obriši korisnika trajno', 'Permanently delete user') }}
+                      </button>
+                    </ng-container>
+                    <ng-template #confirmDelete>
+                      <p class="detail-confirm-text">
+                        {{ t('Ova akcija je trajna i ne može se poništiti. Obrisati nalog', 'This action is permanent and cannot be undone. Delete account') }}
+                        <strong>{{ user.username }}</strong>?
+                      </p>
+                      <div class="detail-edit-row">
+                        <button type="button" class="action-button danger" (click)="confirmDeleteUser(user)" [disabled]="isDeleting">
+                          {{ isDeleting ? t('Brisanje...', 'Deleting...') : t('Da, obriši', 'Yes, delete') }}
+                        </button>
+                        <button type="button" class="ghost-button" (click)="cancelDeleteUser()" [disabled]="isDeleting">
+                          {{ t('Otkaži', 'Cancel') }}
+                        </button>
+                      </div>
+                    </ng-template>
+                    <p class="detail-error" *ngIf="deleteError">{{ deleteError }}</p>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </ng-container>
         </tbody>
       </table>
 

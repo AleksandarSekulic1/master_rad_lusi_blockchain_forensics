@@ -23,6 +23,17 @@ export class UserManagementComponent implements OnInit {
   protected statusMessage = '';
   protected resetLinkByUsername: Record<string, string> = {};
 
+  // --- Detalji reda (klik na korisnika) - preimenovanje i trajno brisanje. Samo jedan red
+  // može biti otvoren odjednom, isto kao expandedRows na activity-log, samo ovde je jedan
+  // ID umesto Set-a jer se retko otvara više od jednog reda istovremeno. ---
+  protected expandedUserId: string | null = null;
+  protected editUsername = '';
+  protected isRenaming = false;
+  protected renameError: string | null = null;
+  protected confirmingDeleteId: string | null = null;
+  protected isDeleting = false;
+  protected deleteError: string | null = null;
+
   // --- Paginacija - lista korisnika ume da naraste preko jednog ekrana, pa se prikazuje
   // po 5 odjednom. Bez izbora veličine strane (za razliku od activity-log/custody-log) -
   // ova lista je po prirodi mala, jedna fiksna veličina je dovoljna. ---
@@ -38,6 +49,18 @@ export class UserManagementComponent implements OnInit {
    * (same pattern as every other page's own t()). */
   protected t(sr: string, en: string): string {
     return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  /** "08.06.2026. 09:00" (sr) / "08/06/2026, 09:00" (en) from an ISO timestamp - local
+   * time, locale matched to the active language (same pattern as custody-log.component.ts's
+   * own formatDateTime()), instead of the raw ISO string the "Kreiran" column used to show. */
+  protected formatDateTime(value: string): string {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    const locale = this.settings.lang() === 'sr' ? 'sr-RS' : 'en-GB';
+    return parsed.toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   ngOnInit(): void {
@@ -102,7 +125,77 @@ export class UserManagementComponent implements OnInit {
       },
       error: (error: unknown) => {
         this.isCreating = false;
-        this.statusMessage = this.extractErrorMessage(error);
+        this.statusMessage = this.extractErrorMessage(error, this.t('Kreiranje korisnika nije uspelo.', 'Failed to create the user.'));
+      },
+    });
+  }
+
+  // --- Detalji reda: preimenovanje i trajno brisanje --------------------------------------
+
+  protected isExpanded(user: AuthUser): boolean {
+    return this.expandedUserId === user.id;
+  }
+
+  protected toggleUserDetails(user: AuthUser): void {
+    if (this.expandedUserId === user.id) {
+      this.expandedUserId = null;
+      return;
+    }
+    this.expandedUserId = user.id;
+    this.editUsername = user.username;
+    this.renameError = null;
+    this.confirmingDeleteId = null;
+    this.deleteError = null;
+  }
+
+  protected renameUser(user: AuthUser): void {
+    const username = this.editUsername.trim();
+    if (!username || username === user.username) {
+      return;
+    }
+
+    this.isRenaming = true;
+    this.renameError = null;
+    this.api.renameUser(user.id, username).subscribe({
+      next: () => {
+        this.isRenaming = false;
+        this.expandedUserId = null;
+        this.statusMessage = this.t(`Korisničko ime promenjeno u "${username}".`, `Username changed to "${username}".`);
+        this.loadUsers();
+      },
+      error: (error: unknown) => {
+        this.isRenaming = false;
+        this.renameError = this.extractErrorMessage(error, this.t('Neuspešna izmena korisničkog imena.', 'Failed to change the username.'));
+      },
+    });
+  }
+
+  /** Delete asks once, inline, before actually calling the API - the action is
+   * irreversible (unlike Block, which can be undone with a click), so a stray click
+   * shouldn't be able to remove an account outright. */
+  protected askDeleteUser(user: AuthUser): void {
+    this.confirmingDeleteId = user.id;
+    this.deleteError = null;
+  }
+
+  protected cancelDeleteUser(): void {
+    this.confirmingDeleteId = null;
+  }
+
+  protected confirmDeleteUser(user: AuthUser): void {
+    this.isDeleting = true;
+    this.deleteError = null;
+    this.api.deleteUser(user.id).subscribe({
+      next: () => {
+        this.isDeleting = false;
+        this.confirmingDeleteId = null;
+        this.expandedUserId = null;
+        this.statusMessage = this.t(`Korisnik "${user.username}" je trajno obrisan.`, `User "${user.username}" was permanently deleted.`);
+        this.loadUsers();
+      },
+      error: (error: unknown) => {
+        this.isDeleting = false;
+        this.deleteError = this.extractErrorMessage(error, this.t('Neuspešno brisanje korisnika.', 'Failed to delete the user.'));
       },
     });
   }
@@ -136,13 +229,13 @@ export class UserManagementComponent implements OnInit {
     });
   }
 
-  private extractErrorMessage(error: unknown): string {
+  private extractErrorMessage(error: unknown, fallback: string): string {
     if (typeof error === 'object' && error !== null && 'error' in error) {
       const errorObject = error as { error?: { detail?: string } };
       if (errorObject.error?.detail) {
         return errorObject.error.detail;
       }
     }
-    return this.t('Kreiranje korisnika nije uspelo.', 'Failed to create the user.');
+    return fallback;
   }
 }
