@@ -752,6 +752,53 @@
   color: #cdd9ef;
 }
 
+/* Report-language picker on the signing modal - same fieldset as taint-analysis /
+   pathfinding / behavioral-analysis .scss's own .signature-lang. Fixed dark colors, not
+   --dx-* tokens: this dialog's background stays dark regardless of the app theme (see
+   .signature-dialog above), same as the rest of this dialog's own rules. */
+.signature-lang {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+}
+
+.signature-lang legend {
+  padding: 0 0.35rem;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8ea6c7;
+}
+
+.signature-lang label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: #cdd9ef;
+  cursor: pointer;
+}
+
+.signature-lang input {
+  accent-color: #7dd3fc;
+}
+
+.signature-lang-hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+}
+
+.signature-lang-hint strong {
+  color: #cdd9ef;
+}
+
 .signature-declaration {
   display: flex;
   gap: 0.7rem;

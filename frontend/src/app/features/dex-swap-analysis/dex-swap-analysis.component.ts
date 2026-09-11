@@ -14,7 +14,7 @@ import { SignaturePadComponent } from '../../core/components/signature-pad/signa
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
-import { SettingsService } from '../../core/services/settings.service';
+import { AppLang, SettingsService } from '../../core/services/settings.service';
 import {
   CaseSummary,
   DexSwapAnalysisResult,
@@ -98,6 +98,10 @@ export class DexSwapAnalysisComponent implements OnInit {
   protected signatureDeclarationAccepted = false;
   protected signatureError: string | null = null;
   protected isExportingPdf = false;
+  /** Language the exported PDF is produced in - seeded from the app toggle when the
+   * signing dialog opens, then confirmed by the analyst on the modal (same pattern as
+   * taint-analysis.component.ts's taintPdfLang / behavioral-analysis's behavioralPdfLang). */
+  protected dexPdfLang: AppLang = 'sr';
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -111,6 +115,13 @@ export class DexSwapAnalysisComponent implements OnInit {
    * (same pattern as taint-analysis.component.ts's t()). */
   protected t(sr: string, en: string): string {
     return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  /** PDF-string translator: SR or EN by the language chosen on the signing modal, then
+   * ASCII-folded (harmless for English) since the PDF core font is Latin-1 only - same
+   * pattern as taint-analysis.component.ts's lx(). */
+  private lx(sr: string, en: string): string {
+    return this.asciiSafe(this.dexPdfLang === 'sr' ? sr : en);
   }
 
   ngOnInit(): void {
@@ -573,6 +584,7 @@ export class DexSwapAnalysisComponent implements OnInit {
     this.isSignatureDialogOpen = true;
     this.signatureDeclarationAccepted = false;
     this.signatureError = null;
+    this.dexPdfLang = this.settings.lang();
     setTimeout(() => this.signaturePad?.clear());
   }
 
@@ -584,9 +596,15 @@ export class DexSwapAnalysisComponent implements OnInit {
     return (this.signaturePad?.hasStrokes ?? false) && this.signatureDeclarationAccepted && !this.isExportingPdf;
   }
 
-  protected static readonly SIGNATURE_DECLARATION =
-    'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi '
-    + 'kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.';
+  /** SR or EN by the language chosen on the signing modal (dexPdfLang) - same pattern as
+   * taint-analysis.component.ts's own inline declaration ternary in confirmSignatureAndExport. */
+  private signatureDeclaration(): string {
+    return this.dexPdfLang === 'sr'
+      ? 'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati '
+        + 'onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.'
+      : 'I confirm that I produced this report within the stated case and that the results shown in it are those '
+        + 'the application computed over the stated evidence (heuristically).';
+  }
 
   /** The exact data the verification hash is computed over - one entry per analysed
    * address, kept to the figures a reader could dispute (which events, which confidence,
@@ -628,7 +646,7 @@ export class DexSwapAnalysisComponent implements OnInit {
     this.signatureError = null;
     try {
       const signatureImage = this.signaturePad!.getDataUrl();
-      const declaration = DexSwapAnalysisComponent.SIGNATURE_DECLARATION;
+      const declaration = this.signatureDeclaration();
       const runs = this.exportableRuns;
 
       // Registered BEFORE the document is built: the verification code has to be printed
@@ -654,7 +672,7 @@ export class DexSwapAnalysisComponent implements OnInit {
       this.buildDexSwapPdf({ signatureImage, declaration, registration }, { catEmblem, sealImage });
       this.isSignatureDialogOpen = false;
     } catch {
-      this.signatureError = 'Neuspešno generisanje PDF izveštaja.';
+      this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
     } finally {
       this.isExportingPdf = false;
     }
@@ -671,6 +689,7 @@ export class DexSwapAnalysisComponent implements OnInit {
       sealImage: { dataUrl: string; width: number; height: number } | null;
     },
   ): void {
+    const L = (sr: string, en: string): string => this.lx(sr, en);
     const caseSummary = this.activeCase!;
     const runs = this.exportableRuns;
     const NAVY = DexSwapAnalysisComponent.PDF_NAVY;
@@ -699,10 +718,10 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setTextColor(...WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
-    doc.text('Lusi v1.0 - Izvestaj DEX Swap analize', titleX, 11);
+    doc.text(L('Lusi v1.0 - Izvestaj DEX Swap analize', 'Lusi v1.0 - DEX Swap analysis report'), titleX, 11);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
+    doc.text(`${L('Slucaj', 'Case')}: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
     doc.setTextColor(...TEXT_DARK);
 
     const kv = (label: string, value: string): void => {
@@ -719,21 +738,39 @@ export class DexSwapAnalysisComponent implements OnInit {
     };
 
     kv('CASE ID', caseSummary.id);
-    kv('IZVEZAO', this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
-    kv('EVIDENCIJA', this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : 'Sve transakcije (kombinovano)');
-    kv('ANALIZIRANO ADRESA', String(runs.length));
-    kv('VREMENSKI PROZOR', `${runs[0].result!.max_gap_seconds}s (maksimalan razmak izmedju ulaznog i izlaznog kraka)`);
-    kv('GENERISANO', new Date().toLocaleString());
+    kv(L('IZVEZAO', 'EXPORTED BY'), this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
+    kv(
+      L('EVIDENCIJA', 'EVIDENCE'),
+      this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : L('Sve transakcije (kombinovano)', 'All transactions (combined)'),
+    );
+    kv(L('ANALIZIRANO ADRESA', 'ADDRESSES ANALYSED'), String(runs.length));
+    kv(
+      L('VREMENSKI PROZOR', 'TIME WINDOW'),
+      L(
+        `${runs[0].result!.max_gap_seconds}s (maksimalan razmak izmedju ulaznog i izlaznog kraka)`,
+        `${runs[0].result!.max_gap_seconds}s (maximum gap between the input and output leg)`,
+      ),
+    );
+    kv(L('GENERISANO', 'GENERATED AT'), new Date().toLocaleString(this.dexPdfLang === 'sr' ? 'sr-RS' : 'en-GB'));
     y += 2;
 
     // Short version of the disclaimer, placed BEFORE any result - the full version is
     // the methodology appendix at the end. Never omitted, never softened: this is a
     // heuristic, not proof, on every page this note could plausibly be missed from.
-    // Same text for every address (the backend's disclaimer is heuristic-wide, not
-    // per-address), so the first run's copy stands in for all of them.
+    // Composed here (not read from the backend's result.disclaimer) so it follows the
+    // chosen report language - the backend field is Serbian-only.
     const methodologyNoteLines = doc.splitTextToSize(
-      this.asciiSafe(runs[0].result!.disclaimer)
-        + ' Detaljno objasnjenje heuristike i njena ogranicenja nalaze se na kraju ovog izvestaja.',
+      L(
+        'DEX swap detekcija je heuristika zasnovana na adresnom obrascu, vremenskoj bliskosti i (kad postoji) '
+          + 'deklarisanoj valuti - ne predstavlja kriptografski dokaz da se radi o swap transakciji.',
+        'DEX swap detection is a heuristic based on address pattern, time proximity and (when present) declared '
+          + 'currency - it is not cryptographic proof that a swap transaction occurred.',
+      )
+        + ' '
+        + L(
+          'Detaljno objasnjenje heuristike i njena ogranicenja nalaze se na kraju ovog izvestaja.',
+          'A detailed explanation of the heuristic and its limitations is at the end of this report.',
+        ),
       usableWidth - 8,
     );
     const noteBoxHeight = methodologyNoteLines.length * 4.2 + 7;
@@ -806,32 +843,53 @@ export class DexSwapAnalysisComponent implements OnInit {
       sectionTitle(heading);
 
       drawSummaryCards([
-        ['Detektovano dogadjaja', result.total_events, ACCENT],
-        ['Detected (isti tx hash)', result.detected_count, DexSwapAnalysisComponent.PDF_HIGH],
-        ['Potential (adresa + vreme)', result.potential_count, DexSwapAnalysisComponent.PDF_MEDIUM],
-        ['DEX kontrakata razmotreno', result.dex_nodes_considered.length, TEXT_GRAY],
+        [L('Detektovano dogadjaja', 'Events detected'), result.total_events, ACCENT],
+        [`Detected (${L('isti tx hash', 'same tx hash')})`, result.detected_count, DexSwapAnalysisComponent.PDF_HIGH],
+        [`Potential (${L('adresa + vreme', 'address + time')})`, result.potential_count, DexSwapAnalysisComponent.PDF_MEDIUM],
+        [L('DEX kontrakata razmotreno', 'DEX contracts considered'), result.dex_nodes_considered.length, TEXT_GRAY],
       ]);
 
       const lowConfidenceEvents = result.events.filter((event) => this.confidenceLevel(event) === 'Low');
       const findingLines: string[] = [
-        `${result.total_events} ${result.total_events === 1 ? 'DEX swap dogadjaj' : 'DEX swap dogadjaja'} detektovano za adresu ${result.address ?? 'n/a'}`,
+        L(
+          `${result.total_events} ${result.total_events === 1 ? 'DEX swap dogadjaj' : 'DEX swap dogadjaja'} detektovano za adresu ${result.address ?? 'n/a'}`,
+          `${result.total_events} DEX swap ${result.total_events === 1 ? 'event' : 'events'} detected for address ${result.address ?? 'n/a'}`,
+        ),
       ];
       if (result.detected_count > 0) {
-        findingLines.push(`${result.detected_count} potvrdjeno deljenim transaction hash-om (najjaci raspoloziv signal)`);
+        findingLines.push(
+          L(
+            `${result.detected_count} potvrdjeno deljenim transaction hash-om (najjaci raspoloziv signal)`,
+            `${result.detected_count} confirmed by shared transaction hash (strongest available signal)`,
+          ),
+        );
       }
       if (result.potential_count > 0) {
-        findingLines.push(`${result.potential_count} uparenih samo po adresi i vremenskoj bliskosti`);
+        findingLines.push(
+          L(
+            `${result.potential_count} uparenih samo po adresi i vremenskoj bliskosti`,
+            `${result.potential_count} matched only by address and time proximity`,
+          ),
+        );
       }
       findingLines.push(
         result.data_completeness.currency_declared
-          ? 'Evidencija deklarise valutu/token za bar jednu transakciju'
-          : 'UPOZORENJE: evidencija ne deklarise valutu/token - input/output tokeni su nepoznati (?)',
+          ? L('Evidencija deklarise valutu/token za bar jednu transakciju', 'The evidence declares a currency/token for at least one transaction')
+          : L(
+              'UPOZORENJE: evidencija ne deklarise valutu/token - input/output tokeni su nepoznati (?)',
+              'WARNING: the evidence does not declare a currency/token - input/output tokens are unknown (?)',
+            ),
       );
       if (lowConfidenceEvents.length > 0) {
-        findingLines.push(`${lowConfidenceEvents.length} dogadjaja prepoznato samo preko generic kljucne reci - preporucena dodatna provera`);
+        findingLines.push(
+          L(
+            `${lowConfidenceEvents.length} dogadjaja prepoznato samo preko generic kljucne reci - preporucena dodatna provera`,
+            `${lowConfidenceEvents.length} events recognised only via a generic keyword - additional manual review recommended`,
+          ),
+        );
       }
 
-      sectionTitle('Kljucni nalazi');
+      sectionTitle(L('Kljucni nalazi', 'Key findings'));
       const findingsLineHeight = 6.5;
       const findingsBoxTop = y - 5;
       const findingsBoxHeight = findingLines.length * findingsLineHeight + 6;
@@ -851,15 +909,15 @@ export class DexSwapAnalysisComponent implements OnInit {
       }
       y = findingsBoxTop + findingsBoxHeight + 9;
 
-      sectionTitle('DEX kontrakti razmotreni');
+      sectionTitle(L('DEX kontrakti razmotreni', 'DEX contracts considered'));
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['Adresa', 'Naziv', 'Osnov prepoznavanja']],
+        head: [[L('Adresa', 'Address'), L('Naziv', 'Name'), L('Osnov prepoznavanja', 'Match basis')]],
         body:
           result.dex_nodes_considered.length > 0
             ? result.dex_nodes_considered.map((node) => [node.address, this.asciiSafe(node.name), node.match_basis])
-            : [['-', '(nijedan prepoznat u ovoj evidenciji)', '-']],
+            : [['-', L('(nijedan prepoznat u ovoj evidenciji)', '(none recognised in this evidence)'), '-']],
         styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
         headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [240, 245, 250] },
@@ -871,19 +929,19 @@ export class DexSwapAnalysisComponent implements OnInit {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Detektovani swap dogadjaji');
+      sectionTitle(L('Detektovani swap dogadjaji', 'Detected swap events'));
       const sortedEvents = [...result.events].sort((a, b) => a.input_timestamp.localeCompare(b.input_timestamp));
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['#', 'DEX', 'Input', 'Output', 'Pouzdanost', 'Vreme', 'Tx hash']],
+        head: [['#', 'DEX', 'Input', 'Output', L('Pouzdanost', 'Confidence'), L('Vreme', 'Time'), 'Tx hash']],
         body: sortedEvents.map((event, index) => [
           String(index + 1),
           this.asciiSafe(event.dex_name),
           this.formatTokenAmount(event.input_amount, event.input_token),
           this.formatTokenAmount(event.output_amount, event.output_token),
           `${this.confidenceLevel(event)} (${event.confidence})`,
-          new Date(event.input_timestamp).toLocaleString(),
+          new Date(event.input_timestamp).toLocaleString(this.dexPdfLang === 'sr' ? 'sr-RS' : 'en-GB'),
           this.asciiSafe(event.input_transaction_hash ?? event.output_transaction_hash ?? 'n/a'),
         ]),
         styles: { fontSize: 7.5, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
@@ -909,14 +967,19 @@ export class DexSwapAnalysisComponent implements OnInit {
           doc.addPage();
           y = 16;
         }
-        sectionTitle('Dogadjaji sa niskom pouzdanoscu DEX identifikacije');
+        sectionTitle(L('Dogadjaji sa niskom pouzdanoscu DEX identifikacije', 'Events with low DEX-identification confidence'));
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8.5);
         doc.setTextColor(...TEXT_GRAY);
         const lowNote = doc.splitTextToSize(
-          'Ovi dogadjaji su prepoznati kao DEX kontrakt samo preko generic kljucne reci (npr. "router", "dex", '
-            + '"aggregator"), ne preko poznate adrese ili prepoznatljive marke - slabiji signal, preporucena dodatna '
-            + 'rucna provera pre oslanjanja na nalaz.',
+          L(
+            'Ovi dogadjaji su prepoznati kao DEX kontrakt samo preko generic kljucne reci (npr. "router", "dex", '
+              + '"aggregator"), ne preko poznate adrese ili prepoznatljive marke - slabiji signal, preporucena dodatna '
+              + 'rucna provera pre oslanjanja na nalaz.',
+            'These events were recognised as a DEX contract only via a generic keyword (e.g. "router", "dex", '
+              + '"aggregator"), not a known address or a recognisable brand - a weaker signal, additional manual review '
+              + 'is recommended before relying on the finding.',
+          ),
           usableWidth - 8,
         );
         const lowBoxHeight = lowNote.length * 4.2 + 7;
@@ -934,7 +997,7 @@ export class DexSwapAnalysisComponent implements OnInit {
         autoTable(doc, {
           startY: y,
           margin: { left: marginX, right: marginX },
-          head: [['DEX adresa', 'Osnov prepoznavanja']],
+          head: [[L('DEX adresa', 'DEX address'), L('Osnov prepoznavanja', 'Match basis')]],
           body: lowConfidenceEvents.map((event) => [event.dex_address, event.dex_match_basis]),
           styles: { fontSize: 8, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
           headStyles: { fillColor: DexSwapAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
@@ -948,7 +1011,7 @@ export class DexSwapAnalysisComponent implements OnInit {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Zakljucak analize');
+      sectionTitle(L('Zakljucak analize', 'Analysis conclusion'));
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
       doc.setTextColor(...TEXT_DARK);
@@ -1001,58 +1064,100 @@ export class DexSwapAnalysisComponent implements OnInit {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Metodologija i ogranicenja');
+    sectionTitle(L('Metodologija i ogranicenja', 'Methodology and limitations'));
 
-    paragraph('Heuristika prepoznavanja', { bold: true, size: 10, gap: 2 });
+    paragraph(L('Heuristika prepoznavanja', 'Recognition heuristic'), { bold: true, size: 10, gap: 2 });
     paragraph(
-      'Dogadjaj se prijavljuje kad adresa posalje sredstva na prepoznat/verovatan DEX kontrakt, a zatim u kratkom '
-        + 'vremenskom periodu primi drugi token nazad od ISTOG kontrakta, na ISTU adresu. "Detected" znaci da oba kraka '
-        + 'dele isti transaction hash - najjaci raspoloziv signal. "Potential" znaci uparivanje iskljucivo po adresi i '
-        + 'vremenskoj bliskosti, bez potvrde da je rec o istoj on-chain transakciji.',
+      L(
+        'Dogadjaj se prijavljuje kad adresa posalje sredstva na prepoznat/verovatan DEX kontrakt, a zatim u kratkom '
+          + 'vremenskom periodu primi drugi token nazad od ISTOG kontrakta, na ISTU adresu. "Detected" znaci da oba kraka '
+          + 'dele isti transaction hash - najjaci raspoloziv signal. "Potential" znaci uparivanje iskljucivo po adresi i '
+          + 'vremenskoj bliskosti, bez potvrde da je rec o istoj on-chain transakciji.',
+        'An event is reported when an address sends funds to a recognised/likely DEX contract, then shortly after '
+          + 'receives a different token back from the SAME contract, to the SAME address. "Detected" means both legs '
+          + 'share the same transaction hash - the strongest available signal. "Potential" means matching purely by '
+          + 'address and time proximity, without confirmation that it is the same on-chain transaction.',
+      ),
     );
     paragraph(
-      'Par se NE prijavljuje kao swap kad je deklarisana valuta ista na oba kraka (npr. ETH -> ETH, obican bounce), '
-        + 'kad povratni transfer ide na DRUGU adresu umesto nazad posiljaocu, ili kad razmak izmedju krakova premasuje '
-        + 'podeseni vremenski prozor.',
+      L(
+        'Par se NE prijavljuje kao swap kad je deklarisana valuta ista na oba kraka (npr. ETH -> ETH, obican bounce), '
+          + 'kad povratni transfer ide na DRUGU adresu umesto nazad posiljaocu, ili kad razmak izmedju krakova premasuje '
+          + 'podeseni vremenski prozor.',
+        'A pair is NOT reported as a swap when the declared currency is the same on both legs (e.g. ETH -> ETH, a plain '
+          + 'bounce), when the return transfer goes to a DIFFERENT address instead of back to the sender, or when the '
+          + 'gap between the legs exceeds the configured time window.',
+      ),
       { gap: 5 },
     );
 
-    paragraph('Sta ovo NIJE', { bold: true, size: 10, gap: 2 });
+    paragraph(L('Sta ovo NIJE', 'What this is NOT'), { bold: true, size: 10, gap: 2 });
     paragraph(
-      'Ovo je heuristika, ne dokaz. Ne postoji kriptografska potvrda da su dva transfera deo iste swap transakcije - '
-        + 'cak i "Detected" pouzdanost se oslanja na to da evidencija ispravno belezi isti hash na oba kraka, ne na '
-        + 'nezavisnu on-chain verifikaciju.',
+      L(
+        'Ovo je heuristika, ne dokaz. Ne postoji kriptografska potvrda da su dva transfera deo iste swap transakcije - '
+          + 'cak i "Detected" pouzdanost se oslanja na to da evidencija ispravno belezi isti hash na oba kraka, ne na '
+          + 'nezavisnu on-chain verifikaciju.',
+        'This is a heuristic, not proof. There is no cryptographic confirmation that two transfers are part of the same '
+          + 'swap transaction - even "Detected" confidence relies on the evidence correctly recording the same hash on '
+          + 'both legs, not on independent on-chain verification.',
+      ),
       { gap: 5 },
     );
 
-    paragraph('Ogranicenja podataka', { bold: true, size: 10, gap: 2 });
+    paragraph(L('Ogranicenja podataka', 'Data limitations'), { bold: true, size: 10, gap: 2 });
     bullet(
-      'Valuta/token je opciona kolona u evidenciji i cesto nije popunjena - kad nedostaje, input/output token su '
-        + 'nepoznati (?), a uparivanje se oslanja iskljucivo na adresu i vreme, bez potvrde da su u pitanju dva razlicita '
-        + 'tokena.',
+      L(
+        'Valuta/token je opciona kolona u evidenciji i cesto nije popunjena - kad nedostaje, input/output token su '
+          + 'nepoznati (?), a uparivanje se oslanja iskljucivo na adresu i vreme, bez potvrde da su u pitanju dva razlicita '
+          + 'tokena.',
+        'Currency/token is an optional column in the evidence and is often not filled in - when missing, the '
+          + 'input/output token are unknown (?), and matching relies solely on address and time, without confirming '
+          + 'that two different tokens are actually involved.',
+      ),
     );
     bullet(
-      'Nema uvoza pravih ERC-20 Transfer dogadjaja (Etherscan tokentx) - on-chain uvoz u ovoj aplikaciji trenutno '
-        + 'povlaci samo native transfere.',
+      L(
+        'Nema uvoza pravih ERC-20 Transfer dogadjaja (Etherscan tokentx) - on-chain uvoz u ovoj aplikaciji trenutno '
+          + 'povlaci samo native transfere.',
+        'No import of real ERC-20 Transfer events (Etherscan tokentx) - the on-chain import in this application '
+          + 'currently pulls only native transfers.',
+      ),
     );
     bullet(
-      'Nema logike "povezane adrese" - ako swap izlaz ide na drugu adresu koja bi se (npr. preko wallet clustering-a) '
-        + 'mogla povezati sa istim vlasnikom, ovaj modul to ne uparuje.',
+      L(
+        'Nema logike "povezane adrese" - ako swap izlaz ide na drugu adresu koja bi se (npr. preko wallet clustering-a) '
+          + 'mogla povezati sa istim vlasnikom, ovaj modul to ne uparuje.',
+        'No "linked address" logic - if the swap output goes to another address that could (e.g. via wallet clustering) '
+          + 'be linked to the same owner, this module does not match that.',
+      ),
     );
     bullet(
-      'Spisak poznatih DEX adresa je mali, rucno kuriran (nije zivi registar) - potpunost i tacnost svakog unosa nije '
-        + 'garantovana.',
+      L(
+        'Spisak poznatih DEX adresa je mali, rucno kuriran (nije zivi registar) - potpunost i tacnost svakog unosa nije '
+          + 'garantovana.',
+        'The list of known DEX addresses is small and manually curated (not a live registry) - the completeness and '
+          + 'accuracy of every entry is not guaranteed.',
+      ),
     );
     bullet(
-      'Generic kljucna rec ("router", "dex", "aggregator") je slab signal za identifikaciju DEX kontrakta - oznaceno '
-        + 'posebno u nalazu kad je to jedini osnov (vidi sekciju iznad, ako postoji).',
+      L(
+        'Generic kljucna rec ("router", "dex", "aggregator") je slab signal za identifikaciju DEX kontrakta - oznaceno '
+          + 'posebno u nalazu kad je to jedini osnov (vidi sekciju iznad, ako postoji).',
+        'A generic keyword ("router", "dex", "aggregator") is a weak signal for identifying a DEX contract - flagged '
+          + 'separately in the finding when it is the only basis (see the section above, if present).',
+      ),
     );
-    bullet('Adresa se trazi tacnim poklapanjem (case-sensitive), ista konvencija kao Pathfinding/Behavioral stranice.');
+    bullet(
+      L(
+        'Adresa se trazi tacnim poklapanjem (case-sensitive), ista konvencija kao Pathfinding/Behavioral stranice.',
+        'Addresses are matched exactly (case-sensitive), the same convention as the Pathfinding/Behavioral pages.',
+      ),
+    );
 
     // --- Signature and seal ---------------------------------------------------------
     doc.addPage();
     y = 16;
-    sectionTitle('Potpis i overa');
+    sectionTitle(L('Potpis i overa', 'Signature and certification'));
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -1070,7 +1175,7 @@ export class DexSwapAnalysisComponent implements OnInit {
 
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('Potpis analiticara', marginX, y + signatureBoxHeight + 4);
+    doc.text(L('Potpis analiticara', 'Analyst signature'), marginX, y + signatureBoxHeight + 4);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(...TEXT_DARK);
@@ -1102,13 +1207,13 @@ export class DexSwapAnalysisComponent implements OnInit {
       doc.text('LUSI', sealCenterX, sealCenterY - 3, { align: 'center' });
       doc.setFontSize(6.5);
       doc.setFont('helvetica', 'normal');
-      doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY + 2, { align: 'center' });
+      doc.text(L('DIGITALNA FORENZIKA', 'DIGITAL FORENSICS'), sealCenterX, sealCenterY + 2, { align: 'center' });
     }
     doc.setTextColor(...NAVY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.text(
-      `OVERENO ${new Date(signing.registration.registered_at).toLocaleDateString()}`,
+      `${L('OVERENO', 'CERTIFIED')} ${new Date(signing.registration.registered_at).toLocaleDateString(this.dexPdfLang === 'sr' ? 'sr-RS' : 'en-GB')}`,
       sealCenterX,
       y + signatureBoxHeight + 4,
       { align: 'center' },
@@ -1117,11 +1222,11 @@ export class DexSwapAnalysisComponent implements OnInit {
 
     y += signatureBoxHeight + 16;
 
-    sectionTitle('Provera verodostojnosti');
+    sectionTitle(L('Provera verodostojnosti', 'Authenticity check'));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('KONTROLNI BROJ', marginX, y);
+    doc.text(L('KONTROLNI BROJ', 'VERIFICATION CODE'), marginX, y);
     doc.setFont('courier', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(...NAVY);
@@ -1131,7 +1236,7 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('OTISAK SADRZAJA', marginX, y);
+    doc.text(L('OTISAK SADRZAJA', 'CONTENT HASH'), marginX, y);
     doc.setFont('courier', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...TEXT_DARK);
@@ -1142,9 +1247,14 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_DARK);
     const verifyLines = doc.splitTextToSize(
-      'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
-        + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
-        + 'posle izvoza.',
+      L(
+        'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
+          + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
+          + 'posle izvoza.',
+        'Authenticity is verified in the Lusi application by entering the verification code above. If the content hash '
+          + 'matches the recorded one, the data in the report is the same as at export time. If it does not match, the '
+          + 'report was altered after export.',
+      ),
       usableWidth,
     );
     doc.text(verifyLines, marginX, y);
@@ -1154,10 +1264,17 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
     const limitLines = doc.splitTextToSize(
-      'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
-        + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
-        + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
-        + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+      L(
+        'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
+          + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
+          + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
+          + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+        'Limitation: the signature above is the analyst\'s declaration, not a cryptographic proof — it stays intact '
+          + 'even if someone edits the document. An alteration is detected solely by comparing the content hash. The '
+          + 'check confirms that the DATA matches what was registered, not that the PDF file is byte-for-byte identical; '
+          + 'that would require a cryptographic signature of the document (e.g. PAdES), which is not part of this '
+          + 'application.',
+      ),
       usableWidth,
     );
     doc.text(limitLines, marginX, y);
@@ -1168,7 +1285,7 @@ export class DexSwapAnalysisComponent implements OnInit {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text(`Lusi v1.0 forensic export | Strana ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.text(`Lusi v1.0 forensic export | ${L('Strana', 'Page')} ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
     }
 
     doc.save(`${caseSummary.id}_dex_swap_report.pdf`);
@@ -1180,31 +1297,50 @@ export class DexSwapAnalysisComponent implements OnInit {
    * reconstruct the story themselves from raw tables. */
   private buildConclusionParagraph(run: AddressDexSwapRun): string {
     const result = run.result!;
+    const L = (sr: string, en: string): string => this.lx(sr, en);
     const sentences: string[] = [
-      `Analiza je za adresu ${result.address ?? 'n/a'} identifikovala ${result.total_events} `
-        + `${result.total_events === 1 ? 'potencijalni DEX swap dogadjaj' : 'potencijalnih DEX swap dogadjaja'}, `
-        + `od cega ${result.detected_count} sa "Detected" i ${result.potential_count} sa "Potential" pouzdanoscu.`,
+      L(
+        `Analiza je za adresu ${result.address ?? 'n/a'} identifikovala ${result.total_events} `
+          + `${result.total_events === 1 ? 'potencijalni DEX swap dogadjaj' : 'potencijalnih DEX swap dogadjaja'}, `
+          + `od cega ${result.detected_count} sa "Detected" i ${result.potential_count} sa "Potential" pouzdanoscu.`,
+        `The analysis identified ${result.total_events} potential DEX swap ${result.total_events === 1 ? 'event' : 'events'} `
+          + `for address ${result.address ?? 'n/a'}, of which ${result.detected_count} with "Detected" and `
+          + `${result.potential_count} with "Potential" confidence.`,
+      ),
     ];
 
     if (!result.data_completeness.currency_declared) {
       sentences.push(
-        'Evidencija ne deklarise valutu/token ni za jednu transakciju, pa identitet ulaznog i izlaznog tokena nije '
-          + 'potvrdjen za nijedan dogadjaj - uparivanje se oslanja iskljucivo na adresu DEX kontrakta i vremensku '
-          + 'bliskost.',
+        L(
+          'Evidencija ne deklarise valutu/token ni za jednu transakciju, pa identitet ulaznog i izlaznog tokena nije '
+            + 'potvrdjen za nijedan dogadjaj - uparivanje se oslanja iskljucivo na adresu DEX kontrakta i vremensku '
+            + 'bliskost.',
+          'The evidence does not declare a currency/token for any transaction, so the identity of the input and output '
+            + 'token is not confirmed for any event - matching relies solely on the DEX contract address and time '
+            + 'proximity.',
+        ),
       );
     }
 
     const lowCount = result.events.filter((event) => this.confidenceLevel(event) === 'Low').length;
     if (lowCount > 0) {
       sentences.push(
-        `${lowCount} ${lowCount === 1 ? 'dogadjaj je' : 'dogadjaja je'} oznaceno niskom pouzdanoscu DEX identifikacije `
-          + '(prepoznato samo preko generic kljucne reci) i zahteva dodatnu rucnu proveru pre oslanjanja na nalaz.',
+        L(
+          `${lowCount} ${lowCount === 1 ? 'dogadjaj je' : 'dogadjaja je'} oznaceno niskom pouzdanoscu DEX identifikacije `
+            + '(prepoznato samo preko generic kljucne reci) i zahteva dodatnu rucnu proveru pre oslanjanja na nalaz.',
+          `${lowCount} ${lowCount === 1 ? 'event is' : 'events are'} flagged with low DEX-identification confidence `
+            + '(recognised only via a generic keyword) and require additional manual review before relying on the finding.',
+        ),
       );
     }
 
     sentences.push(
-      'Nijedan nalaz u ovom izvestaju ne predstavlja kriptografski dokaz da se radi o swap transakciji - videti '
-        + 'sekciju "Metodologija i ogranicenja".',
+      L(
+        'Nijedan nalaz u ovom izvestaju ne predstavlja kriptografski dokaz da se radi o swap transakciji - videti '
+          + 'sekciju "Metodologija i ogranicenja".',
+        'No finding in this report constitutes cryptographic proof that a swap transaction occurred - see the '
+          + '"Methodology and limitations" section.',
+      ),
     );
 
     return sentences.join(' ');

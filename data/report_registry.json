@@ -567,5 +567,20 @@
       "potential_count": 1
     },
     "registered_at": "2026-09-11T08:53:49.793090+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-T5GJ-F8RW",
+    "content_hash": "cc3892f62f8952868246b5bc8cfbe6f7b631c498733df1a50ebe0a5cb81c1c8a",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence (heuristically).",
+    "summary": {
+      "addresses_analyzed": 6,
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1
+    },
+    "registered_at": "2026-09-11T09:13:23.918240+00:00"
   }
 ]
