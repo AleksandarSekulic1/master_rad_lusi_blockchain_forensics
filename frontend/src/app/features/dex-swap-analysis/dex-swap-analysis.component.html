@@ -29,96 +29,105 @@
     <h2>DEX SWAPS</h2>
   </div>
 
-  <div class="address-form">
-    <label class="address-field" *ngIf="caseAddresses.length > 0 || isLoadingCaseAddresses">
-      {{ t('Adrese iz slučaja', 'Case addresses') }}
-      <select
-        class="case-address-select"
-        [disabled]="!activeCase || isLoadingCaseAddresses || availableCaseAddresses.length === 0"
-        [ngModel]="''"
-        (ngModelChange)="onPickAddress($event)"
+  <div class="address-panel">
+    <div class="address-form">
+      <label class="address-field" *ngIf="caseAddresses.length > 0 || isLoadingCaseAddresses">
+        {{ t('Adrese iz slučaja', 'Case addresses') }}
+        <select
+          class="case-address-select"
+          [disabled]="!activeCase || isLoadingCaseAddresses || availableCaseAddresses.length === 0"
+          [ngModel]="''"
+          (ngModelChange)="onPickAddress($event)"
+        >
+          <option value="" disabled>
+            {{
+              isLoadingCaseAddresses
+                ? t('Učitavanje adresa…', 'Loading addresses…')
+                : availableCaseAddresses.length === 0
+                  ? t('Sve adrese su već dodate', 'All addresses already added')
+                  : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…')
+            }}
+          </option>
+          <option *ngFor="let addr of availableCaseAddresses" [value]="addr">{{ addr }}</option>
+        </select>
+      </label>
+
+      <label class="address-field">
+        {{ t('Ili unesi adresu ručno', 'Or enter an address manually') }}
+        <input
+          type="text"
+          [(ngModel)]="address"
+          placeholder="0x..."
+          (keydown.enter)="addTypedAddress()"
+          [disabled]="!activeCase"
+        />
+      </label>
+
+      <button
+        type="button"
+        class="ghost-button add-address-button"
+        (click)="addTypedAddress()"
+        [disabled]="!activeCase || !address.trim()"
       >
-        <option value="" disabled>
+        {{ t('Dodaj', 'Add') }}
+      </button>
+    </div>
+
+    <div class="queue-chips" *ngIf="queue.length > 0">
+      <span class="queue-label">{{ t('Za analizu', 'To analyse') }} ({{ queue.length }}):</span>
+      <span class="queue-chip" *ngFor="let addr of queue">
+        <span class="mono-clip">{{ addr }}</span>
+        <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
+      </span>
+    </div>
+
+    <div class="analyze-row">
+      <div class="analyze-row-group">
+        <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
           {{
-            isLoadingCaseAddresses
-              ? t('Učitavanje adresa…', 'Loading addresses…')
-              : availableCaseAddresses.length === 0
-                ? t('Sve adrese su već dodate', 'All addresses already added')
-                : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…')
+            isAnalyzing
+              ? t('Analiza...', 'Analyzing...')
+              : queue.length > 1
+                ? t('ANALIZIRAJ', 'ANALYZE') + ' (' + queue.length + ')'
+                : t('ANALIZIRAJ', 'ANALYZE')
           }}
-        </option>
-        <option *ngFor="let addr of availableCaseAddresses" [value]="addr">{{ addr }}</option>
-      </select>
-    </label>
+        </button>
 
-    <label class="address-field">
-      {{ t('Ili unesi adresu ručno', 'Or enter an address manually') }}
-      <input
-        type="text"
-        [(ngModel)]="address"
-        placeholder="0x..."
-        (keydown.enter)="addTypedAddress()"
-        [disabled]="!activeCase"
-      />
-    </label>
+        <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
+          {{ t('Očisti red', 'Clear queue') }}
+        </button>
+      </div>
 
-    <button
-      type="button"
-      class="ghost-button add-address-button"
-      (click)="addTypedAddress()"
-      [disabled]="!activeCase || !address.trim()"
-    >
-      {{ t('Dodaj', 'Add') }}
-    </button>
-  </div>
+      <span class="analyze-row-divider" aria-hidden="true"></span>
 
-  <div class="queue-chips" *ngIf="queue.length > 0">
-    <span class="queue-label">{{ t('Za analizu', 'To analyse') }} ({{ queue.length }}):</span>
-    <span class="queue-chip" *ngFor="let addr of queue">
-      <span class="mono-clip">{{ addr }}</span>
-      <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
-    </span>
-  </div>
+      <div class="analyze-row-group">
+        <button
+          type="button"
+          class="ghost-button"
+          (click)="addAllCaseAddresses()"
+          [disabled]="!activeCase || availableCaseAddresses.length === 0"
+          [title]="t('Dodaj u red sve adrese iz izabrane evidencije', 'Add every address from the selected evidence to the queue')"
+        >
+          {{ t('Dodaj sve adrese', 'Add all addresses') }}<ng-container *ngIf="availableCaseAddresses.length > 0"> ({{ availableCaseAddresses.length }})</ng-container>
+        </button>
 
-  <div class="analyze-row">
-    <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
-      {{
-        isAnalyzing
-          ? t('Analiza...', 'Analyzing...')
-          : queue.length > 1
-            ? t('ANALIZIRAJ', 'ANALYZE') + ' (' + queue.length + ')'
-            : t('ANALIZIRAJ', 'ANALYZE')
-      }}
-    </button>
-
-    <button
-      type="button"
-      class="ghost-button"
-      (click)="addAllCaseAddresses()"
-      [disabled]="!activeCase || availableCaseAddresses.length === 0"
-      [title]="t('Dodaj u red sve adrese iz izabrane evidencije', 'Add every address from the selected evidence to the queue')"
-    >
-      {{ t('Dodaj sve adrese', 'Add all addresses') }}<ng-container *ngIf="availableCaseAddresses.length > 0"> ({{ availableCaseAddresses.length }})</ng-container>
-    </button>
-
-    <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
-      {{ t('Očisti red', 'Clear queue') }}
-    </button>
-
-    <button
-      type="button"
-      class="ghost-button scan-all-button"
-      (click)="openScanAllDialog()"
-      [disabled]="!canScanAll"
-      [title]="
-        t(
-          'Jednim skeniranjem cele evidencije pronalazi SVE adrese koje imaju DEX swap aktivnost — bez pogađanja, isti algoritam primenjen na celu evidenciju odjednom.',
-          'One scan of the whole evidence finds every address with DEX swap activity — no guessing, the same algorithm applied to the whole evidence at once.'
-        )
-      "
-    >
-      {{ isAnalyzing && isScanAllMode ? t('Skeniranje...', 'Scanning...') : t('Pronađi sve DEX swap adrese', 'Find all DEX swap addresses') }}
-    </button>
+        <button
+          type="button"
+          class="ghost-button scan-all-button"
+          (click)="openScanAllDialog()"
+          [disabled]="!canScanAll"
+          [title]="
+            t(
+              'Jednim skeniranjem cele evidencije pronalazi SVE adrese koje imaju DEX swap aktivnost — bez pogađanja, isti algoritam primenjen na celu evidenciju odjednom.',
+              'One scan of the whole evidence finds every address with DEX swap activity — no guessing, the same algorithm applied to the whole evidence at once.'
+            )
+          "
+        >
+          <span class="scan-all-icon" aria-hidden="true">✦</span>
+          {{ isAnalyzing && isScanAllMode ? t('Skeniranje...', 'Scanning...') : t('Pronađi sve DEX swap adrese', 'Find all DEX swap addresses') }}
+        </button>
+      </div>
+    </div>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>

@@ -202,6 +202,19 @@
   background: linear-gradient(90deg, var(--dx-accent), transparent);
 }
 
+/* ---------- kartica za izbor/red adresa (isti obrazac kao .dex-controls iznad) ----------
+   Objedinjuje izbor/dodavanje adresa, red za analizu i akcione dugmiće u jednu vizuelno
+   zatvorenu celinu, umesto da plutaju slobodno između zaglavlja i rezultata. */
+
+.address-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--dx-border);
+  background: var(--dx-surface);
+}
+
 .address-form {
   display: flex;
   align-items: flex-end;
@@ -387,11 +400,34 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
+}
+
+/* Two visual groups - "run what's queued" vs. "help me build/replace the queue" - split by
+   a thin vertical rule so ANALIZIRAJ doesn't read as just one more button in a row of five. */
+.analyze-row-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analyze-row-divider {
+  align-self: stretch;
+  width: 1px;
+  min-height: 1.6rem;
+  background: var(--dx-border);
+}
+
+.scan-all-icon {
+  margin-right: 0.35rem;
+  color: var(--dx-accent);
 }
 
 /* --- Result switcher: one tab per analysed address, plus the PDF export button - same
-   pattern as behavioral-analysis.component.scss's own result-tabs/results-toolbar. --- */
+   pattern as behavioral-analysis.component.scss's own result-tabs/results-toolbar. ---
+   A top border separates it from the address panel above, so it reads as the next step
+   rather than more buttons in the same row. */
 
 .results-toolbar {
   display: flex;
@@ -399,6 +435,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--dx-border-soft);
 }
 
 .result-tabs {
