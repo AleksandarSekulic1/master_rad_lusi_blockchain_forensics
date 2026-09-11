@@ -75,23 +75,83 @@
   --vr-chip-bg: rgba(15, 23, 42, 0.045);
 }
 
-.verify-page {
-  display: grid;
-  justify-content: center;
-}
-
+/* Plain block layout + margin auto on .panel (not display:grid/flex with
+   justify-content:center) - deliberately: a grid/flex container centers its item by
+   sizing the track/flex-basis off the item's own content, so opening the <details> below
+   (suddenly-visible paragraph) could change that computed content size and visibly shift
+   the whole panel's width/position. Block layout's max-width is a hard clamp, independent
+   of content, so toggling <details> can never move or resize the panel. */
 .panel {
   border: 1px solid var(--vr-border);
   border-radius: 1.25rem;
   background: var(--vr-surface);
   box-shadow: 0 24px 50px rgba(4, 10, 20, 0.18);
   backdrop-filter: blur(16px);
-  padding: 1.6rem 1.7rem;
-  width: min(38rem, 100%);
+  padding: 1.7rem 1.9rem;
+  width: 100%;
+}
+
+/* Forma levo, odgovor desno - fiksna leva kolona (ne auto/content-sized, isti razlog kao
+   .panel gore) da provera stane u jedan ekran bez skrolovanja čim stigne rezultat, umesto
+   da se sve ređa jedno ispod drugog. Na uskom ekranu se kolone slažu jedna ispod druge. */
+.verify-layout {
+  display: grid;
+  grid-template-columns: minmax(19rem, 26rem) minmax(0, 1fr);
+  gap: 0 2.2rem;
+  align-items: start;
+}
+
+@media (max-width: 46rem) {
+  .verify-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.6rem;
+  }
+}
+
+.verify-form-col {
+  display: grid;
+  gap: 1.1rem;
+  align-content: start;
+}
+
+.verify-result-col {
+  min-width: 0;
+  padding-left: 2.2rem;
+  border-left: 1px solid var(--vr-border-soft);
+}
+
+@media (max-width: 46rem) {
+  .verify-result-col {
+    padding-left: 0;
+    border-left: none;
+    padding-top: 1.6rem;
+    border-top: 1px solid var(--vr-border-soft);
+  }
+}
+
+.result-placeholder {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  padding: 2.4rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--vr-border-soft);
+  border-radius: 1rem;
+  color: var(--vr-muted);
+}
+
+.result-placeholder-icon {
+  font-size: 1.6rem;
+  opacity: 0.6;
+}
+
+.result-placeholder p {
+  margin: 0;
+  font-size: 0.82rem;
 }
 
 .panel-head {
-  margin-bottom: 1.3rem;
+  margin-bottom: 0;
 }
 
 .panel-kicker {
@@ -214,7 +274,7 @@ h2::after {
 }
 
 .error-banner {
-  margin: 1rem 0 0;
+  margin: 0;
   padding: 0.75rem 0.9rem;
   border-radius: 0.85rem;
   color: var(--vr-error-text);
@@ -226,7 +286,6 @@ h2::after {
 /* ---------- Rezultat ---------- */
 
 .verify-result {
-  margin-top: 1.3rem;
   padding: 1.1rem 1.2rem;
   border-radius: 1rem;
   border: 1px solid transparent;
@@ -399,7 +458,7 @@ h2::after {
 /* ---------- Sažet disklejmer (sklopljen po difoltu - vidi "što manje teksta") ---------- */
 
 .verify-limit {
-  margin: 1.3rem 0 0;
+  margin: 0;
   padding-top: 0.9rem;
   border-top: 1px solid var(--vr-border-soft);
 }
