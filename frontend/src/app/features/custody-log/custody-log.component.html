@@ -95,11 +95,12 @@
 
           <p class="error-banner" *ngIf="exportError">{{ exportError }}</p>
 
-          <!-- Reprodukcija zvaničnog obrasca (v. LANAC-DOKAZA.md §1) - ćirilični naslov i
-               nazivi polja ostaju nepromenjeni bez obzira na izabrani jezik interfejsa,
-               isto kao u PDF izvozu (custody_report.py). -->
-          <p class="form-title">ОБРАЗАЦ</p>
-          <p class="form-title">ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ</p>
+          <!-- Reprodukcija zvaničnog obrasca (v. LANAC-DOKAZA.md §1) - naslov i nazivi
+               polja se prevode kao i ostatak stranice; PDF izvoz (custody_report.py) i
+               dalje štampa fiksni ćirilični obrazac, isti kao referentni fizički obrazac,
+               nezavisno od jezika interfejsa. -->
+          <p class="form-title">{{ t('ОБРАЗАЦ', 'FORM') }}</p>
+          <p class="form-title">{{ t('ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ', 'EVIDENCE HANDLING RECORD') }}</p>
 
           <p class="tx-summary">
             <span class="mono">{{ selectedChain.sender_address }}</span>
@@ -114,15 +115,15 @@
           </p>
 
           <dl class="form-header">
-            <dt>Идентификатор предмета</dt>
+            <dt>{{ t('Идентификатор предмета', 'Case identifier') }}</dt>
             <dd>{{ selectedChain.identifikator_predmeta || 'N/A' }}</dd>
-            <dt>Идентификатор доказног материјала</dt>
+            <dt>{{ t('Идентификатор доказног материјала', 'Evidence item identifier') }}</dt>
             <dd>{{ selectedChain.identifikator_dokaznog_materijala || 'N/A' }}</dd>
-            <dt>Произвођач</dt>
+            <dt>{{ t('Произвођач', 'Manufacturer') }}</dt>
             <dd>{{ selectedChain.proizvodjac || 'N/A' }}</dd>
-            <dt>Модел</dt>
+            <dt>{{ t('Модел', 'Model') }}</dt>
             <dd>{{ selectedChain.model || 'N/A' }}</dd>
-            <dt>Серијски број</dt>
+            <dt>{{ t('Серијски број', 'Serial number') }}</dt>
             <dd>{{ selectedChain.serijski_broj || 'N/A' }}</dd>
           </dl>
 
@@ -130,11 +131,11 @@
             <table class="form-table">
               <thead>
                 <tr>
-                  <th>Бр.</th>
-                  <th>Датум</th>
-                  <th>Име и презиме</th>
-                  <th>Опис радње</th>
-                  <th>Потпис</th>
+                  <th>{{ t('Бр.', 'No.') }}</th>
+                  <th>{{ t('Датум', 'Date') }}</th>
+                  <th>{{ t('Име и презиме', 'Full name') }}</th>
+                  <th>{{ t('Опис радње', 'Action description') }}</th>
+                  <th>{{ t('Потпис', 'Signature') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -214,8 +215,8 @@
 
           <p class="error-banner" *ngIf="evidenceExportError">{{ evidenceExportError }}</p>
 
-          <p class="form-title">ОБРАЗАЦ</p>
-          <p class="form-title">ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ</p>
+          <p class="form-title">{{ t('ОБРАЗАЦ', 'FORM') }}</p>
+          <p class="form-title">{{ t('ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ', 'EVIDENCE HANDLING RECORD') }}</p>
 
           <p class="tx-summary">
             {{ selectedEvidenceChain.evidence_file_name || selectedEvidenceChain.evidence_stored_name }}
@@ -230,15 +231,15 @@
           </p>
 
           <dl class="form-header">
-            <dt>Идентификатор предмета</dt>
+            <dt>{{ t('Идентификатор предмета', 'Case identifier') }}</dt>
             <dd>{{ selectedEvidenceChain.identifikator_predmeta || 'N/A' }}</dd>
-            <dt>Идентификатор доказног материјала</dt>
+            <dt>{{ t('Идентификатор доказног материјала', 'Evidence item identifier') }}</dt>
             <dd>{{ selectedEvidenceChain.identifikator_dokaznog_materijala || 'N/A' }}</dd>
-            <dt>Произвођач</dt>
+            <dt>{{ t('Произвођач', 'Manufacturer') }}</dt>
             <dd>{{ selectedEvidenceChain.proizvodjac || 'N/A' }}</dd>
-            <dt>Модел</dt>
+            <dt>{{ t('Модел', 'Model') }}</dt>
             <dd>{{ selectedEvidenceChain.model || 'N/A' }}</dd>
-            <dt>Серијски број</dt>
+            <dt>{{ t('Серијски број', 'Serial number') }}</dt>
             <dd>{{ selectedEvidenceChain.serijski_broj || 'N/A' }}</dd>
           </dl>
 
@@ -246,11 +247,11 @@
             <table class="form-table">
               <thead>
                 <tr>
-                  <th>Бр.</th>
-                  <th>Датум</th>
-                  <th>Име и презиме</th>
-                  <th>Опис радње</th>
-                  <th>Потпис</th>
+                  <th>{{ t('Бр.', 'No.') }}</th>
+                  <th>{{ t('Датум', 'Date') }}</th>
+                  <th>{{ t('Име и презиме', 'Full name') }}</th>
+                  <th>{{ t('Опис радње', 'Action description') }}</th>
+                  <th>{{ t('Потпис', 'Signature') }}</th>
                 </tr>
               </thead>
               <tbody>
