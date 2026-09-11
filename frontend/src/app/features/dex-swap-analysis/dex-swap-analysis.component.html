@@ -30,8 +30,27 @@
   </div>
 
   <div class="address-form">
+    <label class="address-field" *ngIf="caseAddresses.length > 0 || isLoadingCaseAddresses">
+      {{ t('Adrese iz slučaja', 'Case addresses') }}
+      <select
+        class="case-address-select"
+        [disabled]="!activeCase || isLoadingCaseAddresses"
+        [ngModel]="''"
+        (ngModelChange)="onPickAddress($event)"
+      >
+        <option value="" disabled>
+          {{
+            isLoadingCaseAddresses
+              ? t('Učitavanje adresa…', 'Loading addresses…')
+              : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…')
+          }}
+        </option>
+        <option *ngFor="let addr of caseAddresses" [value]="addr">{{ addr }}</option>
+      </select>
+    </label>
+
     <label class="address-field">
-      {{ t('Adresa', 'Address') }}
+      {{ t('Ili unesi adresu ručno', 'Or enter an address manually') }}
       <input
         type="text"
         [(ngModel)]="address"

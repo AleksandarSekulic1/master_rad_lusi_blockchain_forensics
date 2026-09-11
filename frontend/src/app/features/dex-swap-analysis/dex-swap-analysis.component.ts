@@ -20,6 +20,7 @@ import {
   DexSwapAnalysisResult,
   DexSwapEvent,
   EvidenceEntry,
+  NodeLinkGraphResponse,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
@@ -51,6 +52,13 @@ export class DexSwapAnalysisComponent implements OnInit {
   protected isAnalyzing = false;
   protected analysisError: string | null = null;
   protected result: DexSwapAnalysisResult | null = null;
+
+  // --- Case address pick-list (see behavioral-analysis.component.ts's loadCaseAddresses
+  // for the original pattern) - lets the analyst pick an address seen in the case's
+  // evidence instead of pasting a hash by hand. Reuses the plain case graph endpoint (same
+  // one Graf/Taint/Behavioral seed from), no new backend route. ---
+  protected caseAddresses: string[] = [];
+  protected isLoadingCaseAddresses = false;
 
   // --- Lanac dokaza (see DEX-SWAP-ANALIZA.md #12 / LANAC-DOKAZA.md) - scanning the case's
   // evidence for swap pairs is a deliberate access to every transaction it touches, same
@@ -97,6 +105,9 @@ export class DexSwapAnalysisComponent implements OnInit {
         this.clearResult();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
+          this.loadCaseAddresses();
+        } else {
+          this.caseAddresses = [];
         }
       });
   }
@@ -112,9 +123,43 @@ export class DexSwapAnalysisComponent implements OnInit {
     });
   }
 
+  /** Pulls every address in the current case/evidence graph so the investigator can pick
+   * from a list instead of pasting a hash - identical pattern to behavioral-analysis
+   * .component.ts's own loadCaseAddresses. */
+  private loadCaseAddresses(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      this.caseAddresses = [];
+      return;
+    }
+    this.isLoadingCaseAddresses = true;
+    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+      next: (graph: NodeLinkGraphResponse) => {
+        this.caseAddresses = [...new Set(graph.nodes.map((node) => String(node.id)))].sort((a, b) =>
+          a.localeCompare(b),
+        );
+        this.isLoadingCaseAddresses = false;
+      },
+      error: () => {
+        this.caseAddresses = [];
+        this.isLoadingCaseAddresses = false;
+      },
+    });
+  }
+
   protected onEvidenceSelected(storedName: string): void {
     this.selectedEvidence = storedName || null;
     this.clearResult();
+    this.loadCaseAddresses();
+  }
+
+  /** Puts a picked case address straight into the (single) address field - unlike
+   * Behavioral's queue, DEX Swap only ever analyses one address at a time, so there's no
+   * staging list to add to. */
+  protected onPickAddress(address: string): void {
+    if (address) {
+      this.address = address;
+    }
   }
 
   protected get canAnalyze(): boolean {

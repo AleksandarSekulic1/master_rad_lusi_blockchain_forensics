@@ -219,16 +219,29 @@
   min-width: 0;
 }
 
-.address-field input {
+.address-field input,
+.case-address-select {
   padding: 0.75rem 0.9rem;
   border-radius: 0.8rem;
   border: 1px solid var(--dx-field-border);
   background: var(--dx-field-bg);
   color: var(--dx-field-text);
-  caret-color: var(--dx-kicker);
   font: inherit;
   font-size: 0.9rem;
+}
+
+.address-field input {
+  caret-color: var(--dx-kicker);
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+}
+
+.case-address-select {
+  text-overflow: ellipsis;
+}
+
+.case-address-select option {
+  color: #0b1526;
+  background: #ffffff;
 }
 
 .address-field input::placeholder {
@@ -236,12 +249,14 @@
   opacity: 0.7;
 }
 
-.address-field input:focus {
+.address-field input:focus,
+.case-address-select:focus {
   outline: none;
   border-color: var(--dx-field-focus-border);
 }
 
-.address-field input:disabled {
+.address-field input:disabled,
+.case-address-select:disabled {
   opacity: 0.5;
 }
 
