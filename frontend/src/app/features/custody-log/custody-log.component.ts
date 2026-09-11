@@ -4,6 +4,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   CustodyChain,
   CustodyEvidenceChain,
@@ -63,7 +64,16 @@ export class CustodyLogComponent implements OnInit {
     private readonly api: ApiService,
     protected readonly state: AnalysisStateService,
     private readonly route: ActivatedRoute,
+    protected readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as the other pages' own t()). The reproduced official form itself
+   * (Cyrillic field labels, "ОБРАЗАЦ...") stays Serbian regardless of language - see
+   * LANAC-DOKAZA.md §1 - only the chrome around it is translated. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   get activeCaseId(): string | null {
     return this.state.selectedCaseSnapshot?.id ?? null;
@@ -80,9 +90,10 @@ export class CustodyLogComponent implements OnInit {
 
     const deepLinkCase = this.route.snapshot.queryParamMap.get('caseId');
     if (deepLinkCase && deepLinkCase !== this.activeCaseId) {
-      this.caseMismatchNotice =
-        `Ovaj link se odnosi na slučaj ${deepLinkCase}, a trenutno je izabran drugi slučaj. ` +
-        'Izaberite taj slučaj na stranici "Slučajevi" da biste videli njegov lanac dokaza.';
+      this.caseMismatchNotice = this.t(
+        `Ovaj link se odnosi na slučaj ${deepLinkCase}, a trenutno je izabran drugi slučaj. Izaberite taj slučaj na stranici "Slučajevi" da biste videli njegov lanac dokaza.`,
+        `This link refers to case ${deepLinkCase}, but a different case is currently selected. Select that case on the "Cases" page to see its chain of custody.`,
+      );
     }
 
     const deepLinkEvidence = this.route.snapshot.queryParamMap.get('evidence');
@@ -127,7 +138,7 @@ export class CustodyLogComponent implements OnInit {
       },
       error: () => {
         this.isLoadingList = false;
-        this.listError = 'Neuspešno učitavanje spiska transakcija.';
+        this.listError = this.t('Neuspešno učitavanje spiska transakcija.', 'Failed to load the list of transactions.');
       },
     });
   }
@@ -148,7 +159,7 @@ export class CustodyLogComponent implements OnInit {
       },
       error: () => {
         this.isLoadingChain = false;
-        this.chainError = 'Nema zabeleženih pristupa ovoj transakciji.';
+        this.chainError = this.t('Nema zabeleženih pristupa ovoj transakciji.', 'No recorded access to this transaction.');
       },
     });
   }
@@ -173,7 +184,7 @@ export class CustodyLogComponent implements OnInit {
       },
       error: () => {
         this.isExportingPdf = false;
-        this.exportError = 'Neuspešno generisanje PDF izveštaja.';
+        this.exportError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
       },
     });
   }
@@ -199,7 +210,7 @@ export class CustodyLogComponent implements OnInit {
       },
       error: () => {
         this.isLoadingEvidenceList = false;
-        this.evidenceListError = 'Neuspešno učitavanje spiska dokaznih fajlova.';
+        this.evidenceListError = this.t('Neuspešno učitavanje spiska dokaznih fajlova.', 'Failed to load the list of evidence files.');
       },
     });
   }
@@ -220,7 +231,7 @@ export class CustodyLogComponent implements OnInit {
       },
       error: () => {
         this.isLoadingEvidenceChain = false;
-        this.evidenceChainError = 'Nema zabeleženih pristupa ovom dokaznom fajlu.';
+        this.evidenceChainError = this.t('Nema zabeleženih pristupa ovom dokaznom fajlu.', 'No recorded access to this evidence file.');
       },
     });
   }
@@ -245,7 +256,7 @@ export class CustodyLogComponent implements OnInit {
       },
       error: () => {
         this.isExportingEvidencePdf = false;
-        this.evidenceExportError = 'Neuspešno generisanje PDF izveštaja.';
+        this.evidenceExportError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
       },
     });
   }
@@ -272,8 +283,9 @@ export class CustodyLogComponent implements OnInit {
     return currency ? `${amount} ${currency}` : String(amount);
   }
 
-  /** "08.06.2026. 09:00" from an ISO timestamp - local time, matching how dates read
-   * elsewhere in the app (activity log, taint-analysis exports). */
+  /** "08.06.2026. 09:00" (sr) / "08/06/2026, 09:00" (en) from an ISO timestamp - local
+   * time, locale matched to the active language like the other pages' own PDF exports
+   * (e.g. taint-analysis.component.ts's `toLocaleString(this.taintPdfLang === 'sr' ? ...`). */
   formatDateTime(value: string | null): string {
     if (!value) {
       return '—';
@@ -282,6 +294,7 @@ export class CustodyLogComponent implements OnInit {
     if (Number.isNaN(parsed.getTime())) {
       return value;
     }
-    return parsed.toLocaleString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const locale = this.settings.lang() === 'sr' ? 'sr-RS' : 'en-GB';
+    return parsed.toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 }

@@ -2,23 +2,27 @@
   <article class="panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Chain of custody</p>
-        <h2>Lanac dokaza</h2>
+        <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+        <h2>{{ t('Lanac dokaza', 'Chain of custody') }}</h2>
         <p class="panel-subtitle">
-          Obrazac evidencije rukovanja dokaznim materijalom, primenjen na dva nivoa: po pojedinačnoj transakciji i po
-          celom dokaznom fajlu. Svako pokretanje analize (Taint analiza ili Graf) dodaje novi red - datum, ime i
-          prezime, razlog pristupa i potpis analitičara. Dostupno svim prijavljenim korisnicima, ne samo
-          administratoru.
+          {{
+            t(
+              'Obrazac evidencije rukovanja dokaznim materijalom, primenjen na dva nivoa: po pojedinačnoj transakciji i po celom dokaznom fajlu. Svako pokretanje analize (Taint analiza ili Graf) dodaje novi red - datum, ime i prezime, razlog pristupa i potpis analitičara. Dostupno svim prijavljenim korisnicima, ne samo administratoru.',
+              'An evidence-handling record form, applied at two levels: per individual transaction and per whole evidence file. Every analysis run (Taint analysis or Graph) adds a new row - date, full name, reason for access, and the analyst\'s signature. Available to every logged-in user, not just the administrator.'
+            )
+          }}
         </p>
       </div>
-      <span class="pill" *ngIf="activeCaseId; else noCase">Slučaj: {{ activeCaseName || activeCaseId }}</span>
+      <span class="pill" *ngIf="activeCaseId; else noCase">{{ t('Slučaj', 'Case') }}: {{ activeCaseName || activeCaseId }}</span>
       <ng-template #noCase>
-        <span class="pill muted">Slučaj nije izabran</span>
+        <span class="pill muted">{{ t('Slučaj nije izabran', 'No case selected') }}</span>
       </ng-template>
     </div>
 
     <p class="empty-state" *ngIf="!activeCaseId">
-      Izaberite slučaj na stranici <a routerLink="/cases">Slučajevi</a> da biste videli njegov lanac dokaza.
+      {{ t('Izaberite slučaj na stranici', 'Select a case on the') }}
+      <a routerLink="/cases">{{ t('Slučajevi', 'Cases') }}</a>
+      {{ t('da biste videli njegov lanac dokaza.', 'page to see its chain of custody.') }}
     </p>
 
     <p class="notice-banner" *ngIf="caseMismatchNotice">{{ caseMismatchNotice }}</p>
@@ -26,10 +30,10 @@
     <ng-container *ngIf="activeCaseId">
       <div class="tab-bar">
         <button type="button" class="tab-button" [class.active]="activeTab === 'transaction'" (click)="setTab('transaction')">
-          Po transakciji
+          {{ t('Po transakciji', 'By transaction') }}
         </button>
         <button type="button" class="tab-button" [class.active]="activeTab === 'evidence'" (click)="setTab('evidence')">
-          Po dokaznom fajlu
+          {{ t('Po dokaznom fajlu', 'By evidence file') }}
         </button>
       </div>
 
@@ -39,19 +43,23 @@
           <p class="error-banner" *ngIf="listError">{{ listError }}</p>
 
           <p class="empty-state" *ngIf="!isLoadingList && !listError && transactions.length === 0">
-            Nijedna transakcija u ovom slučaju još nije pristupljena kroz taint analizu - lanac dokaza se popunjava
-            pri svakom pokretanju analize.
+            {{
+              t(
+                'Nijedna transakcija u ovom slučaju još nije pristupljena kroz taint analizu - lanac dokaza se popunjava pri svakom pokretanju analize.',
+                'No transaction in this case has been accessed through taint analysis yet - the chain of custody fills in with every analysis run.'
+              )
+            }}
           </p>
 
           <div class="table-wrapper" *ngIf="transactions.length > 0">
             <table>
               <thead>
                 <tr>
-                  <th>Transakcija</th>
-                  <th>Iznos</th>
-                  <th>Vreme transakcije</th>
-                  <th>Broj pristupa</th>
-                  <th>Poslednji pristup</th>
+                  <th>{{ t('Transakcija', 'Transaction') }}</th>
+                  <th>{{ t('Iznos', 'Amount') }}</th>
+                  <th>{{ t('Vreme transakcije', 'Transaction time') }}</th>
+                  <th>{{ t('Broj pristupa', 'Access count') }}</th>
+                  <th>{{ t('Poslednji pristup', 'Last accessed') }}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -66,7 +74,7 @@
                   <td>{{ formatDateTime(item.tx_timestamp) }}</td>
                   <td>{{ item.access_count }}</td>
                   <td>{{ formatDateTime(item.last_accessed_at) }}</td>
-                  <td class="col-action"><button type="button" class="ghost-button small">Prikaži lanac dokaza</button></td>
+                  <td class="col-action"><button type="button" class="ghost-button small">{{ t('Prikaži lanac dokaza', 'Show chain of custody') }}</button></td>
                 </tr>
               </tbody>
             </table>
@@ -74,19 +82,22 @@
         </ng-container>
 
         <ng-container *ngIf="isLoadingChain">
-          <p class="empty-state">Učitavanje lanca dokaza...</p>
+          <p class="empty-state">{{ t('Učitavanje lanca dokaza...', 'Loading chain of custody...') }}</p>
         </ng-container>
 
         <article class="custody-form" *ngIf="selectedChain">
           <div class="custody-form-toolbar">
-            <button type="button" class="ghost-button" (click)="closeTransaction()">← Nazad na spisak</button>
+            <button type="button" class="ghost-button" (click)="closeTransaction()">← {{ t('Nazad na spisak', 'Back to list') }}</button>
             <button type="button" class="primary-button" (click)="exportPdf()" [disabled]="isExportingPdf">
-              {{ isExportingPdf ? 'Generisanje...' : 'Izvezi PDF' }}
+              {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF', 'Export PDF') }}
             </button>
           </div>
 
           <p class="error-banner" *ngIf="exportError">{{ exportError }}</p>
 
+          <!-- Reprodukcija zvaničnog obrasca (v. LANAC-DOKAZA.md §1) - ćirilični naslov i
+               nazivi polja ostaju nepromenjeni bez obzira na izabrani jezik interfejsa,
+               isto kao u PDF izvozu (custody_report.py). -->
           <p class="form-title">ОБРАЗАЦ</p>
           <p class="form-title">ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ</p>
 
@@ -133,7 +144,7 @@
                   <td>{{ row.ime_prezime }}</td>
                   <td class="opis-cell">{{ row.opis_radnje }}</td>
                   <td>
-                    <img class="signature-thumb" *ngIf="row.signature_image" [src]="row.signature_image" alt="Potpis" />
+                    <img class="signature-thumb" *ngIf="row.signature_image" [src]="row.signature_image" [alt]="t('Potpis', 'Signature')" />
                     <span *ngIf="!row.signature_image" class="muted">—</span>
                   </td>
                 </tr>
@@ -151,19 +162,23 @@
           <p class="error-banner" *ngIf="evidenceListError">{{ evidenceListError }}</p>
 
           <p class="empty-state" *ngIf="!isLoadingEvidenceList && !evidenceListError && evidenceList.length === 0">
-            Nijedan dokazni fajl u ovom slučaju još nije pristupljen kroz analizu (Taint analiza ili Graf) - lanac
-            dokaza se popunjava pri svakom pokretanju.
+            {{
+              t(
+                'Nijedan dokazni fajl u ovom slučaju još nije pristupljen kroz analizu (Taint analiza ili Graf) - lanac dokaza se popunjava pri svakom pokretanju.',
+                'No evidence file in this case has been accessed through analysis (Taint analysis or Graph) yet - the chain of custody fills in with every run.'
+              )
+            }}
           </p>
 
           <div class="table-wrapper" *ngIf="evidenceList.length > 0">
             <table>
               <thead>
                 <tr>
-                  <th>Dokazni fajl</th>
-                  <th>Broj transakcija</th>
-                  <th>Valuta</th>
-                  <th>Broj pristupa</th>
-                  <th>Poslednji pristup</th>
+                  <th>{{ t('Dokazni fajl', 'Evidence file') }}</th>
+                  <th>{{ t('Broj transakcija', 'Transaction count') }}</th>
+                  <th>{{ t('Valuta', 'Currency') }}</th>
+                  <th>{{ t('Broj pristupa', 'Access count') }}</th>
+                  <th>{{ t('Poslednji pristup', 'Last accessed') }}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -175,10 +190,10 @@
                 >
                   <td>{{ item.evidence_file_name || item.evidence_stored_name }}</td>
                   <td>{{ item.evidence_row_count ?? '—' }}</td>
-                  <td>{{ item.evidence_currency || 'nije navedena' }}</td>
+                  <td>{{ item.evidence_currency || t('nije navedena', 'not specified') }}</td>
                   <td>{{ item.access_count }}</td>
                   <td>{{ formatDateTime(item.last_accessed_at) }}</td>
-                  <td class="col-action"><button type="button" class="ghost-button small">Prikaži lanac dokaza</button></td>
+                  <td class="col-action"><button type="button" class="ghost-button small">{{ t('Prikaži lanac dokaza', 'Show chain of custody') }}</button></td>
                 </tr>
               </tbody>
             </table>
@@ -186,14 +201,14 @@
         </ng-container>
 
         <ng-container *ngIf="isLoadingEvidenceChain">
-          <p class="empty-state">Učitavanje lanca dokaza...</p>
+          <p class="empty-state">{{ t('Učitavanje lanca dokaza...', 'Loading chain of custody...') }}</p>
         </ng-container>
 
         <article class="custody-form" *ngIf="selectedEvidenceChain">
           <div class="custody-form-toolbar">
-            <button type="button" class="ghost-button" (click)="closeEvidence()">← Nazad na spisak</button>
+            <button type="button" class="ghost-button" (click)="closeEvidence()">← {{ t('Nazad na spisak', 'Back to list') }}</button>
             <button type="button" class="primary-button" (click)="exportEvidencePdf()" [disabled]="isExportingEvidencePdf">
-              {{ isExportingEvidencePdf ? 'Generisanje...' : 'Izvezi PDF' }}
+              {{ isExportingEvidencePdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF', 'Export PDF') }}
             </button>
           </div>
 
@@ -205,9 +220,9 @@
           <p class="tx-summary">
             {{ selectedEvidenceChain.evidence_file_name || selectedEvidenceChain.evidence_stored_name }}
             <span class="dot">·</span>
-            {{ selectedEvidenceChain.evidence_row_count ?? '—' }} transakcija
+            {{ selectedEvidenceChain.evidence_row_count ?? '—' }} {{ t('transakcija', 'transactions') }}
             <span class="dot">·</span>
-            {{ selectedEvidenceChain.evidence_currency || 'valuta nije navedena' }}
+            {{ selectedEvidenceChain.evidence_currency || t('valuta nije navedena', 'currency not specified') }}
             <ng-container *ngIf="selectedEvidenceChain.evidence_sha256">
               <span class="dot">·</span>
               <span class="mono">SHA-256: {{ selectedEvidenceChain.evidence_sha256 }}</span>
@@ -245,7 +260,7 @@
                   <td>{{ row.ime_prezime }}</td>
                   <td class="opis-cell">{{ row.opis_radnje }}</td>
                   <td>
-                    <img class="signature-thumb" *ngIf="row.signature_image" [src]="row.signature_image" alt="Potpis" />
+                    <img class="signature-thumb" *ngIf="row.signature_image" [src]="row.signature_image" [alt]="t('Potpis', 'Signature')" />
                     <span *ngIf="!row.signature_image" class="muted">—</span>
                   </td>
                 </tr>
