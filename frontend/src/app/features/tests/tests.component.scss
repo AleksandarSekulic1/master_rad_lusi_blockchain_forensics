@@ -275,12 +275,51 @@ h3 {
   margin-top: 1rem;
 }
 
+/* Whole header is the toggle, same "no small target to hunt for" reasoning as .test-row -
+   collapsed by default (see expandedGroups in tests.component.ts), so opening the page is
+   a scannable list of group names rather than every one of 300 tests at once. */
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  margin: 0 0 0.3rem;
+  border: none;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.group-header:hover {
+  background: var(--tst-row-hover);
+}
+
+.group-chevron {
+  font-size: 0.95rem;
+  color: var(--tst-dim);
+}
+
 .group-title {
-  margin: 0 0 0.4rem;
+  flex: 1;
   font-size: 0.74rem;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--tst-muted);
+}
+
+.group-count {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.group-header .failed-flag {
+  flex-shrink: 0;
 }
 
 .test-list {

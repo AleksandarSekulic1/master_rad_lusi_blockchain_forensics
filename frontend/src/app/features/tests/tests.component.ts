@@ -49,6 +49,10 @@ export class TestsComponent implements OnInit {
   protected statusMessage: string | null = null;
   protected errorMessage: string | null = null;
   protected expandedTests = new Set<string>();
+  /** Which test GROUPS (the class-docstring headings, e.g. "Period i vremenska zona") are
+   * expanded - collapsed by default so the page opens as a scannable list of group names
+   * rather than 300 individual test rows; a run auto-expands any group with a failure. */
+  protected expandedGroups = new Set<string>();
 
   constructor(
     private readonly api: ApiService,
@@ -99,6 +103,11 @@ export class TestsComponent implements OnInit {
         this.suiteError = response.error;
         this.suiteRan = true;
         this.isRunningSuite = false;
+        // Open the groups that actually need attention, leave the rest collapsed - after a
+        // run that's "which of these failed", not "every group at once".
+        this.expandedGroups = new Set(
+          this.suiteGroups.filter((group) => group.tests.some((test) => test.status === 'failed')).map((group) => group.group),
+        );
       },
       error: () => {
         this.isRunningSuite = false;
@@ -116,6 +125,24 @@ export class TestsComponent implements OnInit {
       byGroup.set(key, [...(byGroup.get(key) ?? []), test]);
     }
     return [...byGroup.entries()].map(([group, tests]) => ({ group, tests }));
+  }
+
+  toggleGroup(group: string): void {
+    if (this.expandedGroups.has(group)) {
+      this.expandedGroups.delete(group);
+    } else {
+      this.expandedGroups.add(group);
+    }
+  }
+
+  isGroupExpanded(group: string): boolean {
+    return this.expandedGroups.has(group);
+  }
+
+  /** Failed-test count for a group's header chip - 0 renders as falsy, so *ngIf hides the
+   * chip entirely for an all-passing group instead of showing "0 failed". */
+  failedCountIn(tests: SuiteTest[]): number {
+    return tests.filter((test) => test.status === 'failed').length;
   }
 
   toggleTestDetails(test: SuiteTest): void {
