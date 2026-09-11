@@ -313,6 +313,19 @@
   align-self: flex-end;
 }
 
+/* "Pronađi sve DEX swap adrese" - exact whole-evidence scan (see openScanAllDialog's own
+   comment), not a guess like Taint's seed suggestions, but still a distinct action from
+   the queue/ANALIZIRAJ path - an accent border marks it as the "smart" shortcut. */
+.scan-all-button {
+  border-color: var(--dx-accent);
+  color: var(--dx-kicker);
+}
+
+.scan-all-button:hover:not(:disabled) {
+  border-color: var(--dx-accent);
+  background: var(--dx-btn-hover-bg);
+}
+
 /* --- Queue: addresses staged for the next run (see confirmCustodyAndAnalyze) - same
    pattern as behavioral-analysis.component.scss's own queue-chips/analyze-row. --- */
 

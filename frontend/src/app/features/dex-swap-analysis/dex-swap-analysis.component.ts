@@ -85,6 +85,9 @@ export class DexSwapAnalysisComponent implements OnInit {
   // same shared custody-access dialog before actually calling the API. ---
   protected isCustodyDialogOpen = false;
   protected custodyDialogError: string | null = null;
+  /** True when the open custody dialog is for the "find all addresses" scan rather than
+   * the queued-addresses run - confirmCustodyAndAnalyze branches on this. */
+  protected isScanAllMode = false;
 
   // --- PDF export (see DEX-SWAP-ANALIZA.md #11) - same signed-report mechanism as
   // Taint/Pathfinding: a control number is registered server-side BEFORE the document is
@@ -234,6 +237,26 @@ export class DexSwapAnalysisComponent implements OnInit {
     if (!this.canAnalyze) {
       return;
     }
+    this.isScanAllMode = false;
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  /** "Pronađi sve DEX swap adrese" - scans the WHOLE evidence in one call (no target
+   * address) rather than guessing which addresses might be worth checking: the detector
+   * already finds every wallet<->DEX pair in the evidence when given no address (see
+   * dex_swap_analysis.py's target_address=None path) - grouping those events by wallet
+   * afterwards is exact, not a heuristic suggestion. Goes through the same custody dialog
+   * since it is still a deliberate read of the whole evidence. */
+  protected get canScanAll(): boolean {
+    return !!this.activeCase && !this.isAnalyzing;
+  }
+
+  protected openScanAllDialog(): void {
+    if (!this.canScanAll) {
+      return;
+    }
+    this.isScanAllMode = true;
     this.custodyDialogError = null;
     this.isCustodyDialogOpen = true;
   }
@@ -242,11 +265,19 @@ export class DexSwapAnalysisComponent implements OnInit {
     this.isCustodyDialogOpen = false;
   }
 
+  protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
+    if (this.isScanAllMode) {
+      this.runScanAll(custody);
+      return;
+    }
+    this.runQueue(custody);
+  }
+
   /** Runs the whole queue with one signed custody entry - the scope of that one access is
    * the full selected evidence (see LANAC-DOKAZA.md §2), regardless of how many addresses
    * are analysed off it. Same pattern as behavioral-analysis.component.ts's own
    * confirmCustodyAndAnalyze. */
-  protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
+  private runQueue(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
     if (!caseId || this.queue.length === 0 || this.isAnalyzing) {
       return;
@@ -293,6 +324,77 @@ export class DexSwapAnalysisComponent implements OnInit {
         this.activeAddress = firstOk.address;
       }
     });
+  }
+
+  /** One evidence-wide call (address omitted) instead of one call per address - see
+   * openScanAllDialog's own comment for why this is exact rather than a guess. The
+   * single response's events are then split by user_address into the same per-address
+   * run shape the queue path produces, so the rest of the page (tabs, cards, PDF) does
+   * not need to know which path populated `runs`. */
+  private runScanAll(custody: TransactionCustodyEntry): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || this.isAnalyzing) {
+      return;
+    }
+
+    this.isAnalyzing = true;
+    this.analysisError = null;
+    this.custodyDialogError = null;
+
+    this.api.runDexSwapAnalysis(caseId, null, this.selectedEvidence, custody).subscribe({
+      next: (result) => {
+        this.isAnalyzing = false;
+        const newRuns = DexSwapAnalysisComponent.groupEventsByAddress(result);
+
+        if (newRuns.length === 0) {
+          this.isCustodyDialogOpen = false;
+          this.analysisError = this.t(
+            'Nijedna adresa u ovoj evidenciji nema detektovan DEX swap.',
+            'No address in this evidence has a detected DEX swap.',
+          );
+          return;
+        }
+
+        // Newly found addresses replace any earlier run for the same address, keep the rest.
+        const found = new Set(newRuns.map((run) => run.address.toLowerCase()));
+        this.runs = [...this.runs.filter((run) => !found.has(run.address.toLowerCase())), ...newRuns];
+        this.queue = this.queue.filter((address) => !found.has(address.toLowerCase()));
+        this.activeAddress = newRuns[0].address;
+        this.isCustodyDialogOpen = false;
+      },
+      error: () => {
+        this.isAnalyzing = false;
+        this.custodyDialogError = this.t('Neuspešno skeniranje evidencije.', 'Failed to scan the evidence.');
+      },
+    });
+  }
+
+  /** Splits one evidence-wide DexSwapAnalysisResult (address: null) into one synthetic
+   * per-address result each - same fields as a scoped single-address call would have
+   * returned, just with `events`/`total_events`/`detected_count`/`potential_count`
+   * recomputed for that address's slice. dex_nodes_considered/data_completeness/
+   * disclaimer/max_gap_seconds are evidence-wide facts, so they carry over unchanged. */
+  private static groupEventsByAddress(result: DexSwapAnalysisResult): AddressDexSwapRun[] {
+    const byAddress = new Map<string, DexSwapEvent[]>();
+    for (const event of result.events) {
+      const events = byAddress.get(event.user_address) ?? [];
+      events.push(event);
+      byAddress.set(event.user_address, events);
+    }
+    return [...byAddress.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([address, events]) => {
+        const detectedCount = events.filter((event) => event.confidence === 'Detected').length;
+        const addressResult: DexSwapAnalysisResult = {
+          ...result,
+          address,
+          events,
+          total_events: events.length,
+          detected_count: detectedCount,
+          potential_count: events.length - detectedCount,
+        };
+        return { address, result: addressResult, error: null };
+      });
   }
 
   protected setActiveAddress(address: string): void {

@@ -104,6 +104,21 @@
     <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
       {{ t('Očisti red', 'Clear queue') }}
     </button>
+
+    <button
+      type="button"
+      class="ghost-button scan-all-button"
+      (click)="openScanAllDialog()"
+      [disabled]="!canScanAll"
+      [title]="
+        t(
+          'Jednim skeniranjem cele evidencije pronalazi SVE adrese koje imaju DEX swap aktivnost — bez pogađanja, isti algoritam primenjen na celu evidenciju odjednom.',
+          'One scan of the whole evidence finds every address with DEX swap activity — no guessing, the same algorithm applied to the whole evidence at once.'
+        )
+      "
+    >
+      {{ isAnalyzing && isScanAllMode ? t('Skeniranje...', 'Scanning...') : t('Pronađi sve DEX swap adrese', 'Find all DEX swap addresses') }}
+    </button>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
