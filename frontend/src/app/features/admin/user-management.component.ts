@@ -1,6 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, DestroyRef, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 import { ApiService } from '../../core/services/api.service';
 import { SettingsService } from '../../core/services/settings.service';
@@ -40,15 +42,38 @@ export class UserManagementComponent implements OnInit {
   protected readonly pageSize = 5;
   protected currentPage = 1;
 
+  // --- Pretraga po korisničkom imenu - server-side (filtrira se u user_management.py, ne
+  // ovde), isti obrazac kao Slučajevi (cases.component.ts): debounce pa GET, umesto jednog
+  // zahteva po tasteru. ---
+  protected searchQuery = '';
+  private readonly searchChanges = new Subject<string>();
+
   constructor(
     private readonly api: ApiService,
     protected readonly settings: SettingsService,
-  ) {}
+    destroyRef: DestroyRef,
+  ) {
+    this.searchChanges
+      .pipe(debounceTime(250), distinctUntilChanged(), takeUntilDestroyed(destroyRef))
+      .subscribe((term) => this.fetchUsers(term));
+  }
 
   /** Tiny inline translator: picks the Serbian or English string for the active language
    * (same pattern as every other page's own t()). */
   protected t(sr: string, en: string): string {
     return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  protected onSearchChange(term: string): void {
+    this.searchChanges.next(term);
+  }
+
+  protected clearSearch(): void {
+    if (!this.searchQuery) {
+      return;
+    }
+    this.searchQuery = '';
+    this.fetchUsers('');
   }
 
   /** "08.06.2026. 09:00" (sr) / "08/06/2026, 09:00" (en) from an ISO timestamp - local
@@ -68,18 +93,36 @@ export class UserManagementComponent implements OnInit {
     this.loadUsers();
   }
 
+  /** Re-fetches with the current search term (used by Refresh and after every mutation -
+   * rename/delete/block/reset all reload through this, so the search stays applied instead
+   * of silently resetting). The debounced search box goes through fetchUsers() directly. */
   loadUsers(): void {
+    this.fetchUsers(this.searchQuery);
+  }
+
+  private fetchUsers(term: string): void {
+    const query = term.trim();
     this.isLoading = true;
-    this.api.listUsers().subscribe({
+    this.api.listUsers(query).subscribe({
       next: (response) => {
         this.users = response.users;
         this.isLoading = false;
-        this.statusMessage = this.t(`${this.users.length} korisnik(a) u sistemu.`, `${this.users.length} user(s) in the system.`);
+        const count = this.users.length;
+        if (count === 0) {
+          this.statusMessage = query
+            ? this.t(`Nema rezultata za "${query}".`, `No results for "${query}".`)
+            : this.t('Nema kreiranih korisnika.', 'No users created yet.');
+        } else {
+          this.statusMessage = query
+            ? this.t(`${count} rezultat(a) za "${query}".`, `${count} result(s) for "${query}".`)
+            : this.t(`${count} korisnik(a) u sistemu.`, `${count} user(s) in the system.`);
+        }
         // Clamp rather than reset to page 1 - a status/reset-link action reloads the list
         // too, and snapping an admin reading page 2 back to page 1 after every click on
         // that page would be worse than just leaving the page number alone when it's
-        // still valid.
-        this.currentPage = Math.min(this.currentPage, this.totalPages);
+        // still valid. A new search term, though, always starts back at page 1.
+        this.currentPage = query !== this.lastSearchedQuery ? 1 : Math.min(this.currentPage, this.totalPages);
+        this.lastSearchedQuery = query;
       },
       error: () => {
         this.isLoading = false;
@@ -87,6 +130,8 @@ export class UserManagementComponent implements OnInit {
       },
     });
   }
+
+  private lastSearchedQuery = '';
 
   // --- Paginacija -------------------------------------------------------------------------
 

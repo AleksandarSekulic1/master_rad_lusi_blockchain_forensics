@@ -1,8 +1,10 @@
-"""Provera preimenovanja i trajnog brisanja korisničkih naloga.
+"""Provera pretrage, preimenovanja i trajnog brisanja korisničkih naloga.
 
-Preimenovanje mora da čuva jedinstvenost korisničkog imena (inače bi dva naloga mogla da
-se prijave pod istim imenom), a brisanje mora biti nepovratno ali NE sme dozvoliti da se
-sistem zaključa bez ijednog administratora - te dve stvari proveravaju testovi ispod.
+Pretraga mora da nađe korisnika bez obzira na veličinu slova i bez obzira gde se traženi
+niz nalazi u imenu (ne samo na početku). Preimenovanje mora da čuva jedinstvenost
+korisničkog imena (inače bi dva naloga mogla da se prijave pod istim imenom), a brisanje
+mora biti nepovratno ali NE sme dozvoliti da se sistem zaključa bez ijednog administratora
+- ove stvari proveravaju testovi ispod.
 
 NAPOMENA: prva linija svakog docstring-a se prikazuje kao naziv testa na stranici
 "Testovi" u aplikaciji.
@@ -19,6 +21,45 @@ from app.services import user_management
 def isolated_users_file(tmp_path, monkeypatch):
     """Testovi ne smeju da pišu u pravi users.json."""
     monkeypatch.setattr(user_management, '_users_path', lambda: tmp_path / 'users.json')
+
+
+class TestSearchUsers:
+    """Pretraga korisnika po korisničkom imenu
+
+    Koristi se sa stranice Administracija - admin kuca deo imena, ne mora znati tačno
+    kako glasi celo korisničko ime.
+    """
+
+    def test_search_matches_a_substring_anywhere_in_the_username(self):
+        """Pretraga pronalazi podniz bilo gde u imenu, ne samo na početku"""
+        user_management.create_user(username='analyst2', password='lozinka1')
+        user_management.create_user(username='admin', password='lozinka2')
+
+        results = user_management.list_users(search='lyst')
+
+        assert [user['username'] for user in results] == ['analyst2']
+
+    def test_search_is_case_insensitive(self):
+        """Pretraga ne pravi razliku između velikih i malih slova"""
+        user_management.create_user(username='Analyst2', password='lozinka1')
+
+        results = user_management.list_users(search='ANALYST')
+
+        assert [user['username'] for user in results] == ['Analyst2']
+
+    def test_blank_search_returns_everyone(self):
+        """Prazna pretraga vraća sve korisnike"""
+        user_management.create_user(username='admin', password='lozinka1')
+        user_management.create_user(username='aco', password='lozinka2')
+
+        assert len(user_management.list_users(search='   ')) == 2
+        assert len(user_management.list_users(search=None)) == 2
+
+    def test_no_match_returns_an_empty_list(self):
+        """Nepostojeći niz vraća praznu listu, ne grešku"""
+        user_management.create_user(username='admin', password='lozinka1')
+
+        assert user_management.list_users(search='ne-postoji-niko-ovakav') == []
 
 
 class TestRenameUser:

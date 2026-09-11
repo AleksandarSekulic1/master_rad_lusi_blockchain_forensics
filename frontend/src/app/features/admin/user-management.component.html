@@ -45,6 +45,25 @@
       </button>
     </div>
 
+    <div class="search-bar">
+      <span class="search-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </span>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (ngModelChange)="onSearchChange($event)"
+        [placeholder]="t('Pretraži po korisničkom imenu...', 'Search by username...')"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button *ngIf="searchQuery" type="button" class="search-clear" (click)="clearSearch()"
+              [attr.aria-label]="t('Obriši pretragu', 'Clear search')">×</button>
+    </div>
+
     <div class="table-wrapper" *ngIf="users.length > 0; else emptyUsers">
       <table>
         <thead>
@@ -154,7 +173,13 @@
     </div>
 
     <ng-template #emptyUsers>
-      <p class="empty-state">{{ t('Nema kreiranih korisnika.', 'No users created yet.') }}</p>
+      <p class="empty-state" *ngIf="searchQuery; else noUsersAtAll">
+        {{ t('Nijedan korisnik ne odgovara pretrazi', 'No user matches') }} "{{ searchQuery }}".
+        <button type="button" class="link-button" (click)="clearSearch()">{{ t('Obriši pretragu', 'Clear search') }}</button>
+      </p>
+      <ng-template #noUsersAtAll>
+        <p class="empty-state">{{ t('Nema kreiranih korisnika.', 'No users created yet.') }}</p>
+      </ng-template>
     </ng-template>
   </article>
 </section>

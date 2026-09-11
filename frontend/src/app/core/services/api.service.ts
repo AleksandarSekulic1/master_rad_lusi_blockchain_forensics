@@ -367,8 +367,10 @@ export class ApiService {
     return this.http.post<DexSwapAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/dex-swap-analysis/run`, body, { params });
   }
 
-  listUsers(): Observable<{ users: AuthUser[] }> {
-    return this.http.get<{ users: AuthUser[] }>(`${this.apiUrl}/api/v1/users`);
+  listUsers(search?: string | null): Observable<{ users: AuthUser[] }> {
+    const trimmed = search?.trim();
+    const params = trimmed ? new HttpParams().set('search', trimmed) : undefined;
+    return this.http.get<{ users: AuthUser[] }>(`${this.apiUrl}/api/v1/users`, { params });
   }
 
   createUser(request: CreateUserRequest): Observable<AuthUser> {

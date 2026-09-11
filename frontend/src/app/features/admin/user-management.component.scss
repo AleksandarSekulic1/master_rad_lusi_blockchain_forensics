@@ -225,6 +225,80 @@ h2 {
   background: linear-gradient(135deg, #f87171, #dc2626);
 }
 
+/* ---------- Pretraga (isti obrazac kao cases.component.scss's own .search-bar) ---------- */
+
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  display: inline-flex;
+  color: var(--um-muted);
+  pointer-events: none;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 0.7rem 2.4rem 0.7rem 2.5rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--um-border);
+  background: var(--um-field-bg);
+  color: var(--um-heading);
+  font: inherit;
+  font-size: 0.85rem;
+  transition: border-color 0.15s ease;
+}
+
+.search-bar input::placeholder {
+  color: var(--um-muted);
+  opacity: 0.8;
+}
+
+.search-bar input:focus {
+  outline: none;
+  border-color: var(--um-kicker);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.5rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--um-muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.search-clear:hover {
+  background: var(--um-field-bg);
+  color: var(--um-heading);
+}
+
+.link-button {
+  margin-left: 0.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--um-kicker);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .table-wrapper {
   overflow-x: auto;
 }

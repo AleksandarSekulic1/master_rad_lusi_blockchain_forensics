@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.deps import require_admin
@@ -26,8 +26,10 @@ class RenameUserRequest(BaseModel):
 
 
 @router.get('')
-def get_users() -> dict[str, object]:
-    return {'users': list_users()}
+def get_users(
+    search: str | None = Query(default=None, description='Filter po korisničkom imenu (bez razlike u veličini slova).'),
+) -> dict[str, object]:
+    return {'users': list_users(search=search)}
 
 
 @router.post('')

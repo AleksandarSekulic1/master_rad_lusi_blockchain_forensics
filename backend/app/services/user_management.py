@@ -34,8 +34,17 @@ def _sanitize(user: dict[str, object]) -> dict[str, object]:
     return {key: value for key, value in user.items() if key not in ('password_hash', 'reset_token', 'reset_token_expires_at')}
 
 
-def list_users() -> list[dict[str, object]]:
-    return [_sanitize(user) for user in _load_users()]
+def list_users(search: str | None = None) -> list[dict[str, object]]:
+    users = [_sanitize(user) for user in _load_users()]
+
+    # Same substring-match convention as case_management.list_cases's own `search` -
+    # case-insensitive (casefold, not lower(), for the same reason: correct across
+    # non-ASCII usernames too), matched anywhere in the username, not just a prefix.
+    needle = (search or '').strip().casefold()
+    if needle:
+        users = [user for user in users if needle in str(user.get('username', '')).casefold()]
+
+    return users
 
 
 def get_user_by_username(username: str) -> dict[str, object] | None:
