@@ -180,7 +180,7 @@
           </tr>
         </thead>
         <tbody>
-          <ng-container *ngFor="let entry of entries; trackBy: trackByEntry">
+          <ng-container *ngFor="let entry of pagedEntries; trackBy: trackByEntry">
             <tr class="log-row" [class.is-expanded]="isExpanded(entry)">
               <td class="col-time">
                 <span class="time-main">{{ entry.timestamp | date : 'dd.MM.yyyy.' }}</span>
@@ -265,6 +265,27 @@
           </ng-container>
         </tbody>
       </table>
+    </div>
+
+    <div class="pagination" *ngIf="entries.length > 0">
+      <label class="page-size">
+        {{ t('Po strani', 'Per page') }}
+        <select [ngModel]="pageSize" (ngModelChange)="setPageSize($event)">
+          <option *ngFor="let size of pageSizeOptions" [ngValue]="size">{{ size }}</option>
+        </select>
+      </label>
+
+      <span class="page-range muted">{{ pageRangeLabel }} {{ t('od', 'of') }} {{ entries.length }}</span>
+
+      <div class="page-nav">
+        <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+          ‹ {{ t('Prethodna', 'Previous') }}
+        </button>
+        <span class="page-indicator">{{ currentPage }} / {{ totalPages }}</span>
+        <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+          {{ t('Sledeća', 'Next') }} ›
+        </button>
+      </div>
     </div>
 
     <ng-template #emptyLog>

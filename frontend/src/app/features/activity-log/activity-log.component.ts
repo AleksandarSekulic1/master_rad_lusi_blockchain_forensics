@@ -47,6 +47,13 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
    * user aren't a case worth designing around). */
   protected expandedRows = new Set<string>();
 
+  // --- Pagination: client-side, over the already-fetched `entries` (the API itself caps
+  // at 200 rows per getActivityLog's own `limit`) - 20/page by default, a common table
+  // default that keeps one page well within a single screen without paging too often. ---
+  protected readonly pageSizeOptions = [10, 20, 50] as const;
+  protected pageSize: (typeof this.pageSizeOptions)[number] = 20;
+  protected currentPage = 1;
+
   // --- Report export ---
   protected isReportPanelOpen = false;
   protected periodMode: ActivityPeriodMode = 'all';
@@ -171,6 +178,10 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         this.lastRefreshed = new Date();
         this.errorMessage = null;
         this.isLoading = false;
+        // Clamp rather than reset to page 1 - this also runs on every 20s auto-refresh,
+        // and snapping an analyst reading page 3 back to page 1 every 20s would be worse
+        // than just leaving the page number alone when it's still valid.
+        this.currentPage = Math.min(this.currentPage, this.totalPages);
       },
       error: () => {
         this.isLoading = false;
@@ -180,7 +191,38 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   }
 
   onUserFilterChange(): void {
+    this.currentPage = 1;
     this.loadEntries();
+  }
+
+  // --- Pagination -----------------------------------------------------------------
+
+  protected get totalPages(): number {
+    return Math.max(1, Math.ceil(this.entries.length / this.pageSize));
+  }
+
+  protected get pagedEntries(): ActivityLogEntry[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.entries.slice(start, start + this.pageSize);
+  }
+
+  /** First/last row numbers on the current page (1-based), for "21–40 of 137". */
+  protected get pageRangeLabel(): string {
+    if (this.entries.length === 0) {
+      return '0';
+    }
+    const start = (this.currentPage - 1) * this.pageSize + 1;
+    const end = Math.min(this.entries.length, this.currentPage * this.pageSize);
+    return `${start}–${end}`;
+  }
+
+  protected setPageSize(size: number): void {
+    this.pageSize = size as (typeof this.pageSizeOptions)[number];
+    this.currentPage = 1;
+  }
+
+  protected goToPage(page: number): void {
+    this.currentPage = Math.min(Math.max(1, page), this.totalPages);
   }
 
   toggleAutoRefresh(): void {

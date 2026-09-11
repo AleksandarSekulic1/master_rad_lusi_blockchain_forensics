@@ -499,6 +499,77 @@ h2 {
   overflow-x: auto;
 }
 
+/* ---------- Paginacija ---------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--al-border-soft);
+  font-size: 0.8rem;
+}
+
+.page-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--al-muted);
+}
+
+.page-size select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--al-field-border);
+  color: var(--al-field-text);
+  background: var(--al-field-bg);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.page-size select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.page-range {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.page-nav-button {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+}
+
+.page-indicator {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--al-text-2);
+}
+
+@media (max-width: 30rem) {
+  .pagination {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .page-range {
+    order: 1;
+    flex-basis: 100%;
+  }
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
