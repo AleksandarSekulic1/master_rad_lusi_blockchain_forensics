@@ -537,5 +537,20 @@
       "evidence_scope": "20260824_001905_381531_demo_timezone_estimate.csv"
     },
     "registered_at": "2026-09-10T17:19:39.691546+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZDN3-PRXU",
+    "content_hash": "cc3892f62f8952868246b5bc8cfbe6f7b631c498733df1a50ebe0a5cb81c1c8a",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "addresses_analyzed": 6,
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1
+    },
+    "registered_at": "2026-09-11T08:20:33.119281+00:00"
   }
 ]

@@ -34,7 +34,7 @@
       {{ t('Adrese iz slučaja', 'Case addresses') }}
       <select
         class="case-address-select"
-        [disabled]="!activeCase || isLoadingCaseAddresses"
+        [disabled]="!activeCase || isLoadingCaseAddresses || availableCaseAddresses.length === 0"
         [ngModel]="''"
         (ngModelChange)="onPickAddress($event)"
       >
@@ -42,10 +42,12 @@
           {{
             isLoadingCaseAddresses
               ? t('Učitavanje adresa…', 'Loading addresses…')
-              : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…')
+              : availableCaseAddresses.length === 0
+                ? t('Sve adrese su već dodate', 'All addresses already added')
+                : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…')
           }}
         </option>
-        <option *ngFor="let addr of caseAddresses" [value]="addr">{{ addr }}</option>
+        <option *ngFor="let addr of availableCaseAddresses" [value]="addr">{{ addr }}</option>
       </select>
     </label>
 
@@ -55,16 +57,91 @@
         type="text"
         [(ngModel)]="address"
         placeholder="0x..."
-        (keydown.enter)="openCustodyDialog()"
+        (keydown.enter)="addTypedAddress()"
         [disabled]="!activeCase"
       />
     </label>
+
+    <button
+      type="button"
+      class="ghost-button add-address-button"
+      (click)="addTypedAddress()"
+      [disabled]="!activeCase || !address.trim()"
+    >
+      {{ t('Dodaj', 'Add') }}
+    </button>
+  </div>
+
+  <div class="queue-chips" *ngIf="queue.length > 0">
+    <span class="queue-label">{{ t('Za analizu', 'To analyse') }} ({{ queue.length }}):</span>
+    <span class="queue-chip" *ngFor="let addr of queue">
+      <span class="mono-clip">{{ addr }}</span>
+      <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
+    </span>
+  </div>
+
+  <div class="analyze-row">
     <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
-      {{ isAnalyzing ? t('Analiza...', 'Analyzing...') : t('ANALIZIRAJ', 'ANALYZE') }}
+      {{
+        isAnalyzing
+          ? t('Analiza...', 'Analyzing...')
+          : queue.length > 1
+            ? t('ANALIZIRAJ', 'ANALYZE') + ' (' + queue.length + ')'
+            : t('ANALIZIRAJ', 'ANALYZE')
+      }}
+    </button>
+
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="addAllCaseAddresses()"
+      [disabled]="!activeCase || availableCaseAddresses.length === 0"
+      [title]="t('Dodaj u red sve adrese iz izabrane evidencije', 'Add every address from the selected evidence to the queue')"
+    >
+      {{ t('Dodaj sve adrese', 'Add all addresses') }}<ng-container *ngIf="availableCaseAddresses.length > 0"> ({{ availableCaseAddresses.length }})</ng-container>
+    </button>
+
+    <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
+      {{ t('Očisti red', 'Clear queue') }}
     </button>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+  <p class="error-inline" *ngFor="let run of failedRuns">
+    <span class="mono-clip">{{ run.address }}</span> — {{ run.error }}
+  </p>
+
+  <div class="results-toolbar" *ngIf="runs.length > 0">
+    <div class="result-tabs" *ngIf="runs.length > 1">
+      <button
+        type="button"
+        class="result-tab"
+        *ngFor="let run of runs"
+        [class.active]="run.address === activeAddress"
+        [class.failed]="!run.result"
+        (click)="setActiveAddress(run.address)"
+      >
+        <span class="mono-clip">{{ run.address }}</span>
+        <span class="result-tab-remove" (click)="$event.stopPropagation(); removeRun(run.address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</span>
+      </button>
+    </div>
+
+    <button
+      type="button"
+      class="ghost-button export-pdf-button"
+      *ngIf="canExportPdf"
+      (click)="openSignatureDialog()"
+      [disabled]="isExportingPdf"
+      [title]="
+        t(
+          'Izvezi PDF izveštaj sa nalazima za sve analizirane adrese, potpisan i sa kontrolnim brojem za proveru',
+          'Export a PDF report with findings for every analysed address, signed and with a verification code'
+        )
+      "
+    >
+      {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+    </button>
+  </div>
 
   <ng-container *ngIf="result">
     <div class="result-meta">
@@ -77,20 +154,6 @@
           )
         }}
       </span>
-      <button
-        type="button"
-        class="ghost-button"
-        (click)="openSignatureDialog()"
-        [disabled]="isExportingPdf"
-        [title]="
-          t(
-            'Izvezi PDF izveštaj sa trenutnim nalazima, potpisan i sa kontrolnim brojem za proveru',
-            'Export a PDF report with the current findings, signed and with a verification code'
-          )
-        "
-      >
-        {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
-      </button>
     </div>
 
     <p class="data-note" *ngIf="!result.data_completeness.currency_declared">{{ result.data_completeness.note }}</p>
@@ -155,11 +218,11 @@
     <p class="disclaimer-note">{{ result.disclaimer }}</p>
   </ng-container>
 
-  <p class="empty-hint" *ngIf="!result && !analysisError">
+  <p class="empty-hint" *ngIf="runs.length === 0 && !analysisError">
     {{
       t(
-        'Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.',
-        'Enter an Ethereum address and click "ANALYZE" to see detected DEX swap events.'
+        'Unesi ili izaberi jednu ili više adresa i klikni "ANALIZIRAJ" da vidiš detektovane DEX swap događaje.',
+        'Enter or pick one or more addresses and click "ANALYZE" to see detected DEX swap events.'
       )
     }}
   </p>

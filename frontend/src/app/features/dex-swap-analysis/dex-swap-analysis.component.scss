@@ -308,6 +308,139 @@
   cursor: not-allowed;
 }
 
+.add-address-button {
+  flex: none;
+  align-self: flex-end;
+}
+
+/* --- Queue: addresses staged for the next run (see confirmCustodyAndAnalyze) - same
+   pattern as behavioral-analysis.component.scss's own queue-chips/analyze-row. --- */
+
+.queue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  max-height: 8.5rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.queue-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--dx-muted);
+}
+
+.queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 16rem;
+  padding: 0.32rem 0.4rem 0.32rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dx-accent) 32%, transparent);
+  background: color-mix(in srgb, var(--dx-accent) 12%, transparent);
+  font-size: 0.74rem;
+  color: var(--dx-text);
+}
+
+.queue-chip button {
+  flex: none;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.queue-chip button:hover {
+  opacity: 1;
+}
+
+.mono-clip {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analyze-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* --- Result switcher: one tab per analysed address, plus the PDF export button - same
+   pattern as behavioral-analysis.component.scss's own result-tabs/results-toolbar. --- */
+
+.results-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.result-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 15rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.7rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--dx-field-border);
+  background: var(--dx-chip-bg);
+  font: inherit;
+  font-size: 0.74rem;
+  color: var(--dx-dim);
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.result-tab:hover {
+  color: var(--dx-heading);
+}
+
+.result-tab.active {
+  border-color: var(--dx-accent);
+  color: var(--dx-heading);
+  background: color-mix(in srgb, var(--dx-accent) 12%, transparent);
+}
+
+.result-tab.failed {
+  color: var(--dx-error);
+  border-color: color-mix(in srgb, var(--dx-error) 40%, transparent);
+}
+
+.result-tab-remove {
+  flex: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  opacity: 0.6;
+}
+
+.result-tab-remove:hover {
+  opacity: 1;
+}
+
+.export-pdf-button {
+  flex: none;
+}
+
 .error-inline {
   margin: 0;
   font-size: 0.85rem;
