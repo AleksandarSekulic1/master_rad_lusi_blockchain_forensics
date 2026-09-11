@@ -11,8 +11,22 @@
   --um-muted: #8ea6c7;
   --um-field-bg: rgba(255, 255, 255, 0.03);
   --um-btn-text: #d9e6ff;
+  --um-row-hover: rgba(96, 165, 250, 0.06);
   --um-select-option-text: #0b1526;
   --um-select-option-bg: #ffffff;
+
+  /* Per-action button colour, one hue per action rather than a single grey "ghost"
+     look for everything - Block/Unblock/Reset are meaningfully different in weight, so
+     they shouldn't read as identical buttons that happen to say different words. */
+  --um-warning-text: #fbbf24;
+  --um-warning-bg: rgba(251, 191, 36, 0.12);
+  --um-warning-border: rgba(251, 191, 36, 0.32);
+  --um-success-text: #4ade80;
+  --um-success-bg: rgba(74, 222, 128, 0.12);
+  --um-success-border: rgba(74, 222, 128, 0.32);
+  --um-info-text: #c4b5fd;
+  --um-info-bg: rgba(167, 139, 250, 0.12);
+  --um-info-border: rgba(167, 139, 250, 0.32);
 }
 
 :host-context([data-theme='light']) {
@@ -25,8 +39,19 @@
   --um-muted: #55658c;
   --um-field-bg: rgba(15, 23, 42, 0.03);
   --um-btn-text: #1e293b;
+  --um-row-hover: rgba(37, 99, 235, 0.05);
   --um-select-option-text: #16233b;
   --um-select-option-bg: #ffffff;
+
+  --um-warning-text: #b45309;
+  --um-warning-bg: rgba(180, 83, 9, 0.1);
+  --um-warning-border: rgba(180, 83, 9, 0.3);
+  --um-success-text: #15803d;
+  --um-success-bg: rgba(21, 128, 61, 0.1);
+  --um-success-border: rgba(21, 128, 61, 0.3);
+  --um-info-text: #7c3aed;
+  --um-info-bg: rgba(124, 58, 237, 0.08);
+  --um-info-border: rgba(124, 58, 237, 0.28);
 }
 
 .admin-grid {
@@ -36,12 +61,23 @@
 }
 
 .panel {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--um-border);
   border-radius: 1.25rem;
   background: var(--um-surface);
   box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
   backdrop-filter: blur(16px);
   padding: 1.15rem;
+}
+
+/* Thin colour strip on the panel's leading edge - same touch as the Cases/Lanac dokaza
+   pages' own .panel-accent, so this reads as a finished panel rather than a bare block. */
+.panel-accent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--um-kicker), var(--um-info-text));
 }
 
 .create-panel {
@@ -62,15 +98,17 @@
 
 .panel-kicker {
   margin: 0 0 0.15rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--um-kicker);
 }
 
 h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
   color: var(--um-heading);
 }
 
@@ -93,6 +131,14 @@ h2 {
   border: 1px solid var(--um-border);
   color: var(--um-heading);
   background: var(--um-field-bg);
+  font: inherit;
+  transition: border-color 0.14s ease;
+}
+
+.user-form input:focus,
+.user-form select:focus {
+  outline: none;
+  border-color: var(--um-kicker);
 }
 
 .user-form select option {
@@ -102,22 +148,49 @@ h2 {
 
 .primary-button,
 .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   padding: 0.7rem 0.95rem;
   border: none;
   border-radius: 0.9rem;
   cursor: pointer;
+  font: inherit;
   font-size: 0.85rem;
+  font-weight: 500;
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
 }
 
 .primary-button {
   color: #04111f;
+  font-weight: 600;
   background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ghost-button {
   color: var(--um-btn-text);
   border: 1px solid var(--um-border);
   background: var(--um-field-bg);
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: var(--um-kicker);
+}
+
+.ghost-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .status,
@@ -130,6 +203,7 @@ h2 {
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
   font-size: 0.78rem;
+  font-weight: 600;
   color: #04111f;
   background: linear-gradient(135deg, #86efac, #4ade80);
 }
@@ -160,9 +234,18 @@ td {
 
 th {
   color: var(--um-muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+tbody tr {
+  transition: background 0.14s ease;
+}
+
+tbody tr:hover {
+  background: var(--um-row-hover);
 }
 
 .actions {
@@ -170,11 +253,77 @@ th {
   gap: 0.5rem;
 }
 
+/* Per-action button - outlined "chip" rather than a solid fill, so a row of them next to
+   the status pill doesn't compete with it for attention; colour alone (see the tokens
+   above) tells Block from Reset from Unblock apart at a glance. */
+.action-button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.7rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.action-button.warning {
+  color: var(--um-warning-text);
+  background: var(--um-warning-bg);
+  border-color: var(--um-warning-border);
+}
+
+.action-button.success {
+  color: var(--um-success-text);
+  background: var(--um-success-bg);
+  border-color: var(--um-success-border);
+}
+
+.action-button.info {
+  color: var(--um-info-text);
+  background: var(--um-info-bg);
+  border-color: var(--um-info-border);
+}
+
+.action-button:hover {
+  filter: brightness(1.15);
+}
+
+/* ---------- Paginacija ---------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--um-border-soft);
+  font-size: 0.8rem;
+}
+
+.page-range {
+  color: var(--um-muted);
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.page-nav-button {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+}
+
 .reset-link-box {
   margin-top: 0.85rem;
   padding: 0.75rem 0.9rem;
   border-radius: 0.85rem;
   background: var(--um-field-bg);
+  border: 1px solid var(--um-border-soft);
   display: grid;
   gap: 0.3rem;
   font-size: 0.82rem;
@@ -193,5 +342,12 @@ th {
   .create-panel,
   .list-panel {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 30rem) {
+  .pagination {
+    justify-content: center;
+    text-align: center;
   }
 }

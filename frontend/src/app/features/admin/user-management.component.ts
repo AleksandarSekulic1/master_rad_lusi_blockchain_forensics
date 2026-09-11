@@ -23,6 +23,12 @@ export class UserManagementComponent implements OnInit {
   protected statusMessage = '';
   protected resetLinkByUsername: Record<string, string> = {};
 
+  // --- Paginacija - lista korisnika ume da naraste preko jednog ekrana, pa se prikazuje
+  // po 5 odjednom. Bez izbora veličine strane (za razliku od activity-log/custody-log) -
+  // ova lista je po prirodi mala, jedna fiksna veličina je dovoljna. ---
+  protected readonly pageSize = 5;
+  protected currentPage = 1;
+
   constructor(
     private readonly api: ApiService,
     protected readonly settings: SettingsService,
@@ -46,12 +52,32 @@ export class UserManagementComponent implements OnInit {
         this.users = response.users;
         this.isLoading = false;
         this.statusMessage = this.t(`${this.users.length} korisnik(a) u sistemu.`, `${this.users.length} user(s) in the system.`);
+        // Clamp rather than reset to page 1 - a status/reset-link action reloads the list
+        // too, and snapping an admin reading page 2 back to page 1 after every click on
+        // that page would be worse than just leaving the page number alone when it's
+        // still valid.
+        this.currentPage = Math.min(this.currentPage, this.totalPages);
       },
       error: () => {
         this.isLoading = false;
         this.statusMessage = this.t('Neuspešno učitavanje korisnika.', 'Failed to load users.');
       },
     });
+  }
+
+  // --- Paginacija -------------------------------------------------------------------------
+
+  protected get totalPages(): number {
+    return Math.max(1, Math.ceil(this.users.length / this.pageSize));
+  }
+
+  protected get pagedUsers(): AuthUser[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.users.slice(start, start + this.pageSize);
+  }
+
+  protected goToPage(page: number): void {
+    this.currentPage = Math.min(Math.max(1, page), this.totalPages);
   }
 
   createUser(): void {

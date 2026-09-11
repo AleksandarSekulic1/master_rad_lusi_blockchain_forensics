@@ -1,5 +1,6 @@
 <section class="admin-grid">
   <article class="panel create-panel">
+    <span class="panel-accent" aria-hidden="true"></span>
     <div class="panel-heading">
       <div>
         <p class="panel-kicker">{{ t('Upravljanje nalozima', 'Account management') }}</p>
@@ -24,6 +25,7 @@
         </select>
       </label>
       <button type="button" class="primary-button" (click)="createUser()" [disabled]="isCreating">
+        <span aria-hidden="true">＋</span>
         {{ isCreating ? t('Kreiranje...', 'Creating...') : t('Kreiraj nalog', 'Create account') }}
       </button>
     </div>
@@ -32,12 +34,16 @@
   </article>
 
   <article class="panel list-panel">
+    <span class="panel-accent" aria-hidden="true"></span>
     <div class="panel-heading">
       <div>
         <p class="panel-kicker">{{ t('Nalozi', 'Accounts') }}</p>
         <h2>{{ t('Svi korisnici', 'All users') }}</h2>
       </div>
-      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">{{ t('Osveži', 'Refresh') }}</button>
+      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">
+        <span aria-hidden="true">⟳</span>
+        {{ t('Osveži', 'Refresh') }}
+      </button>
     </div>
 
     <div class="table-wrapper" *ngIf="users.length > 0; else emptyUsers">
@@ -52,7 +58,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let user of users">
+          <tr *ngFor="let user of pagedUsers">
             <td>{{ user.username }}</td>
             <td>{{ user.role === 'admin' ? t('Administrator', 'Administrator') : t('Analitičar', 'Analyst') }}</td>
             <td>
@@ -62,14 +68,32 @@
             </td>
             <td>{{ user.created_at }}</td>
             <td class="actions">
-              <button type="button" class="ghost-button" (click)="toggleStatus(user)">
+              <button
+                type="button"
+                class="action-button"
+                [class.warning]="user.status !== 'blocked'"
+                [class.success]="user.status === 'blocked'"
+                (click)="toggleStatus(user)"
+              >
                 {{ user.status === 'blocked' ? t('Odblokiraj', 'Unblock') : t('Blokiraj', 'Block') }}
               </button>
-              <button type="button" class="ghost-button" (click)="generateResetLink(user)">{{ t('Reset lozinke', 'Reset password') }}</button>
+              <button type="button" class="action-button info" (click)="generateResetLink(user)">{{ t('Reset lozinke', 'Reset password') }}</button>
             </td>
           </tr>
         </tbody>
       </table>
+
+      <div class="pagination" *ngIf="users.length > pageSize">
+        <span class="page-range muted">{{ t('Strana', 'Page') }} {{ currentPage }} / {{ totalPages }}</span>
+        <div class="page-nav">
+          <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+            ‹ {{ t('Prethodna', 'Previous') }}
+          </button>
+          <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+            {{ t('Sledeća', 'Next') }} ›
+          </button>
+        </div>
+      </div>
 
       <div class="reset-link-box" *ngFor="let entry of resetLinkByUsername | keyvalue">
         <span>{{ t('Link za', 'Link for') }} {{ entry.key }}:</span>
