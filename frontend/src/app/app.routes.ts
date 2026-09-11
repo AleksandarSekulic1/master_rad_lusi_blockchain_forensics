@@ -62,12 +62,6 @@ export const appRoutes: Routes = [
 			import('./features/dex-swap-analysis/dex-swap-analysis.component').then((module) => module.DexSwapAnalysisComponent),
 	},
 	{
-		path: 'reports',
-		canActivate: [authGuard],
-		loadComponent: () =>
-			import('./features/report-export/report-export.component').then((module) => module.ReportExportComponent),
-	},
-	{
 		path: 'verify-report',
 		canActivate: [authGuard],
 		loadComponent: () =>
