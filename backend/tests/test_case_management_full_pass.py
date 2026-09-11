@@ -20,12 +20,25 @@ from app.evidence import audit_log
 from app.investigations import repository
 from app.investigations.links_models import EVIDENCE_MAX_LENGTH, REASON_MAX_LENGTH
 from app.investigations.notes_models import NOTE_TEXT_MAX_LENGTH
+from app.services import user_management
 
 
 @pytest.fixture(autouse=True)
-def isolated_store(tmp_path, monkeypatch):
+def isolated_store(tmp_path, tmp_path_factory, monkeypatch):
     monkeypatch.setattr(repository, '_root', lambda: tmp_path / 'investigations')
     monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
+    # TestClient(app) below triggers app.main's lifespan (bootstrap_admin) AND the real
+    # /auth/login route this file's `auth` fixture calls - both read/write the users
+    # store. Without this, every test here quietly touched the REAL data/users.json
+    # instead of an isolated one: harmless when tests run one at a time (bootstrap_admin
+    # is a no-op once a real admin exists), but a genuine race the moment more than one
+    # process touches that same real file at once - other test files running in parallel
+    # (pytest-xdist) or the actual dev server being used at the same time. Kept in its OWN
+    # temp dir (not under `tmp_path`) in case a test here ever asserts what did/didn't
+    # land under `tmp_path`, same reasoning as test_case_management_persistence.py.
+    users_dir = tmp_path_factory.mktemp('account-store')
+    monkeypatch.setattr(user_management, '_users_path', lambda: users_dir / 'users.json')
+    user_management.create_user(username='admin', password='admin123', role='admin')
     return tmp_path
 
 
@@ -53,9 +66,10 @@ def case_id(client, auth):
 # ---------------------------------------------------------------------------- CASE
 
 class TestCase:
-    """CASE - create / load / update"""
+    """Slučaj — kreiranje, učitavanje, izmena"""
 
     def test_create_load_update(self, client, auth):
+        """Kreiranje, učitavanje i izmena slučaja rade ispravno"""
         created = client.post(
             '/api/v1/investigations', headers=auth, json={'name': 'Op. Focus', 'description': 'prvi opis'}
         )
@@ -79,9 +93,10 @@ class TestCase:
 # --------------------------------------------------------------------------- NOTES
 
 class TestNodeNotes:
-    """NOTES - node note create / edit / delete / empty validation / very long"""
+    """Beleške čvora — kreiranje, izmena, brisanje, validacija prazne i predugačke beleške"""
 
     def test_create_edit_delete(self, client, auth, case_id):
+        """Beleška čvora se kreira, menja i briše"""
         r = client.post(f'/api/v1/investigations/{case_id}/notes', headers=auth, json={'address': '0xNODE', 'text': 'v1'})
         assert r.status_code == 200 and r.json()['target_type'] == 'address'
         nid = r.json()['id']
@@ -93,6 +108,7 @@ class TestNodeNotes:
         assert client.get(f'/api/v1/investigations/{case_id}/notes/{nid}', headers=auth).status_code == 404
 
     def test_empty_note_validation(self, client, auth, case_id):
+        """Prazna beleška se odbija"""
         # missing text field
         assert client.post(f'/api/v1/investigations/{case_id}/notes', headers=auth, json={'address': '0xA'}).status_code == 422
         # blank / whitespace text
@@ -107,6 +123,7 @@ class TestNodeNotes:
         assert client.patch(f'/api/v1/investigations/{case_id}/notes/{nid}', headers=auth, json={'text': ' '}).status_code == 422
 
     def test_very_long_note_handling(self, client, auth, case_id):
+        """Predugačka beleška se odbija, beleška na granici dužine prolazi"""
         at_limit = 'x' * NOTE_TEXT_MAX_LENGTH
         over_limit = 'x' * (NOTE_TEXT_MAX_LENGTH + 1)
 
@@ -124,9 +141,10 @@ class TestNodeNotes:
 
 
 class TestTransactionNotes:
-    """NOTES - transaction note create / edit / delete"""
+    """Beleške transakcije — kreiranje, izmena, brisanje"""
 
     def test_create_edit_delete(self, client, auth, case_id):
+        """Beleška transakcije se kreira, menja i briše"""
         r = client.post(f'/api/v1/investigations/{case_id}/notes', headers=auth, json={'tx_id': '0xTX', 'text': 'tx v1'})
         assert r.status_code == 200 and r.json()['target_type'] == 'transaction' and r.json()['address'] is None
         nid = r.json()['id']
@@ -137,6 +155,7 @@ class TestTransactionNotes:
         assert client.delete(f'/api/v1/investigations/{case_id}/notes/{nid}', headers=auth).status_code == 204
 
     def test_note_targets_exactly_one_of_address_or_tx(self, client, auth, case_id):
+        """Beleška mora ciljati tačno jedno: adresu ili transakciju"""
         assert client.post(f'/api/v1/investigations/{case_id}/notes', headers=auth, json={'text': 'neither'}).status_code == 422
         assert (
             client.post(
@@ -149,9 +168,10 @@ class TestTransactionNotes:
 # ------------------------------------------------------------------------- PINNING
 
 class TestPinning:
-    """PINNING - pin / unpin / multiple pinned / persistence"""
+    """Zakačeni čvorovi — kačenje, otkačivanje, više zakačenih, trajnost"""
 
     def test_pin_and_unpin(self, client, auth, case_id):
+        """Čvor se može zakačiti i otkačiti"""
         p = client.put(f'/api/v1/investigations/{case_id}/pins', headers=auth, json={'address': '0xP1', 'x': 5.0, 'y': 6.0})
         assert p.status_code == 200 and p.json()['address'] == '0xP1' and p.json()['x'] == 5.0
 
@@ -163,6 +183,7 @@ class TestPinning:
         assert client.delete(f'/api/v1/investigations/{case_id}/pins', headers=auth, params={'address': '0xNEMA'}).status_code == 404
 
     def test_multiple_pinned_nodes_and_reload(self, client, auth, case_id):
+        """Više zakačenih čvorova ostaje posle ponovnog pokretanja"""
         for i, addr in enumerate(['0xA', '0xB', '0xC', '0xD']):
             client.put(f'/api/v1/investigations/{case_id}/pins', headers=auth, json={'address': addr, 'x': float(i), 'y': float(i)})
         # re-pin one at a new position (upsert, not a duplicate)
@@ -187,8 +208,7 @@ class TestPinning:
 # ---------------------------------------------------------------- INVESTIGATOR LINKS
 
 class TestInvestigatorLinks:
-    """INVESTIGATOR LINKS - create / delete / same src==tgt / duplicates / missing reason /
-    missing evidence / confidence values"""
+    """Istražiteljske veze — kreiranje, brisanje, isti izvor i cilj, duplikati, nedostajući razlog/dokaz, nivoi pouzdanosti"""
 
     def _body(self, **over):
         body = {
@@ -202,6 +222,7 @@ class TestInvestigatorLinks:
         return body
 
     def test_create_and_delete(self, client, auth, case_id):
+        """Istražiteljska veza se kreira i briše"""
         r = client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body())
         assert r.status_code == 200 and r.json()['directed'] is False
         lid = r.json()['id']
@@ -209,6 +230,7 @@ class TestInvestigatorLinks:
         assert client.get(f'/api/v1/investigations/{case_id}/links/{lid}', headers=auth).status_code == 404
 
     def test_same_address_source_and_target_rejected(self, client, auth, case_id):
+        """Veza sa istom adresom kao izvor i cilj se odbija"""
         assert (
             client.post(
                 f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body(source_address='0xX', target_address=' 0xX ')
@@ -217,6 +239,7 @@ class TestInvestigatorLinks:
         )
 
     def test_duplicate_links_are_allowed(self, client, auth, case_id):
+        """Dozvoljeno je više veza između istog para adresa"""
         # two links between the same pair, different evidence -> both kept, independent ids
         a = client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body(evidence='log #1')).json()
         b = client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body(evidence='log #2')).json()
@@ -225,18 +248,21 @@ class TestInvestigatorLinks:
         assert len([l for l in links if {l['source_address'], l['target_address']} == {'0xSRC', '0xTGT'}]) == 2
 
     def test_missing_reason_rejected(self, client, auth, case_id):
+        """Veza bez razloga se odbija"""
         b = self._body()
         del b['reason']
         assert client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=b).status_code == 422
         assert client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body(reason='   ')).status_code == 422
 
     def test_missing_evidence_rejected(self, client, auth, case_id):
+        """Veza bez dokaza se odbija"""
         b = self._body()
         del b['evidence']
         assert client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=b).status_code == 422
         assert client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body(evidence='')).status_code == 422
 
     def test_confidence_values(self, client, auth, case_id):
+        """Prihvataju se samo definisani nivoi pouzdanosti"""
         for level in ('Low', 'Medium', 'High'):
             r = client.post(f'/api/v1/investigations/{case_id}/links', headers=auth, json=self._body(confidence=level))
             assert r.status_code == 200 and r.json()['confidence'] == level
@@ -247,6 +273,7 @@ class TestInvestigatorLinks:
             )
 
     def test_long_reason_and_evidence_boundaries(self, client, auth, case_id):
+        """Razlog i dokaz na granici dužine prolaze, preko granice se odbijaju"""
         assert (
             client.post(
                 f'/api/v1/investigations/{case_id}/links',
@@ -266,9 +293,10 @@ class TestInvestigatorLinks:
 # --------------------------------------------------------------------- PERSISTENCE
 
 class TestPersistence:
-    """PERSISTENCE - reload / restart, information remains, and it is real on-disk data"""
+    """Trajnost — podaci ostaju posle ponovnog pokretanja i stvarno su na disku"""
 
     def test_everything_survives_a_restart_and_is_on_disk(self, client, auth, case_id, isolated_store):
+        """Sve preživljava ponovno pokretanje i stvarno je zapisano na disku"""
         client.post(f'/api/v1/investigations/{case_id}/notes', headers=auth, json={'address': '0xN', 'text': 'node note'})
         client.post(f'/api/v1/investigations/{case_id}/notes', headers=auth, json={'tx_id': '0xT', 'text': 'tx note'})
         client.put(f'/api/v1/investigations/{case_id}/pins', headers=auth, json={'address': '0xN', 'x': 1.0, 'y': 2.0})
@@ -303,9 +331,10 @@ class TestPersistence:
 # ----------------------------------------------------------------------- ISOLATION
 
 class TestIsolation:
-    """ISOLATION - Case A data does not appear in Case B"""
+    """Izolacija — podaci slučaja A se ne pojavljuju u slučaju B"""
 
     def test_case_a_data_not_visible_in_case_b(self, client, auth):
+        """Podaci slučaja A se ne vide u slučaju B"""
         a = client.post('/api/v1/investigations', headers=auth, json={'name': 'CASE A'}).json()['id']
         b = client.post('/api/v1/investigations', headers=auth, json={'name': 'CASE B'}).json()['id']
 
@@ -338,6 +367,7 @@ class TestExistingAnalysisEndpointsIntact:
     postoje i odgovaraju (algoritamsku ispravnost pokrivaju njihovi vlastiti testovi)."""
 
     def test_analysis_routes_still_registered(self, client):
+        """Rute za analizu i dalje postoje"""
         paths = set(client.get('/openapi.json').json()['paths'])
         for expected in (
             '/api/v1/graph',
@@ -351,6 +381,7 @@ class TestExistingAnalysisEndpointsIntact:
             assert expected in paths, expected
 
     def test_analysis_endpoints_respond_for_a_missing_case(self, client, auth):
+        """Rute za analizu vraćaju 404 za nepostojeći slučaj"""
         # 404 (case not found), NOT 500 - proves the route + its dependencies still wire up.
         assert client.get('/api/v1/cases/nema/graph', headers=auth).status_code == 404
         assert client.post('/api/v1/cases/nema/pathfinding', headers=auth, json={'from': '0xA', 'to': '0xB'}).status_code == 404

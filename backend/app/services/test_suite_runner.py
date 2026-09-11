@@ -14,6 +14,7 @@ docstring in app/services/test_scenarios.py for why that separation matters.
 from __future__ import annotations
 
 import ast
+import os
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,15 @@ TESTS_DIR = BACKEND_ROOT / 'tests'
 
 # A hung test must not hold an HTTP request (and a worker) open indefinitely.
 RUN_TIMEOUT_SECONDS = 120
+
+# pytest-xdist worker count for actually RUNNING the suite (run_suite, not collection -
+# `--collect-only` never benefits from -n, since there's no test execution to distribute,
+# only the interpreter-startup cost of spinning up workers that then do nothing).
+# Capped at 4 rather than "auto" (= cpu_count): each worker pays its own fresh-interpreter
+# import cost (fastapi/pandas/etc.), and measurement on this suite (302 fast tests) showed
+# more workers than that past the sweet spot; the extra worker-startup overhead outweighs
+# the parallelism gained. Still falls back to 1 on a single-core box.
+_SUITE_WORKERS = max(1, min(4, os.cpu_count() or 1))
 
 
 def _split_docstring(docstring: str | None) -> tuple[str, str]:
@@ -64,9 +74,14 @@ def _test_metadata() -> dict[str, dict[str, str]]:
     """Docstring + source of every test function, read straight from the test files.
 
     Parsed with `ast` rather than imported: reading the files can never execute them,
-    which keeps this safe to call from a request handler. Deliberately NOT cached - the
-    files are small, and a cache would keep serving the old docstring after a test is
-    edited, which is exactly the kind of quiet drift these tests exist to prevent.
+    which keeps this safe to call from a request handler. Deliberately NOT cached ACROSS
+    requests - the files are small, and a cache would keep serving the old docstring after
+    a test is edited, which is exactly the kind of quiet drift these tests exist to
+    prevent. It IS computed once per request, though (see list_suite_tests/
+    _parse_junit_report, which call this once and pass the result into every _enrich()
+    call) - calling it once per TEST inside the loop used to mean the whole test directory
+    was re-read and re-parsed from scratch once per test (300+ times for a 300-test suite,
+    ~30s), instead of once per request (well under a second).
     """
     metadata: dict[str, dict[str, str]] = {}
     if not TESTS_DIR.exists():
@@ -103,9 +118,11 @@ def _test_metadata() -> dict[str, dict[str, str]]:
     return metadata
 
 
-def _enrich(entry: dict[str, Any], raw_name: str) -> dict[str, Any]:
-    """Attaches the Serbian title/explanation/source pulled from the test file itself."""
-    meta = _test_metadata().get(raw_name)
+def _enrich(entry: dict[str, Any], raw_name: str, metadata: dict[str, dict[str, str]]) -> dict[str, Any]:
+    """Attaches the Serbian title/explanation/source pulled from the test file itself.
+    `metadata` is collected once per request (by the caller) and reused for every test in
+    it - see _test_metadata()'s own docstring for why that matters."""
+    meta = metadata.get(raw_name)
     if not meta:
         # Fall back to a readable version of the function name so a test added without a
         # docstring still shows up (unnamed, but never hidden).
@@ -146,6 +163,7 @@ def list_suite_tests() -> dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {'tests': [], 'total': 0, 'error': 'Isteklo vreme pri prikupljanju testova.'}
 
+    metadata = _test_metadata()
     tests: list[dict[str, Any]] = []
     for line in completed.stdout.splitlines():
         line = line.strip()
@@ -161,7 +179,7 @@ def list_suite_tests() -> dict[str, Any]:
             'raw_name': name,
             'group': group,
             'module': Path(file_part).stem,
-        }, name))
+        }, name, metadata))
 
     return {'tests': tests, 'total': len(tests), 'error': None}
 
@@ -181,6 +199,7 @@ def run_suite() -> dict[str, Any]:
                 [
                     sys.executable, '-m', 'pytest', str(TESTS_DIR),
                     f'--junit-xml={report_path}', '-q', '--no-header', '--tb=line',
+                    '-n', str(_SUITE_WORKERS),
                 ],
                 cwd=str(BACKEND_ROOT),
                 capture_output=True,
@@ -209,6 +228,7 @@ def _parse_junit_report(report_path: Path) -> dict[str, Any]:
     root = tree.getroot()
     suite = root.find('testsuite') if root.tag == 'testsuites' else root
 
+    metadata = _test_metadata()
     results: list[dict[str, Any]] = []
     for case in suite.findall('testcase') if suite is not None else []:
         classname = case.get('classname', '')
@@ -237,7 +257,7 @@ def _parse_junit_report(report_path: Path) -> dict[str, Any]:
             'status': status,
             'message': message,
             'duration_ms': round(float(case.get('time', 0) or 0) * 1000, 2),
-        }, name))
+        }, name, metadata))
 
     return {
         'results': results,

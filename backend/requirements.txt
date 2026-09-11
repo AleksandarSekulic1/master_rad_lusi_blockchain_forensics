@@ -11,3 +11,4 @@ bcrypt
 pyjwt
 requests
 pytest
+pytest-xdist

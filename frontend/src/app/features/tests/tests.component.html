@@ -7,24 +7,6 @@
       <div>
         <p class="panel-kicker">{{ t('Ispravnost algoritma', 'Algorithm correctness') }}</p>
         <h2>{{ t('Sistemski testovi', 'System tests') }}</h2>
-        <p class="panel-subtitle">
-          {{
-            t(
-              'Fiksni testovi nad taint algoritmom: haircut matematika, raspodela po izvorima i podaci za vremensku traku.',
-              'Fixed tests over the taint algorithm: haircut math, distribution across sources, and timeline data.'
-            )
-          }}
-        </p>
-        <p class="panel-subtitle">
-          {{ t('Nalaze se u verzionisanom kodu i', 'They live in version-controlled code and') }}
-          <strong>{{ t('ne mogu se menjati kroz aplikaciju', 'cannot be changed through the application') }}</strong>
-          {{
-            t(
-              '— dokaz ispravnosti koji se može izmeniti dok ne prođe više nije dokaz.',
-              '— proof of correctness that can be edited until it passes is not proof of anything.'
-            )
-          }}
-        </p>
       </div>
       <div class="toolbar">
         <button type="button" class="primary-button" (click)="runSuite()" [disabled]="isRunningSuite">
@@ -81,19 +63,6 @@
       <div>
         <p class="panel-kicker">{{ t('Referentni slučajevi', 'Reference cases') }}</p>
         <h2>{{ t('Validacioni scenariji', 'Validation scenarios') }}</h2>
-        <p class="panel-subtitle">
-          {{ t('Scenario je', 'A scenario is') }} <strong>{{ t('opis podataka, ne kod', 'a description of data, not code') }}</strong>:
-          {{ t('transakcije, izvori (seed adrese) i očekivani procenti.', 'transactions, sources (seed addresses), and expected percentages.') }}
-        </p>
-        <p class="panel-subtitle">
-          {{ t('Propuštaju se kroz', 'They run through the') }} <strong>{{ t('pravi', 'real') }}</strong>
-          {{
-            t(
-              'taint algoritam, pa se mogu slobodno kreirati, menjati i brisati — ništa uneto se ne izvršava.',
-              'taint algorithm, so they can be freely created, edited and deleted — nothing entered here is executed as code.'
-            )
-          }}
-        </p>
       </div>
       <div class="toolbar">
         <button type="button" class="ghost-button" (click)="startNewScenario()">{{ t('Novi scenario', 'New scenario') }}</button>
