@@ -1,14 +1,18 @@
 <section class="custody-page">
   <article class="panel">
+    <span class="panel-accent" aria-hidden="true"></span>
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+        <!-- Kicker ostaje fiksno "Chain of custody" (englesko) kao oznaka kategorije, isto
+             kao na custody-access-dialog i drugim "Lanac dokaza" ekranima - h2 ispod je
+             stvarni, prevedeni naslov STRANICE, pa se dva reda ne poklapaju reč za reč. -->
+        <p class="panel-kicker">Chain of custody</p>
         <h2>{{ t('Lanac dokaza', 'Chain of custody') }}</h2>
         <p class="panel-subtitle">
           {{
             t(
-              'Obrazac evidencije rukovanja dokaznim materijalom, primenjen na dva nivoa: po pojedinačnoj transakciji i po celom dokaznom fajlu. Svako pokretanje analize (Taint analiza ili Graf) dodaje novi red - datum, ime i prezime, razlog pristupa i potpis analitičara. Dostupno svim prijavljenim korisnicima, ne samo administratoru.',
-              'An evidence-handling record form, applied at two levels: per individual transaction and per whole evidence file. Every analysis run (Taint analysis or Graph) adds a new row - date, full name, reason for access, and the analyst\'s signature. Available to every logged-in user, not just the administrator.'
+              'Evidencija pristupa dokaznom materijalu na dva nivoa — po transakciji i po dokaznom fajlu. Svako pokretanje analize upisuje novi red: datum, ime, razlog i potpis analitičara.',
+              'An evidence-access record kept at two levels — per transaction and per evidence file. Every analysis run adds a row: date, name, reason, and the analyst\'s signature.'
             )
           }}
         </p>

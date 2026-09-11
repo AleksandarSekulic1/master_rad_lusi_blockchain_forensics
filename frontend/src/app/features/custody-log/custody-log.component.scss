@@ -67,12 +67,23 @@
 }
 
 .panel {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--cl-border);
   border-radius: 1.25rem;
   background: var(--cl-surface);
   box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
   backdrop-filter: blur(16px);
   padding: 1.15rem;
+}
+
+/* Thin colour strip on the panel's leading edge - same touch as the Cases page's own
+   .panel-accent, so this reads as a finished panel instead of a bare block of text. */
+.panel-accent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--cl-kicker), var(--cl-tab-active));
 }
 
 .panel-heading {
@@ -85,29 +96,34 @@
 }
 
 .panel-heading > div:first-child {
-  flex: 1 1 32rem;
+  flex: 1 1 26rem;
   min-width: 0;
 }
 
 .panel-kicker {
-  margin: 0 0 0.15rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--cl-kicker);
 }
 
 h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
   color: var(--cl-heading);
 }
 
 .panel-subtitle {
-  margin: 0.4rem 0 0;
-  max-width: 112ch;
+  margin: 0.45rem 0 0;
+  /* A comfortable reading measure (~60ch) rather than letting the line stretch the full
+     panel width - shorter, more even lines instead of one paragraph ragged across three
+     long rows. */
+  max-width: 60ch;
   font-size: 0.85rem;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--cl-muted);
   text-wrap: balance;
 }
