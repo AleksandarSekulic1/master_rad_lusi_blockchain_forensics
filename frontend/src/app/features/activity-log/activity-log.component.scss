@@ -1,12 +1,117 @@
+/* Temski tokeni - tamna tema podrazumevano, prepisani pod [data-theme='light'] (isti
+   pristup kao dex-swap-analysis / taint-analysis / pathfinding .scss), tako da ova
+   stranica u obe teme izgleda kao sestra ostalih stranica analize. */
+:host {
+  --al-border: rgba(148, 163, 184, 0.18);
+  --al-border-soft: rgba(148, 163, 184, 0.12);
+  --al-surface: rgba(8, 15, 29, 0.74);
+  --al-kicker: #7bd6ff;
+  --al-heading: #f4f7fe;
+  --al-text: #d5e0f6;
+  --al-text-2: #cdd9ef;
+  --al-muted: #8ea6c7;
+  --al-summary-text: #b9c8e4;
+  --al-field-border: rgba(148, 163, 184, 0.2);
+  --al-field-bg: rgba(255, 255, 255, 0.03);
+  --al-field-text: #eef4ff;
+  --al-btn-bg: rgba(255, 255, 255, 0.02);
+  --al-btn-text: #d9e6ff;
+  --al-chip-bg: rgba(255, 255, 255, 0.03);
+  --al-chip-text: #cdd9ef;
+  --al-chip-hover-text: #ffffff;
+  --al-chip-hover-border: rgba(148, 163, 184, 0.4);
+  --al-row-hover: rgba(96, 165, 250, 0.06);
+  --al-row-expanded: rgba(96, 165, 250, 0.08);
+  --al-detail-bg: rgba(4, 10, 20, 0.4);
+  --al-mono: #a5c9f0;
+  --al-hash: #7bd6ff;
+  --al-error-bg: rgba(220, 38, 38, 0.14);
+  --al-error-border: rgba(248, 113, 113, 0.28);
+  --al-error-text: #fecaca;
+  --al-warning-text: #fbbf24;
+  --al-warning-bg: rgba(251, 191, 36, 0.1);
+  --al-warning-border: rgba(251, 191, 36, 0.25);
+  --al-good-border: rgba(134, 239, 172, 0.35);
+  --al-good-bg: rgba(74, 222, 128, 0.1);
+  --al-report-panel-bg: rgba(96, 165, 250, 0.06);
+  --al-report-panel-border: rgba(123, 214, 255, 0.22);
+  --al-count-chip-text: #7bd6ff;
+  --al-count-chip-bg: rgba(123, 214, 255, 0.1);
+  --al-count-chip-border: rgba(123, 214, 255, 0.2);
+  --al-ghost-active-text: #7bd6ff;
+  --al-ghost-active-bg: rgba(123, 214, 255, 0.1);
+  --al-ghost-active-border: rgba(123, 214, 255, 0.4);
+  --al-scope-text: #9fb6d8;
+  --al-historical-bg: rgba(148, 163, 184, 0.25);
+
+  /* Per-action tag colour (see presentation()'s ACTION_HUE) - one HSL hue per action key,
+     spaced evenly so any two actions are visually distinct rather than sharing one of a
+     handful of group colours. Saturation/lightness/alpha stay fixed per theme; only the
+     hue itself (--action-hue, set inline per tag) varies. */
+  --al-action-sat: 85%;
+  --al-action-lightness: 76%;
+  --al-action-bg-alpha: 0.13;
+  --al-action-border-alpha: 0.3;
+}
+
+:host-context([data-theme='light']) {
+  --al-border: rgba(15, 23, 42, 0.12);
+  --al-border-soft: rgba(15, 23, 42, 0.1);
+  --al-surface: #ffffff;
+  --al-kicker: #2563eb;
+  --al-heading: #16233b;
+  --al-text: #26344c;
+  --al-text-2: #33415c;
+  --al-muted: #55658c;
+  --al-summary-text: #33415c;
+  --al-field-border: rgba(15, 23, 42, 0.16);
+  --al-field-bg: #f6f8fc;
+  --al-field-text: #16233b;
+  --al-btn-bg: rgba(15, 23, 42, 0.03);
+  --al-btn-text: #1e293b;
+  --al-chip-bg: rgba(15, 23, 42, 0.045);
+  --al-chip-text: #33415c;
+  --al-chip-hover-text: #0f1b30;
+  --al-chip-hover-border: rgba(15, 23, 42, 0.32);
+  --al-row-hover: rgba(37, 99, 235, 0.05);
+  --al-row-expanded: rgba(37, 99, 235, 0.07);
+  --al-detail-bg: rgba(15, 23, 42, 0.03);
+  --al-mono: #1d4ed8;
+  --al-hash: #2563eb;
+  --al-error-bg: rgba(220, 38, 38, 0.08);
+  --al-error-border: rgba(220, 38, 38, 0.28);
+  --al-error-text: #b91c1c;
+  --al-warning-text: #b45309;
+  --al-warning-bg: rgba(180, 83, 9, 0.1);
+  --al-warning-border: rgba(180, 83, 9, 0.3);
+  --al-good-border: rgba(22, 163, 74, 0.35);
+  --al-good-bg: rgba(22, 163, 74, 0.08);
+  --al-report-panel-bg: rgba(37, 99, 235, 0.05);
+  --al-report-panel-border: rgba(37, 99, 235, 0.25);
+  --al-count-chip-text: #2563eb;
+  --al-count-chip-bg: rgba(37, 99, 235, 0.08);
+  --al-count-chip-border: rgba(37, 99, 235, 0.22);
+  --al-ghost-active-text: #2563eb;
+  --al-ghost-active-bg: rgba(37, 99, 235, 0.08);
+  --al-ghost-active-border: rgba(37, 99, 235, 0.35);
+  --al-scope-text: #475569;
+  --al-historical-bg: rgba(15, 23, 42, 0.12);
+
+  --al-action-sat: 72%;
+  --al-action-lightness: 34%;
+  --al-action-bg-alpha: 0.1;
+  --al-action-border-alpha: 0.34;
+}
+
 .activity-page {
   display: grid;
   gap: 1rem;
 }
 
 .panel {
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--al-border);
   border-radius: 1.25rem;
-  background: rgba(8, 15, 29, 0.74);
+  background: var(--al-surface);
   box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
   backdrop-filter: blur(16px);
   padding: 1.15rem;
@@ -35,14 +140,16 @@
 .panel-kicker {
   margin: 0 0 0.15rem;
   font-size: 0.72rem;
+  font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--al-kicker);
 }
 
 h2 {
   margin: 0;
   font-size: 1.15rem;
+  color: var(--al-heading);
 }
 
 .panel-subtitle {
@@ -52,12 +159,12 @@ h2 {
   max-width: 112ch;
   font-size: 0.85rem;
   line-height: 1.6;
-  color: #8ea6c7;
+  color: var(--al-muted);
   text-wrap: balance;
 }
 
 .panel-subtitle strong {
-  color: #cdd9ef;
+  color: var(--al-text-2);
 }
 
 .toolbar {
@@ -72,15 +179,15 @@ h2 {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.78rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .user-filter select {
   padding: 0.6rem 0.8rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--al-field-border);
+  color: var(--al-field-text);
+  background: var(--al-field-bg);
   font-size: 0.85rem;
 }
 
@@ -95,11 +202,15 @@ h2 {
   border: none;
   border-radius: 0.9rem;
   cursor: pointer;
+  font: inherit;
   font-size: 0.85rem;
+  font-weight: 500;
+  transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
 }
 
 .primary-button {
   color: #04111f;
+  font-weight: 600;
   background: linear-gradient(135deg, #7dd3fc, #93c5fd);
 }
 
@@ -109,9 +220,13 @@ h2 {
 }
 
 .ghost-button {
-  color: #d9e6ff;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.02);
+  color: var(--al-btn-text);
+  border: 1px solid var(--al-field-border);
+  background: var(--al-btn-bg);
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: var(--al-chip-hover-border);
 }
 
 .auto-toggle {
@@ -121,9 +236,13 @@ h2 {
 }
 
 .auto-toggle.active {
-  color: #86efac;
-  border-color: rgba(134, 239, 172, 0.35);
-  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border-color: var(--al-good-border);
+  background: var(--al-good-bg);
+}
+
+:host-context([data-theme='light']) .auto-toggle.active {
+  color: #15803d;
 }
 
 .pulse-dot {
@@ -156,38 +275,81 @@ h2 {
 
 .report-panel {
   margin: 0.2rem 0 1rem;
-  padding: 1rem 1.1rem;
-  border-radius: 1rem;
-  background: rgba(96, 165, 250, 0.06);
-  border: 1px solid rgba(123, 214, 255, 0.22);
+  padding: 1.15rem 1.3rem;
+  border-radius: 1.1rem;
+  background: var(--al-report-panel-bg);
+  border: 1px solid var(--al-report-panel-border);
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
+}
+
+.report-header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.report-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 999px;
+  font-size: 1rem;
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
 }
 
 .report-title {
   margin: 0;
-  font-size: 0.95rem;
-  color: #eef4ff;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--al-field-text);
+}
+
+.report-header .report-hint {
+  margin: 0.15rem 0 0;
+}
+
+/* Sva polja jedne ispod drugog, u sopstvenoj kartici - vizuelno odvojena od zaglavlja i
+   od footera (broj zapisa + dugmad), umesto da sve pluta u istom razmaku. */
+.report-fields {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.95rem 1rem;
+  border-radius: 0.85rem;
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-border-soft);
 }
 
 .report-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 6rem 1fr;
   align-items: center;
   gap: 0.7rem;
-  flex-wrap: wrap;
+}
+
+@media (max-width: 30rem) {
+  .report-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .report-label {
-  min-width: 5.5rem;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .mode-chips,
-.user-chips {
+.user-chips,
+.report-row-value {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
 }
@@ -198,16 +360,18 @@ h2 {
   gap: 0.4rem;
   padding: 0.45rem 0.8rem;
   border-radius: 999px;
+  font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
-  color: #cdd9ef;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--al-chip-text);
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-field-border);
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
 
 .mode-chip:hover {
-  color: #ffffff;
-  border-color: rgba(148, 163, 184, 0.4);
+  color: var(--al-chip-hover-text);
+  border-color: var(--al-chip-hover-border);
 }
 
 .mode-chip.active {
@@ -220,7 +384,7 @@ h2 {
   font-size: 0.66rem;
   padding: 0.1rem 0.35rem;
   border-radius: 0.35rem;
-  background: rgba(148, 163, 184, 0.25);
+  background: var(--al-historical-bg);
   color: inherit;
   opacity: 0.85;
 }
@@ -228,53 +392,66 @@ h2 {
 .report-panel input[type='date'] {
   padding: 0.55rem 0.75rem;
   border-radius: 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--al-field-border);
+  color: var(--al-field-text);
+  background: var(--al-field-bg);
+  font: inherit;
   font-size: 0.85rem;
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 .dash {
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .report-hint {
   margin: 0;
   font-size: 0.8rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
+}
+
+/* Status levo, dugmad desno, odvojeno tankom linijom od polja iznad - čita se kao
+   sledeći korak ("evo koliko će izveštaj imati zapisa, sad ga preuzmi"), isti obrazac
+   kao DEX Swap/Provera izveštaja stranica. */
+.report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--al-report-panel-border);
 }
 
 .report-status {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
-  padding-top: 0.6rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
   font-size: 0.82rem;
 }
 
 .count-chip.empty {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.25);
+  color: var(--al-warning-text);
+  background: var(--al-warning-bg);
+  border-color: var(--al-warning-border);
 }
 
 .report-warning {
-  color: #fbbf24;
+  color: var(--al-warning-text);
 }
 
 .report-actions {
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
+  flex: none;
 }
 
 .ghost-button.active {
-  color: #7bd6ff;
-  border-color: rgba(123, 214, 255, 0.4);
-  background: rgba(123, 214, 255, 0.1);
+  color: var(--al-ghost-active-text);
+  border-color: var(--al-ghost-active-border);
+  background: var(--al-ghost-active-bg);
 }
 
 .meta-row {
@@ -284,7 +461,7 @@ h2 {
   flex-wrap: wrap;
   padding-bottom: 0.85rem;
   margin-bottom: 0.35rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid var(--al-border-soft);
   font-size: 0.8rem;
 }
 
@@ -292,33 +469,105 @@ h2 {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.76rem;
-  color: #7bd6ff;
-  background: rgba(123, 214, 255, 0.1);
-  border: 1px solid rgba(123, 214, 255, 0.2);
+  font-weight: 500;
+  color: var(--al-count-chip-text);
+  background: var(--al-count-chip-bg);
+  border: 1px solid var(--al-count-chip-border);
 }
 
 .muted {
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .error-banner {
   margin: 0.85rem 0 0;
   padding: 0.75rem 0.9rem;
   border-radius: 0.85rem;
-  color: #fecaca;
-  background: rgba(220, 38, 38, 0.14);
-  border: 1px solid rgba(248, 113, 113, 0.28);
+  color: var(--al-error-text);
+  background: var(--al-error-bg);
+  border: 1px solid var(--al-error-border);
   font-size: 0.85rem;
 }
 
 .empty-state {
   margin: 1.5rem 0 0.5rem;
   text-align: center;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .table-wrapper {
   overflow-x: auto;
+}
+
+/* ---------- Paginacija ---------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--al-border-soft);
+  font-size: 0.8rem;
+}
+
+.page-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--al-muted);
+}
+
+.page-size select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--al-field-border);
+  color: var(--al-field-text);
+  background: var(--al-field-bg);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.page-size select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.page-range {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.page-nav-button {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+}
+
+.page-indicator {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--al-text-2);
+}
+
+@media (max-width: 30rem) {
+  .pagination {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .page-range {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 
 table {
@@ -331,19 +580,20 @@ th {
   padding: 0.7rem 0.6rem;
   text-align: left;
   white-space: nowrap;
-  color: #8ea6c7;
+  color: var(--al-muted);
   font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid var(--al-border);
 }
 
 td {
   padding: 0.7rem 0.6rem;
   text-align: left;
   vertical-align: top;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  color: #d5e0f6;
+  border-bottom: 1px solid var(--al-border-soft);
+  color: var(--al-text);
 }
 
 .log-row {
@@ -351,11 +601,11 @@ td {
 }
 
 .log-row:hover {
-  background: rgba(96, 165, 250, 0.06);
+  background: var(--al-row-hover);
 }
 
 .log-row.is-expanded {
-  background: rgba(96, 165, 250, 0.08);
+  background: var(--al-row-expanded);
 }
 
 .log-row.is-expanded td {
@@ -368,13 +618,13 @@ td {
 
 .time-main {
   display: block;
-  color: #d5e0f6;
+  color: var(--al-text);
 }
 
 .time-sub {
   display: block;
   font-size: 0.76rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -383,12 +633,16 @@ td {
   padding: 0.28rem 0.65rem;
   border-radius: 999px;
   font-size: 0.78rem;
-  color: #cdd9ef;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--al-text-2);
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-field-border);
   white-space: nowrap;
 }
 
+/* Colour is per-ACTION, not per-group (see presentation()'s ACTION_HUE): --action-hue is
+   set inline on the tag, this rule just turns it into text/background/border at the
+   saturation/lightness this theme uses. Two different actions are never the same colour,
+   so scanning a long log doesn't mean reading every row's text to tell them apart. */
 .action-tag {
   display: inline-flex;
   align-items: center;
@@ -396,8 +650,11 @@ td {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.78rem;
+  font-weight: 600;
   white-space: nowrap;
-  border: 1px solid transparent;
+  color: hsl(var(--action-hue) var(--al-action-sat) var(--al-action-lightness));
+  background: hsl(var(--action-hue) var(--al-action-sat) var(--al-action-lightness) / var(--al-action-bg-alpha));
+  border: 1px solid hsl(var(--action-hue) var(--al-action-sat) var(--al-action-lightness) / var(--al-action-border-alpha));
 }
 
 .action-icon {
@@ -405,57 +662,9 @@ td {
   line-height: 1;
 }
 
-/* Colour follows what KIND of action it is, so scanning a long log for "who ran an
-   analysis" doesn't mean reading every row's text. */
-.action-tag.group-evidence {
-  color: #7bd6ff;
-  background: rgba(123, 214, 255, 0.1);
-  border-color: rgba(123, 214, 255, 0.24);
-}
-
-.action-tag.group-analysis {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.24);
-}
-
-.action-tag.group-case {
-  color: #c4b5fd;
-  background: rgba(196, 181, 253, 0.1);
-  border-color: rgba(196, 181, 253, 0.24);
-}
-
-.action-tag.group-test {
-  color: #86efac;
-  background: rgba(134, 239, 172, 0.1);
-  border-color: rgba(134, 239, 172, 0.24);
-}
-
-/* Export is the one action that is about the log itself rather than about the
-   investigation, so it gets its own colour instead of sharing with evidence. */
-.action-tag.group-report {
-  color: #a5b4fc;
-  background: rgba(165, 180, 252, 0.1);
-  border-color: rgba(165, 180, 252, 0.26);
-}
-
-/* Lanac dokaza gets its own colour too - taking a copy of a custody record out of the
-   application is a distinct kind of event from a routine report export. */
-.action-tag.group-custody {
-  color: #f0abd8;
-  background: rgba(240, 171, 216, 0.1);
-  border-color: rgba(240, 171, 216, 0.26);
-}
-
-.action-tag.group-other {
-  color: #cbd5e1;
-  background: rgba(203, 213, 225, 0.08);
-  border-color: rgba(203, 213, 225, 0.18);
-}
-
 .case-name {
   display: block;
-  color: #d5e0f6;
+  color: var(--al-text);
   max-width: 26ch;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -469,32 +678,32 @@ td {
   padding: 0.2rem 0.55rem;
   border-radius: 0.5rem;
   font-size: 0.76rem;
-  color: #9fb6d8;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--al-scope-text);
+  background: var(--al-chip-bg);
+  border: 1px solid var(--al-field-border);
 }
 
 /* Historical entries written before case names were recorded - visually de-emphasised so
    they read as "not captured back then" rather than as a real case name. */
 .case-name.unrecorded {
-  color: #7788a4;
+  color: var(--al-muted);
   font-style: italic;
 }
 
 .case-id {
   display: block;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.72rem;
-  color: #8ea6c7;
+  color: var(--al-muted);
 }
 
 .summary-text {
-  display: inline-block;
-  max-width: 38ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #b9c8e4;
+  display: block;
+  min-width: 22rem;
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.5;
+  color: var(--al-summary-text);
 }
 
 .col-toggle {
@@ -505,28 +714,30 @@ td {
 .detail-toggle {
   padding: 0.35rem 0.7rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.02);
-  color: #9fb6d8;
+  border: 1px solid var(--al-field-border);
+  background: var(--al-btn-bg);
+  color: var(--al-scope-text);
+  font: inherit;
   font-size: 0.76rem;
   cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
 }
 
 .detail-toggle:hover {
-  color: #eef4ff;
-  border-color: rgba(148, 163, 184, 0.34);
+  color: var(--al-field-text);
+  border-color: var(--al-chip-hover-border);
 }
 
 .detail-row td {
   padding-top: 0;
-  background: rgba(96, 165, 250, 0.08);
+  background: var(--al-row-expanded);
 }
 
 .detail-panel {
   padding: 0.6rem 0.9rem 0.9rem;
   border-radius: 0.9rem;
-  background: rgba(4, 10, 20, 0.4);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: var(--al-detail-bg);
+  border: 1px solid var(--al-border-soft);
 }
 
 .detail-panel dl {
@@ -538,27 +749,28 @@ td {
 
 .detail-panel dt {
   font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8ea6c7;
+  color: var(--al-muted);
   margin-bottom: 0.2rem;
 }
 
 .detail-panel dd {
   margin: 0;
   font-size: 0.82rem;
-  color: #d5e0f6;
+  color: var(--al-text);
   word-break: break-word;
 }
 
 .detail-panel .mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.78rem;
-  color: #a5c9f0;
+  color: var(--al-mono);
 }
 
 .detail-panel .hash {
-  color: #7bd6ff;
+  color: var(--al-hash);
 }
 
 @media (max-width: 900px) {
@@ -570,8 +782,158 @@ td {
     width: 100%;
   }
 
-  .summary-text,
+  .summary-text {
+    min-width: 14rem;
+  }
+
   .case-name {
     max-width: 20ch;
   }
+}
+
+/* ---------- Dijalog za potpis pre izvoza PDF-a (isto kao report-export.component.scss's
+   own .signing-overlay/.signing-dialog - kopija, ne deljeni import, ista konvencija kao
+   svaki drugi dupliran "shell" blok u ovoj aplikaciji) ---------- */
+
+.signing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(3, 8, 18, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.signing-dialog {
+  width: min(40rem, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.4rem 1.5rem;
+  border-radius: 1.25rem;
+  background: var(--al-surface);
+  border: 1px solid var(--al-border);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+  color: var(--al-text);
+}
+
+.signing-dialog h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  color: var(--al-heading);
+}
+
+.signing-intro {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--al-muted);
+}
+
+.lang-choice {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--al-field-border);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+}
+
+.lang-choice legend {
+  padding: 0 0.35rem;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--al-muted);
+}
+
+.lang-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.lang-hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--al-muted);
+}
+
+.lang-hint strong {
+  color: var(--al-text-2);
+}
+
+.signing-examiner {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--al-field-border);
+  border-radius: 0.6rem;
+  background: var(--al-field-bg);
+  font-size: 0.8rem;
+  color: var(--al-muted);
+}
+
+.signing-examiner strong {
+  font-size: 0.92rem;
+  color: var(--al-text-2);
+}
+
+.signing-signature-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--al-muted);
+}
+
+.signing-declaration {
+  display: flex;
+  gap: 0.55rem;
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: var(--al-muted);
+}
+
+.signing-declaration input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.error-inline {
+  margin: 0.6rem 0 0;
+  font-size: 0.83rem;
+  color: var(--al-error-text);
+}
+
+.signing-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.signing-actions .ghost-button {
+  padding: 0.6rem 1.1rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--al-field-border);
+  background: transparent;
+  color: var(--al-text-2);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.signing-actions .ghost-button:disabled,
+.signing-actions .primary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

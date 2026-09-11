@@ -101,9 +101,31 @@
     </div>
 
     <p class="status" [class.busy]="isUploading || isRefreshing || isFetchingOnchain">{{ statusMessage() }}</p>
-    <div class="upload-meta" *ngIf="uploadResult">
+
+    <div class="upload-meta" *ngIf="uploadResult && !uploadResult.split">
       <span>SHA-256: {{ uploadResult.sha256 }}</span>
       <span>{{ t('Redova', 'Rows') }}: {{ uploadResult.rows_total }}</span>
+    </div>
+
+    <!-- Automatski razdvajanje po valuti (vidi dashboard.component.ts#splitSummaryLabel i
+         upload.py#_split_and_store_by_currency) - jedan uneti fajl, više evidencijskih
+         fajlova, svaki interno dosledan (jedna valuta) za taint model. -->
+    <div class="upload-split-meta" *ngIf="uploadResult?.split">
+      <p class="upload-split-note">
+        {{
+          t(
+            'Fajl "' + uploadResult!.source_file_name + '" je sadržao više valuta, pa je automatski razdvojen u posebne dokaze — po jedan fajl za svaku valutu.',
+            'The file "' + uploadResult!.source_file_name + '" declared more than one currency, so it was automatically split into separate evidence files — one per currency.'
+          )
+        }}
+      </p>
+      <ul class="upload-split-list">
+        <li *ngFor="let file of uploadResult!.files">
+          <span class="upload-split-currency">{{ file.currency ?? t('bez valute', 'no currency') }}</span>
+          <span>{{ file.rows_total }} {{ t('redova', 'rows') }}</span>
+          <span class="mono-clip">SHA-256: {{ file.sha256 }}</span>
+        </li>
+      </ul>
     </div>
   </article>
 

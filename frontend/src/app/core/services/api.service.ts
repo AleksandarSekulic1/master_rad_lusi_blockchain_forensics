@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { AppLang } from './settings.service';
 import {
   ActivityLogResponse,
   ActivityReportPreview,
@@ -220,6 +221,15 @@ export class ApiService {
     return this.http.get(`${this.apiUrl}/api/v1/exports/cases/${caseId}/graph.gexf`, { responseType: 'blob' });
   }
 
+  /** Raw, cleaned per-transaction CSV of the case's combined evidence (or one evidence
+   * file when `evidence` is given) - the same rows every analysis page reads from, not
+   * the section/field/value summary in exportCaseReportCsv's report.csv. Plain, unsigned
+   * download: no custody dialog, no audit log entry, same as getCaseGraph. */
+  exportCaseTransactionsCsv(caseId: string, evidence?: string | null): Observable<Blob> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/transactions/export`, { params, responseType: 'blob' });
+  }
+
   getCaseGraph(caseId: string, evidence?: string | null): Observable<NodeLinkGraphResponse> {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
     return this.http.get<NodeLinkGraphResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/graph`, { params });
@@ -342,10 +352,13 @@ export class ApiService {
   /** Deliberate variant of getDexSwapAnalysis above (see DEX-SWAP-ANALIZA.md #12 /
    * LANAC-DOKAZA.md) - the DEX Swap Analysis page's own ANALYZE button calls this one,
    * always with a `custody` entry, since scanning the evidence for swap pairs is the same
-   * kind of deliberate access as "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf". */
+   * kind of deliberate access as "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf".
+   * `address` may be null - the backend then returns every swap event found anywhere in
+   * the evidence (not scoped to one wallet), used by the page's "find all addresses"
+   * scan (see dex_swap_analysis.py's target_address=None path). */
   runDexSwapAnalysis(
     caseId: string,
-    address: string,
+    address: string | null,
     evidence: string | null,
     custody: TransactionCustodyEntry,
   ): Observable<DexSwapAnalysisResult> {
@@ -441,11 +454,37 @@ export class ApiService {
     });
   }
 
-  downloadActivityReport(options: ActivityReportOptions, format: 'pdf' | 'csv'): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}/api/v1/activity-log/report.${format}`, {
+  /** Plain, unsigned CSV export - raw data for further processing, not a presentation
+   * document, so (like the case/transactions CSV exports elsewhere) it needs no signature
+   * or verification code. See signActivityReportPdf below for the signed PDF. */
+  downloadActivityReportCsv(options: ActivityReportOptions): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/activity-log/report.csv`, {
       params: this.activityReportParams(options),
       responseType: 'blob',
     });
+  }
+
+  /** The signed variant: registers the report (verification code + content hash) and
+   * builds the PDF entirely server-side, the same as the plain CSV/PDF above - the data
+   * has to come from the authoritative log file, not from whatever the page happens to
+   * have loaded (see activity_report.py's own docstring). Unlike every other signed
+   * report in this app (built client-side with jsPDF), the signature/declaration/language
+   * travel TO the server here rather than a verification code traveling back to a
+   * client-built PDF. */
+  signActivityReportPdf(
+    options: ActivityReportOptions,
+    signing: { lang: AppLang; declaration: string; signatureImage: string },
+  ): Observable<Blob> {
+    const body = {
+      users: options.users?.length ? options.users : null,
+      date_from: options.dateFrom || null,
+      date_to: options.dateTo || null,
+      tz_offset_minutes: new Date().getTimezoneOffset(),
+      lang: signing.lang,
+      declaration: signing.declaration,
+      signature_image: signing.signatureImage,
+    };
+    return this.http.post(`${this.apiUrl}/api/v1/activity-log/report/signed.pdf`, body, { responseType: 'blob' });
   }
 
   /** The timezone offset travels with every report request: the server stores UTC but the

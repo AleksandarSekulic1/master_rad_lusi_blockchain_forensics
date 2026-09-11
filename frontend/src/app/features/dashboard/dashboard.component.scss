@@ -325,6 +325,65 @@ select option {
   word-break: break-all;
 }
 
+/* ---------- automatski razdvojen upload po valuti ---------- */
+
+.upload-split-meta {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.85rem;
+  border: 1px dashed var(--link);
+  background: var(--chip-bg);
+}
+
+.upload-split-note {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-strong);
+}
+
+.upload-split-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.upload-split-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.6rem;
+  background: var(--field-bg);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.upload-split-currency {
+  flex: none;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+}
+
+.upload-split-list .mono-clip {
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- metric cards ---------- */
 
 .metric-card {

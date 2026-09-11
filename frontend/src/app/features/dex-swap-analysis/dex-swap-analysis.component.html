@@ -1,98 +1,233 @@
 <div class="dex-swap-shell">
-  <div class="active-case-banner">
-    <div *ngIf="activeCase; else noCase">
-      <span class="panel-kicker">Aktivan slučaj</span>
-      <strong>{{ activeCase.name }}</strong>
-    </div>
-    <ng-template #noCase>
-      <span class="muted">Nije izabran slučaj — idi na <a routerLink="/cases">Slučajevi</a> da izabereš jedan.</span>
-    </ng-template>
-  </div>
+  <div class="dex-controls">
+    <div class="dex-bar">
+      <div class="dex-case" *ngIf="activeCase; else noCase">
+        <span class="dex-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="dex-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
 
-  <div class="evidence-picker" *ngIf="activeCase && evidenceOptions.length > 0">
-    <label>
-      Prikaz transakcija
-      <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
-        <option value="">Sve transakcije (kombinovano)</option>
-        <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
-          {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
-        </option>
-      </select>
-    </label>
+      <label class="dex-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="dex-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div class="dex-swap-header">
-    <p class="panel-kicker">DEX Swap Analysis</p>
+    <p class="panel-kicker">{{ t('DEX Swap analiza', 'DEX Swap Analysis') }}</p>
     <h2>DEX SWAPS</h2>
-    <p>Heuristička detekcija swap događaja — adresa šalje jedan token na DEX kontrakt i ubrzo prima drugi token nazad.</p>
   </div>
 
-  <div class="address-form">
-    <label class="address-field">
-      Address
-      <input
-        type="text"
-        [(ngModel)]="address"
-        placeholder="0x..."
-        (keydown.enter)="openCustodyDialog()"
-        [disabled]="!activeCase"
-      />
-    </label>
-    <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
-      {{ isAnalyzing ? 'Analiza...' : 'ANALYZE' }}
-    </button>
+  <div class="address-panel">
+    <div class="address-form">
+      <label class="address-field" *ngIf="caseAddresses.length > 0 || isLoadingCaseAddresses">
+        {{ t('Adrese iz slučaja', 'Case addresses') }}
+        <select
+          class="case-address-select"
+          [disabled]="!activeCase || isLoadingCaseAddresses || availableCaseAddresses.length === 0"
+          [ngModel]="''"
+          (ngModelChange)="onPickAddress($event)"
+        >
+          <option value="" disabled>
+            {{
+              isLoadingCaseAddresses
+                ? t('Učitavanje adresa…', 'Loading addresses…')
+                : availableCaseAddresses.length === 0
+                  ? t('Sve adrese su već dodate', 'All addresses already added')
+                  : t('Izaberi adresu iz slučaja…', 'Pick an address from the case…')
+            }}
+          </option>
+          <option *ngFor="let addr of availableCaseAddresses" [value]="addr">{{ addr }}</option>
+        </select>
+      </label>
+
+      <label class="address-field">
+        {{ t('Ili unesi adresu ručno', 'Or enter an address manually') }}
+        <input
+          type="text"
+          [(ngModel)]="address"
+          placeholder="0x..."
+          (keydown.enter)="addTypedAddress()"
+          [disabled]="!activeCase"
+        />
+      </label>
+
+      <button
+        type="button"
+        class="ghost-button add-address-button"
+        (click)="addTypedAddress()"
+        [disabled]="!activeCase || !address.trim()"
+      >
+        {{ t('Dodaj', 'Add') }}
+      </button>
+    </div>
+
+    <div class="queue-chips" *ngIf="queue.length > 0">
+      <span class="queue-label">{{ t('Za analizu', 'To analyse') }} ({{ queue.length }}):</span>
+      <span class="queue-chip" *ngFor="let addr of queue">
+        <span class="mono-clip">{{ addr }}</span>
+        <button type="button" (click)="removeFromQueue(addr)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
+      </span>
+    </div>
+
+    <div class="analyze-row">
+      <div class="analyze-row-group">
+        <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
+          {{
+            isAnalyzing
+              ? t('Analiza...', 'Analyzing...')
+              : queue.length > 1
+                ? t('ANALIZIRAJ', 'ANALYZE') + ' (' + queue.length + ')'
+                : t('ANALIZIRAJ', 'ANALYZE')
+          }}
+        </button>
+
+        <button type="button" class="ghost-button" *ngIf="queue.length > 0" (click)="clearQueue()">
+          {{ t('Očisti red', 'Clear queue') }}
+        </button>
+      </div>
+
+      <span class="analyze-row-divider" aria-hidden="true"></span>
+
+      <div class="analyze-row-group">
+        <button
+          type="button"
+          class="ghost-button"
+          (click)="addAllCaseAddresses()"
+          [disabled]="!activeCase || availableCaseAddresses.length === 0"
+          [title]="t('Dodaj u red sve adrese iz izabrane evidencije', 'Add every address from the selected evidence to the queue')"
+        >
+          {{ t('Dodaj sve adrese', 'Add all addresses') }}<ng-container *ngIf="availableCaseAddresses.length > 0"> ({{ availableCaseAddresses.length }})</ng-container>
+        </button>
+
+        <button
+          type="button"
+          class="ghost-button scan-all-button"
+          (click)="openScanAllDialog()"
+          [disabled]="!canScanAll"
+          [title]="
+            t(
+              'Jednim skeniranjem cele evidencije pronalazi SVE adrese koje imaju DEX swap aktivnost — bez pogađanja, isti algoritam primenjen na celu evidenciju odjednom.',
+              'One scan of the whole evidence finds every address with DEX swap activity — no guessing, the same algorithm applied to the whole evidence at once.'
+            )
+          "
+        >
+          <span class="scan-all-icon" aria-hidden="true">✦</span>
+          {{ isAnalyzing && isScanAllMode ? t('Skeniranje...', 'Scanning...') : t('Pronađi sve DEX swap adrese', 'Find all DEX swap addresses') }}
+        </button>
+      </div>
+    </div>
   </div>
 
   <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+  <p class="error-inline" *ngFor="let run of failedRuns">
+    <span class="mono-clip">{{ run.address }}</span> — {{ run.error }}
+  </p>
+
+  <div class="results-toolbar" *ngIf="runs.length > 0">
+    <div class="result-tabs" *ngIf="runs.length > 1">
+      <button
+        type="button"
+        class="result-tab"
+        *ngFor="let run of runs"
+        [class.active]="run.address === activeAddress"
+        [class.failed]="!run.result"
+        (click)="setActiveAddress(run.address)"
+      >
+        <span class="mono-clip">{{ run.address }}</span>
+        <span class="result-tab-remove" (click)="$event.stopPropagation(); removeRun(run.address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</span>
+      </button>
+    </div>
+
+    <button
+      type="button"
+      class="ghost-button export-pdf-button"
+      *ngIf="canExportPdf"
+      (click)="openSignatureDialog()"
+      [disabled]="isExportingPdf"
+      [title]="
+        t(
+          'Izvezi PDF izveštaj sa nalazima za sve analizirane adrese, potpisan i sa kontrolnim brojem za proveru',
+          'Export a PDF report with findings for every analysed address, signed and with a verification code'
+        )
+      "
+    >
+      {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+    </button>
+  </div>
 
   <ng-container *ngIf="result">
     <div class="result-meta">
-      <span class="tx-count-pill">{{ result.total_events }} swap{{ result.total_events === 1 ? '' : 's' }} detected</span>
-      <button
-        type="button"
-        class="ghost-button"
-        (click)="openSignatureDialog()"
-        [disabled]="isExportingPdf"
-        title="Izvezi PDF izveštaj sa trenutnim nalazima, potpisan i sa kontrolnim brojem za proveru"
-      >
-        {{ isExportingPdf ? 'Generisanje PDF-a...' : 'Izvezi PDF izveštaj' }}
-      </button>
+      <span class="tx-count-pill">
+        {{ result.total_events }}
+        {{
+          t(
+            result.total_events === 1 ? 'swap detektovan' : 'swap događaja detektovano',
+            'swap' + (result.total_events === 1 ? '' : 's') + ' detected'
+          )
+        }}
+      </span>
     </div>
 
     <p class="data-note" *ngIf="!result.data_completeness.currency_declared">{{ result.data_completeness.note }}</p>
 
     <div class="swap-list" *ngIf="result.events.length > 0; else noSwaps">
-      <article class="swap-card" *ngFor="let event of result.events">
-        <span
-          class="confidence-badge"
-          [class.confidence-detected]="event.confidence === 'Detected'"
-          [class.confidence-potential]="event.confidence === 'Potential'"
-        >
-          {{ event.label }}
-        </span>
-
-        <p class="swap-route">{{ event.user_address }} → {{ event.dex_name }}</p>
+      <article
+        class="swap-card"
+        *ngFor="let event of result.events"
+        [class.card-detected]="event.confidence === 'Detected'"
+        [class.card-potential]="event.confidence === 'Potential'"
+      >
+        <div class="swap-card-top">
+          <span
+            class="confidence-badge"
+            [class.confidence-detected]="event.confidence === 'Detected'"
+            [class.confidence-potential]="event.confidence === 'Potential'"
+          >
+            {{
+              event.confidence === 'Detected'
+                ? t('Detektovan swap', 'Detected swap')
+                : t('Mogući swap', 'Potential swap')
+            }}
+          </span>
+          <span class="swap-route">{{ event.user_address }} → {{ event.dex_name }}</span>
+        </div>
 
         <p class="swap-headline">
-          <span class="amount">{{ event.input_amount | number : '1.0-6' }}</span>
-          <span class="token" [class.token-unknown]="!event.input_token" [title]="tokenTitle(event.input_token)">{{
-            tokenLabel(event.input_token)
-          }}</span>
+          <span class="leg">
+            <span class="amount">{{ event.input_amount | number : '1.0-6' }}</span>
+            <span class="token" [class.token-unknown]="!event.input_token" [title]="tokenTitle(event.input_token)">{{
+              tokenLabel(event.input_token)
+            }}</span>
+          </span>
           <span class="arrow">→</span>
           <span class="dex-name">{{ event.dex_name }}</span>
           <span class="arrow">→</span>
-          <span class="amount">{{ event.output_amount | number : '1.0-6' }}</span>
-          <span class="token" [class.token-unknown]="!event.output_token" [title]="tokenTitle(event.output_token)">{{
-            tokenLabel(event.output_token)
-          }}</span>
+          <span class="leg">
+            <span class="amount">{{ event.output_amount | number : '1.0-6' }}</span>
+            <span class="token" [class.token-unknown]="!event.output_token" [title]="tokenTitle(event.output_token)">{{
+              tokenLabel(event.output_token)
+            }}</span>
+          </span>
         </p>
 
         <div class="swap-footer">
           <span
-            >Time: {{ event.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
+            >{{ t('Vreme', 'Time') }}: {{ event.input_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC<ng-container
               *ngIf="event.time_gap_seconds > 0"
             >
-              · gap {{ event.time_gap_seconds }}s</ng-container
+              · {{ t('razmak', 'gap') }} {{ event.time_gap_seconds }}s</ng-container
             ></span
           >
           <span *ngFor="let line of txHashLines(event)">{{ line.label }}: {{ line.hash }}</span>
@@ -101,14 +236,19 @@
     </div>
 
     <ng-template #noSwaps>
-      <p class="empty-hint">No DEX swaps detected for this address.</p>
+      <p class="empty-hint">{{ t('Nijedan DEX swap nije detektovan za ovu adresu.', 'No DEX swaps detected for this address.') }}</p>
     </ng-template>
 
     <p class="disclaimer-note">{{ result.disclaimer }}</p>
   </ng-container>
 
-  <p class="empty-hint" *ngIf="!result && !analysisError">
-    Unesi Ethereum adresu i klikni "ANALYZE" da vidiš detektovane DEX swap događaje.
+  <p class="empty-hint" *ngIf="runs.length === 0 && !analysisError">
+    {{
+      t(
+        'Unesi ili izaberi jednu ili više adresa i klikni "ANALIZIRAJ" da vidiš detektovane DEX swap događaje.',
+        'Enter or pick one or more addresses and click "ANALYZE" to see detected DEX swap events.'
+      )
+    }}
   </p>
 </div>
 
@@ -130,35 +270,66 @@
      ostao ispravno pozicioniran (position: fixed) bez obzira na skrol glavnog sadržaja. -->
 <div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
   <div class="signature-dialog" (click)="$event.stopPropagation()">
-    <p class="panel-kicker">Overa izveštaja</p>
-    <h3>Potpis analitičara</h3>
+    <p class="panel-kicker">{{ t('Overa izveštaja', 'Report certification') }}</p>
+    <h3>{{ t('Potpis analitičara', 'Analyst signature') }}</h3>
 
     <p class="signature-intro">
-      Potpišite se mišem u polju ispod. Uz potpis se generiše <strong>pečat aplikacije Lusi</strong> sa kontrolnim brojem
-      i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.
+      {{ t('Potpišite se mišem u polju ispod. Uz potpis se generiše', 'Sign with the mouse in the field below. Together with the signature, a') }}
+      <strong>{{ t('pečat aplikacije Lusi', 'Lusi application seal') }}</strong>
+      {{
+        t(
+          'sa kontrolnim brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.',
+          'is generated with a verification code and a content hash, which can later be used to check whether the report was altered.'
+        )
+      }}
     </p>
+
+    <fieldset class="signature-lang" [disabled]="isExportingPdf">
+      <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+      <label>
+        <input type="radio" name="dexPdfLang" value="sr" [(ngModel)]="dexPdfLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="dexPdfLang" value="en" [(ngModel)]="dexPdfLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+      <p class="signature-lang-hint">
+        {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+        <strong>{{ dexPdfLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+      </p>
+    </fieldset>
 
     <app-signature-pad></app-signature-pad>
 
     <label class="signature-declaration">
       <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
       <span>
-        Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi
-        kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.
+        {{
+          t(
+            'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.',
+            'I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (heuristically) over the stated evidence.'
+          )
+        }}
       </span>
     </label>
 
     <p class="signature-limit">
-      Napomena: potpis je <strong>izjava</strong>, a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni
-      dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.
+      {{ t('Napomena: potpis je', 'Note: the signature is a') }} <strong>{{ t('izjava', 'declaration') }}</strong>
+      {{
+        t(
+          ', a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.',
+          ', not a cryptographic proof — it stays intact even if someone edits the document. An alteration is detected only by comparing the content hash against the verification code.'
+        )
+      }}
     </p>
 
     <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
 
     <div class="signature-actions">
-      <button type="button" class="ghost-button" (click)="closeSignatureDialog()">Odustani</button>
+      <button type="button" class="ghost-button" (click)="closeSignatureDialog()">{{ t('Odustani', 'Cancel') }}</button>
       <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
-        {{ isExportingPdf ? 'Generisanje...' : 'Potpiši i izvezi PDF' }}
+        {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign and export PDF') }}
       </button>
     </div>
   </div>

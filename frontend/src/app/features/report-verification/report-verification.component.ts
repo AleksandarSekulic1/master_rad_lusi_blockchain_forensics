@@ -3,6 +3,7 @@ import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { ReportVerificationResult } from '../../models/blockchain-forensics.models';
 
 @Component({
@@ -19,7 +20,16 @@ export class ReportVerificationComponent {
   protected result: ReportVerificationResult | null = null;
   protected errorMessage: string | null = null;
 
-  constructor(private readonly api: ApiService) {}
+  constructor(
+    private readonly api: ApiService,
+    public readonly settings: SettingsService,
+  ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as the other analysis pages' own t()). */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   get canCheck(): boolean {
     return this.code.trim().length > 0 && !this.isChecking;
@@ -40,7 +50,7 @@ export class ReportVerificationComponent {
       },
       error: () => {
         this.isChecking = false;
-        this.errorMessage = 'Provera nije uspela. Pokušajte ponovo.';
+        this.errorMessage = this.t('Provera nije uspela. Pokušajte ponovo.', 'The check failed. Please try again.');
       },
     });
   }
@@ -68,22 +78,43 @@ export class ReportVerificationComponent {
     return this.result.matches ? 'valid' : 'tampered';
   }
 
+  /** Every `summary` key any report type registers via ApiService.registerReport - one
+   * shared, generic verification page for all of them (taint, pathfinding, behavioral,
+   * dex_swap, graph_analysis, case_triage), so a key any of those adds here shows a real
+   * label instead of falling back to its raw snake_case name. */
+  private readonly summaryLabels: Record<string, [string, string]> = {
+    // Taint (taint-analysis.component.ts)
+    tainted_addresses: ['Zaprljanih adresa', 'Tainted addresses'],
+    cash_out_points: ['Tačaka unovčavanja', 'Cash-out points'],
+    seeds: ['Izvora (seed)', 'Seed addresses'],
+    // Pathfinding (pathfinding.component.ts)
+    hops: ['Broj skokova', 'Hops'],
+    destination_mode: ['Način određivanja odredišta', 'Destination mode'],
+    taint_trace: ['Taint provera puta', 'Taint trace'],
+    // Behavioral analysis (behavioral-analysis.component.ts)
+    addresses: ['Analiziranih adresa', 'Addresses analysed'],
+    evidence_scope: ['Obim evidencije', 'Evidence scope'],
+    // DEX Swap analysis (dex-swap-analysis.component.ts)
+    addresses_analyzed: ['Analiziranih adresa', 'Addresses analysed'],
+    total_events: ['Ukupno događaja', 'Total events'],
+    detected_count: ['Detektovano', 'Detected'],
+    potential_count: ['Moguće', 'Potential'],
+    // Graph analysis / case triage (report-export.component.ts)
+    nodes: ['Čvorova', 'Nodes'],
+    edges: ['Veza', 'Edges'],
+    blacklisted: ['Na crnoj listi', 'Blacklisted'],
+    high_risk: ['Visok rizik', 'High risk'],
+    clusters: ['Klastera', 'Clusters'],
+    flagged_nodes: ['Označenih čvorova', 'Flagged nodes'],
+    analyzed: ['Analitika primenjena', 'Analytics applied'],
+    rows: ['Redova podataka', 'Data rows'],
+  };
+
   get summaryRows(): Array<{ label: string; value: string }> {
     const summary = this.result?.entry?.summary ?? {};
-    const labels: Record<string, string> = {
-      tainted_addresses: 'Zaprljanih adresa',
-      cash_out_points: 'Tačaka unovčavanja',
-      seeds: 'Izvora (seed)',
-      // Pathfinding Analysis izveštaji (POST /cases/{id}/pathfinding) koriste istu
-      // generičku registraciju/proveru izveštaja kao Taint analiza - samo dodaju svoje
-      // ključeve u summary, bez ikakve izmene ove (deljene, ne-taint) stranice.
-      hops: 'Broj skokova',
-      destination_mode: 'Način određivanja odredišta',
-      taint_trace: 'Taint provera puta',
-    };
-    return Object.entries(summary).map(([key, value]) => ({
-      label: labels[key] ?? key,
-      value: String(value),
-    }));
+    return Object.entries(summary).map(([key, value]) => {
+      const labelPair = this.summaryLabels[key];
+      return { label: labelPair ? this.t(labelPair[0], labelPair[1]) : key, value: String(value) };
+    });
   }
 }

@@ -2,25 +2,37 @@
   <article class="panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Chain of custody</p>
-        <h2>Log aktivnosti</h2>
+        <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+        <h2>{{ t('Log aktivnosti', 'Activity log') }}</h2>
         <p class="panel-subtitle" *ngIf="scope === 'all'; else selfScope">
-          Prikazane su akcije <strong>svih korisnika</strong>: otpremanje dokaza, povlačenje transakcija, pokretanje analiza,
-          testovi i izmene slučajeva.
+          {{ t('Prikazane su akcije', 'Showing the actions of') }}
+          <strong>{{ t('svih korisnika', 'all users') }}</strong>:
+          {{
+            t(
+              'otpremanje dokaza, povlačenje transakcija, pokretanje analiza, testovi i izmene slučajeva.',
+              'evidence uploads, transaction fetches, analysis runs, tests, and case changes.'
+            )
+          }}
         </p>
         <ng-template #selfScope>
           <p class="panel-subtitle">
-            Prikazane su <strong>vaše</strong> akcije: otpremanje dokaza, povlačenje transakcija, pokretanje analiza i izmene
-            slučajeva.
+            {{ t('Prikazane su', 'Showing') }}
+            <strong>{{ t('vaše', 'your') }}</strong>
+            {{
+              t(
+                'akcije: otpremanje dokaza, povlačenje transakcija, pokretanje analiza i izmene slučajeva.',
+                'actions: evidence uploads, transaction fetches, analysis runs, and case changes.'
+              )
+            }}
           </p>
         </ng-template>
       </div>
 
       <div class="toolbar">
         <label class="user-filter" *ngIf="isAdmin && availableUsers.length > 0">
-          <span>Korisnik</span>
+          <span>{{ t('Korisnik', 'User') }}</span>
           <select [(ngModel)]="selectedUser" (ngModelChange)="onUserFilterChange()">
-            <option value="">Svi korisnici</option>
+            <option value="">{{ t('Svi korisnici', 'All users') }}</option>
             <option *ngFor="let username of availableUsers" [value]="username">{{ username }}</option>
           </select>
         </label>
@@ -30,111 +42,133 @@
           class="ghost-button auto-toggle"
           [class.active]="autoRefreshEnabled"
           (click)="toggleAutoRefresh()"
-          [title]="autoRefreshEnabled ? 'Automatsko osvežavanje je uključeno (svakih 20s)' : 'Automatsko osvežavanje je isključeno'"
+          [title]="
+            autoRefreshEnabled
+              ? t('Automatsko osvežavanje je uključeno (svakih 20s)', 'Auto-refresh is on (every 20s)')
+              : t('Automatsko osvežavanje je isključeno', 'Auto-refresh is off')
+          "
         >
           <span class="pulse-dot" *ngIf="autoRefreshEnabled"></span>
-          {{ autoRefreshEnabled ? 'Uživo' : 'Pauzirano' }}
+          {{ autoRefreshEnabled ? t('Uživo', 'Live') : t('Pauzirano', 'Paused') }}
         </button>
 
         <button type="button" class="ghost-button" [class.active]="isReportPanelOpen" (click)="toggleReportPanel()">
-          Izveštaj
+          {{ t('Izveštaj', 'Report') }}
         </button>
 
         <button type="button" class="primary-button" (click)="loadEntries()" [disabled]="isLoading">
-          {{ isLoading ? 'Osvežavanje...' : 'Osveži' }}
+          {{ isLoading ? t('Osvežavanje...', 'Refreshing...') : t('Osveži', 'Refresh') }}
         </button>
       </div>
     </div>
 
     <div class="report-panel" *ngIf="isReportPanelOpen">
-      <p class="report-title">Izvoz izveštaja aktivnosti</p>
-
-      <div class="report-row">
-        <span class="report-label">Period</span>
-        <div class="mode-chips">
-          <button type="button" class="mode-chip" [class.active]="periodMode === 'all'" (click)="setPeriodMode('all')">
-            Sve aktivnosti
-          </button>
-          <button type="button" class="mode-chip" [class.active]="periodMode === 'day'" (click)="setPeriodMode('day')">
-            Jedan dan
-          </button>
-          <button type="button" class="mode-chip" [class.active]="periodMode === 'range'" (click)="setPeriodMode('range')">
-            Od — do
-          </button>
+      <div class="report-header">
+        <span class="report-header-icon" aria-hidden="true">⭳</span>
+        <div>
+          <p class="report-title">{{ t('Izvoz izveštaja aktivnosti', 'Export activity report') }}</p>
+          <p class="report-hint" *ngIf="!isAdmin">{{ t('Izveštaj obuhvata isključivo vaše akcije.', 'The report covers only your own actions.') }}</p>
         </div>
       </div>
 
-      <div class="report-row" *ngIf="periodMode === 'day'">
-        <span class="report-label">Datum</span>
-        <input type="date" [(ngModel)]="reportDay" (ngModelChange)="refreshReportCount()" />
+      <div class="report-fields">
+        <div class="report-row">
+          <span class="report-label">{{ t('Period', 'Period') }}</span>
+          <div class="mode-chips">
+            <button type="button" class="mode-chip" [class.active]="periodMode === 'all'" (click)="setPeriodMode('all')">
+              {{ t('Sve aktivnosti', 'All activity') }}
+            </button>
+            <button type="button" class="mode-chip" [class.active]="periodMode === 'day'" (click)="setPeriodMode('day')">
+              {{ t('Jedan dan', 'One day') }}
+            </button>
+            <button type="button" class="mode-chip" [class.active]="periodMode === 'range'" (click)="setPeriodMode('range')">
+              {{ t('Od — do', 'From — to') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="report-row" *ngIf="periodMode === 'day'">
+          <span class="report-label">{{ t('Datum', 'Date') }}</span>
+          <div class="report-row-value">
+            <input type="date" [(ngModel)]="reportDay" (ngModelChange)="refreshReportCount()" />
+          </div>
+        </div>
+
+        <div class="report-row" *ngIf="periodMode === 'range'">
+          <span class="report-label">{{ t('Od — do', 'From — to') }}</span>
+          <div class="report-row-value">
+            <input type="date" [(ngModel)]="reportFrom" (ngModelChange)="refreshReportCount()" />
+            <span class="dash">—</span>
+            <input type="date" [(ngModel)]="reportTo" (ngModelChange)="refreshReportCount()" />
+          </div>
+        </div>
+
+        <div class="report-row" *ngIf="isAdmin && availableUsers.length > 0">
+          <span class="report-label">{{ t('Korisnici', 'Users') }}</span>
+          <div class="user-chips">
+            <button type="button" class="mode-chip" [class.active]="isAllUsersSelected" (click)="selectAllReportUsers()">
+              {{ t('Svi korisnici', 'All users') }}
+            </button>
+            <button
+              type="button"
+              class="mode-chip"
+              *ngFor="let username of availableUsers"
+              [class.active]="reportUsers.has(username)"
+              (click)="toggleReportUser(username)"
+              [title]="isHistoricalUser(username) ? t('Nalog više ne postoji u sistemu, ali njegove akcije ostaju u logu', 'The account no longer exists, but its actions remain in the log') : ''"
+            >
+              {{ username }}
+              <span class="historical-mark" *ngIf="isHistoricalUser(username)">{{ t('neaktivan', 'inactive') }}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div class="report-row" *ngIf="periodMode === 'range'">
-        <span class="report-label">Od — do</span>
-        <input type="date" [(ngModel)]="reportFrom" (ngModelChange)="refreshReportCount()" />
-        <span class="dash">—</span>
-        <input type="date" [(ngModel)]="reportTo" (ngModelChange)="refreshReportCount()" />
-      </div>
+      <div class="report-footer">
+        <div class="report-status">
+          <ng-container *ngIf="isRangeInverted; else countState">
+            <span class="report-warning">{{ t('Datum „od" je posle datuma „do".', 'The "from" date is after the "to" date.') }}</span>
+          </ng-container>
+          <ng-template #countState>
+            <ng-container *ngIf="isPeriodIncomplete; else haveCount">
+              <span class="muted">{{ t('Izaberite datum da vidite broj zapisa.', 'Pick a date to see the entry count.') }}</span>
+            </ng-container>
+            <ng-template #haveCount>
+              <span *ngIf="isCountingReport" class="muted">{{ t('Provera...', 'Checking...') }}</span>
+              <ng-container *ngIf="!isCountingReport && reportCount !== null">
+                <span class="count-chip" [class.empty]="reportCount === 0">{{ reportCount }} {{ t('zapisa', 'entries') }}</span>
+                <span class="muted">{{ reportPeriodLabel }}</span>
+                <span class="report-warning" *ngIf="reportCount === 0">
+                  {{ t('Za izabrani period nema aktivnosti — izveštaj se ne može generisati.', 'There is no activity for the selected period — the report cannot be generated.') }}
+                </span>
+              </ng-container>
+            </ng-template>
+          </ng-template>
+        </div>
 
-      <div class="report-row" *ngIf="isAdmin && availableUsers.length > 0">
-        <span class="report-label">Korisnici</span>
-        <div class="user-chips">
-          <button type="button" class="mode-chip" [class.active]="isAllUsersSelected" (click)="selectAllReportUsers()">
-            Svi korisnici
-          </button>
+        <div class="report-actions">
           <button
             type="button"
-            class="mode-chip"
-            *ngFor="let username of availableUsers"
-            [class.active]="reportUsers.has(username)"
-            (click)="toggleReportUser(username)"
-            [title]="isHistoricalUser(username) ? 'Nalog više ne postoji u sistemu, ali njegove akcije ostaju u logu' : ''"
+            class="primary-button"
+            (click)="openSigningDialog()"
+            [disabled]="!canGenerateReport"
+            [title]="t('Potpisan PDF izveštaj (mačka, pečat, kontrolni broj) — ista struktura kao ostali izveštaji u aplikaciji', 'Signed PDF report (cat header, seal, verification code) — same structure as this app’s other reports')"
           >
-            {{ username }}
-            <span class="historical-mark" *ngIf="isHistoricalUser(username)">neaktivan</span>
+            {{ t('Preuzmi PDF', 'Download PDF') }}
+          </button>
+          <button type="button" class="ghost-button" (click)="downloadReportCsv()" [disabled]="!canGenerateReport">
+            {{ isDownloadingReport ? t('Generisanje...', 'Generating...') : t('Preuzmi CSV', 'Download CSV') }}
           </button>
         </div>
-      </div>
-
-      <p class="report-hint" *ngIf="!isAdmin">Izveštaj obuhvata isključivo vaše akcije.</p>
-
-      <div class="report-status">
-        <ng-container *ngIf="isRangeInverted; else countState">
-          <span class="report-warning">Datum „od" je posle datuma „do".</span>
-        </ng-container>
-        <ng-template #countState>
-          <ng-container *ngIf="isPeriodIncomplete; else haveCount">
-            <span class="muted">Izaberite datum da vidite broj zapisa.</span>
-          </ng-container>
-          <ng-template #haveCount>
-            <span *ngIf="isCountingReport" class="muted">Provera...</span>
-            <ng-container *ngIf="!isCountingReport && reportCount !== null">
-              <span class="count-chip" [class.empty]="reportCount === 0">{{ reportCount }} zapisa</span>
-              <span class="muted">{{ reportPeriodLabel }}</span>
-              <span class="report-warning" *ngIf="reportCount === 0">
-                Za izabrani period nema aktivnosti — izveštaj se ne može generisati.
-              </span>
-            </ng-container>
-          </ng-template>
-        </ng-template>
-      </div>
-
-      <div class="report-actions">
-        <button type="button" class="primary-button" (click)="downloadReport('pdf')" [disabled]="!canGenerateReport">
-          {{ isDownloadingReport ? 'Generisanje...' : 'Preuzmi PDF' }}
-        </button>
-        <button type="button" class="ghost-button" (click)="downloadReport('csv')" [disabled]="!canGenerateReport">
-          Preuzmi CSV
-        </button>
       </div>
 
       <p class="error-banner" *ngIf="reportError">{{ reportError }}</p>
     </div>
 
-    <div class="meta-row">
-      <span class="count-chip">{{ entries.length }} {{ entries.length === 1 ? 'zapis' : 'zapisa' }}</span>
-      <span class="muted" *ngIf="lastRefreshed">Poslednje osveženo: {{ lastRefreshed | date : 'HH:mm:ss' }}</span>
-      <span class="muted" *ngIf="scope === 'self'">Vidite isključivo sopstvene akcije.</span>
+    <div class="meta-row" #tableTop>
+      <span class="count-chip">{{ entries.length }} {{ t(entries.length === 1 ? 'zapis' : 'zapisa', entries.length === 1 ? 'entry' : 'entries') }}</span>
+      <span class="muted" *ngIf="lastRefreshed">{{ t('Poslednje osveženo', 'Last refreshed') }}: {{ lastRefreshed | date : 'HH:mm:ss' }}</span>
+      <span class="muted" *ngIf="scope === 'self'">{{ t('Vidite isključivo sopstvene akcije.', 'You see only your own actions.') }}</span>
     </div>
 
     <p class="error-banner" *ngIf="errorMessage">{{ errorMessage }}</p>
@@ -143,16 +177,16 @@
       <table>
         <thead>
           <tr>
-            <th class="col-time">Vreme</th>
-            <th class="col-user">Korisnik</th>
-            <th class="col-action">Akcija</th>
-            <th class="col-case">Slučaj</th>
-            <th class="col-summary">Detalji</th>
+            <th class="col-time">{{ t('Vreme', 'Time') }}</th>
+            <th class="col-user">{{ t('Korisnik', 'User') }}</th>
+            <th class="col-action">{{ t('Akcija', 'Action') }}</th>
+            <th class="col-case">{{ t('Slučaj', 'Case') }}</th>
+            <th class="col-summary">{{ t('Detalji', 'Details') }}</th>
             <th class="col-toggle"></th>
           </tr>
         </thead>
         <tbody>
-          <ng-container *ngFor="let entry of entries; trackBy: trackByEntry">
+          <ng-container *ngFor="let entry of pagedEntries; trackBy: trackByEntry">
             <tr class="log-row" [class.is-expanded]="isExpanded(entry)">
               <td class="col-time">
                 <span class="time-main">{{ entry.timestamp | date : 'dd.MM.yyyy.' }}</span>
@@ -162,7 +196,7 @@
                 <span class="user-badge">{{ entry.user }}</span>
               </td>
               <td class="col-action">
-                <span class="action-tag" [ngClass]="'group-' + presentation(entry.action).group">
+                <span class="action-tag" [style.--action-hue]="presentation(entry.action).hue">
                   <span class="action-icon">{{ presentation(entry.action).icon }}</span>
                   {{ presentation(entry.action).label }}
                 </span>
@@ -172,8 +206,8 @@
                   <ng-container *ngSwitchCase="'case'">
                     <span class="case-name" *ngIf="entry.case_name; else unrecordedName">{{ entry.case_name }}</span>
                     <ng-template #unrecordedName>
-                      <span class="case-name unrecorded" title="Naziv slučaja se nije beležio u trenutku ove akcije">
-                        naziv nije zabeležen
+                      <span class="case-name unrecorded" [title]="t('Naziv slučaja se nije beležio u trenutku ove akcije', 'The case name was not recorded at the time of this action')">
+                        {{ t('naziv nije zabeležen', 'name not recorded') }}
                       </span>
                     </ng-template>
                     <span class="case-id">{{ entry.case_id }}</span>
@@ -198,7 +232,7 @@
                   (click)="toggleDetails(entry)"
                   [attr.aria-expanded]="isExpanded(entry)"
                 >
-                  {{ isExpanded(entry) ? 'Sakrij' : 'Prikaži' }}
+                  {{ isExpanded(entry) ? t('Sakrij', 'Hide') : t('Prikaži', 'Show') }}
                 </button>
               </td>
             </tr>
@@ -207,15 +241,15 @@
                 <div class="detail-panel">
                   <dl>
                     <div *ngIf="entry.case_id">
-                      <dt>Slučaj (ID)</dt>
+                      <dt>{{ t('Slučaj (ID)', 'Case (ID)') }}</dt>
                       <dd class="mono">{{ entry.case_id }}</dd>
                     </div>
                     <div *ngIf="entry.case_name">
-                      <dt>Naziv slučaja u trenutku akcije</dt>
+                      <dt>{{ t('Naziv slučaja u trenutku akcije', 'Case name at the time of the action') }}</dt>
                       <dd>{{ entry.case_name }}</dd>
                     </div>
                     <div *ngIf="entry.file_name">
-                      <dt>Fajl</dt>
+                      <dt>{{ t('Fajl', 'File') }}</dt>
                       <dd class="mono">{{ entry.file_name }}</dd>
                     </div>
                     <div *ngIf="entry.sha256">
@@ -227,7 +261,7 @@
                       <dd class="mono">{{ pair.value }}</dd>
                     </div>
                     <div>
-                      <dt>Puna vremenska oznaka</dt>
+                      <dt>{{ t('Puna vremenska oznaka', 'Full timestamp') }}</dt>
                       <dd class="mono">{{ entry.timestamp }}</dd>
                     </div>
                   </dl>
@@ -239,10 +273,96 @@
       </table>
     </div>
 
+    <div class="pagination" *ngIf="entries.length > 0">
+      <label class="page-size">
+        {{ t('Po strani', 'Per page') }}
+        <select [ngModel]="pageSize" (ngModelChange)="setPageSize($event)">
+          <option *ngFor="let size of pageSizeOptions" [ngValue]="size">{{ size }}</option>
+        </select>
+      </label>
+
+      <span class="page-range muted">{{ pageRangeLabel }} {{ t('od', 'of') }} {{ entries.length }}</span>
+
+      <div class="page-nav">
+        <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+          ‹ {{ t('Prethodna', 'Previous') }}
+        </button>
+        <span class="page-indicator">{{ currentPage }} / {{ totalPages }}</span>
+        <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+          {{ t('Sledeća', 'Next') }} ›
+        </button>
+      </div>
+    </div>
+
     <ng-template #emptyLog>
       <p class="empty-state" *ngIf="!isLoading">
-        Nema zabeleženih akcija{{ selectedUser ? ' za korisnika "' + selectedUser + '"' : '' }}.
+        {{ t('Nema zabeleženih akcija', 'No recorded actions') }}{{ selectedUser ? t(' za korisnika "' + selectedUser + '"', ' for user "' + selectedUser + '"') : '' }}.
       </p>
     </ng-template>
   </article>
 </section>
+
+<!-- Potpisivanje pre izvoza PDF-a (isti obrazac kao report-export.component.html - vidi
+     activity_report.py za zašto se sam PDF i dalje pravi na serveru, umesto na klijentu
+     kao svi ostali potpisani izveštaji). -->
+<div class="signing-overlay" *ngIf="isSigningOpen" (click)="closeSigningDialog()">
+  <div class="signing-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+    <h3>{{ t('Potpis i izrada izveštaja', 'Sign & generate report') }}</h3>
+
+    <p class="signing-intro">
+      {{
+        t(
+          'Izveštaj napušta aplikaciju kao samostalan dokument, pa nosi potpis analitičara koji za njega jamči i kontrolni broj za kasniju proveru.',
+          'The report leaves the app as a standalone document, so it carries the analyst’s signature vouching for it and a verification code for later checking.'
+        )
+      }}
+    </p>
+
+    <fieldset class="lang-choice" [disabled]="isExportingSignedPdf">
+      <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+      <label>
+        <input type="radio" name="reportSignLang" value="sr" [(ngModel)]="reportLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="reportSignLang" value="en" [(ngModel)]="reportLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+      <p class="lang-hint">
+        {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+        <strong>{{ reportLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+      </p>
+    </fieldset>
+
+    <p class="signing-examiner">
+      {{ t('Analitičar (ulogovani korisnik)', 'Analyst (logged-in user)') }}
+      <strong>{{ auth.currentUser?.username || '—' }}</strong>
+    </p>
+
+    <p class="signing-signature-label">{{ t('Potpis', 'Signature') }}</p>
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signing-declaration">
+      <input type="checkbox" [(ngModel)]="declarationAccepted" name="declarationAccepted" [disabled]="isExportingSignedPdf" />
+      <span>
+        {{
+          reportLang === 'sr'
+            ? 'Potvrđujem da sam izradio ovaj izveštaj aktivnosti u okviru navedenog perioda i da su u njemu prikazane tačno one akcije koje je aplikacija zabeležila u dnevniku. Potpis iznad je moj.'
+            : 'I confirm that I produced this activity report for the stated period and that it shows exactly the actions the application recorded in the log. The signature above is mine.'
+        }}
+      </span>
+    </label>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signing-actions">
+      <button type="button" class="ghost-button" (click)="closeSigningDialog()" [disabled]="isExportingSignedPdf">
+        {{ t('Odustani', 'Cancel') }}
+      </button>
+      <button type="button" class="primary-button" (click)="confirmSignAndExport()" [disabled]="!canSubmitSignature">
+        {{ isExportingSignedPdf ? t('Izrada...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign & export PDF') }}
+      </button>
+    </div>
+  </div>
+</div>

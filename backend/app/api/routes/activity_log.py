@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
 from app.evidence.audit_log import known_log_users, load_activity_log_entries, write_audit_log
 from app.exports.activity_report import build_activity_csv, build_activity_pdf, format_period
+from app.services.report_registry import compute_content_hash, register_report
 from app.services.user_management import list_users
 
 
@@ -113,14 +116,13 @@ def get_report_preview(
     }
 
 
-def _build_report(
+def _load_report_entries(
     current_user: dict[str, object],
     users: str | None,
     date_from: str | None,
     date_to: str | None,
     tz_offset_minutes: int,
-    output_format: str,
-) -> tuple[bytes, str, str]:
+) -> tuple[list[dict[str, object]], list[str] | None, bool]:
     _validate_date(date_from, 'date_from')
     _validate_date(date_to, 'date_to')
     selected, is_admin = _resolve_users(current_user, _parse_users_param(users))
@@ -134,54 +136,7 @@ def _build_report(
     )
     if not entries:
         raise HTTPException(status_code=404, detail='Nema zabeleženih akcija za izabrani period, izveštaj nije generisan.')
-
-    generated_by = str(current_user['username'])
-    if output_format == 'csv':
-        payload = build_activity_csv(entries, tz_offset_minutes=tz_offset_minutes).encode('utf-8-sig')
-        media_type = 'text/csv; charset=utf-8'
-    else:
-        payload = build_activity_pdf(
-            entries,
-            generated_by=generated_by,
-            date_from=date_from,
-            date_to=date_to,
-            tz_offset_minutes=tz_offset_minutes,
-            selected_users=selected or [],
-            scope='all' if is_admin else 'self',
-        )
-        media_type = 'application/pdf'
-
-    write_audit_log(
-        action='activity_report_exported',
-        user=generated_by,
-        details={
-            'format': output_format,
-            'entry_count': len(entries),
-            'date_from': date_from,
-            'date_to': date_to,
-            'users': selected or 'svi',
-        },
-    )
-
-    suffix = date_from or 'sve'
-    file_name = f'activity_report_{suffix}.{output_format}'
-    return payload, media_type, file_name
-
-
-@router.get('/report.pdf')
-def get_report_pdf(
-    users: str | None = Query(default=None),
-    date_from: str | None = Query(default=None),
-    date_to: str | None = Query(default=None),
-    tz_offset_minutes: int = Query(default=0),
-    current_user: dict[str, object] = Depends(get_current_user),
-) -> Response:
-    payload, media_type, file_name = _build_report(current_user, users, date_from, date_to, tz_offset_minutes, 'pdf')
-    return Response(
-        content=payload,
-        media_type=media_type,
-        headers={'Content-Disposition': f'attachment; filename="{file_name}"'},
-    )
+    return entries, selected, is_admin
 
 
 @router.get('/report.csv')
@@ -192,9 +147,139 @@ def get_report_csv(
     tz_offset_minutes: int = Query(default=0),
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> Response:
-    payload, media_type, file_name = _build_report(current_user, users, date_from, date_to, tz_offset_minutes, 'csv')
+    """Plain, unsigned CSV export - raw data for further processing, not a presentation
+    document, so (like the case/transactions CSV exports elsewhere) it needs no signature
+    or verification code. See post_report_signed_pdf below for the signed PDF."""
+    entries, selected, _is_admin = _load_report_entries(current_user, users, date_from, date_to, tz_offset_minutes)
+    payload = build_activity_csv(entries, tz_offset_minutes=tz_offset_minutes).encode('utf-8-sig')
+
+    generated_by = str(current_user['username'])
+    write_audit_log(
+        action='activity_report_exported',
+        user=generated_by,
+        details={
+            'format': 'csv',
+            'entry_count': len(entries),
+            'date_from': date_from,
+            'date_to': date_to,
+            'users': selected or 'svi',
+        },
+    )
+
+    suffix = date_from or 'sve'
+    file_name = f'activity_report_{suffix}.csv'
     return Response(
         content=payload,
-        media_type=media_type,
+        media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="{file_name}"'},
+    )
+
+
+class ActivityReportSignRequest(BaseModel):
+    users: list[str] | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+    tz_offset_minutes: int = 0
+    lang: Literal['sr', 'en'] = 'sr'
+    declaration: str = Field(min_length=1)
+    signature_image: str = Field(min_length=1)
+
+
+@router.post('/report/signed.pdf')
+def post_report_signed_pdf(
+    request: ActivityReportSignRequest,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> Response:
+    """The signed variant of the activity report: same server-computed data as
+    report.csv above (the data itself must come from the authoritative log file, not from
+    whatever the page happens to have loaded - see activity_report.py's own docstring),
+    but the PDF leaves the app as a standalone document, so it carries the analyst's
+    signature and a verification code the same way every other report in this app does
+    (Taint/Pathfinding/DEX Swap/Behavioral) - registered here via report_registry before
+    the document is built, so the code can be printed inside the very report it
+    identifies.
+    """
+    entries, selected, is_admin = _load_report_entries(
+        current_user,
+        ','.join(request.users) if request.users else None,
+        request.date_from,
+        request.date_to,
+        request.tz_offset_minutes,
+    )
+    generated_by = str(current_user['username'])
+
+    # The exact figures a reader could dispute - kept small (timestamps/action/user/case),
+    # not every raw `details` blob, so the hash is stable and meaningful to compare.
+    content_payload = {
+        'report': 'activity_log',
+        'date_from': request.date_from,
+        'date_to': request.date_to,
+        'users': selected or 'svi',
+        'entry_count': len(entries),
+        'entries': sorted(
+            (
+                {
+                    'timestamp': entry.get('timestamp'),
+                    'user': entry.get('user'),
+                    'action': entry.get('action'),
+                    'case_id': entry.get('case_id'),
+                }
+                for entry in entries
+            ),
+            key=lambda item: (str(item['timestamp']), str(item['user']), str(item['action'])),
+        ),
+    }
+    content_hash = compute_content_hash(content_payload)
+
+    registration = register_report(
+        case_id='activity-log',
+        case_name='Log aktivnosti' if request.lang == 'sr' else 'Activity log',
+        content_hash=content_hash,
+        analyst=generated_by,
+        declaration=request.declaration,
+        summary={
+            'entry_count': len(entries),
+            'date_from': request.date_from,
+            'date_to': request.date_to,
+            'users': selected or 'svi',
+        },
+    )
+
+    payload = build_activity_pdf(
+        entries,
+        generated_by=generated_by,
+        date_from=request.date_from,
+        date_to=request.date_to,
+        tz_offset_minutes=request.tz_offset_minutes,
+        selected_users=selected or [],
+        scope='all' if is_admin else 'self',
+        lang=request.lang,
+        signing={
+            'declaration': request.declaration,
+            'signature_image': request.signature_image,
+            'registration': registration,
+        },
+    )
+
+    write_audit_log(
+        action='activity_report_exported',
+        user=generated_by,
+        details={
+            'format': 'pdf',
+            'entry_count': len(entries),
+            'date_from': request.date_from,
+            'date_to': request.date_to,
+            'users': selected or 'svi',
+            'signed': True,
+            'verification_code': registration['verification_code'],
+            'content_hash': content_hash,
+        },
+    )
+
+    suffix = request.date_from or 'sve'
+    file_name = f'activity_report_{suffix}.pdf'
+    return Response(
+        content=payload,
+        media_type='application/pdf',
         headers={'Content-Disposition': f'attachment; filename="{file_name}"'},
     )

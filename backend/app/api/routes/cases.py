@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.analytics.behavioral_analysis import analyze_time_of_day
@@ -214,6 +214,32 @@ def get_case_graph(case_id: str, evidence: str | None = None) -> dict[str, objec
     payload['rows'] = int(len(combined_frame))
     payload['generated_at'] = datetime.now(timezone.utc).isoformat()
     return payload
+
+
+@router.get('/{case_id}/transactions/export')
+def export_case_transactions(case_id: str, evidence: str | None = None) -> Response:
+    """Raw, cleaned per-transaction CSV export of the case's combined evidence (or one
+    evidence file when `evidence` is given) - the exact same cleaned rows every analysis
+    page reads from (see case_graph.combine_frames), not a re-encoded summary like
+    exports.export_case_csv's report.csv (section/field/value key-value dump).
+
+    Read-only, same treatment as get_case_graph/get_case_dex_swap_analysis above: only
+    re-reads already-cleaned evidence, no new custody dialog, no audit log entry. The
+    Dashboard's "Izvoz izveštaja" panel exposes this as a plain, unsigned "Izvezi CSV"
+    button - separate from its signed PDF report, since raw transaction data isn't itself
+    a presentation document that needs an examiner's signature.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    csv_text = combined_frame.to_csv(index=False)
+    file_name = f'{case_id}_transactions.csv'
+    return Response(
+        content=csv_text,
+        media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="{file_name}"'},
+    )
 
 
 @router.get('/{case_id}/behavioral-analysis')

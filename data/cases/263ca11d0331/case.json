@@ -1,0 +1,59 @@
+{
+  "id": "263ca11d0331",
+  "name": "Test2",
+  "description": "nesto...",
+  "analyst": "aco",
+  "status": "open",
+  "created_at": "2026-09-11T09:42:04.449570+00:00",
+  "updated_at": "2026-09-11T09:59:44.684670+00:00",
+  "evidence": [
+    {
+      "file_name": "46ae7f91db9b_transactions_DAI.csv",
+      "stored_name": "20260911_095944_089699_46ae7f91db9b_transactions_DAI.csv",
+      "imported_at": "2026-09-11T09:59:44.157559+00:00",
+      "size_bytes": 139,
+      "sha256": "dbf4812ed700fcc761f001b698889b88ce6daee518e3095ad4933f28773f0811",
+      "analyst": "aco",
+      "currency": "DAI"
+    },
+    {
+      "file_name": "46ae7f91db9b_transactions_ETH.csv",
+      "stored_name": "20260911_095944_219837_46ae7f91db9b_transactions_ETH.csv",
+      "imported_at": "2026-09-11T09:59:44.304009+00:00",
+      "size_bytes": 591,
+      "sha256": "d037539848aab261d3e9d9c52e8f830cb30d87bc211ba0fedbd2b1a5312677be",
+      "analyst": "aco",
+      "currency": "ETH"
+    },
+    {
+      "file_name": "46ae7f91db9b_transactions_USDC.csv",
+      "stored_name": "20260911_095944_366590_46ae7f91db9b_transactions_USDC.csv",
+      "imported_at": "2026-09-11T09:59:44.433715+00:00",
+      "size_bytes": 356,
+      "sha256": "9893d8ca91730ebc016d19f4ae611d7381f1ea2ace6a67f435f169280a83230a",
+      "analyst": "aco",
+      "currency": "USDC"
+    },
+    {
+      "file_name": "46ae7f91db9b_transactions_USDT.csv",
+      "stored_name": "20260911_095944_478640_46ae7f91db9b_transactions_USDT.csv",
+      "imported_at": "2026-09-11T09:59:44.549590+00:00",
+      "size_bytes": 138,
+      "sha256": "40ceeeb1d5431fc563501f2035a3651209415d4767b6ea27412e3ff42c7f7995",
+      "analyst": "aco",
+      "currency": "USDT"
+    },
+    {
+      "file_name": "46ae7f91db9b_transactions_UNSPECIFIED.csv",
+      "stored_name": "20260911_095944_604428_46ae7f91db9b_transactions_UNSPECIFIED.csv",
+      "imported_at": "2026-09-11T09:59:44.684670+00:00",
+      "size_bytes": 3169,
+      "sha256": "a7c9d8bcbdb0ac8a70f56f76ac49dbea2ce9d932964d79945d46c2255a9ecba5",
+      "analyst": "aco",
+      "currency": null
+    }
+  ],
+  "evidence_count": 5,
+  "total_size_bytes": 4393,
+  "last_imported_at": "2026-09-11T09:59:44.684670+00:00"
+}

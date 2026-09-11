@@ -4,8 +4,8 @@ import { Component, DestroyRef, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-import { distinctUntilChanged, map } from 'rxjs/operators';
+import { firstValueFrom, forkJoin, of } from 'rxjs';
+import { catchError, distinctUntilChanged, map } from 'rxjs/operators';
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -14,14 +14,27 @@ import { SignaturePadComponent } from '../../core/components/signature-pad/signa
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { AppLang, SettingsService } from '../../core/services/settings.service';
 import {
   CaseSummary,
   DexSwapAnalysisResult,
   DexSwapEvent,
   EvidenceEntry,
+  NodeLinkGraphResponse,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
+
+/** One completed (or failed) per-address DEX swap run. Kept as a flat list, same pattern
+ * as behavioral-analysis.component.ts's AddressBehavioralRun, so the page can analyse
+ * several addresses at once (staged in a queue) and let the investigator flip between
+ * them - there is no "combined" view here, unlike Behavioral: swap events already carry
+ * their own address, so there is nothing meaningful to sum across addresses. */
+interface AddressDexSwapRun {
+  address: string;
+  result: DexSwapAnalysisResult | null;
+  error: string | null;
+}
 
 /** DEX Swap Analysis - "did this address swap one token for another through a DEX",
  * deliberately separate page from Graph/Taint/Pathfinding/Behavioral (see those
@@ -29,10 +42,10 @@ import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-a
  * proof - see backend/app/analytics/dex_swap_analysis.py and DEX-SWAP-ANALIZA.md.
  *
  * Reuses the same case/evidence-picker shell as the sibling analysis pages
- * (AnalysisStateService, ApiService.getCase for the evidence list), but the page itself
- * stays deliberately small: one address field, one button, a flat list of swap cards. No
- * charts, no cytoscape graph, no side panel of extra stats - the single number that
- * matters on each card is INPUT TOKEN -> DEX -> OUTPUT TOKEN.
+ * (AnalysisStateService, ApiService.getCase for the evidence list). Can analyse several
+ * addresses in one signed access (queue + forkJoin, same pattern as Behavioral), showing
+ * one address's swap cards at a time via tabs - the single number that matters on each
+ * card is INPUT TOKEN -> DEX -> OUTPUT TOKEN.
  */
 @Component({
   selector: 'app-dex-swap-analysis',
@@ -46,10 +59,25 @@ export class DexSwapAnalysisComponent implements OnInit {
   protected evidenceOptions: EvidenceEntry[] = [];
   protected selectedEvidence: string | null = null;
 
+  /** Free-text buffer for the "type an address" input. */
   protected address = '';
   protected isAnalyzing = false;
+  /** Page-level error. Per-address failures live on their own run entry, see `runs`. */
   protected analysisError: string | null = null;
-  protected result: DexSwapAnalysisResult | null = null;
+
+  /** Addresses staged for the next run (chips under the input). */
+  protected queue: string[] = [];
+  /** Completed runs, one per analysed address. */
+  protected runs: AddressDexSwapRun[] = [];
+  /** Which run's swap cards are currently shown. */
+  protected activeAddress: string | null = null;
+
+  // --- Case address pick-list (see behavioral-analysis.component.ts's loadCaseAddresses
+  // for the original pattern) - lets the analyst pick an address seen in the case's
+  // evidence instead of pasting a hash by hand. Reuses the plain case graph endpoint (same
+  // one Graf/Taint/Behavioral seed from), no new backend route. ---
+  protected caseAddresses: string[] = [];
+  protected isLoadingCaseAddresses = false;
 
   // --- Lanac dokaza (see DEX-SWAP-ANALIZA.md #12 / LANAC-DOKAZA.md) - scanning the case's
   // evidence for swap pairs is a deliberate access to every transaction it touches, same
@@ -57,6 +85,9 @@ export class DexSwapAnalysisComponent implements OnInit {
   // same shared custody-access dialog before actually calling the API. ---
   protected isCustodyDialogOpen = false;
   protected custodyDialogError: string | null = null;
+  /** True when the open custody dialog is for the "find all addresses" scan rather than
+   * the queued-addresses run - confirmCustodyAndAnalyze branches on this. */
+  protected isScanAllMode = false;
 
   // --- PDF export (see DEX-SWAP-ANALIZA.md #11) - same signed-report mechanism as
   // Taint/Pathfinding: a control number is registered server-side BEFORE the document is
@@ -67,13 +98,31 @@ export class DexSwapAnalysisComponent implements OnInit {
   protected signatureDeclarationAccepted = false;
   protected signatureError: string | null = null;
   protected isExportingPdf = false;
+  /** Language the exported PDF is produced in - seeded from the app toggle when the
+   * signing dialog opens, then confirmed by the analyst on the modal (same pattern as
+   * taint-analysis.component.ts's taintPdfLang / behavioral-analysis's behavioralPdfLang). */
+  protected dexPdfLang: AppLang = 'sr';
 
   constructor(
     private readonly state: AnalysisStateService,
     private readonly api: ApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
+    public readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as taint-analysis.component.ts's t()). */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  /** PDF-string translator: SR or EN by the language chosen on the signing modal, then
+   * ASCII-folded (harmless for English) since the PDF core font is Latin-1 only - same
+   * pattern as taint-analysis.component.ts's lx(). */
+  private lx(sr: string, en: string): string {
+    return this.asciiSafe(this.dexPdfLang === 'sr' ? sr : en);
+  }
 
   ngOnInit(): void {
     this.state.selectedCase$
@@ -86,9 +135,13 @@ export class DexSwapAnalysisComponent implements OnInit {
         this.activeCase = this.state.selectedCaseSnapshot;
         this.selectedEvidence = null;
         this.evidenceOptions = [];
+        this.queue = [];
         this.clearResult();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
+          this.loadCaseAddresses();
+        } else {
+          this.caseAddresses = [];
         }
       });
   }
@@ -104,13 +157,89 @@ export class DexSwapAnalysisComponent implements OnInit {
     });
   }
 
+  /** Pulls every address in the current case/evidence graph so the investigator can pick
+   * from a list instead of pasting a hash - identical pattern to behavioral-analysis
+   * .component.ts's own loadCaseAddresses. */
+  private loadCaseAddresses(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      this.caseAddresses = [];
+      return;
+    }
+    this.isLoadingCaseAddresses = true;
+    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+      next: (graph: NodeLinkGraphResponse) => {
+        this.caseAddresses = [...new Set(graph.nodes.map((node) => String(node.id)))].sort((a, b) =>
+          a.localeCompare(b),
+        );
+        this.isLoadingCaseAddresses = false;
+      },
+      error: () => {
+        this.caseAddresses = [];
+        this.isLoadingCaseAddresses = false;
+      },
+    });
+  }
+
   protected onEvidenceSelected(storedName: string): void {
     this.selectedEvidence = storedName || null;
+    this.queue = [];
     this.clearResult();
+    this.loadCaseAddresses();
+  }
+
+  // --- Staging the addresses to analyse --------------------------------------------
+
+  /** Case addresses not already queued or analysed - the live options for the pick-list. */
+  protected get availableCaseAddresses(): string[] {
+    const taken = new Set([...this.queue, ...this.runs.map((run) => run.address)].map((a) => a.toLowerCase()));
+    return this.caseAddresses.filter((address) => !taken.has(address.toLowerCase()));
+  }
+
+  protected isQueued(address: string): boolean {
+    const lower = address.trim().toLowerCase();
+    return this.queue.some((queued) => queued.toLowerCase() === lower);
+  }
+
+  /** Adds one address (from the text field or the pick-list) to the queue. */
+  protected addToQueue(raw: string): void {
+    const address = raw.trim();
+    if (!address || this.isQueued(address)) {
+      return;
+    }
+    this.queue = [...this.queue, address];
+  }
+
+  protected addTypedAddress(): void {
+    this.addToQueue(this.address);
+    this.address = '';
+  }
+
+  protected onPickAddress(address: string): void {
+    if (address) {
+      this.addToQueue(address);
+    }
+  }
+
+  /** Stages every case address that isn't already queued/analysed - one click instead of
+   * picking them one by one from the list. */
+  protected addAllCaseAddresses(): void {
+    if (this.availableCaseAddresses.length === 0) {
+      return;
+    }
+    this.queue = [...this.queue, ...this.availableCaseAddresses];
+  }
+
+  protected removeFromQueue(address: string): void {
+    this.queue = this.queue.filter((queued) => queued !== address);
+  }
+
+  protected clearQueue(): void {
+    this.queue = [];
   }
 
   protected get canAnalyze(): boolean {
-    return !!this.activeCase && this.address.trim().length > 0 && !this.isAnalyzing;
+    return !!this.activeCase && this.queue.length > 0 && !this.isAnalyzing;
   }
 
   /** Opens the access-reason dialog before actually running the analysis - see
@@ -119,6 +248,26 @@ export class DexSwapAnalysisComponent implements OnInit {
     if (!this.canAnalyze) {
       return;
     }
+    this.isScanAllMode = false;
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  /** "Pronađi sve DEX swap adrese" - scans the WHOLE evidence in one call (no target
+   * address) rather than guessing which addresses might be worth checking: the detector
+   * already finds every wallet<->DEX pair in the evidence when given no address (see
+   * dex_swap_analysis.py's target_address=None path) - grouping those events by wallet
+   * afterwards is exact, not a heuristic suggestion. Goes through the same custody dialog
+   * since it is still a deliberate read of the whole evidence. */
+  protected get canScanAll(): boolean {
+    return !!this.activeCase && !this.isAnalyzing;
+  }
+
+  protected openScanAllDialog(): void {
+    if (!this.canScanAll) {
+      return;
+    }
+    this.isScanAllMode = true;
     this.custodyDialogError = null;
     this.isCustodyDialogOpen = true;
   }
@@ -128,32 +277,170 @@ export class DexSwapAnalysisComponent implements OnInit {
   }
 
   protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
+    if (this.isScanAllMode) {
+      this.runScanAll(custody);
+      return;
+    }
+    this.runQueue(custody);
+  }
+
+  /** Runs the whole queue with one signed custody entry - the scope of that one access is
+   * the full selected evidence (see LANAC-DOKAZA.md §2), regardless of how many addresses
+   * are analysed off it. Same pattern as behavioral-analysis.component.ts's own
+   * confirmCustodyAndAnalyze. */
+  private runQueue(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
-    const address = this.address.trim();
-    if (!caseId || !address) {
+    if (!caseId || this.queue.length === 0 || this.isAnalyzing) {
+      return;
+    }
+
+    const addresses = [...this.queue];
+    this.isAnalyzing = true;
+    this.analysisError = null;
+    this.custodyDialogError = null;
+
+    forkJoin(
+      addresses.map((address) =>
+        this.api.runDexSwapAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+          map((result): AddressDexSwapRun => ({ address, result, error: null })),
+          catchError((error: HttpErrorResponse) =>
+            of<AddressDexSwapRun>({
+              address,
+              result: null,
+              error:
+                error.status === 404
+                  ? this.t('Adresa nije pronađena u evidenciji ovog slučaja.', 'The address was not found in this case’s evidence.')
+                  : this.t('Neuspešna DEX swap analiza.', 'The DEX swap analysis failed.'),
+            }),
+          ),
+        ),
+      ),
+    ).subscribe((runs) => {
+      // Newly analysed addresses replace any earlier run for the same address, keep the rest.
+      const analysed = new Set(runs.map((run) => run.address.toLowerCase()));
+      this.runs = [...this.runs.filter((run) => !analysed.has(run.address.toLowerCase())), ...runs];
+      this.isAnalyzing = false;
+
+      const anyOk = runs.some((run) => run.result);
+      if (anyOk) {
+        this.queue = [];
+        this.isCustodyDialogOpen = false;
+      } else {
+        // Nothing went through - keep the dialog open so the analyst sees why.
+        this.custodyDialogError = runs[0]?.error ?? this.t('Analiza nije uspela.', 'The analysis failed.');
+      }
+
+      const firstOk = runs.find((run) => run.result) ?? this.runs.find((run) => run.result);
+      if (firstOk && (!this.activeAddress || !this.activeRun)) {
+        this.activeAddress = firstOk.address;
+      }
+    });
+  }
+
+  /** One evidence-wide call (address omitted) instead of one call per address - see
+   * openScanAllDialog's own comment for why this is exact rather than a guess. The
+   * single response's events are then split by user_address into the same per-address
+   * run shape the queue path produces, so the rest of the page (tabs, cards, PDF) does
+   * not need to know which path populated `runs`. */
+  private runScanAll(custody: TransactionCustodyEntry): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || this.isAnalyzing) {
       return;
     }
 
     this.isAnalyzing = true;
-    this.custodyDialogError = null;
     this.analysisError = null;
-    this.result = null;
+    this.custodyDialogError = null;
 
-    this.api.runDexSwapAnalysis(caseId, address, this.selectedEvidence, custody).subscribe({
+    this.api.runDexSwapAnalysis(caseId, null, this.selectedEvidence, custody).subscribe({
       next: (result) => {
-        this.result = result;
         this.isAnalyzing = false;
+        const newRuns = DexSwapAnalysisComponent.groupEventsByAddress(result);
+
+        if (newRuns.length === 0) {
+          this.isCustodyDialogOpen = false;
+          this.analysisError = this.t(
+            'Nijedna adresa u ovoj evidenciji nema detektovan DEX swap.',
+            'No address in this evidence has a detected DEX swap.',
+          );
+          return;
+        }
+
+        // Newly found addresses replace any earlier run for the same address, keep the rest.
+        const found = new Set(newRuns.map((run) => run.address.toLowerCase()));
+        this.runs = [...this.runs.filter((run) => !found.has(run.address.toLowerCase())), ...newRuns];
+        this.queue = this.queue.filter((address) => !found.has(address.toLowerCase()));
+        this.activeAddress = newRuns[0].address;
         this.isCustodyDialogOpen = false;
       },
-      error: (error: HttpErrorResponse) => {
+      error: () => {
         this.isAnalyzing = false;
-        // Shown INSIDE the dialog (still open) rather than analysisError, which sits
-        // below the address field and would not be visible behind the overlay - nothing
-        // typed/signed is lost, the analyst can just retry.
-        this.custodyDialogError =
-          error.status === 404 ? 'Adresa nije pronađena u evidenciji ovog slučaja.' : 'Neuspešna DEX swap analiza.';
+        this.custodyDialogError = this.t('Neuspešno skeniranje evidencije.', 'Failed to scan the evidence.');
       },
     });
+  }
+
+  /** Splits one evidence-wide DexSwapAnalysisResult (address: null) into one synthetic
+   * per-address result each - same fields as a scoped single-address call would have
+   * returned, just with `events`/`total_events`/`detected_count`/`potential_count`
+   * recomputed for that address's slice. dex_nodes_considered/data_completeness/
+   * disclaimer/max_gap_seconds are evidence-wide facts, so they carry over unchanged. */
+  private static groupEventsByAddress(result: DexSwapAnalysisResult): AddressDexSwapRun[] {
+    const byAddress = new Map<string, DexSwapEvent[]>();
+    for (const event of result.events) {
+      const events = byAddress.get(event.user_address) ?? [];
+      events.push(event);
+      byAddress.set(event.user_address, events);
+    }
+    return [...byAddress.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([address, events]) => {
+        const detectedCount = events.filter((event) => event.confidence === 'Detected').length;
+        const addressResult: DexSwapAnalysisResult = {
+          ...result,
+          address,
+          events,
+          total_events: events.length,
+          detected_count: detectedCount,
+          potential_count: events.length - detectedCount,
+        };
+        return { address, result: addressResult, error: null };
+      });
+  }
+
+  protected setActiveAddress(address: string): void {
+    this.activeAddress = address;
+  }
+
+  protected removeRun(address: string): void {
+    this.runs = this.runs.filter((run) => run.address !== address);
+    if (this.activeAddress === address) {
+      this.activeAddress = this.runs.find((run) => run.result)?.address ?? this.runs[0]?.address ?? null;
+    }
+  }
+
+  protected get activeRun(): AddressDexSwapRun | null {
+    return this.runs.find((run) => run.address === this.activeAddress) ?? null;
+  }
+
+  /** Kept as `result` (rather than renaming every template/PDF reference) so the rest of
+   * the page - written for a single result - keeps working unchanged: it now just reads
+   * the currently active tab's result. */
+  protected get result(): DexSwapAnalysisResult | null {
+    return this.activeRun?.result ?? null;
+  }
+
+  /** Runs with at least a result, in the order they were analysed - what the PDF covers. */
+  protected get exportableRuns(): AddressDexSwapRun[] {
+    return this.runs.filter((run) => run.result);
+  }
+
+  protected get canExportPdf(): boolean {
+    return this.exportableRuns.length > 0 && !this.isAnalyzing && !this.isExportingPdf;
+  }
+
+  protected get failedRuns(): AddressDexSwapRun[] {
+    return this.runs.filter((run) => run.error);
   }
 
   /** File name of the currently scoped evidence, for the custody dialog's default
@@ -167,8 +454,11 @@ export class DexSwapAnalysisComponent implements OnInit {
   }
 
   private clearResult(): void {
-    this.result = null;
+    this.runs = [];
+    this.activeAddress = null;
     this.analysisError = null;
+    this.isCustodyDialogOpen = false;
+    this.custodyDialogError = null;
   }
 
   // --- Card display helpers ----------------------------------------------------------
@@ -258,13 +548,43 @@ export class DexSwapAnalysisComponent implements OnInit {
     return `${DexSwapAnalysisComponent.formatPdfAmount(amount)} ${token ?? '?'}`;
   }
 
+  /** Loads the cat emblem/seal PNGs for the PDF header and signature block - same helper
+   * as taint-analysis/pathfinding/behavioral-analysis.component.ts's own loadPdfImage, not
+   * a shared module (small per-component PDF helpers are copied in this app, not
+   * centralized). */
+  private static loadImageSize(dataUrl: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error('image load failed'));
+      image.src = dataUrl;
+    });
+  }
+
+  private async loadPdfImage(path: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const response = await fetch(path);
+    if (!response.ok) {
+      throw new Error(`asset not found: ${path}`);
+    }
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('asset read failed'));
+      reader.readAsDataURL(blob);
+    });
+    const size = await DexSwapAnalysisComponent.loadImageSize(dataUrl);
+    return { dataUrl, width: size.width, height: size.height };
+  }
+
   openSignatureDialog(): void {
-    if (!this.result || this.isExportingPdf) {
+    if (this.exportableRuns.length === 0 || this.isExportingPdf) {
       return;
     }
     this.isSignatureDialogOpen = true;
     this.signatureDeclarationAccepted = false;
     this.signatureError = null;
+    this.dexPdfLang = this.settings.lang();
     setTimeout(() => this.signaturePad?.clear());
   }
 
@@ -276,39 +596,49 @@ export class DexSwapAnalysisComponent implements OnInit {
     return (this.signaturePad?.hasStrokes ?? false) && this.signatureDeclarationAccepted && !this.isExportingPdf;
   }
 
-  protected static readonly SIGNATURE_DECLARATION =
-    'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi '
-    + 'kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.';
+  /** SR or EN by the language chosen on the signing modal (dexPdfLang) - same pattern as
+   * taint-analysis.component.ts's own inline declaration ternary in confirmSignatureAndExport. */
+  private signatureDeclaration(): string {
+    return this.dexPdfLang === 'sr'
+      ? 'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati '
+        + 'onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.'
+      : 'I confirm that I produced this report within the stated case and that the results shown in it are those '
+        + 'the application computed over the stated evidence (heuristically).';
+  }
 
-  /** The exact data the verification hash is computed over - kept to the figures a
-   * reader could dispute (which events, which confidence, which amounts/tokens), sorted
-   * so field order never affects the hash. */
+  /** The exact data the verification hash is computed over - one entry per analysed
+   * address, kept to the figures a reader could dispute (which events, which confidence,
+   * which amounts/tokens), sorted so field order never affects the hash. */
   private reportContentPayload(): Record<string, unknown> {
-    const result = this.result!;
     return {
       case_id: this.activeCase!.id,
       evidence: this.selectedEvidence ?? 'combined',
-      address: result.address,
-      max_gap_seconds: result.max_gap_seconds,
-      events: [...result.events]
-        .map((event) => ({
-          user_address: event.user_address,
-          dex_address: event.dex_address,
-          confidence: event.confidence,
-          input_token: event.input_token,
-          input_amount: event.input_amount,
-          input_timestamp: event.input_timestamp,
-          output_token: event.output_token,
-          output_amount: event.output_amount,
-          output_timestamp: event.output_timestamp,
-          match_basis: event.match_basis,
-        }))
-        .sort((a, b) => a.input_timestamp.localeCompare(b.input_timestamp) || a.dex_address.localeCompare(b.dex_address)),
+      addresses: this.exportableRuns.map((run) => {
+        const result = run.result!;
+        return {
+          address: result.address,
+          max_gap_seconds: result.max_gap_seconds,
+          events: [...result.events]
+            .map((event) => ({
+              user_address: event.user_address,
+              dex_address: event.dex_address,
+              confidence: event.confidence,
+              input_token: event.input_token,
+              input_amount: event.input_amount,
+              input_timestamp: event.input_timestamp,
+              output_token: event.output_token,
+              output_amount: event.output_amount,
+              output_timestamp: event.output_timestamp,
+              match_basis: event.match_basis,
+            }))
+            .sort((a, b) => a.input_timestamp.localeCompare(b.input_timestamp) || a.dex_address.localeCompare(b.dex_address)),
+        };
+      }),
     };
   }
 
   async confirmSignatureAndExport(): Promise<void> {
-    if (!this.canSubmitSignature || !this.result || !this.activeCase) {
+    if (!this.canSubmitSignature || this.exportableRuns.length === 0 || !this.activeCase) {
       return;
     }
 
@@ -316,7 +646,8 @@ export class DexSwapAnalysisComponent implements OnInit {
     this.signatureError = null;
     try {
       const signatureImage = this.signaturePad!.getDataUrl();
-      const declaration = DexSwapAnalysisComponent.SIGNATURE_DECLARATION;
+      const declaration = this.signatureDeclaration();
+      const runs = this.exportableRuns;
 
       // Registered BEFORE the document is built: the verification code has to be printed
       // inside the very report it identifies.
@@ -327,31 +658,40 @@ export class DexSwapAnalysisComponent implements OnInit {
           declaration,
           content: this.reportContentPayload(),
           summary: {
-            total_events: this.result.total_events,
-            detected_count: this.result.detected_count,
-            potential_count: this.result.potential_count,
-            address: this.result.address,
+            addresses_analyzed: runs.length,
+            total_events: runs.reduce((sum, run) => sum + run.result!.total_events, 0),
+            detected_count: runs.reduce((sum, run) => sum + run.result!.detected_count, 0),
+            potential_count: runs.reduce((sum, run) => sum + run.result!.potential_count, 0),
           },
           report_type: 'dex_swap',
         }),
       );
 
-      this.buildDexSwapPdf({ signatureImage, declaration, registration });
+      const catEmblem = await this.loadPdfImage('assets/cat_pdf.png').catch(() => null);
+      const sealImage = await this.loadPdfImage('assets/seal.png').catch(() => null);
+      this.buildDexSwapPdf({ signatureImage, declaration, registration }, { catEmblem, sealImage });
       this.isSignatureDialogOpen = false;
     } catch {
-      this.signatureError = 'Neuspešno generisanje PDF izveštaja.';
+      this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
     } finally {
       this.isExportingPdf = false;
     }
   }
 
-  private buildDexSwapPdf(signing: {
-    signatureImage: string;
-    declaration: string;
-    registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
-  }): void {
-    const result = this.result!;
+  private buildDexSwapPdf(
+    signing: {
+      signatureImage: string;
+      declaration: string;
+      registration: { verification_code: string; content_hash: string; registered_at: string; analyst: string };
+    },
+    assets: {
+      catEmblem: { dataUrl: string; width: number; height: number } | null;
+      sealImage: { dataUrl: string; width: number; height: number } | null;
+    },
+  ): void {
+    const L = (sr: string, en: string): string => this.lx(sr, en);
     const caseSummary = this.activeCase!;
+    const runs = this.exportableRuns;
     const NAVY = DexSwapAnalysisComponent.PDF_NAVY;
     const ACCENT = DexSwapAnalysisComponent.PDF_ACCENT;
     const TEXT_GRAY = DexSwapAnalysisComponent.PDF_TEXT_GRAY;
@@ -365,15 +705,23 @@ export class DexSwapAnalysisComponent implements OnInit {
     const usableWidth = pageWidth - marginX * 2;
     let y = 32;
 
+    const barHeight = 24;
     doc.setFillColor(...NAVY);
-    doc.rect(0, 0, pageWidth, 24, 'F');
+    doc.rect(0, 0, pageWidth, barHeight, 'F');
+    let titleX = marginX;
+    if (assets.catEmblem) {
+      const emblem = 19;
+      const emblemW = (assets.catEmblem.width / assets.catEmblem.height) * emblem;
+      doc.addImage(assets.catEmblem.dataUrl, 'PNG', marginX, (barHeight - emblem) / 2, emblemW, emblem);
+      titleX = marginX + emblemW + 5;
+    }
     doc.setTextColor(...WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
-    doc.text('Lusi v1.0 - Izvestaj DEX Swap analize', marginX, 11);
+    doc.text(L('Lusi v1.0 - Izvestaj DEX Swap analize', 'Lusi v1.0 - DEX Swap analysis report'), titleX, 11);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Slucaj: ${this.asciiSafe(caseSummary.name)}`, marginX, 19);
+    doc.text(`${L('Slucaj', 'Case')}: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
     doc.setTextColor(...TEXT_DARK);
 
     const kv = (label: string, value: string): void => {
@@ -390,19 +738,39 @@ export class DexSwapAnalysisComponent implements OnInit {
     };
 
     kv('CASE ID', caseSummary.id);
-    kv('ANALIZIRANA ADRESA', result.address ?? 'n/a');
-    kv('IZVEZAO', this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
-    kv('EVIDENCIJA', this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : 'Sve transakcije (kombinovano)');
-    kv('VREMENSKI PROZOR', `${result.max_gap_seconds}s (maksimalan razmak izmedju ulaznog i izlaznog kraka)`);
-    kv('GENERISANO', new Date().toLocaleString());
+    kv(L('IZVEZAO', 'EXPORTED BY'), this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
+    kv(
+      L('EVIDENCIJA', 'EVIDENCE'),
+      this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : L('Sve transakcije (kombinovano)', 'All transactions (combined)'),
+    );
+    kv(L('ANALIZIRANO ADRESA', 'ADDRESSES ANALYSED'), String(runs.length));
+    kv(
+      L('VREMENSKI PROZOR', 'TIME WINDOW'),
+      L(
+        `${runs[0].result!.max_gap_seconds}s (maksimalan razmak izmedju ulaznog i izlaznog kraka)`,
+        `${runs[0].result!.max_gap_seconds}s (maximum gap between the input and output leg)`,
+      ),
+    );
+    kv(L('GENERISANO', 'GENERATED AT'), new Date().toLocaleString(this.dexPdfLang === 'sr' ? 'sr-RS' : 'en-GB'));
     y += 2;
 
     // Short version of the disclaimer, placed BEFORE any result - the full version is
     // the methodology appendix at the end. Never omitted, never softened: this is a
     // heuristic, not proof, on every page this note could plausibly be missed from.
+    // Composed here (not read from the backend's result.disclaimer) so it follows the
+    // chosen report language - the backend field is Serbian-only.
     const methodologyNoteLines = doc.splitTextToSize(
-      this.asciiSafe(result.disclaimer)
-        + ' Detaljno objasnjenje heuristike i njena ogranicenja nalaze se na kraju ovog izvestaja.',
+      L(
+        'DEX swap detekcija je heuristika zasnovana na adresnom obrascu, vremenskoj bliskosti i (kad postoji) '
+          + 'deklarisanoj valuti - ne predstavlja kriptografski dokaz da se radi o swap transakciji.',
+        'DEX swap detection is a heuristic based on address pattern, time proximity and (when present) declared '
+          + 'currency - it is not cryptographic proof that a swap transaction occurred.',
+      )
+        + ' '
+        + L(
+          'Detaljno objasnjenje heuristike i njena ogranicenja nalaze se na kraju ovog izvestaja.',
+          'A detailed explanation of the heuristic and its limitations is at the end of this report.',
+        ),
       usableWidth - 8,
     );
     const noteBoxHeight = methodologyNoteLines.length * 4.2 + 7;
@@ -451,42 +819,6 @@ export class DexSwapAnalysisComponent implements OnInit {
       doc.setTextColor(...TEXT_DARK);
     };
 
-    sectionTitle('Rezime analize');
-    drawSummaryCards([
-      ['Detektovano dogadjaja', result.total_events, ACCENT],
-      ['Detected (isti tx hash)', result.detected_count, DexSwapAnalysisComponent.PDF_HIGH],
-      ['Potential (adresa + vreme)', result.potential_count, DexSwapAnalysisComponent.PDF_MEDIUM],
-      ['DEX kontrakata razmotreno', result.dex_nodes_considered.length, TEXT_GRAY],
-    ]);
-
-    const lowConfidenceEvents = result.events.filter((event) => this.confidenceLevel(event) === 'Low');
-    const findingLines: string[] = [
-      `${result.total_events} ${result.total_events === 1 ? 'DEX swap dogadjaj' : 'DEX swap dogadjaja'} detektovano za adresu ${result.address ?? 'n/a'}`,
-    ];
-    if (result.detected_count > 0) {
-      findingLines.push(`${result.detected_count} potvrdjeno deljenim transaction hash-om (najjaci raspoloziv signal)`);
-    }
-    if (result.potential_count > 0) {
-      findingLines.push(`${result.potential_count} uparenih samo po adresi i vremenskoj bliskosti`);
-    }
-    findingLines.push(
-      result.data_completeness.currency_declared
-        ? 'Evidencija deklarise valutu/token za bar jednu transakciju'
-        : 'UPOZORENJE: evidencija ne deklarise valutu/token - input/output tokeni su nepoznati (?)',
-    );
-    if (lowConfidenceEvents.length > 0) {
-      findingLines.push(`${lowConfidenceEvents.length} dogadjaja prepoznato samo preko generic kljucne reci - preporucena dodatna provera`);
-    }
-
-    sectionTitle('Kljucni nalazi');
-    const findingsLineHeight = 6.5;
-    const findingsBoxTop = y - 5;
-    const findingsBoxHeight = findingLines.length * findingsLineHeight + 6;
-    doc.setFillColor(240, 247, 253);
-    doc.setDrawColor(...ACCENT);
-    doc.setLineWidth(0.4);
-    doc.roundedRect(marginX, findingsBoxTop, usableWidth, findingsBoxHeight, 2, 2, 'FD');
-
     const drawCheckmark = (checkX: number, baseline: number): void => {
       doc.setDrawColor(...ACCENT);
       doc.setLineWidth(0.6);
@@ -503,121 +835,198 @@ export class DexSwapAnalysisComponent implements OnInit {
       );
     };
 
-    let findingY = findingsBoxTop + 7;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...TEXT_DARK);
-    for (const line of findingLines) {
-      drawCheckmark(marginX + 4, findingY);
-      doc.text(line, marginX + 11, findingY);
-      findingY += findingsLineHeight;
-    }
-    y = findingsBoxTop + findingsBoxHeight + 9;
+    // One section per analysed address (Rezime -> Kljucni nalazi -> DEX kontrakti ->
+    // Detektovani dogadjaji -> [niska pouzdanost] -> Zakljucak), same shape the page used
+    // to render once for its single result - now looped, one address per page.
+    const renderAddressSection = (run: AddressDexSwapRun, heading: string): void => {
+      const result = run.result!;
+      sectionTitle(heading);
 
-    sectionTitle('DEX kontrakti razmotreni');
-    autoTable(doc, {
-      startY: y,
-      margin: { left: marginX, right: marginX },
-      head: [['Adresa', 'Naziv', 'Osnov prepoznavanja']],
-      body:
-        result.dex_nodes_considered.length > 0
-          ? result.dex_nodes_considered.map((node) => [node.address, this.asciiSafe(node.name), node.match_basis])
-          : [['-', '(nijedan prepoznat u ovoj evidenciji)', '-']],
-      styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
-      headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [240, 245, 250] },
-      columnStyles: { 1: { font: 'helvetica' }, 2: { font: 'helvetica' } },
-    });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      drawSummaryCards([
+        [L('Detektovano dogadjaja', 'Events detected'), result.total_events, ACCENT],
+        [`Detected (${L('isti tx hash', 'same tx hash')})`, result.detected_count, DexSwapAnalysisComponent.PDF_HIGH],
+        [`Potential (${L('adresa + vreme', 'address + time')})`, result.potential_count, DexSwapAnalysisComponent.PDF_MEDIUM],
+        [L('DEX kontrakata razmotreno', 'DEX contracts considered'), result.dex_nodes_considered.length, TEXT_GRAY],
+      ]);
 
-    if (y > pageHeight - 40) {
-      doc.addPage();
-      y = 16;
-    }
-    sectionTitle('Detektovani swap dogadjaji');
-    const sortedEvents = [...result.events].sort((a, b) => a.input_timestamp.localeCompare(b.input_timestamp));
-    autoTable(doc, {
-      startY: y,
-      margin: { left: marginX, right: marginX },
-      head: [['#', 'DEX', 'Input', 'Output', 'Pouzdanost', 'Vreme', 'Tx hash']],
-      body: sortedEvents.map((event, index) => [
-        String(index + 1),
-        this.asciiSafe(event.dex_name),
-        this.formatTokenAmount(event.input_amount, event.input_token),
-        this.formatTokenAmount(event.output_amount, event.output_token),
-        `${this.confidenceLevel(event)} (${event.confidence})`,
-        new Date(event.input_timestamp).toLocaleString(),
-        this.asciiSafe(event.input_transaction_hash ?? event.output_transaction_hash ?? 'n/a'),
-      ]),
-      styles: { fontSize: 7.5, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
-      headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [240, 245, 250] },
-      columnStyles: { 0: { cellWidth: 7, font: 'helvetica' }, 4: { cellWidth: 26, font: 'helvetica' } },
-      didParseCell: (data) => {
-        // Color the "Pouzdanost" column's text by confidence tier, same mapping as the
-        // on-screen badge and the Graph page's overlay - reading the level back out of
-        // the cell text itself rather than threading a second column through, since
-        // autoTable's row index already lines up with sortedEvents.
-        if (data.section === 'body' && data.column.index === 4) {
-          const level = sortedEvents[data.row.index] ? this.confidenceLevel(sortedEvents[data.row.index]) : 'Low';
-          data.cell.styles.textColor = DexSwapAnalysisComponent.confidenceColor(level);
-          data.cell.styles.fontStyle = 'bold';
-        }
-      },
-    });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      const lowConfidenceEvents = result.events.filter((event) => this.confidenceLevel(event) === 'Low');
+      const findingLines: string[] = [
+        L(
+          `${result.total_events} ${result.total_events === 1 ? 'DEX swap dogadjaj' : 'DEX swap dogadjaja'} detektovano za adresu ${result.address ?? 'n/a'}`,
+          `${result.total_events} DEX swap ${result.total_events === 1 ? 'event' : 'events'} detected for address ${result.address ?? 'n/a'}`,
+        ),
+      ];
+      if (result.detected_count > 0) {
+        findingLines.push(
+          L(
+            `${result.detected_count} potvrdjeno deljenim transaction hash-om (najjaci raspoloziv signal)`,
+            `${result.detected_count} confirmed by shared transaction hash (strongest available signal)`,
+          ),
+        );
+      }
+      if (result.potential_count > 0) {
+        findingLines.push(
+          L(
+            `${result.potential_count} uparenih samo po adresi i vremenskoj bliskosti`,
+            `${result.potential_count} matched only by address and time proximity`,
+          ),
+        );
+      }
+      findingLines.push(
+        result.data_completeness.currency_declared
+          ? L('Evidencija deklarise valutu/token za bar jednu transakciju', 'The evidence declares a currency/token for at least one transaction')
+          : L(
+              'UPOZORENJE: evidencija ne deklarise valutu/token - input/output tokeni su nepoznati (?)',
+              'WARNING: the evidence does not declare a currency/token - input/output tokens are unknown (?)',
+            ),
+      );
+      if (lowConfidenceEvents.length > 0) {
+        findingLines.push(
+          L(
+            `${lowConfidenceEvents.length} dogadjaja prepoznato samo preko generic kljucne reci - preporucena dodatna provera`,
+            `${lowConfidenceEvents.length} events recognised only via a generic keyword - additional manual review recommended`,
+          ),
+        );
+      }
 
-    if (lowConfidenceEvents.length > 0) {
+      sectionTitle(L('Kljucni nalazi', 'Key findings'));
+      const findingsLineHeight = 6.5;
+      const findingsBoxTop = y - 5;
+      const findingsBoxHeight = findingLines.length * findingsLineHeight + 6;
+      doc.setFillColor(240, 247, 253);
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(marginX, findingsBoxTop, usableWidth, findingsBoxHeight, 2, 2, 'FD');
+
+      let findingY = findingsBoxTop + 7;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...TEXT_DARK);
+      for (const line of findingLines) {
+        drawCheckmark(marginX + 4, findingY);
+        doc.text(line, marginX + 11, findingY);
+        findingY += findingsLineHeight;
+      }
+      y = findingsBoxTop + findingsBoxHeight + 9;
+
+      sectionTitle(L('DEX kontrakti razmotreni', 'DEX contracts considered'));
+      autoTable(doc, {
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [[L('Adresa', 'Address'), L('Naziv', 'Name'), L('Osnov prepoznavanja', 'Match basis')]],
+        body:
+          result.dex_nodes_considered.length > 0
+            ? result.dex_nodes_considered.map((node) => [node.address, this.asciiSafe(node.name), node.match_basis])
+            : [['-', L('(nijedan prepoznat u ovoj evidenciji)', '(none recognised in this evidence)'), '-']],
+        styles: { fontSize: 8, cellPadding: 1.6, font: 'courier', textColor: TEXT_DARK },
+        headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [240, 245, 250] },
+        columnStyles: { 1: { font: 'helvetica' }, 2: { font: 'helvetica' } },
+      });
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+
       if (y > pageHeight - 40) {
         doc.addPage();
         y = 16;
       }
-      sectionTitle('Dogadjaji sa niskom pouzdanoscu DEX identifikacije');
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(...TEXT_GRAY);
-      const lowNote = doc.splitTextToSize(
-        'Ovi dogadjaji su prepoznati kao DEX kontrakt samo preko generic kljucne reci (npr. "router", "dex", '
-          + '"aggregator"), ne preko poznate adrese ili prepoznatljive marke - slabiji signal, preporucena dodatna '
-          + 'rucna provera pre oslanjanja na nalaz.',
-        usableWidth - 8,
-      );
-      const lowBoxHeight = lowNote.length * 4.2 + 7;
-      doc.setFillColor(253, 250, 240);
-      doc.setDrawColor(...DexSwapAnalysisComponent.PDF_AMBER);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(marginX, y - 4, usableWidth, lowBoxHeight, 2, 2, 'FD');
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8.5);
-      doc.setTextColor(...TEXT_DARK);
-      doc.text(lowNote, marginX + 4, y + 1);
-      y += lowBoxHeight + 4;
-      doc.setFont('helvetica', 'normal');
-
+      sectionTitle(L('Detektovani swap dogadjaji', 'Detected swap events'));
+      const sortedEvents = [...result.events].sort((a, b) => a.input_timestamp.localeCompare(b.input_timestamp));
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['DEX adresa', 'Osnov prepoznavanja']],
-        body: lowConfidenceEvents.map((event) => [event.dex_address, event.dex_match_basis]),
-        styles: { fontSize: 8, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
-        headStyles: { fillColor: DexSwapAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [253, 246, 227] },
+        head: [['#', 'DEX', 'Input', 'Output', L('Pouzdanost', 'Confidence'), L('Vreme', 'Time'), 'Tx hash']],
+        body: sortedEvents.map((event, index) => [
+          String(index + 1),
+          this.asciiSafe(event.dex_name),
+          this.formatTokenAmount(event.input_amount, event.input_token),
+          this.formatTokenAmount(event.output_amount, event.output_token),
+          `${this.confidenceLevel(event)} (${event.confidence})`,
+          new Date(event.input_timestamp).toLocaleString(this.dexPdfLang === 'sr' ? 'sr-RS' : 'en-GB'),
+          this.asciiSafe(event.input_transaction_hash ?? event.output_transaction_hash ?? 'n/a'),
+        ]),
+        styles: { fontSize: 7.5, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
+        headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [240, 245, 250] },
+        columnStyles: { 0: { cellWidth: 7, font: 'helvetica' }, 4: { cellWidth: 26, font: 'helvetica' } },
+        didParseCell: (data) => {
+          // Color the "Pouzdanost" column's text by confidence tier, same mapping as the
+          // on-screen badge and the Graph page's overlay - reading the level back out of
+          // the cell text itself rather than threading a second column through, since
+          // autoTable's row index already lines up with sortedEvents.
+          if (data.section === 'body' && data.column.index === 4) {
+            const level = sortedEvents[data.row.index] ? this.confidenceLevel(sortedEvents[data.row.index]) : 'Low';
+            data.cell.styles.textColor = DexSwapAnalysisComponent.confidenceColor(level);
+            data.cell.styles.fontStyle = 'bold';
+          }
+        },
       });
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
-    }
 
-    y += 4;
-    if (y > pageHeight - 45) {
-      doc.addPage();
-      y = 16;
-    }
-    sectionTitle('Zakljucak analize');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(...TEXT_DARK);
-    const conclusionLines = doc.splitTextToSize(this.buildConclusionParagraph(), usableWidth);
-    doc.text(conclusionLines, marginX, y);
-    y += conclusionLines.length * 4.6;
+      if (lowConfidenceEvents.length > 0) {
+        if (y > pageHeight - 40) {
+          doc.addPage();
+          y = 16;
+        }
+        sectionTitle(L('Dogadjaji sa niskom pouzdanoscu DEX identifikacije', 'Events with low DEX-identification confidence'));
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...TEXT_GRAY);
+        const lowNote = doc.splitTextToSize(
+          L(
+            'Ovi dogadjaji su prepoznati kao DEX kontrakt samo preko generic kljucne reci (npr. "router", "dex", '
+              + '"aggregator"), ne preko poznate adrese ili prepoznatljive marke - slabiji signal, preporucena dodatna '
+              + 'rucna provera pre oslanjanja na nalaz.',
+            'These events were recognised as a DEX contract only via a generic keyword (e.g. "router", "dex", '
+              + '"aggregator"), not a known address or a recognisable brand - a weaker signal, additional manual review '
+              + 'is recommended before relying on the finding.',
+          ),
+          usableWidth - 8,
+        );
+        const lowBoxHeight = lowNote.length * 4.2 + 7;
+        doc.setFillColor(253, 250, 240);
+        doc.setDrawColor(...DexSwapAnalysisComponent.PDF_AMBER);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(marginX, y - 4, usableWidth, lowBoxHeight, 2, 2, 'FD');
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...TEXT_DARK);
+        doc.text(lowNote, marginX + 4, y + 1);
+        y += lowBoxHeight + 4;
+        doc.setFont('helvetica', 'normal');
+
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [[L('DEX adresa', 'DEX address'), L('Osnov prepoznavanja', 'Match basis')]],
+          body: lowConfidenceEvents.map((event) => [event.dex_address, event.dex_match_basis]),
+          styles: { fontSize: 8, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
+          headStyles: { fillColor: DexSwapAnalysisComponent.PDF_AMBER, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [253, 246, 227] },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      }
+
+      y += 4;
+      if (y > pageHeight - 45) {
+        doc.addPage();
+        y = 16;
+      }
+      sectionTitle(L('Zakljucak analize', 'Analysis conclusion'));
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...TEXT_DARK);
+      const conclusionLines = doc.splitTextToSize(this.buildConclusionParagraph(run), usableWidth);
+      doc.text(conclusionLines, marginX, y);
+      y += conclusionLines.length * 4.6;
+    };
+
+    runs.forEach((run, index) => {
+      if (index > 0) {
+        doc.addPage();
+        y = 16;
+      }
+      renderAddressSection(run, `${index + 1}. ${run.result!.address ?? run.address}`);
+    });
 
     // --- Methodology appendix ---------------------------------------------------------
     const paragraph = (text: string, options?: { bold?: boolean; size?: number; gap?: number }): void => {
@@ -655,58 +1064,100 @@ export class DexSwapAnalysisComponent implements OnInit {
       doc.addPage();
       y = 16;
     }
-    sectionTitle('Metodologija i ogranicenja');
+    sectionTitle(L('Metodologija i ogranicenja', 'Methodology and limitations'));
 
-    paragraph('Heuristika prepoznavanja', { bold: true, size: 10, gap: 2 });
+    paragraph(L('Heuristika prepoznavanja', 'Recognition heuristic'), { bold: true, size: 10, gap: 2 });
     paragraph(
-      'Dogadjaj se prijavljuje kad adresa posalje sredstva na prepoznat/verovatan DEX kontrakt, a zatim u kratkom '
-        + 'vremenskom periodu primi drugi token nazad od ISTOG kontrakta, na ISTU adresu. "Detected" znaci da oba kraka '
-        + 'dele isti transaction hash - najjaci raspoloziv signal. "Potential" znaci uparivanje iskljucivo po adresi i '
-        + 'vremenskoj bliskosti, bez potvrde da je rec o istoj on-chain transakciji.',
+      L(
+        'Dogadjaj se prijavljuje kad adresa posalje sredstva na prepoznat/verovatan DEX kontrakt, a zatim u kratkom '
+          + 'vremenskom periodu primi drugi token nazad od ISTOG kontrakta, na ISTU adresu. "Detected" znaci da oba kraka '
+          + 'dele isti transaction hash - najjaci raspoloziv signal. "Potential" znaci uparivanje iskljucivo po adresi i '
+          + 'vremenskoj bliskosti, bez potvrde da je rec o istoj on-chain transakciji.',
+        'An event is reported when an address sends funds to a recognised/likely DEX contract, then shortly after '
+          + 'receives a different token back from the SAME contract, to the SAME address. "Detected" means both legs '
+          + 'share the same transaction hash - the strongest available signal. "Potential" means matching purely by '
+          + 'address and time proximity, without confirmation that it is the same on-chain transaction.',
+      ),
     );
     paragraph(
-      'Par se NE prijavljuje kao swap kad je deklarisana valuta ista na oba kraka (npr. ETH -> ETH, obican bounce), '
-        + 'kad povratni transfer ide na DRUGU adresu umesto nazad posiljaocu, ili kad razmak izmedju krakova premasuje '
-        + 'podeseni vremenski prozor.',
+      L(
+        'Par se NE prijavljuje kao swap kad je deklarisana valuta ista na oba kraka (npr. ETH -> ETH, obican bounce), '
+          + 'kad povratni transfer ide na DRUGU adresu umesto nazad posiljaocu, ili kad razmak izmedju krakova premasuje '
+          + 'podeseni vremenski prozor.',
+        'A pair is NOT reported as a swap when the declared currency is the same on both legs (e.g. ETH -> ETH, a plain '
+          + 'bounce), when the return transfer goes to a DIFFERENT address instead of back to the sender, or when the '
+          + 'gap between the legs exceeds the configured time window.',
+      ),
       { gap: 5 },
     );
 
-    paragraph('Sta ovo NIJE', { bold: true, size: 10, gap: 2 });
+    paragraph(L('Sta ovo NIJE', 'What this is NOT'), { bold: true, size: 10, gap: 2 });
     paragraph(
-      'Ovo je heuristika, ne dokaz. Ne postoji kriptografska potvrda da su dva transfera deo iste swap transakcije - '
-        + 'cak i "Detected" pouzdanost se oslanja na to da evidencija ispravno belezi isti hash na oba kraka, ne na '
-        + 'nezavisnu on-chain verifikaciju.',
+      L(
+        'Ovo je heuristika, ne dokaz. Ne postoji kriptografska potvrda da su dva transfera deo iste swap transakcije - '
+          + 'cak i "Detected" pouzdanost se oslanja na to da evidencija ispravno belezi isti hash na oba kraka, ne na '
+          + 'nezavisnu on-chain verifikaciju.',
+        'This is a heuristic, not proof. There is no cryptographic confirmation that two transfers are part of the same '
+          + 'swap transaction - even "Detected" confidence relies on the evidence correctly recording the same hash on '
+          + 'both legs, not on independent on-chain verification.',
+      ),
       { gap: 5 },
     );
 
-    paragraph('Ogranicenja podataka', { bold: true, size: 10, gap: 2 });
+    paragraph(L('Ogranicenja podataka', 'Data limitations'), { bold: true, size: 10, gap: 2 });
     bullet(
-      'Valuta/token je opciona kolona u evidenciji i cesto nije popunjena - kad nedostaje, input/output token su '
-        + 'nepoznati (?), a uparivanje se oslanja iskljucivo na adresu i vreme, bez potvrde da su u pitanju dva razlicita '
-        + 'tokena.',
+      L(
+        'Valuta/token je opciona kolona u evidenciji i cesto nije popunjena - kad nedostaje, input/output token su '
+          + 'nepoznati (?), a uparivanje se oslanja iskljucivo na adresu i vreme, bez potvrde da su u pitanju dva razlicita '
+          + 'tokena.',
+        'Currency/token is an optional column in the evidence and is often not filled in - when missing, the '
+          + 'input/output token are unknown (?), and matching relies solely on address and time, without confirming '
+          + 'that two different tokens are actually involved.',
+      ),
     );
     bullet(
-      'Nema uvoza pravih ERC-20 Transfer dogadjaja (Etherscan tokentx) - on-chain uvoz u ovoj aplikaciji trenutno '
-        + 'povlaci samo native transfere.',
+      L(
+        'Nema uvoza pravih ERC-20 Transfer dogadjaja (Etherscan tokentx) - on-chain uvoz u ovoj aplikaciji trenutno '
+          + 'povlaci samo native transfere.',
+        'No import of real ERC-20 Transfer events (Etherscan tokentx) - the on-chain import in this application '
+          + 'currently pulls only native transfers.',
+      ),
     );
     bullet(
-      'Nema logike "povezane adrese" - ako swap izlaz ide na drugu adresu koja bi se (npr. preko wallet clustering-a) '
-        + 'mogla povezati sa istim vlasnikom, ovaj modul to ne uparuje.',
+      L(
+        'Nema logike "povezane adrese" - ako swap izlaz ide na drugu adresu koja bi se (npr. preko wallet clustering-a) '
+          + 'mogla povezati sa istim vlasnikom, ovaj modul to ne uparuje.',
+        'No "linked address" logic - if the swap output goes to another address that could (e.g. via wallet clustering) '
+          + 'be linked to the same owner, this module does not match that.',
+      ),
     );
     bullet(
-      'Spisak poznatih DEX adresa je mali, rucno kuriran (nije zivi registar) - potpunost i tacnost svakog unosa nije '
-        + 'garantovana.',
+      L(
+        'Spisak poznatih DEX adresa je mali, rucno kuriran (nije zivi registar) - potpunost i tacnost svakog unosa nije '
+          + 'garantovana.',
+        'The list of known DEX addresses is small and manually curated (not a live registry) - the completeness and '
+          + 'accuracy of every entry is not guaranteed.',
+      ),
     );
     bullet(
-      'Generic kljucna rec ("router", "dex", "aggregator") je slab signal za identifikaciju DEX kontrakta - oznaceno '
-        + 'posebno u nalazu kad je to jedini osnov (vidi sekciju iznad, ako postoji).',
+      L(
+        'Generic kljucna rec ("router", "dex", "aggregator") je slab signal za identifikaciju DEX kontrakta - oznaceno '
+          + 'posebno u nalazu kad je to jedini osnov (vidi sekciju iznad, ako postoji).',
+        'A generic keyword ("router", "dex", "aggregator") is a weak signal for identifying a DEX contract - flagged '
+          + 'separately in the finding when it is the only basis (see the section above, if present).',
+      ),
     );
-    bullet('Adresa se trazi tacnim poklapanjem (case-sensitive), ista konvencija kao Pathfinding/Behavioral stranice.');
+    bullet(
+      L(
+        'Adresa se trazi tacnim poklapanjem (case-sensitive), ista konvencija kao Pathfinding/Behavioral stranice.',
+        'Addresses are matched exactly (case-sensitive), the same convention as the Pathfinding/Behavioral pages.',
+      ),
+    );
 
     // --- Signature and seal ---------------------------------------------------------
     doc.addPage();
     y = 16;
-    sectionTitle('Potpis i overa');
+    sectionTitle(L('Potpis i overa', 'Signature and certification'));
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -724,7 +1175,7 @@ export class DexSwapAnalysisComponent implements OnInit {
 
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('Potpis analiticara', marginX, y + signatureBoxHeight + 4);
+    doc.text(L('Potpis analiticara', 'Analyst signature'), marginX, y + signatureBoxHeight + 4);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(...TEXT_DARK);
@@ -732,35 +1183,50 @@ export class DexSwapAnalysisComponent implements OnInit {
 
     const sealCenterX = marginX + signatureBoxWidth + (usableWidth - signatureBoxWidth) / 2;
     const sealCenterY = y + signatureBoxHeight / 2;
-    const sealRadius = 19;
-    doc.setDrawColor(...NAVY);
-    doc.setLineWidth(1.1);
-    doc.circle(sealCenterX, sealCenterY, sealRadius);
-    doc.setLineWidth(0.4);
-    doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+    if (assets.sealImage) {
+      const sealHeight = 34;
+      const sealWidth = (assets.sealImage.width / assets.sealImage.height) * sealHeight;
+      doc.addImage(
+        assets.sealImage.dataUrl,
+        'PNG',
+        sealCenterX - sealWidth / 2,
+        sealCenterY - sealHeight / 2,
+        sealWidth,
+        sealHeight,
+      );
+    } else {
+      const sealRadius = 19;
+      doc.setDrawColor(...NAVY);
+      doc.setLineWidth(1.1);
+      doc.circle(sealCenterX, sealCenterY, sealRadius);
+      doc.setLineWidth(0.4);
+      doc.circle(sealCenterX, sealCenterY, sealRadius - 2.5);
+      doc.setTextColor(...NAVY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('LUSI', sealCenterX, sealCenterY - 3, { align: 'center' });
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(L('DIGITALNA FORENZIKA', 'DIGITAL FORENSICS'), sealCenterX, sealCenterY + 2, { align: 'center' });
+    }
     doc.setTextColor(...NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('LUSI', sealCenterX, sealCenterY - 5, { align: 'center' });
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('DIGITALNA FORENZIKA', sealCenterX, sealCenterY - 0.5, { align: 'center' });
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.text('OVERENO', sealCenterX, sealCenterY + 4.5, { align: 'center' });
+    doc.text(
+      `${L('OVERENO', 'CERTIFIED')} ${new Date(signing.registration.registered_at).toLocaleDateString(this.dexPdfLang === 'sr' ? 'sr-RS' : 'en-GB')}`,
+      sealCenterX,
+      y + signatureBoxHeight + 4,
+      { align: 'center' },
+    );
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
-    doc.text(new Date(signing.registration.registered_at).toLocaleDateString(), sealCenterX, sealCenterY + 9, {
-      align: 'center',
-    });
 
     y += signatureBoxHeight + 16;
 
-    sectionTitle('Provera verodostojnosti');
+    sectionTitle(L('Provera verodostojnosti', 'Authenticity check'));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('KONTROLNI BROJ', marginX, y);
+    doc.text(L('KONTROLNI BROJ', 'VERIFICATION CODE'), marginX, y);
     doc.setFont('courier', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(...NAVY);
@@ -770,7 +1236,7 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
-    doc.text('OTISAK SADRZAJA', marginX, y);
+    doc.text(L('OTISAK SADRZAJA', 'CONTENT HASH'), marginX, y);
     doc.setFont('courier', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...TEXT_DARK);
@@ -781,9 +1247,14 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_DARK);
     const verifyLines = doc.splitTextToSize(
-      'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
-        + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
-        + 'posle izvoza.',
+      L(
+        'Verodostojnost se proverava u aplikaciji Lusi, unosom gornjeg kontrolnog broja. Ako se otisak sadrzaja poklapa '
+          + 'sa zabelezenim, podaci u izvestaju su isti kao u trenutku izvoza. Ako se ne poklapa, izvestaj je izmenjen '
+          + 'posle izvoza.',
+        'Authenticity is verified in the Lusi application by entering the verification code above. If the content hash '
+          + 'matches the recorded one, the data in the report is the same as at export time. If it does not match, the '
+          + 'report was altered after export.',
+      ),
       usableWidth,
     );
     doc.text(verifyLines, marginX, y);
@@ -793,10 +1264,17 @@ export class DexSwapAnalysisComponent implements OnInit {
     doc.setFontSize(8);
     doc.setTextColor(...TEXT_GRAY);
     const limitLines = doc.splitTextToSize(
-      'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
-        + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
-        + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
-        + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+      L(
+        'Ogranicenje: potpis iznad je izjava analiticara, a ne kriptografski dokaz — on ostaje netaknut i ako neko '
+          + 'izmeni dokument. Izmena se otkriva iskljucivo poredjenjem otiska sadrzaja. Provera potvrdjuje da se PODACI '
+          + 'poklapaju sa registrovanim, ne da je PDF fajl bajt-po-bajt isti; za to bi bio potreban kriptografski potpis '
+          + 'dokumenta (npr. PAdES), sto nije deo ove aplikacije.',
+        'Limitation: the signature above is the analyst\'s declaration, not a cryptographic proof — it stays intact '
+          + 'even if someone edits the document. An alteration is detected solely by comparing the content hash. The '
+          + 'check confirms that the DATA matches what was registered, not that the PDF file is byte-for-byte identical; '
+          + 'that would require a cryptographic signature of the document (e.g. PAdES), which is not part of this '
+          + 'application.',
+      ),
       usableWidth,
     );
     doc.text(limitLines, marginX, y);
@@ -807,43 +1285,62 @@ export class DexSwapAnalysisComponent implements OnInit {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text(`Lusi v1.0 forensic export | Strana ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.text(`Lusi v1.0 forensic export | ${L('Strana', 'Page')} ${page}/${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
     }
 
     doc.save(`${caseSummary.id}_dex_swap_report.pdf`);
   }
 
-  /** Auto-composed plain-language wrap-up, same spirit as taint-analysis.component.ts's
-   * buildConclusionParagraph - the same facts as the summary cards/key findings above,
-   * read as prose so the report doesn't force a reader to reconstruct the story
-   * themselves from raw tables. */
-  private buildConclusionParagraph(): string {
-    const result = this.result!;
+  /** Auto-composed plain-language wrap-up for one address, same spirit as taint-analysis
+   * .component.ts's buildConclusionParagraph - the same facts as that address's summary
+   * cards/key findings above, read as prose so the report doesn't force a reader to
+   * reconstruct the story themselves from raw tables. */
+  private buildConclusionParagraph(run: AddressDexSwapRun): string {
+    const result = run.result!;
+    const L = (sr: string, en: string): string => this.lx(sr, en);
     const sentences: string[] = [
-      `Analiza je za adresu ${result.address ?? 'n/a'} identifikovala ${result.total_events} `
-        + `${result.total_events === 1 ? 'potencijalni DEX swap dogadjaj' : 'potencijalnih DEX swap dogadjaja'}, `
-        + `od cega ${result.detected_count} sa "Detected" i ${result.potential_count} sa "Potential" pouzdanoscu.`,
+      L(
+        `Analiza je za adresu ${result.address ?? 'n/a'} identifikovala ${result.total_events} `
+          + `${result.total_events === 1 ? 'potencijalni DEX swap dogadjaj' : 'potencijalnih DEX swap dogadjaja'}, `
+          + `od cega ${result.detected_count} sa "Detected" i ${result.potential_count} sa "Potential" pouzdanoscu.`,
+        `The analysis identified ${result.total_events} potential DEX swap ${result.total_events === 1 ? 'event' : 'events'} `
+          + `for address ${result.address ?? 'n/a'}, of which ${result.detected_count} with "Detected" and `
+          + `${result.potential_count} with "Potential" confidence.`,
+      ),
     ];
 
     if (!result.data_completeness.currency_declared) {
       sentences.push(
-        'Evidencija ne deklarise valutu/token ni za jednu transakciju, pa identitet ulaznog i izlaznog tokena nije '
-          + 'potvrdjen za nijedan dogadjaj - uparivanje se oslanja iskljucivo na adresu DEX kontrakta i vremensku '
-          + 'bliskost.',
+        L(
+          'Evidencija ne deklarise valutu/token ni za jednu transakciju, pa identitet ulaznog i izlaznog tokena nije '
+            + 'potvrdjen za nijedan dogadjaj - uparivanje se oslanja iskljucivo na adresu DEX kontrakta i vremensku '
+            + 'bliskost.',
+          'The evidence does not declare a currency/token for any transaction, so the identity of the input and output '
+            + 'token is not confirmed for any event - matching relies solely on the DEX contract address and time '
+            + 'proximity.',
+        ),
       );
     }
 
     const lowCount = result.events.filter((event) => this.confidenceLevel(event) === 'Low').length;
     if (lowCount > 0) {
       sentences.push(
-        `${lowCount} ${lowCount === 1 ? 'dogadjaj je' : 'dogadjaja je'} oznaceno niskom pouzdanoscu DEX identifikacije `
-          + '(prepoznato samo preko generic kljucne reci) i zahteva dodatnu rucnu proveru pre oslanjanja na nalaz.',
+        L(
+          `${lowCount} ${lowCount === 1 ? 'dogadjaj je' : 'dogadjaja je'} oznaceno niskom pouzdanoscu DEX identifikacije `
+            + '(prepoznato samo preko generic kljucne reci) i zahteva dodatnu rucnu proveru pre oslanjanja na nalaz.',
+          `${lowCount} ${lowCount === 1 ? 'event is' : 'events are'} flagged with low DEX-identification confidence `
+            + '(recognised only via a generic keyword) and require additional manual review before relying on the finding.',
+        ),
       );
     }
 
     sentences.push(
-      'Nijedan nalaz u ovom izvestaju ne predstavlja kriptografski dokaz da se radi o swap transakciji - videti '
-        + 'sekciju "Metodologija i ogranicenja".',
+      L(
+        'Nijedan nalaz u ovom izvestaju ne predstavlja kriptografski dokaz da se radi o swap transakciji - videti '
+          + 'sekciju "Metodologija i ogranicenja".',
+        'No finding in this report constitutes cryptographic proof that a swap transaction occurred - see the '
+          + '"Methodology and limitations" section.',
+      ),
     );
 
     return sentences.join(' ');

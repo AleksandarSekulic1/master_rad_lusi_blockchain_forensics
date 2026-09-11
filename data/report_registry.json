@@ -537,5 +537,131 @@
       "evidence_scope": "20260824_001905_381531_demo_timezone_estimate.csv"
     },
     "registered_at": "2026-09-10T17:19:39.691546+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZDN3-PRXU",
+    "content_hash": "cc3892f62f8952868246b5bc8cfbe6f7b631c498733df1a50ebe0a5cb81c1c8a",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "addresses_analyzed": 6,
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1
+    },
+    "registered_at": "2026-09-11T08:20:33.119281+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-GD4H-6Q3J",
+    "content_hash": "e7c47c71a32c4ab4415b5372d732f31d7c0240eaba6a2fa837e7ae34b573ab8b",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "addresses_analyzed": 1,
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1
+    },
+    "registered_at": "2026-09-11T08:53:49.793090+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-T5GJ-F8RW",
+    "content_hash": "cc3892f62f8952868246b5bc8cfbe6f7b631c498733df1a50ebe0a5cb81c1c8a",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence (heuristically).",
+    "summary": {
+      "addresses_analyzed": 6,
+      "total_events": 2,
+      "detected_count": 1,
+      "potential_count": 1
+    },
+    "registered_at": "2026-09-11T09:13:23.918240+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-WHNQ-WYVC",
+    "content_hash": "a915a4aa8b3d59ddc22a666b2b58d7d4d77ea7f1b2c55f9ddeaf3274528cb731",
+    "case_id": "activity-log",
+    "case_name": "Activity log",
+    "analyst": "admin",
+    "declaration": "I confirm this report is accurate.",
+    "summary": {
+      "entry_count": 486,
+      "date_from": null,
+      "date_to": null,
+      "users": "svi"
+    },
+    "registered_at": "2026-09-11T11:46:57.709736+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-CM7L-UQKP",
+    "content_hash": "a915a4aa8b3d59ddc22a666b2b58d7d4d77ea7f1b2c55f9ddeaf3274528cb731",
+    "case_id": "activity-log",
+    "case_name": "Activity log",
+    "analyst": "admin",
+    "declaration": "I confirm this report is accurate.",
+    "summary": {
+      "entry_count": 486,
+      "date_from": null,
+      "date_to": null,
+      "users": "svi"
+    },
+    "registered_at": "2026-09-11T11:47:41.386820+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-5528-TBBD",
+    "content_hash": "1c6a352be5fb3cae621f8f732ff27b6e3472bb1c355052b097cfd563bdaac956",
+    "case_id": "activity-log",
+    "case_name": "Log aktivnosti",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj aktivnosti u okviru navedenog perioda i da su u njemu prikazane tačno one akcije koje je aplikacija zabeležila u dnevniku. Potpis iznad je moj.",
+    "summary": {
+      "entry_count": 279,
+      "date_from": null,
+      "date_to": null,
+      "users": [
+        "aco"
+      ]
+    },
+    "registered_at": "2026-09-11T11:59:54.174562+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-9E2T-NC3T",
+    "content_hash": "6aecd3bf5a95638b7aac560ac8b941d701c0bd3680534c9a7a035c714da28ace",
+    "case_id": "activity-log",
+    "case_name": "Log aktivnosti",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj aktivnosti u okviru navedenog perioda i da su u njemu prikazane tačno one akcije koje je aplikacija zabeležila u dnevniku. Potpis iznad je moj.",
+    "summary": {
+      "entry_count": 44,
+      "date_from": "2026-09-11",
+      "date_to": "2026-09-11",
+      "users": [
+        "aco"
+      ]
+    },
+    "registered_at": "2026-09-11T12:09:00.706603+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-MYXV-BUJ7",
+    "content_hash": "84f61a410fd9310fbb4f6832888b526d4c3a93d7caacc5104954d66e827fd571",
+    "case_id": "activity-log",
+    "case_name": "Activity log",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this activity report for the stated period and that it shows exactly the actions the application recorded in the log. The signature above is mine.",
+    "summary": {
+      "entry_count": 33,
+      "date_from": "2026-09-09",
+      "date_to": "2026-09-09",
+      "users": [
+        "aco"
+      ]
+    },
+    "registered_at": "2026-09-11T12:15:29.985417+00:00"
   }
 ]

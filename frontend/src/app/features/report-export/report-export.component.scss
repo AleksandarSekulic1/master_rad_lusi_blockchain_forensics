@@ -108,6 +108,28 @@ h2 {
   cursor: not-allowed;
 }
 
+.export-actions .ghost-button {
+  padding: 0.72rem 1.2rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  color: var(--dlg-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.export-actions .ghost-button:hover:not(:disabled) {
+  border-color: var(--kicker);
+}
+
+.export-actions .ghost-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .export-error {
   margin: 0;
   color: var(--error);

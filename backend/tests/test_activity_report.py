@@ -296,6 +296,16 @@ class TestPdfGeneration:
         return build_activity_pdf(
             entries, generated_by='admin', date_from=None, date_to=None,
             tz_offset_minutes=-120, selected_users=[], scope='all',
+            signing={
+                'declaration': 'Potvrđujem da sam izradio ovaj izveštaj.',
+                'signature_image': None,
+                'registration': {
+                    'verification_code': 'LUSI-2026-TEST-0000',
+                    'content_hash': 'deadbeef',
+                    'registered_at': '2026-07-27T10:00:00+00:00',
+                    'analyst': 'admin',
+                },
+            },
         )
 
     def test_produces_a_valid_pdf(self):

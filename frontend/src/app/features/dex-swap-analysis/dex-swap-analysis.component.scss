@@ -3,80 +3,216 @@
    the relevant shell rules, not a shared import) - kept consistent on purpose so DEX Swap
    Analysis reads as a sibling of the other analysis pages, not a different app. */
 
+/* Temski tokeni - tamna tema podrazumevano, prepisani pod [data-theme='light']
+   (isti pristup kao taint-analysis / pathfinding / behavioral-analysis .scss). Tako
+   DEX Swap stranica u obe teme izgleda kao sestra ostalih stranica analize, a ne kao
+   drugacija aplikacija. */
+:host {
+  --dx-border: rgba(148, 163, 184, 0.18);
+  --dx-border-soft: rgba(148, 163, 184, 0.14);
+  --dx-surface: rgba(4, 9, 18, 0.78);
+  --dx-heading: #f4f7fe;
+  --dx-muted: #8ea6c7;
+  --dx-kicker: #7bd6ff;
+  --dx-dim: #9ab1d0;
+  --dx-field-border: rgba(148, 163, 184, 0.24);
+  --dx-field-text: #eef4ff;
+  --dx-field-bg: rgba(255, 255, 255, 0.03);
+  --dx-field-focus-border: rgba(125, 211, 252, 0.55);
+  --dx-chip-bg: rgba(255, 255, 255, 0.03);
+  --dx-btn-bg: rgba(255, 255, 255, 0.02);
+  --dx-btn-text: #d9e6ff;
+  --dx-btn-hover-bg: rgba(125, 211, 252, 0.1);
+  --dx-btn-hover-border: rgba(125, 211, 252, 0.45);
+  --dx-btn-hover-text: #ffffff;
+  --dx-error: #fca5a5;
+  --dx-text: #f4f7fe;
+  --dx-arrow: #7591b3;
+  --dx-accent: #7dd3fc;
+  --dx-card-bg: rgba(4, 9, 18, 0.55);
+  --dx-card-hover-border: rgba(125, 211, 252, 0.32);
+  --dx-badge-neutral-bg: rgba(148, 163, 184, 0.16);
+  --dx-badge-neutral-border: rgba(148, 163, 184, 0.3);
+  --dx-badge-neutral-text: #eef4ff;
+  --dx-note-bg: rgba(255, 255, 255, 0.03);
+  --dx-note-border: rgba(148, 163, 184, 0.22);
+  --dx-leg-bg: rgba(255, 255, 255, 0.04);
+  --dx-leg-border: rgba(148, 163, 184, 0.16);
+  --dx-dex-chip-bg: rgba(125, 211, 252, 0.12);
+  --dx-dex-chip-border: rgba(125, 211, 252, 0.28);
+  --dx-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --dx-card-detected-stripe: #7dd3fc;
+  --dx-card-potential-stripe: rgba(148, 163, 184, 0.5);
+}
+
+:host-context([data-theme='light']) {
+  --dx-border: rgba(15, 23, 42, 0.12);
+  --dx-border-soft: rgba(15, 23, 42, 0.1);
+  --dx-surface: #ffffff;
+  --dx-heading: #16233b;
+  --dx-muted: #55658c;
+  --dx-kicker: #2563eb;
+  --dx-dim: #55658c;
+  --dx-field-border: rgba(15, 23, 42, 0.16);
+  --dx-field-text: #16233b;
+  --dx-field-bg: #f6f8fc;
+  --dx-field-focus-border: rgba(37, 99, 235, 0.5);
+  --dx-chip-bg: rgba(15, 23, 42, 0.045);
+  --dx-btn-bg: rgba(15, 23, 42, 0.03);
+  --dx-btn-text: #1e293b;
+  --dx-btn-hover-bg: rgba(37, 99, 235, 0.1);
+  --dx-btn-hover-border: rgba(37, 99, 235, 0.4);
+  --dx-btn-hover-text: #0f1b30;
+  --dx-error: #b91c1c;
+  --dx-text: #16233b;
+  --dx-arrow: #94a3b8;
+  --dx-accent: #2563eb;
+  --dx-card-bg: #ffffff;
+  --dx-card-hover-border: rgba(37, 99, 235, 0.3);
+  --dx-badge-neutral-bg: rgba(15, 23, 42, 0.06);
+  --dx-badge-neutral-border: rgba(15, 23, 42, 0.16);
+  --dx-badge-neutral-text: #16233b;
+  --dx-note-bg: rgba(15, 23, 42, 0.03);
+  --dx-note-border: rgba(15, 23, 42, 0.16);
+  --dx-leg-bg: rgba(15, 23, 42, 0.04);
+  --dx-leg-border: rgba(15, 23, 42, 0.1);
+  --dx-dex-chip-bg: rgba(37, 99, 235, 0.1);
+  --dx-dex-chip-border: rgba(37, 99, 235, 0.24);
+  --dx-card-shadow: 0 1px 3px rgba(37, 71, 128, 0.12);
+  --dx-card-detected-stripe: #2563eb;
+  --dx-card-potential-stripe: rgba(100, 116, 139, 0.5);
+}
+
 .dex-swap-shell {
   display: grid;
   gap: 1rem;
 }
 
-.active-case-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1rem;
+/* ---------- objedinjena gornja kontrolna kartica (slučaj + evidencija) ----------
+   Isti obrazac kao .pf-controls / .pf-bar na Pathfinding stranici, da gornji strip
+   izgleda kao sestra ostalih stranica analize, a ne kao zaseban blok. */
+
+.dex-controls {
+  border: 1px solid var(--dx-border);
   border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(125, 211, 252, 0.06);
+  background: var(--dx-surface);
+  overflow: hidden;
 }
 
-.active-case-banner strong {
-  display: block;
-  color: #f4f7fe;
+.dex-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
 }
 
-.active-case-banner .muted {
-  color: #8ea6c7;
-  font-size: 0.9rem;
-}
-
-.active-case-banner .muted a {
-  color: #7bd6ff;
-}
-
-.evidence-picker label {
+.dex-case {
   display: grid;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  color: #8ea6c7;
-  max-width: 28rem;
+  gap: 0.1rem;
+  align-self: center;
 }
 
-.evidence-picker select {
+.dex-eyebrow {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dx-kicker);
+}
+
+.dex-case strong {
+  font-size: 0.92rem;
+  color: var(--dx-heading);
+}
+
+.dex-nocase {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--dx-dim);
+}
+
+.dex-nocase a {
+  color: var(--dx-kicker);
+}
+
+.dex-field {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.dex-field-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dx-dim);
+}
+
+.dex-field select {
   width: 100%;
-  padding: 0.8rem 0.95rem;
-  border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--dx-field-border);
+  color: var(--dx-field-text);
+  background: var(--dx-field-bg);
+  font: inherit;
+  font-size: 0.85rem;
 }
 
-.evidence-picker select option {
+.dex-field select option {
   color: #0b1526;
   background: #ffffff;
 }
 
 .panel-kicker {
-  margin: 0 0 0.15rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--dx-kicker);
+}
+
+.dex-swap-header {
+  display: grid;
+  gap: 0.3rem;
 }
 
 .dex-swap-header h2 {
+  position: relative;
   margin: 0;
-  font-size: clamp(1.8rem, 3.4vw, 2.5rem);
-  letter-spacing: 0.02em;
-  color: #f4f7fe;
+  padding-bottom: 0.6rem;
+  font-size: clamp(1.6rem, 2.8vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--dx-heading);
 }
 
-.dex-swap-header p:not(.panel-kicker) {
-  margin: 0.4rem 0 0;
-  max-width: 46rem;
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: #9ab1d0;
+.dex-swap-header h2::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 3.5rem;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dx-accent), transparent);
+}
+
+/* ---------- kartica za izbor/red adresa (isti obrazac kao .dex-controls iznad) ----------
+   Objedinjuje izbor/dodavanje adresa, red za analizu i akcione dugmiće u jednu vizuelno
+   zatvorenu celinu, umesto da plutaju slobodno između zaglavlja i rezultata. */
+
+.address-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--dx-border);
+  background: var(--dx-surface);
 }
 
 .address-form {
@@ -91,28 +227,49 @@
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.78rem;
-  color: #9db1cf;
+  color: var(--dx-dim);
   flex: 1 1 22rem;
   min-width: 0;
 }
 
-.address-field input {
+.address-field input,
+.case-address-select {
   padding: 0.75rem 0.9rem;
   border-radius: 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(255, 255, 255, 0.03);
-  color: #eef4ff;
+  border: 1px solid var(--dx-field-border);
+  background: var(--dx-field-bg);
+  color: var(--dx-field-text);
   font: inherit;
   font-size: 0.9rem;
+}
+
+.address-field input {
+  caret-color: var(--dx-kicker);
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
 }
 
-.address-field input:focus {
-  outline: none;
-  border-color: rgba(125, 211, 252, 0.55);
+.case-address-select {
+  text-overflow: ellipsis;
 }
 
-.address-field input:disabled {
+.case-address-select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+.address-field input::placeholder {
+  color: var(--dx-muted);
+  opacity: 0.7;
+}
+
+.address-field input:focus,
+.case-address-select:focus {
+  outline: none;
+  border-color: var(--dx-field-focus-border);
+}
+
+.address-field input:disabled,
+.case-address-select:disabled {
   opacity: 0.5;
 }
 
@@ -137,9 +294,9 @@
 .ghost-button {
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(255, 255, 255, 0.02);
-  color: #d9e6ff;
+  border: 1px solid var(--dx-field-border);
+  background: var(--dx-btn-bg);
+  color: var(--dx-btn-text);
   font: inherit;
   font-size: 0.78rem;
   font-weight: 500;
@@ -149,9 +306,9 @@
 
 .ghost-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.45);
-  background: rgba(125, 211, 252, 0.1);
-  color: #ffffff;
+  border-color: var(--dx-btn-hover-border);
+  background: var(--dx-btn-hover-bg);
+  color: var(--dx-btn-hover-text);
 }
 
 .ghost-button:disabled {
@@ -164,17 +321,188 @@
   cursor: not-allowed;
 }
 
+.add-address-button {
+  flex: none;
+  align-self: flex-end;
+}
+
+/* "Pronađi sve DEX swap adrese" - exact whole-evidence scan (see openScanAllDialog's own
+   comment), not a guess like Taint's seed suggestions, but still a distinct action from
+   the queue/ANALIZIRAJ path - an accent border marks it as the "smart" shortcut. */
+.scan-all-button {
+  border-color: var(--dx-accent);
+  color: var(--dx-kicker);
+}
+
+.scan-all-button:hover:not(:disabled) {
+  border-color: var(--dx-accent);
+  background: var(--dx-btn-hover-bg);
+}
+
+/* --- Queue: addresses staged for the next run (see confirmCustodyAndAnalyze) - same
+   pattern as behavioral-analysis.component.scss's own queue-chips/analyze-row. --- */
+
+.queue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  max-height: 8.5rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.queue-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--dx-muted);
+}
+
+.queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 16rem;
+  padding: 0.32rem 0.4rem 0.32rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dx-accent) 32%, transparent);
+  background: color-mix(in srgb, var(--dx-accent) 12%, transparent);
+  font-size: 0.74rem;
+  color: var(--dx-text);
+}
+
+.queue-chip button {
+  flex: none;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.queue-chip button:hover {
+  opacity: 1;
+}
+
+.mono-clip {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analyze-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+/* Two visual groups - "run what's queued" vs. "help me build/replace the queue" - split by
+   a thin vertical rule so ANALIZIRAJ doesn't read as just one more button in a row of five. */
+.analyze-row-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analyze-row-divider {
+  align-self: stretch;
+  width: 1px;
+  min-height: 1.6rem;
+  background: var(--dx-border);
+}
+
+.scan-all-icon {
+  margin-right: 0.35rem;
+  color: var(--dx-accent);
+}
+
+/* --- Result switcher: one tab per analysed address, plus the PDF export button - same
+   pattern as behavioral-analysis.component.scss's own result-tabs/results-toolbar. ---
+   A top border separates it from the address panel above, so it reads as the next step
+   rather than more buttons in the same row. */
+
+.results-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--dx-border-soft);
+}
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.result-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 15rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.7rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--dx-field-border);
+  background: var(--dx-chip-bg);
+  font: inherit;
+  font-size: 0.74rem;
+  color: var(--dx-dim);
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.result-tab:hover {
+  color: var(--dx-heading);
+}
+
+.result-tab.active {
+  border-color: var(--dx-accent);
+  color: var(--dx-heading);
+  background: color-mix(in srgb, var(--dx-accent) 12%, transparent);
+}
+
+.result-tab.failed {
+  color: var(--dx-error);
+  border-color: color-mix(in srgb, var(--dx-error) 40%, transparent);
+}
+
+.result-tab-remove {
+  flex: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  opacity: 0.6;
+}
+
+.result-tab-remove:hover {
+  opacity: 1;
+}
+
+.export-pdf-button {
+  flex: none;
+}
+
 .error-inline {
   margin: 0;
   font-size: 0.85rem;
-  color: #fca5a5;
+  color: var(--dx-error);
 }
 
 .empty-hint {
   margin: 0.4rem 0 0;
   font-size: 0.85rem;
   line-height: 1.55;
-  color: #8ea6c7;
+  color: var(--dx-muted);
 }
 
 /* --- Result: a short meta line, an optional data-completeness note, then the flat list
@@ -182,28 +510,42 @@
 
 .result-meta {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.6rem;
   flex-wrap: wrap;
+  margin-top: 0.25rem;
 }
 
 .tx-count-pill {
-  padding: 0.4rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  color: #9ab1d0;
+  background: var(--dx-chip-bg);
+  border: 1px solid var(--dx-border-soft);
+  color: var(--dx-dim);
   font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.tx-count-pill::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--dx-accent);
 }
 
 .data-note {
   margin: 0;
-  padding: 0.65rem 0.85rem;
+  padding: 0.7rem 0.9rem;
   border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed rgba(148, 163, 184, 0.22);
+  background: var(--dx-note-bg);
+  border: 1px dashed var(--dx-note-border);
   font-size: 0.78rem;
   line-height: 1.5;
-  color: #8ea6c7;
+  color: var(--dx-muted);
 }
 
 .swap-list {
@@ -212,21 +554,56 @@
 }
 
 .swap-card {
+  position: relative;
   display: grid;
-  gap: 0.5rem;
-  padding: 1rem 1.1rem;
+  gap: 0.7rem;
+  padding: 1.05rem 1.15rem 1.05rem 1.4rem;
   border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(4, 9, 18, 0.78);
+  border: 1px solid var(--dx-border);
+  background: var(--dx-card-bg);
+  box-shadow: var(--dx-card-shadow);
+  overflow: hidden;
+  transition: border-color 0.14s ease, transform 0.14s ease;
+}
+
+/* Left accent stripe by confidence - the fastest read on the card: strong (Detected)
+   vs. muted (Potential), same idea as the badge but visible at a glance down the list. */
+.swap-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.swap-card.card-detected::before {
+  background: var(--dx-card-detected-stripe);
+}
+
+.swap-card.card-potential::before {
+  background: var(--dx-card-potential-stripe);
+}
+
+.swap-card:hover {
+  border-color: var(--dx-card-hover-border);
+  transform: translateY(-1px);
+}
+
+.swap-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
 }
 
 .confidence-badge {
-  justify-self: start;
+  flex: none;
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
@@ -239,15 +616,17 @@
 }
 
 .confidence-potential {
-  color: #eef4ff;
-  background: rgba(148, 163, 184, 0.16);
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: var(--dx-badge-neutral-text);
+  background: var(--dx-badge-neutral-bg);
+  border: 1px solid var(--dx-badge-neutral-border);
 }
 
 .swap-route {
   margin: 0;
-  font-size: 0.8rem;
-  color: #8ea6c7;
+  font-size: 0.78rem;
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  color: var(--dx-muted);
+  overflow-wrap: anywhere;
 }
 
 /* The headline: INPUT TOKEN -> DEX -> OUTPUT TOKEN. This is the one number an
@@ -255,45 +634,69 @@
 .swap-headline {
   margin: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  font-size: 1.3rem;
-  font-weight: 600;
+  gap: 0.5rem;
   font-variant-numeric: tabular-nums;
-  color: #f4f7fe;
+  color: var(--dx-text);
+}
+
+.swap-headline .leg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--dx-leg-bg);
+  border: 1px solid var(--dx-leg-border);
+}
+
+.swap-headline .amount {
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
 .swap-headline .token {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #9ab1d0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dx-dim);
 }
 
 .swap-headline .token-unknown {
   font-style: italic;
-  color: #7591b3;
+  text-transform: none;
+  color: var(--dx-arrow);
 }
 
 .swap-headline .arrow {
-  color: #7591b3;
+  font-size: 1.1rem;
+  color: var(--dx-accent);
   font-weight: 400;
 }
 
 .swap-headline .dex-name {
-  font-size: 1rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--dx-dex-chip-bg);
+  border: 1px solid var(--dx-dex-chip-border);
+  font-size: 0.9rem;
   font-weight: 600;
-  color: #7bd6ff;
+  color: var(--dx-kicker);
 }
 
 .swap-footer {
   display: flex;
   gap: 1.1rem;
   flex-wrap: wrap;
+  margin-top: 0.15rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--dx-border-soft);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
-  color: #7591b3;
+  color: var(--dx-arrow);
 }
 
 .disclaimer-note {
@@ -301,7 +704,7 @@
   font-size: 0.7rem;
   line-height: 1.5;
   font-style: italic;
-  color: #8ea6c7;
+  color: var(--dx-muted);
 }
 
 /* --- PDF export signature dialog - identical copy of
@@ -346,6 +749,53 @@
 }
 
 .signature-intro strong {
+  color: #cdd9ef;
+}
+
+/* Report-language picker on the signing modal - same fieldset as taint-analysis /
+   pathfinding / behavioral-analysis .scss's own .signature-lang. Fixed dark colors, not
+   --dx-* tokens: this dialog's background stays dark regardless of the app theme (see
+   .signature-dialog above), same as the rest of this dialog's own rules. */
+.signature-lang {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+}
+
+.signature-lang legend {
+  padding: 0 0.35rem;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8ea6c7;
+}
+
+.signature-lang label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: #cdd9ef;
+  cursor: pointer;
+}
+
+.signature-lang input {
+  accent-color: #7dd3fc;
+}
+
+.signature-lang-hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+}
+
+.signature-lang-hint strong {
   color: #cdd9ef;
 }
 

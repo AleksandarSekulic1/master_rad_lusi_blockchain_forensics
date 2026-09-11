@@ -99,3 +99,33 @@ def detect_currencies(file_path: str | Path) -> list[str]:
         .str.upper()
     )
     return sorted({value for value in values if value})
+
+
+def split_by_currency(file_path: str | Path) -> dict[str | None, pd.DataFrame]:
+    """Splits a raw (not yet cleaned) evidence CSV into one DataFrame per declared
+    currency label, preserving the file's own original columns/headers exactly as
+    uploaded - used when an upload mixes currencies (see app.api.routes.upload) so each
+    resulting evidence file is internally consistent for the taint model, instead of
+    asking the analyst to split it by hand outside the app.
+
+    Rows with no declared currency at all go under the `None` key: they cannot be safely
+    assigned to any one of the declared currencies, so they are kept apart rather than
+    guessed into one of the groups.
+    """
+    raw = pd.read_csv(file_path)
+    normalized = _normalize_columns(raw)
+    if 'currency' not in normalized.columns:
+        return {None: raw}
+
+    labels = normalized['currency'].astype('string').str.strip().str.upper()
+    labels = labels.mask(labels == '')
+
+    groups: dict[str | None, pd.DataFrame] = {}
+    null_mask = labels.isna()
+    if null_mask.any():
+        groups[None] = raw[null_mask]
+    for label in sorted(labels.dropna().unique()):
+        subset = raw[labels == label]
+        if not subset.empty:
+            groups[str(label)] = subset
+    return groups
