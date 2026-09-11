@@ -105,7 +105,7 @@
         <article class="custody-form" *ngIf="selectedChain">
           <div class="custody-form-toolbar">
             <button type="button" class="ghost-button" (click)="closeTransaction()">← {{ t('Nazad na spisak', 'Back to list') }}</button>
-            <button type="button" class="primary-button" (click)="exportPdf()" [disabled]="isExportingPdf">
+            <button type="button" class="primary-button" (click)="openExportDialog('transaction')" [disabled]="isExportingPdf">
               {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF', 'Export PDF') }}
             </button>
           </div>
@@ -225,7 +225,7 @@
         <article class="custody-form" *ngIf="selectedEvidenceChain">
           <div class="custody-form-toolbar">
             <button type="button" class="ghost-button" (click)="closeEvidence()">← {{ t('Nazad na spisak', 'Back to list') }}</button>
-            <button type="button" class="primary-button" (click)="exportEvidencePdf()" [disabled]="isExportingEvidencePdf">
+            <button type="button" class="primary-button" (click)="openExportDialog('evidence')" [disabled]="isExportingEvidencePdf">
               {{ isExportingEvidencePdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF', 'Export PDF') }}
             </button>
           </div>
@@ -292,3 +292,38 @@
     </ng-container>
   </article>
 </section>
+
+<!-- Jezik PDF izvoza - jedina stvar koja se pita pre generisanja obrasca; potpisi su već
+     deo evidencije (uneti pri svakom pristupu, vidi CustodyAccessDialogComponent), pa ovaj
+     dijalog ne traži ni potpis ni izjavu, za razliku od signing-overlay na drugim
+     stranicama izveštaja. -->
+<div class="lang-overlay" *ngIf="isExportLangDialogOpen" (click)="closeExportDialog()">
+  <div class="lang-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">Chain of custody</p>
+    <h3>{{ t('Jezik izveštaja', 'Report language') }}</h3>
+    <p class="lang-dialog-intro">
+      {{
+        t(
+          'Potpisi su već deo evidencije - izaberite samo jezik na kom će obrazac biti izvezen.',
+          "Signatures are already part of the record - just pick the language the form will be exported in."
+        )
+      }}
+    </p>
+
+    <fieldset class="lang-choice">
+      <label>
+        <input type="radio" name="custodyExportLang" value="sr" [(ngModel)]="exportPdfLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="custodyExportLang" value="en" [(ngModel)]="exportPdfLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+    </fieldset>
+
+    <div class="lang-dialog-actions">
+      <button type="button" class="ghost-button" (click)="closeExportDialog()">{{ t('Otkaži', 'Cancel') }}</button>
+      <button type="button" class="primary-button" (click)="confirmExport()">{{ t('Izvezi PDF', 'Export PDF') }}</button>
+    </div>
+  </div>
+</div>

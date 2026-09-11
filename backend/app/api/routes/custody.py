@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
@@ -55,6 +57,7 @@ def get_transaction_custody_chain(case_id: str, tx_id: str) -> dict[str, object]
 def export_transaction_custody_pdf(
     case_id: str,
     tx_id: str,
+    lang: Literal['sr', 'en'] = 'sr',
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> Response:
     case = _case_or_404(case_id)
@@ -62,7 +65,7 @@ def export_transaction_custody_pdf(
     if chain is None:
         raise HTTPException(status_code=404, detail=f'Nema zabelezenih pristupa transakciji {tx_id} u ovom slucaju.')
 
-    payload = build_custody_pdf(chain, chain['entries'])
+    payload = build_custody_pdf(chain, chain['entries'], lang)
 
     # Taking a copy of the chain of custody OUT of the application is itself an action
     # worth recording IN the chain of custody's own audit trail - otherwise the general
@@ -111,6 +114,7 @@ def get_evidence_custody_chain(case_id: str, evidence_stored_name: str) -> dict[
 def export_evidence_custody_pdf(
     case_id: str,
     evidence_stored_name: str,
+    lang: Literal['sr', 'en'] = 'sr',
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> Response:
     case = _case_or_404(case_id)
@@ -121,7 +125,7 @@ def export_evidence_custody_pdf(
             detail=f'Nema zabelezenih pristupa dokaznom fajlu {evidence_stored_name} u ovom slucaju.',
         )
 
-    payload = build_custody_evidence_pdf(chain, chain['entries'])
+    payload = build_custody_evidence_pdf(chain, chain['entries'], lang)
 
     # See the transaction-level export above for why this is logged here too.
     write_audit_log(

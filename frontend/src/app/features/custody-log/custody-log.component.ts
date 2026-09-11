@@ -5,7 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { ApiService } from '../../core/services/api.service';
-import { SettingsService } from '../../core/services/settings.service';
+import { AppLang, SettingsService } from '../../core/services/settings.service';
 import {
   CustodyChain,
   CustodyEvidenceChain,
@@ -60,6 +60,13 @@ export class CustodyLogComponent implements OnInit {
   protected evidenceChainError: string | null = null;
   protected isExportingEvidencePdf = false;
   protected evidenceExportError: string | null = null;
+
+  // --- Jezik PDF izvoza - jedini izbor pre generisanja (potpisi su već deo evidencije,
+  // pečat/kontrolni broj se ovde ne dodaju - vidi confirmExport() docstring). Deljeno
+  // između oba taba, jer samo jedan od njih može biti otvoren u datom trenutku. ---
+  protected isExportLangDialogOpen = false;
+  protected exportPdfLang: AppLang = 'sr';
+  private pendingExportScope: 'transaction' | 'evidence' | null = null;
 
   private transactionsLoaded = false;
   private evidenceListLoaded = false;
@@ -179,7 +186,7 @@ export class CustodyLogComponent implements OnInit {
     this.chainError = null;
   }
 
-  exportPdf(): void {
+  private exportPdf(): void {
     const caseId = this.activeCaseId;
     const txId = this.selectedChain?.tx_id;
     if (!caseId || !txId) {
@@ -187,7 +194,7 @@ export class CustodyLogComponent implements OnInit {
     }
     this.isExportingPdf = true;
     this.exportError = null;
-    this.api.exportCustodyPdf(caseId, txId).subscribe({
+    this.api.exportCustodyPdf(caseId, txId, this.exportPdfLang).subscribe({
       next: (blob) => {
         this.isExportingPdf = false;
         this.saveBlob(blob, `lanac_dokaza_${txId}.pdf`);
@@ -291,7 +298,7 @@ export class CustodyLogComponent implements OnInit {
     this.evidenceChainError = null;
   }
 
-  exportEvidencePdf(): void {
+  private exportEvidencePdf(): void {
     const caseId = this.activeCaseId;
     const storedName = this.selectedEvidenceChain?.evidence_stored_name;
     if (!caseId || !storedName) {
@@ -299,7 +306,7 @@ export class CustodyLogComponent implements OnInit {
     }
     this.isExportingEvidencePdf = true;
     this.evidenceExportError = null;
-    this.api.exportCustodyEvidencePdf(caseId, storedName).subscribe({
+    this.api.exportCustodyEvidencePdf(caseId, storedName, this.exportPdfLang).subscribe({
       next: (blob) => {
         this.isExportingEvidencePdf = false;
         this.saveBlob(blob, `lanac_dokaza_${storedName}.pdf`);
@@ -316,6 +323,32 @@ export class CustodyLogComponent implements OnInit {
   }
 
   // --- Zajedničko -------------------------------------------------------------------------
+
+  /** Opens the language picker before either PDF export. The custody form itself needs no
+   * further input at export time - the per-row signatures are already part of the record
+   * (captured back when each access happened, see CustodyAccessDialogComponent), so this
+   * dialog asks for exactly one thing: which language to print the form in. */
+  protected openExportDialog(scope: 'transaction' | 'evidence'): void {
+    this.pendingExportScope = scope;
+    this.exportPdfLang = this.settings.lang();
+    this.isExportLangDialogOpen = true;
+  }
+
+  protected closeExportDialog(): void {
+    this.isExportLangDialogOpen = false;
+    this.pendingExportScope = null;
+  }
+
+  protected confirmExport(): void {
+    const scope = this.pendingExportScope;
+    this.isExportLangDialogOpen = false;
+    this.pendingExportScope = null;
+    if (scope === 'transaction') {
+      this.exportPdf();
+    } else if (scope === 'evidence') {
+      this.exportEvidencePdf();
+    }
+  }
 
   private saveBlob(blob: Blob, fileName: string): void {
     const url = URL.createObjectURL(blob);

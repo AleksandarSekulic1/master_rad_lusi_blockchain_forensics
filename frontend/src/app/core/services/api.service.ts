@@ -538,8 +538,9 @@ export class ApiService {
     return this.http.get<CustodyFieldSuggestions>(`${this.apiUrl}/api/v1/cases/${caseId}/custody/suggestions`);
   }
 
-  exportCustodyPdf(caseId: string, txId: string): Observable<Blob> {
+  exportCustodyPdf(caseId: string, txId: string, lang: 'sr' | 'en' = 'sr'): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/custody/transactions/${encodeURIComponent(txId)}/export.pdf`, {
+      params: { lang },
       responseType: 'blob',
     });
   }
@@ -558,8 +559,9 @@ export class ApiService {
     );
   }
 
-  exportCustodyEvidencePdf(caseId: string, evidenceStoredName: string): Observable<Blob> {
+  exportCustodyEvidencePdf(caseId: string, evidenceStoredName: string, lang: 'sr' | 'en' = 'sr'): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/custody/evidence/${encodeURIComponent(evidenceStoredName)}/export.pdf`, {
+      params: { lang },
       responseType: 'blob',
     });
   }
