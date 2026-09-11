@@ -3,6 +3,7 @@ import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import {
   ScenarioExpectation,
   ScenarioResult,
@@ -49,7 +50,20 @@ export class TestsComponent implements OnInit {
   protected errorMessage: string | null = null;
   protected expandedTests = new Set<string>();
 
-  constructor(private readonly api: ApiService) {}
+  constructor(
+    private readonly api: ApiService,
+    protected readonly settings: SettingsService,
+  ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as every other page's own t()). Doesn't touch the pytest docstrings/
+   * source code the suite itself reports (test.name/explanation/message/source, and the
+   * group titles derived from them) - those describe REAL backend tests and stay exactly
+   * as written in the test files, the same way a scenario's own name/addresses (entered
+   * by whoever created it) aren't translated either. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.loadSuite();
@@ -68,7 +82,7 @@ export class TestsComponent implements OnInit {
         this.suiteRan = false;
       },
       error: () => {
-        this.suiteError = 'Neuspešno učitavanje sistemskih testova.';
+        this.suiteError = this.t('Neuspešno učitavanje sistemskih testova.', 'Failed to load the system tests.');
       },
     });
   }
@@ -88,7 +102,7 @@ export class TestsComponent implements OnInit {
       },
       error: () => {
         this.isRunningSuite = false;
-        this.errorMessage = 'Neuspešno pokretanje sistemskih testova.';
+        this.errorMessage = this.t('Neuspešno pokretanje sistemskih testova.', 'Failed to run the system tests.');
       },
     });
   }
@@ -98,7 +112,7 @@ export class TestsComponent implements OnInit {
   get suiteGroups(): Array<{ group: string; tests: SuiteTest[] }> {
     const byGroup = new Map<string, SuiteTest[]>();
     for (const test of this.suiteTests) {
-      const key = test.group_title || test.group || 'Ostali testovi';
+      const key = test.group_title || test.group || this.t('Ostali testovi', 'Other tests');
       byGroup.set(key, [...(byGroup.get(key) ?? []), test]);
     }
     return [...byGroup.entries()].map(([group, tests]) => ({ group, tests }));
@@ -124,7 +138,7 @@ export class TestsComponent implements OnInit {
         this.scenarios = response.scenarios;
       },
       error: () => {
-        this.errorMessage = 'Neuspešno učitavanje validacionih scenarija.';
+        this.errorMessage = this.t('Neuspešno učitavanje validacionih scenarija.', 'Failed to load the validation scenarios.');
       },
     });
   }
@@ -139,7 +153,7 @@ export class TestsComponent implements OnInit {
       },
       error: () => {
         this.isRunningScenarios = false;
-        this.errorMessage = 'Neuspešno pokretanje scenarija.';
+        this.errorMessage = this.t('Neuspešno pokretanje scenarija.', 'Failed to run the scenarios.');
       },
     });
   }
@@ -156,7 +170,7 @@ export class TestsComponent implements OnInit {
       },
       error: () => {
         this.runningScenarioId = null;
-        this.errorMessage = `Neuspešno pokretanje scenarija "${scenario.name}".`;
+        this.errorMessage = this.t(`Neuspešno pokretanje scenarija "${scenario.name}".`, `Failed to run the scenario "${scenario.name}".`);
       },
     });
   }
@@ -236,7 +250,10 @@ export class TestsComponent implements OnInit {
     const expectations = this.draft.expectations.filter((item) => item.address.trim());
 
     if (!this.draft.name.trim() || transactions.length === 0 || seedAddresses.length === 0 || expectations.length === 0) {
-      this.statusMessage = 'Naziv, bar jedna transakcija (sa iznosom > 0), bar jedan izvor i bar jedno očekivanje su obavezni.';
+      this.statusMessage = this.t(
+        'Naziv, bar jedna transakcija (sa iznosom > 0), bar jedan izvor i bar jedno očekivanje su obavezni.',
+        'Name, at least one transaction (with amount > 0), at least one seed and at least one expectation are required.',
+      );
       return;
     }
 
@@ -254,7 +271,7 @@ export class TestsComponent implements OnInit {
       next: (saved) => {
         this.isSaving = false;
         this.draft = null;
-        this.statusMessage = `Scenario "${saved.name}" je sačuvan.`;
+        this.statusMessage = this.t(`Scenario "${saved.name}" je sačuvan.`, `Scenario "${saved.name}" was saved.`);
         this.loadScenarios();
         // Any stored result belongs to the previous definition, so it is dropped rather
         // than left on screen next to changed expectations.
@@ -262,22 +279,22 @@ export class TestsComponent implements OnInit {
       },
       error: () => {
         this.isSaving = false;
-        this.statusMessage = 'Neuspešno čuvanje scenarija.';
+        this.statusMessage = this.t('Neuspešno čuvanje scenarija.', 'Failed to save the scenario.');
       },
     });
   }
 
   deleteScenario(scenario: TestScenario): void {
-    if (!confirm(`Obrisati scenario "${scenario.name}"?`)) {
+    if (!confirm(this.t(`Obrisati scenario "${scenario.name}"?`, `Delete the scenario "${scenario.name}"?`))) {
       return;
     }
     this.api.deleteScenario(scenario.id).subscribe({
       next: () => {
-        this.statusMessage = `Scenario "${scenario.name}" je obrisan.`;
+        this.statusMessage = this.t(`Scenario "${scenario.name}" je obrisan.`, `Scenario "${scenario.name}" was deleted.`);
         this.loadScenarios();
       },
       error: () => {
-        this.errorMessage = `Neuspešno brisanje scenarija "${scenario.name}".`;
+        this.errorMessage = this.t(`Neuspešno brisanje scenarija "${scenario.name}".`, `Failed to delete the scenario "${scenario.name}".`);
       },
     });
   }
