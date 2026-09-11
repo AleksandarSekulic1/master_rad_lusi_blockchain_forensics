@@ -698,11 +698,11 @@ td {
 }
 
 .summary-text {
-  display: inline-block;
-  max-width: 38ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
+  min-width: 22rem;
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.5;
   color: var(--al-summary-text);
 }
 
@@ -782,7 +782,10 @@ td {
     width: 100%;
   }
 
-  .summary-text,
+  .summary-text {
+    min-width: 14rem;
+  }
+
   .case-name {
     max-width: 20ch;
   }

@@ -648,9 +648,16 @@ def build_activity_pdf(
 
     _section_title(pdf, font, L('Hronologija akcija', 'Action timeline'))
 
-    widths = [24, 26, 58, 62, 0]
+    # Vreme/Korisnik/Akcija stay compact (measured against real content - short
+    # timestamps, short usernames, the longest bilingual action label) so the
+    # freed-up space can go to Slučaj/opseg and Detalji, which carry the longest,
+    # most-often-truncated free text. Those two also render a size smaller (see
+    # `detail_font_size` below) - still legible, but enough headroom that the
+    # worst measured real-world strings fit without an ellipsis.
+    widths = [14, 18, 54, 83, 0]
     widths[4] = (pdf.w - pdf.l_margin - pdf.r_margin) - sum(widths[:4])
     headers = [L('Vreme', 'Time'), L('Korisnik', 'User'), L('Akcija', 'Action'), L('Slučaj / opseg', 'Case / scope'), L('Detalji', 'Details')]
+    row_font_sizes = [8, 8, 8, 7, 7]
 
     def draw_header_row() -> None:
         pdf.set_font(font, 'B', 8.5)
@@ -680,46 +687,71 @@ def build_activity_pdf(
         key = _local_day_heading(entry.get('timestamp'), tz_offset_minutes, lang)
         day_counts[key] = day_counts.get(key, 0) + 1
 
+    # Row height is per-row, not fixed: Slučaj/opseg and Detalji wrap onto extra lines
+    # instead of being cut off with "…" (see _cell_lines below), so a row with a long
+    # detail string grows taller rather than hiding part of it - the same trade-off the
+    # on-screen log makes in .summary-text (activity-log.component.scss).
+    detail_font_size = row_font_sizes[4]
+    line_h = detail_font_size * 0.62
+    min_row_height = 6.0
+    day_header_height = 8.0
+
+    def _cell_lines(text: str, width: float) -> list[str]:
+        pdf.set_font(font, '', detail_font_size)
+        return pdf.multi_cell(max(width, 1.0), h=line_h, text=text, align='L', dry_run=True, output='LINES') or ['']
+
     current_day: str | None = None
     row_index = 0
     for entry in entries:
-        if pdf.get_y() > pdf.h - 24:
+        action = str(entry.get('action') or '')
+        local = _to_local(entry.get('timestamp'), tz_offset_minutes)
+
+        scope_text = f' {_scope_text(entry, lang)}'
+        detail_text = f' {summarize_details(entry, lang)}'
+        n_lines = max(1, len(_cell_lines(scope_text, widths[3] - 2)), len(_cell_lines(detail_text, widths[4] - 2)))
+        row_height = max(min_row_height, n_lines * line_h + 1.6)
+
+        day = _local_day_heading(entry.get('timestamp'), tz_offset_minutes, lang)
+        needed = row_height + (0 if day == current_day else day_header_height)
+        if pdf.get_y() + needed > pdf.h - 24:
             pdf.add_page()
             draw_header_row()
             current_day = None
 
-        day = _local_day_heading(entry.get('timestamp'), tz_offset_minutes, lang)
         if day != current_day:
             draw_day_heading(day, day_counts[day])
             current_day = day
             row_index = 0
 
-        action = str(entry.get('action') or '')
-        local = _to_local(entry.get('timestamp'), tz_offset_minutes)
         shaded = row_index % 2 == 1
         row_y = pdf.get_y()
 
         if shaded:
             pdf.set_fill_color(*_LIGHT_ROW)
-            pdf.rect(pdf.l_margin, row_y, sum(widths), 6, style='F')
+            pdf.rect(pdf.l_margin, row_y, sum(widths), row_height, style='F')
 
         # Colour dot in front of the action, same coding as the on-screen log.
         pdf.set_fill_color(*action_color(action))
         pdf.ellipse(pdf.l_margin + widths[0] + widths[1] + 1.5, row_y + 2.1, 2.0, 2.0, style='F')
 
         pdf.set_xy(pdf.l_margin, row_y)
-        pdf.set_font(font, '', 8)
         pdf.set_text_color(*_TEXT_DARK)
-        row = [
+        fixed_row = [
             f' {local.strftime("%H:%M:%S")}' if local else '',
             f' {entry.get("user") or ""}',
             f'    {action_label(action, lang)}',
-            f' {_scope_text(entry, lang)}',
-            f' {summarize_details(entry, lang)}',
         ]
-        for width, value in zip(widths, row):
-            pdf.cell(width, 6, _fit(pdf, value, width - 2), border=0, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.ln(6)
+        for width, value, size in zip(widths[:3], fixed_row, row_font_sizes[:3]):
+            pdf.set_font(font, '', size)
+            pdf.cell(width, row_height, _fit(pdf, value, width - 2), border=0, new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        pdf.set_font(font, '', detail_font_size)
+        pdf.set_xy(pdf.l_margin + sum(widths[:3]), row_y)
+        pdf.multi_cell(widths[3] - 2, h=line_h, text=scope_text, border=0, align='L', new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.set_xy(pdf.l_margin + sum(widths[:4]), row_y)
+        pdf.multi_cell(widths[4] - 2, h=line_h, text=detail_text, border=0, align='L', new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        pdf.set_xy(pdf.l_margin, row_y + row_height)
         row_index += 1
 
     _draw_signature_section(
