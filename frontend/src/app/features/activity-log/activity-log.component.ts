@@ -66,6 +66,10 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
 
   private static readonly ACTION_PRESENTATION: Record<string, ActionPresentation> = {
     csv_upload: { label: ['Otpremljena CSV evidencija', 'Uploaded CSV evidence'], group: 'evidence', icon: '⬆' },
+    // Backend automatically splits a multi-currency upload into one evidence file per
+    // currency (see upload.py's _split_and_store_by_currency) - each resulting file logs
+    // its own entry with this action, rather than the plain csv_upload one.
+    csv_upload_split: { label: ['Razdvojena CSV evidencija (po valuti)', 'CSV evidence split (by currency)'], group: 'evidence', icon: '⇉' },
     analytics_run: { label: ['Pokrenuta analiza', 'Ran analysis'], group: 'analysis', icon: '⚙' },
     path_finding: { label: ['Pretraga putanja', 'Pathfinding search'], group: 'analysis', icon: '↝' },
     dex_swap_analysis_run: { label: ['Pokrenuta DEX swap analiza', 'Ran DEX swap analysis'], group: 'analysis', icon: '⇌' },
@@ -82,6 +86,44 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     custody_pdf_exported: { label: ['Izvezen lanac dokaza (PDF)', 'Chain of custody exported (PDF)'], group: 'custody', icon: '🖉' },
     report_signed: { label: ['Izvezen potpisan izveštaj (PDF)', 'Signed report exported (PDF)'], group: 'report', icon: '🖋' },
   };
+
+  /** Fixed action order used only to space each action's colour evenly around the hue
+   * circle (index * step, not a hash) - deterministic and maximally spread, so any two
+   * actions differ by the same amount regardless of how many exist. Every key in
+   * ACTION_PRESENTATION must appear here, plus the two synthetic keys for the
+   * prefix-matched on-chain fetch and the unrecognised-action fallback. Replaces the old
+   * one-colour-per-group scheme (7 colours for ~18 actions, so unrelated actions like
+   * "Pokrenuta analiza" and "Pretraga putanja" looked identical) - see presentation(). */
+  private static readonly ACTION_HUE_ORDER: readonly string[] = [
+    'csv_upload',
+    'csv_upload_split',
+    'onchain_fetch',
+    'analytics_run',
+    'path_finding',
+    'dex_swap_analysis_run',
+    'behavioral_analysis_run',
+    'case_created',
+    'case_status_changed',
+    'case_deleted',
+    'test_suite_run',
+    'test_scenarios_run',
+    'test_scenario_created',
+    'test_scenario_updated',
+    'test_scenario_deleted',
+    'activity_report_exported',
+    'custody_pdf_exported',
+    'report_signed',
+    'other',
+  ];
+
+  /** action key -> hue (0-359). Starts at 200 (blue) rather than 0 so the run doesn't
+   * open on red, which already means "error/warning" elsewhere on this page. */
+  private static readonly ACTION_HUE: Record<string, number> = Object.fromEntries(
+    ActivityLogComponent.ACTION_HUE_ORDER.map((key, index) => [
+      key,
+      Math.round((200 + index * (360 / ActivityLogComponent.ACTION_HUE_ORDER.length)) % 360),
+    ]),
+  );
 
   /** Report type (see reports.py's RegisterReportRequest.report_type) -> human label. The
    * backend's own exported PDF/CSV activity report (activity_report.py's
@@ -166,18 +208,28 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     return entry.details != null && Object.keys(entry.details).length > 0;
   }
 
-  presentation(action: string): { label: string; group: ActionPresentation['group']; icon: string } {
+  presentation(action: string): { label: string; group: ActionPresentation['group']; icon: string; hue: number } {
     const known = ActivityLogComponent.ACTION_PRESENTATION[action];
     if (known) {
-      return { label: this.t(known.label[0], known.label[1]), group: known.group, icon: known.icon };
+      return {
+        label: this.t(known.label[0], known.label[1]),
+        group: known.group,
+        icon: known.icon,
+        hue: ActivityLogComponent.ACTION_HUE[action] ?? ActivityLogComponent.ACTION_HUE['other'],
+      };
     }
     // On-chain fetches encode network+mode into the action name
     // (onchain_fetch_mainnet_address), so they're matched by prefix rather than listed
     // one row per combination.
     if (action.startsWith('onchain_fetch')) {
-      return { label: this.t('Povučene transakcije sa blockchain-a', 'Fetched transactions from the blockchain'), group: 'evidence', icon: '⛓' };
+      return {
+        label: this.t('Povučene transakcije sa blockchain-a', 'Fetched transactions from the blockchain'),
+        group: 'evidence',
+        icon: '⛓',
+        hue: ActivityLogComponent.ACTION_HUE['onchain_fetch'],
+      };
     }
-    return { label: action, group: 'other', icon: '•' };
+    return { label: action, group: 'other', icon: '•', hue: ActivityLogComponent.ACTION_HUE['other'] };
   }
 
   /** What the action was performed on. Test actions and path finding have no case by
@@ -315,6 +367,11 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         return `${String(details['from'] ?? '?')} → ${String(details['to'] ?? '?')}`;
       case 'csv_upload':
         return String(details['original_name'] ?? entry.file_name ?? '');
+      case 'csv_upload_split': {
+        const source = String(details['source_file'] ?? entry.file_name ?? '');
+        const currency = String(details['currency'] ?? '') || this.t('bez valute', 'no currency');
+        return `${source} · ${currency}`;
+      }
       default:
         if (entry.action.startsWith('onchain_fetch')) {
           const query = String(details['query'] ?? '');

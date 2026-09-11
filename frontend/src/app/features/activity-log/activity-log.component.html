@@ -190,7 +190,7 @@
                 <span class="user-badge">{{ entry.user }}</span>
               </td>
               <td class="col-action">
-                <span class="action-tag" [ngClass]="'group-' + presentation(entry.action).group">
+                <span class="action-tag" [style.--action-hue]="presentation(entry.action).hue">
                   <span class="action-icon">{{ presentation(entry.action).icon }}</span>
                   {{ presentation(entry.action).label }}
                 </span>

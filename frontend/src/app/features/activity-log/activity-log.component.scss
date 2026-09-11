@@ -44,27 +44,14 @@
   --al-scope-text: #9fb6d8;
   --al-historical-bg: rgba(148, 163, 184, 0.25);
 
-  --al-group-evidence-text: #7bd6ff;
-  --al-group-evidence-bg: rgba(123, 214, 255, 0.1);
-  --al-group-evidence-border: rgba(123, 214, 255, 0.24);
-  --al-group-analysis-text: #fbbf24;
-  --al-group-analysis-bg: rgba(251, 191, 36, 0.1);
-  --al-group-analysis-border: rgba(251, 191, 36, 0.24);
-  --al-group-case-text: #c4b5fd;
-  --al-group-case-bg: rgba(196, 181, 253, 0.1);
-  --al-group-case-border: rgba(196, 181, 253, 0.24);
-  --al-group-test-text: #86efac;
-  --al-group-test-bg: rgba(134, 239, 172, 0.1);
-  --al-group-test-border: rgba(134, 239, 172, 0.24);
-  --al-group-report-text: #a5b4fc;
-  --al-group-report-bg: rgba(165, 180, 252, 0.1);
-  --al-group-report-border: rgba(165, 180, 252, 0.26);
-  --al-group-custody-text: #f0abd8;
-  --al-group-custody-bg: rgba(240, 171, 216, 0.1);
-  --al-group-custody-border: rgba(240, 171, 216, 0.26);
-  --al-group-other-text: #cbd5e1;
-  --al-group-other-bg: rgba(203, 213, 225, 0.08);
-  --al-group-other-border: rgba(203, 213, 225, 0.18);
+  /* Per-action tag colour (see presentation()'s ACTION_HUE) - one HSL hue per action key,
+     spaced evenly so any two actions are visually distinct rather than sharing one of a
+     handful of group colours. Saturation/lightness/alpha stay fixed per theme; only the
+     hue itself (--action-hue, set inline per tag) varies. */
+  --al-action-sat: 85%;
+  --al-action-lightness: 76%;
+  --al-action-bg-alpha: 0.13;
+  --al-action-border-alpha: 0.3;
 }
 
 :host-context([data-theme='light']) {
@@ -110,27 +97,10 @@
   --al-scope-text: #475569;
   --al-historical-bg: rgba(15, 23, 42, 0.12);
 
-  --al-group-evidence-text: #0e7490;
-  --al-group-evidence-bg: rgba(14, 116, 144, 0.08);
-  --al-group-evidence-border: rgba(14, 116, 144, 0.22);
-  --al-group-analysis-text: #b45309;
-  --al-group-analysis-bg: rgba(180, 83, 9, 0.08);
-  --al-group-analysis-border: rgba(180, 83, 9, 0.22);
-  --al-group-case-text: #7c3aed;
-  --al-group-case-bg: rgba(124, 58, 237, 0.08);
-  --al-group-case-border: rgba(124, 58, 237, 0.22);
-  --al-group-test-text: #15803d;
-  --al-group-test-bg: rgba(21, 128, 61, 0.08);
-  --al-group-test-border: rgba(21, 128, 61, 0.22);
-  --al-group-report-text: #4338ca;
-  --al-group-report-bg: rgba(67, 56, 202, 0.08);
-  --al-group-report-border: rgba(67, 56, 202, 0.22);
-  --al-group-custody-text: #be185d;
-  --al-group-custody-bg: rgba(190, 24, 93, 0.08);
-  --al-group-custody-border: rgba(190, 24, 93, 0.22);
-  --al-group-other-text: #475569;
-  --al-group-other-bg: rgba(71, 85, 105, 0.06);
-  --al-group-other-border: rgba(71, 85, 105, 0.16);
+  --al-action-sat: 72%;
+  --al-action-lightness: 34%;
+  --al-action-bg-alpha: 0.1;
+  --al-action-border-alpha: 0.34;
 }
 
 .activity-page {
@@ -598,6 +568,10 @@ td {
   white-space: nowrap;
 }
 
+/* Colour is per-ACTION, not per-group (see presentation()'s ACTION_HUE): --action-hue is
+   set inline on the tag, this rule just turns it into text/background/border at the
+   saturation/lightness this theme uses. Two different actions are never the same colour,
+   so scanning a long log doesn't mean reading every row's text to tell them apart. */
 .action-tag {
   display: inline-flex;
   align-items: center;
@@ -605,62 +579,16 @@ td {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.78rem;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
-  border: 1px solid transparent;
+  color: hsl(var(--action-hue) var(--al-action-sat) var(--al-action-lightness));
+  background: hsl(var(--action-hue) var(--al-action-sat) var(--al-action-lightness) / var(--al-action-bg-alpha));
+  border: 1px solid hsl(var(--action-hue) var(--al-action-sat) var(--al-action-lightness) / var(--al-action-border-alpha));
 }
 
 .action-icon {
   font-size: 0.85rem;
   line-height: 1;
-}
-
-/* Colour follows what KIND of action it is, so scanning a long log for "who ran an
-   analysis" doesn't mean reading every row's text. */
-.action-tag.group-evidence {
-  color: var(--al-group-evidence-text);
-  background: var(--al-group-evidence-bg);
-  border-color: var(--al-group-evidence-border);
-}
-
-.action-tag.group-analysis {
-  color: var(--al-group-analysis-text);
-  background: var(--al-group-analysis-bg);
-  border-color: var(--al-group-analysis-border);
-}
-
-.action-tag.group-case {
-  color: var(--al-group-case-text);
-  background: var(--al-group-case-bg);
-  border-color: var(--al-group-case-border);
-}
-
-.action-tag.group-test {
-  color: var(--al-group-test-text);
-  background: var(--al-group-test-bg);
-  border-color: var(--al-group-test-border);
-}
-
-/* Export is the one action that is about the log itself rather than about the
-   investigation, so it gets its own colour instead of sharing with evidence. */
-.action-tag.group-report {
-  color: var(--al-group-report-text);
-  background: var(--al-group-report-bg);
-  border-color: var(--al-group-report-border);
-}
-
-/* Lanac dokaza gets its own colour too - taking a copy of a custody record out of the
-   application is a distinct kind of event from a routine report export. */
-.action-tag.group-custody {
-  color: var(--al-group-custody-text);
-  background: var(--al-group-custody-bg);
-  border-color: var(--al-group-custody-border);
-}
-
-.action-tag.group-other {
-  color: var(--al-group-other-text);
-  background: var(--al-group-other-bg);
-  border-color: var(--al-group-other-border);
 }
 
 .case-name {
