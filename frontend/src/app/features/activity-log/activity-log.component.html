@@ -147,11 +147,17 @@
         </div>
 
         <div class="report-actions">
-          <button type="button" class="primary-button" (click)="downloadReport('pdf')" [disabled]="!canGenerateReport">
-            {{ isDownloadingReport ? t('Generisanje...', 'Generating...') : t('Preuzmi PDF', 'Download PDF') }}
+          <button
+            type="button"
+            class="primary-button"
+            (click)="openSigningDialog()"
+            [disabled]="!canGenerateReport"
+            [title]="t('Potpisan PDF izveštaj (mačka, pečat, kontrolni broj) — ista struktura kao ostali izveštaji u aplikaciji', 'Signed PDF report (cat header, seal, verification code) — same structure as this app’s other reports')"
+          >
+            {{ t('Preuzmi PDF', 'Download PDF') }}
           </button>
-          <button type="button" class="ghost-button" (click)="downloadReport('csv')" [disabled]="!canGenerateReport">
-            {{ t('Preuzmi CSV', 'Download CSV') }}
+          <button type="button" class="ghost-button" (click)="downloadReportCsv()" [disabled]="!canGenerateReport">
+            {{ isDownloadingReport ? t('Generisanje...', 'Generating...') : t('Preuzmi CSV', 'Download CSV') }}
           </button>
         </div>
       </div>
@@ -295,3 +301,68 @@
     </ng-template>
   </article>
 </section>
+
+<!-- Potpisivanje pre izvoza PDF-a (isti obrazac kao report-export.component.html - vidi
+     activity_report.py za zašto se sam PDF i dalje pravi na serveru, umesto na klijentu
+     kao svi ostali potpisani izveštaji). -->
+<div class="signing-overlay" *ngIf="isSigningOpen" (click)="closeSigningDialog()">
+  <div class="signing-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">{{ t('Lanac dokaza', 'Chain of custody') }}</p>
+    <h3>{{ t('Potpis i izrada izveštaja', 'Sign & generate report') }}</h3>
+
+    <p class="signing-intro">
+      {{
+        t(
+          'Izveštaj napušta aplikaciju kao samostalan dokument, pa nosi potpis analitičara koji za njega jamči i kontrolni broj za kasniju proveru.',
+          'The report leaves the app as a standalone document, so it carries the analyst’s signature vouching for it and a verification code for later checking.'
+        )
+      }}
+    </p>
+
+    <fieldset class="lang-choice" [disabled]="isExportingSignedPdf">
+      <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+      <label>
+        <input type="radio" name="reportSignLang" value="sr" [(ngModel)]="reportLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="reportSignLang" value="en" [(ngModel)]="reportLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+      <p class="lang-hint">
+        {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+        <strong>{{ reportLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+      </p>
+    </fieldset>
+
+    <p class="signing-examiner">
+      {{ t('Analitičar (ulogovani korisnik)', 'Analyst (logged-in user)') }}
+      <strong>{{ auth.currentUser?.username || '—' }}</strong>
+    </p>
+
+    <p class="signing-signature-label">{{ t('Potpis', 'Signature') }}</p>
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signing-declaration">
+      <input type="checkbox" [(ngModel)]="declarationAccepted" name="declarationAccepted" [disabled]="isExportingSignedPdf" />
+      <span>
+        {{
+          reportLang === 'sr'
+            ? 'Potvrđujem da sam izradio ovaj izveštaj aktivnosti u okviru navedenog perioda i da su u njemu prikazane tačno one akcije koje je aplikacija zabeležila u dnevniku. Potpis iznad je moj.'
+            : 'I confirm that I produced this activity report for the stated period and that it shows exactly the actions the application recorded in the log. The signature above is mine.'
+        }}
+      </span>
+    </label>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signing-actions">
+      <button type="button" class="ghost-button" (click)="closeSigningDialog()" [disabled]="isExportingSignedPdf">
+        {{ t('Odustani', 'Cancel') }}
+      </button>
+      <button type="button" class="primary-button" (click)="confirmSignAndExport()" [disabled]="!canSubmitSignature">
+        {{ isExportingSignedPdf ? t('Izrada...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign & export PDF') }}
+      </button>
+    </div>
+  </div>
+</div>

@@ -4,8 +4,9 @@ import { FormsModule } from '@angular/forms';
 
 import { ActivityReportOptions, ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
-import { SettingsService } from '../../core/services/settings.service';
+import { AppLang, SettingsService } from '../../core/services/settings.service';
 import { ActivityLogEntry, ActivityPeriodMode } from '../../models/blockchain-forensics.models';
+import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 
 /** How each raw `action` string is presented: a short human label, a one-word group used
  * for the coloured tag, and an icon. Unknown/new actions fall back to the raw string
@@ -29,7 +30,7 @@ interface ScopeInfo {
 @Component({
   selector: 'app-activity-log',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SignaturePadComponent],
   templateUrl: './activity-log.component.html',
   styleUrl: './activity-log.component.scss',
 })
@@ -71,6 +72,17 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   protected isCountingReport = false;
   protected isDownloadingReport = false;
   protected reportError: string | null = null;
+
+  // --- Signing dialog for the PDF export (see activity_report.py's own docstring for why
+  // the PDF stays server-built, unlike every other signed report in this app) - CSV export
+  // above stays a plain, unsigned download since it's raw data, not a presentation
+  // document. Same shape as report-export.component.ts's own signing dialog. ---
+  @ViewChild(SignaturePadComponent) private signaturePad?: SignaturePadComponent;
+  protected isSigningOpen = false;
+  protected reportLang: AppLang = 'sr';
+  protected declarationAccepted = false;
+  protected isExportingSignedPdf = false;
+  protected signatureError: string | null = null;
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly AUTO_REFRESH_MS = 20_000;
@@ -542,14 +554,15 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     });
   }
 
-  downloadReport(format: 'pdf' | 'csv'): void {
+  /** CSV stays a plain, unsigned download - raw data, not a presentation document. */
+  downloadReportCsv(): void {
     this.isDownloadingReport = true;
     this.reportError = null;
-    this.api.downloadActivityReport(this.reportOptions(), format).subscribe({
+    this.api.downloadActivityReportCsv(this.reportOptions()).subscribe({
       next: (blob) => {
         this.isDownloadingReport = false;
         const suffix = this.periodMode === 'all' ? 'sve' : this.reportDay || this.reportFrom;
-        this.saveBlob(blob, `izvestaj_aktivnosti_${suffix}.${format}`);
+        this.saveBlob(blob, `izvestaj_aktivnosti_${suffix}.csv`);
         // The export is itself a logged action, so the list is no longer current.
         this.loadEntries();
       },
@@ -558,6 +571,68 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         this.reportError = this.t('Neuspešno generisanje izveštaja.', 'Failed to generate the report.');
       },
     });
+  }
+
+  // --- Signed PDF export -------------------------------------------------------------
+
+  openSigningDialog(): void {
+    if (!this.canGenerateReport) {
+      return;
+    }
+    this.isSigningOpen = true;
+    this.reportLang = this.settings.lang();
+    this.declarationAccepted = false;
+    this.signatureError = null;
+    this.reportError = null;
+    setTimeout(() => this.signaturePad?.clear());
+  }
+
+  closeSigningDialog(): void {
+    if (this.isExportingSignedPdf) {
+      return;
+    }
+    this.isSigningOpen = false;
+  }
+
+  get canSubmitSignature(): boolean {
+    return (this.signaturePad?.hasStrokes ?? false) && this.declarationAccepted && !this.isExportingSignedPdf;
+  }
+
+  private signatureDeclaration(): string {
+    return this.reportLang === 'sr'
+      ? 'Potvrđujem da sam izradio ovaj izveštaj aktivnosti u okviru navedenog perioda i da su u njemu prikazane '
+        + 'tačno one akcije koje je aplikacija zabeležila u dnevniku. Potpis iznad je moj.'
+      : 'I confirm that I produced this activity report for the stated period and that it shows exactly the actions '
+        + 'the application recorded in the log. The signature above is mine.';
+  }
+
+  confirmSignAndExport(): void {
+    if (!this.canSubmitSignature) {
+      return;
+    }
+    this.isExportingSignedPdf = true;
+    this.signatureError = null;
+
+    this.api
+      .signActivityReportPdf(this.reportOptions(), {
+        lang: this.reportLang,
+        declaration: this.signatureDeclaration(),
+        signatureImage: this.signaturePad!.getDataUrl(),
+      })
+      .subscribe({
+        next: (blob) => {
+          this.isExportingSignedPdf = false;
+          this.isSigningOpen = false;
+          const suffix = this.periodMode === 'all' ? 'sve' : this.reportDay || this.reportFrom;
+          this.saveBlob(blob, `izvestaj_aktivnosti_${suffix}.pdf`);
+          // The export is itself a logged action, so the list is no longer current.
+          this.loadEntries();
+        },
+        error: () => {
+          this.isExportingSignedPdf = false;
+          this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
+        },
+      });
   }
 
   private saveBlob(blob: Blob, fileName: string): void {

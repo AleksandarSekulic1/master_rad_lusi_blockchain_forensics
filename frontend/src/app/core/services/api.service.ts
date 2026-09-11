@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { AppLang } from './settings.service';
 import {
   ActivityLogResponse,
   ActivityReportPreview,
@@ -453,11 +454,37 @@ export class ApiService {
     });
   }
 
-  downloadActivityReport(options: ActivityReportOptions, format: 'pdf' | 'csv'): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}/api/v1/activity-log/report.${format}`, {
+  /** Plain, unsigned CSV export - raw data for further processing, not a presentation
+   * document, so (like the case/transactions CSV exports elsewhere) it needs no signature
+   * or verification code. See signActivityReportPdf below for the signed PDF. */
+  downloadActivityReportCsv(options: ActivityReportOptions): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/activity-log/report.csv`, {
       params: this.activityReportParams(options),
       responseType: 'blob',
     });
+  }
+
+  /** The signed variant: registers the report (verification code + content hash) and
+   * builds the PDF entirely server-side, the same as the plain CSV/PDF above - the data
+   * has to come from the authoritative log file, not from whatever the page happens to
+   * have loaded (see activity_report.py's own docstring). Unlike every other signed
+   * report in this app (built client-side with jsPDF), the signature/declaration/language
+   * travel TO the server here rather than a verification code traveling back to a
+   * client-built PDF. */
+  signActivityReportPdf(
+    options: ActivityReportOptions,
+    signing: { lang: AppLang; declaration: string; signatureImage: string },
+  ): Observable<Blob> {
+    const body = {
+      users: options.users?.length ? options.users : null,
+      date_from: options.dateFrom || null,
+      date_to: options.dateTo || null,
+      tz_offset_minutes: new Date().getTimezoneOffset(),
+      lang: signing.lang,
+      declaration: signing.declaration,
+      signature_image: signing.signatureImage,
+    };
+    return this.http.post(`${this.apiUrl}/api/v1/activity-log/report/signed.pdf`, body, { responseType: 'blob' });
   }
 
   /** The timezone offset travels with every report request: the server stores UTC but the

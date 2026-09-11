@@ -582,5 +582,52 @@
       "potential_count": 1
     },
     "registered_at": "2026-09-11T09:13:23.918240+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-WHNQ-WYVC",
+    "content_hash": "a915a4aa8b3d59ddc22a666b2b58d7d4d77ea7f1b2c55f9ddeaf3274528cb731",
+    "case_id": "activity-log",
+    "case_name": "Activity log",
+    "analyst": "admin",
+    "declaration": "I confirm this report is accurate.",
+    "summary": {
+      "entry_count": 486,
+      "date_from": null,
+      "date_to": null,
+      "users": "svi"
+    },
+    "registered_at": "2026-09-11T11:46:57.709736+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-CM7L-UQKP",
+    "content_hash": "a915a4aa8b3d59ddc22a666b2b58d7d4d77ea7f1b2c55f9ddeaf3274528cb731",
+    "case_id": "activity-log",
+    "case_name": "Activity log",
+    "analyst": "admin",
+    "declaration": "I confirm this report is accurate.",
+    "summary": {
+      "entry_count": 486,
+      "date_from": null,
+      "date_to": null,
+      "users": "svi"
+    },
+    "registered_at": "2026-09-11T11:47:41.386820+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-5528-TBBD",
+    "content_hash": "1c6a352be5fb3cae621f8f732ff27b6e3472bb1c355052b097cfd563bdaac956",
+    "case_id": "activity-log",
+    "case_name": "Log aktivnosti",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj aktivnosti u okviru navedenog perioda i da su u njemu prikazane tačno one akcije koje je aplikacija zabeležila u dnevniku. Potpis iznad je moj.",
+    "summary": {
+      "entry_count": 279,
+      "date_from": null,
+      "date_to": null,
+      "users": [
+        "aco"
+      ]
+    },
+    "registered_at": "2026-09-11T11:59:54.174562+00:00"
   }
 ]
