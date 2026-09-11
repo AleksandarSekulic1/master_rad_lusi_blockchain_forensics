@@ -2,29 +2,29 @@
   <article class="panel create-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Upravljanje nalozima</p>
-        <h2>Novi korisnik</h2>
+        <p class="panel-kicker">{{ t('Upravljanje nalozima', 'Account management') }}</p>
+        <h2>{{ t('Novi korisnik', 'New user') }}</h2>
       </div>
     </div>
 
     <div class="user-form">
       <label>
-        Korisničko ime
-        <input [(ngModel)]="newUsername" type="text" placeholder="npr. analyst2" />
+        {{ t('Korisničko ime', 'Username') }}
+        <input [(ngModel)]="newUsername" type="text" [placeholder]="t('npr. analyst2', 'e.g. analyst2')" />
       </label>
       <label>
-        Lozinka
-        <input [(ngModel)]="newPassword" type="password" placeholder="bar 6 karaktera" />
+        {{ t('Lozinka', 'Password') }}
+        <input [(ngModel)]="newPassword" type="password" [placeholder]="t('bar 6 karaktera', 'at least 6 characters')" />
       </label>
       <label>
-        Uloga
+        {{ t('Uloga', 'Role') }}
         <select [(ngModel)]="newRole">
-          <option value="analyst">Analitičar</option>
-          <option value="admin">Administrator</option>
+          <option value="analyst">{{ t('Analitičar', 'Analyst') }}</option>
+          <option value="admin">{{ t('Administrator', 'Administrator') }}</option>
         </select>
       </label>
       <button type="button" class="primary-button" (click)="createUser()" [disabled]="isCreating">
-        {{ isCreating ? 'Kreiranje...' : 'Kreiraj nalog' }}
+        {{ isCreating ? t('Kreiranje...', 'Creating...') : t('Kreiraj nalog', 'Create account') }}
       </button>
     </div>
 
@@ -34,51 +34,51 @@
   <article class="panel list-panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Nalozi</p>
-        <h2>Svi korisnici</h2>
+        <p class="panel-kicker">{{ t('Nalozi', 'Accounts') }}</p>
+        <h2>{{ t('Svi korisnici', 'All users') }}</h2>
       </div>
-      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">Osveži</button>
+      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">{{ t('Osveži', 'Refresh') }}</button>
     </div>
 
     <div class="table-wrapper" *ngIf="users.length > 0; else emptyUsers">
       <table>
         <thead>
           <tr>
-            <th>Korisničko ime</th>
-            <th>Uloga</th>
-            <th>Status</th>
-            <th>Kreiran</th>
-            <th>Akcije</th>
+            <th>{{ t('Korisničko ime', 'Username') }}</th>
+            <th>{{ t('Uloga', 'Role') }}</th>
+            <th>{{ t('Status', 'Status') }}</th>
+            <th>{{ t('Kreiran', 'Created') }}</th>
+            <th>{{ t('Akcije', 'Actions') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngFor="let user of users">
             <td>{{ user.username }}</td>
-            <td>{{ user.role === 'admin' ? 'Administrator' : 'Analitičar' }}</td>
+            <td>{{ user.role === 'admin' ? t('Administrator', 'Administrator') : t('Analitičar', 'Analyst') }}</td>
             <td>
               <span class="pill" [class.blocked]="user.status === 'blocked'">
-                {{ user.status === 'blocked' ? 'Blokiran' : 'Aktivan' }}
+                {{ user.status === 'blocked' ? t('Blokiran', 'Blocked') : t('Aktivan', 'Active') }}
               </span>
             </td>
             <td>{{ user.created_at }}</td>
             <td class="actions">
               <button type="button" class="ghost-button" (click)="toggleStatus(user)">
-                {{ user.status === 'blocked' ? 'Odblokiraj' : 'Blokiraj' }}
+                {{ user.status === 'blocked' ? t('Odblokiraj', 'Unblock') : t('Blokiraj', 'Block') }}
               </button>
-              <button type="button" class="ghost-button" (click)="generateResetLink(user)">Reset lozinke</button>
+              <button type="button" class="ghost-button" (click)="generateResetLink(user)">{{ t('Reset lozinke', 'Reset password') }}</button>
             </td>
           </tr>
         </tbody>
       </table>
 
       <div class="reset-link-box" *ngFor="let entry of resetLinkByUsername | keyvalue">
-        <span>Link za {{ entry.key }}:</span>
+        <span>{{ t('Link za', 'Link for') }} {{ entry.key }}:</span>
         <code>{{ entry.value }}</code>
       </div>
     </div>
 
     <ng-template #emptyUsers>
-      <p class="empty-state">Nema kreiranih korisnika.</p>
+      <p class="empty-state">{{ t('Nema kreiranih korisnika.', 'No users created yet.') }}</p>
     </ng-template>
   </article>
 </section>
