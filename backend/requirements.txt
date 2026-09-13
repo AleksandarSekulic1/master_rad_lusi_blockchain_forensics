@@ -12,3 +12,4 @@ pyjwt
 requests
 pytest
 pytest-xdist
+httpx2
