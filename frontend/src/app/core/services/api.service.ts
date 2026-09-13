@@ -375,9 +375,18 @@ export class ApiService {
    * Phase 1 (extraction/correlation/risk indicators only): there is no deliberate/
    * custody-gated "run" variant yet, so unlike getDexSwapAnalysis/runDexSwapAnalysis above
    * there is only ONE method here, not a passive/deliberate pair (see
-   * TOKEN-APPROVAL-IMPLEMENTATION.md #12.6/#16.7 for what is deliberately out of scope). */
-  getTokenApprovalCorrelation(caseId: string, address: string, evidence?: string | null): Observable<TokenApprovalCorrelationResult> {
-    let params = new HttpParams().set('address', address);
+   * TOKEN-APPROVAL-IMPLEMENTATION.md #12.6/#16.7 for what is deliberately out of scope).
+   *
+   * `address` is optional (unlike token-approval.component.ts's own usage, which always
+   * supplies one) - omitted, the backend returns every grant in the case's scoped
+   * evidence, which is what the Graph page's APPROVAL overlay needs (see
+   * graph-visualization.component.ts's loadTokenApprovalOverlay, same pattern as
+   * getDexSwapAnalysis's own optional `address` above). */
+  getTokenApprovalCorrelation(caseId: string, address?: string | null, evidence?: string | null): Observable<TokenApprovalCorrelationResult> {
+    let params = new HttpParams();
+    if (address) {
+      params = params.set('address', address);
+    }
     if (evidence) {
       params = params.set('evidence', evidence);
     }

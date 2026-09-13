@@ -550,6 +550,69 @@ h3 {
   background: linear-gradient(135deg, #fb923c, #fdba74);
 }
 
+/* Token Approval risk badge (TOKEN-APPROVAL-IMPLEMENTATION.md #15/#17) - scoped so the DEX
+   swap inspector keeps its own purple .level-*, and colored by SEVERITY (green/amber/red),
+   not by confidence like swap's purple scale - risk_level and match confidence are
+   different questions and should not look the same. */
+.approval-inspector .panel-kicker {
+  color: #f9a8d4;
+}
+
+.approval-inspector .swap-confidence-badge.level-low {
+  color: #052e1f;
+  background: linear-gradient(135deg, #6ee7b7, #34d399);
+}
+
+.approval-inspector .swap-confidence-badge.level-medium {
+  color: #78350f;
+  background: linear-gradient(135deg, #fbbf24, #fcd34d);
+}
+
+.approval-inspector .swap-confidence-badge.level-high {
+  color: #450a0a;
+  background: linear-gradient(135deg, #f87171, #fca5a5);
+}
+
+.approval-transfers-block,
+.risk-indicators-block {
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--gv-border);
+}
+
+.approval-risk-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.approval-risk-list > li {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.65rem;
+  background: rgba(244, 114, 182, 0.08);
+  border: 1px solid rgba(244, 114, 182, 0.22);
+  font-size: 0.78rem;
+}
+
+.approval-risk-list strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--gv-text);
+  font-size: 0.82rem;
+}
+
+.approval-risk-list ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.approval-risk-list ul li {
+  color: var(--gv-text-dim);
+  line-height: 1.5;
+}
+
 .node-inspector .danger-ghost {
   margin-top: 1rem;
   border-color: rgba(239, 68, 68, 0.4);
@@ -774,6 +837,14 @@ h3 {
    the actual 'line-dash-pattern' used for edge.swap-edge on the graph itself. */
 .legend-line.swap-edge {
   background: repeating-linear-gradient(90deg, #c084fc 0, #c084fc 6px, transparent 6px, transparent 10px);
+  border-radius: 0;
+}
+
+/* Same idea, matching edge.approval-edge's own 'line-dash-pattern' [8, 5] and magenta hue -
+   a longer, sparser dash than SWAP's, so the two overlay types stay visually distinct
+   even before reading either one's label. */
+.legend-line.approval-edge {
+  background: repeating-linear-gradient(90deg, #f472b6 0, #f472b6 8px, transparent 8px, transparent 13px);
   border-radius: 0;
 }
 

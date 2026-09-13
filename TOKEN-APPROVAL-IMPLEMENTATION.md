@@ -36,6 +36,7 @@ zahtevu, ništa se ne izmišlja.
 | [14. Implementacija — Korelacija Approval ↔ transferFrom](#14-implementacija--korelacija-approval--transferfrom) | **✅ urađeno** — OWNER → APPROVAL → SPENDER → transferFrom → transfer, kombinovan status |
 | [15. Implementacija — Forenzički risk indikatori](#15-implementacija--forenzički-risk-indikatori) | **✅ urađeno** — LOW/MEDIUM/HIGH + lista razloga, nikad tvrdnja o zloupotrebi |
 | [16. Implementacija — Frontend stranica `/token-approval`](#16-implementacija--frontend-stranica-token-approval) | **✅ urađeno** — Address+ANALYZE, sažetak, tabela, detalji, Show on Graph, Add Investigator Note |
+| [17. Implementacija — Integracija sa Graph Analysis](#17-implementacija--integracija-sa-graph-analysis) | **✅ urađeno** — isprekidana OWNER ┄┄> SPENDER APPROVAL veza, klik-detalji, stvarni transfer nedirnut |
 
 ---
 
@@ -1542,3 +1543,139 @@ urađeno u ovom koraku — preporučeno pre puštanja u produkciju.
 - "Add Investigator Note" ne nudi biranje IZMEĐU owner/spender adrese — uvek spender
   (§16.9) — ako analitičar želi belešku na owner adresi, to i dalje može uraditi na Graf
   stranici (gde owner takođe postoji kao čvor).
+
+---
+
+## 17. Implementacija — Integracija sa Graph Analysis
+
+**Zahtev:** poveži Token Approval Analysis sa postojećim Graph Analysis. Approval NE sme
+izgledati kao običan blockchain transfer — prikazati ga kao posebnu vrstu veze
+(`OWNER┄┄┄>SPENDER`, isprekidano, sa oznakom APPROVAL), dok stvaran transfer ostaje
+nepromenjen (`OWNER──>ADDRESS`, puna linija, TRANSFER). Ako postoji povezan transferFrom,
+prikazati ga kao stvarnu token transakciju. Klik na APPROVAL vezu → token, allowance,
+owner, spender, timestamp, tx hash, status, risk, povezane transferFrom aktivnosti. Ne
+dirati postojeće blockchain edge-ove niti Taint algoritam.
+
+**Obim:** isključivo `graph-visualization.component.{ts,html,scss}` — **isti obrazac koji
+DEX Swap Analysis već koristi za sopstveni overlay** (isprekidane SWAP veze preko istog
+grafa, DEX-SWAP-ANALIZA.md §9), sada primenjen po drugi put, za Token Approval. Nula
+izmena backend-a (§12–§16 ostaju netaknuti — koristi se već postojeća `GET
+.../token-approval-correlation`), nula izmena `graph_building.py` (deljeni graf i dalje ne
+zna ništa o "approval"-ima — vidi §17.2 zašto to i nije potrebno), **nula izmena
+`taint_analysis.py`** — taint plugin nije ni dotaknut, niti se poziva sa APPROVAL granama.
+
+### 17.1 Novi/izmenjeni fajlovi
+
+| Fajl | Šta je izmenjeno |
+|---|---|
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.ts` | Dodat novi overlay (stanje + `loadTokenApprovalOverlay`/`renderApprovalOverlay`/`toggleTokenApprovalOverlay`/`buildApprovalEdgeElements`/risk helperi), dodat u `buildElements()` (pun rebuild) i `applyVisibilityFilters()` (isti tretman kao swap-edge/investigator-link — van vremenske trake), dodata dva nova `cy.on('tap', ...)` delegate handlera (`edge.approval-edge` + reset u sva tri postojeća handlera), dodate `edge.approval-edge`/`approval-risk-*` cytoscape stilske definicije. **Ništa postojeće nije obrisano ni preimenovano** — sve izmene su nove linije ili dodati uslovi (`\|\| edge.hasClass('approval-edge')`) pored postojećih. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.html` | Novo dugme "Prikaži/Sakrij Approval veze (N)" pored postojećeg DEX swap dugmeta; nov panel u "inspector chain"-u (`selectedApprovalEntry`, umetnut IZMEĐU swap i node panela — vidi §17.4); nova stavka u legendi; dopunjen tekst praznog panela. |
+| `frontend/src/app/features/graph-visualization/graph-visualization.component.scss` | Novi `.legend-line.approval-edge`, `.approval-inspector` bedž boje (po riziku, ne po pouzdanosti — vidi §17.3), `.approval-transfers-block`/`.risk-indicators-block`/`.approval-risk-list`. |
+| `frontend/src/app/core/services/api.service.ts` | `getTokenApprovalCorrelation`'s `address` parametar promenjen iz **obaveznog** u **opcioni** (`address?: string \| null`) — isti razlog kao `getDexSwapAnalysis`: overlay poziva rutu BEZ adrese da dobije SVAKO odobrenje u evidenciji, ne samo za jednu adresu. `token-approval.component.ts` (§16) i dalje uvek prosleđuje adresu — njegovo ponašanje se ne menja, samo je parametar sad tehnički opcioniji nego pre. |
+
+### 17.2 Zašto se ne dira `graph_building.py` — ista arhitektonska odluka kao DEX Swap (§9.2/§2)
+
+Isti razlog koji je već dokumentovan za DEX Swap Analysis (DEX-SWAP-ANALIZA.md §2,
+ponovljen u §9.2 ovog dokumenta): `build_transaction_graph` namerno agregira transakcije
+po granama i čuva samo `{amount, timestamp, metadata}` — nema mesta za `event_type`/
+`token_address`/`spender_address`/`risk_level`. Umesto da se taj deljeni graf menja (što bi
+uticalo na SVAKU analizu koja ga koristi — Taint, Pathfinding, Behavioral), overlay čita
+**odvojen, već postojeći** `GET .../token-approval-correlation` poziv (§14) i iscrtava
+dodatne cytoscape elemente PREKO već postojećeg grafa — identičan mehanizam kao DEX Swap
+overlay, samo drugi izvor podataka.
+
+### 17.3 APPROVAL veza — vizuelno namerno RAZLIČITA od TRANSFER veze
+
+| | TRANSFER (postojeća, nepromenjena) | SWAP (DEX Swap Analysis, već postojeća) | **APPROVAL (novo)** |
+|---|---|---|---|
+| Linija | puna, plava (`#6ea8fe`) | isprekidana, ljubičasta (`#c084fc`), razmak `[6,4]` | **isprekidana, magenta (`#f472b6`), razmak `[8,5]` — najduži/najređi od sva tri, namerno vizuelno najudaljenija od pune linije** |
+| Strelica | da | da | **da** (zahtev eksplicitno traži strelicu i za APPROVAL, kao i za TRANSFER — za razliku od Investigator Link veze, koja NEMA strelicu jer nije usmerena tvrdnja) |
+| Oznaka | `#rank · iznos` | `SWAP · ulaz → izlaz` | **`APPROVAL · allowance token`** (ili `APPROVAL · NEOGRANIČENO token`) |
+| Debljina/providnost prati | (fiksno) | pouzdanost detekcije (High/Medium/Low) | **`risk_level` grupe (§15) — LOW/MEDIUM/HIGH**, isti "ozbiljnost = upadljivost" princip, samo drugi ulazni signal |
+| Prolazi kroz Taint model | da (algoritam) | ne (§10 — samo preneti % prikazan, algoritam nedirnut) | **ne — uopšte se ne pominje taint-u; approve/permit ne pomera sredstva, pa "prenos taint-a" kroz nju nema smisla čak ni kao prikazana vrednost (za razliku od SWAP-a, koji ipak prenosi REALNU token zamenu)** |
+
+Ovo direktno ispunjava zahtev "Approval NE sme izgledati kao običan blockchain transfer" —
+tri nezavisna vizuelna signala odjednom (boja, dash pattern, poruka), ne samo jedan.
+
+### 17.4 Klik na APPROVAL vezu — tačno traženih 9 polja, plus povezane transferFrom aktivnosti
+
+Isti "inspector chain" obrazac kao SWAP/Investigator Link (§DEX-SWAP-ANALIZA.md §9.3) —
+klik na APPROVAL granu **zamenjuje** desni panel (ne otvara novi prozor), umetnut u lanac
+IZMEĐU SWAP i običnog "Detalji čvora" panela (klik na čvor/drugu granu ga zatvara, isto
+obrnuto — isti `selectedApprovalEntry = null` reset na sva tri postojeća `tap` handlera).
+
+Panel prikazuje **tačno** traženo: token (adresa kontrakta), allowance (sa "NEOGRANIČENO"
+umesto sirovog broja kad je `unlimited_basis` postavljen — isti izbor kao §16.10), owner,
+spender (+ napomena kad nije prepoznat ni u jednom lokalnom registru — §15.4), timestamp
+(vreme odobrenja), transaction hash, status (kombinovan `APPROVED`/`APPROVED + USED`/...
+iz §14), risk (LOW/MEDIUM/HIGH badge, obojen po ozbiljnosti — zeleno/žuto/crveno, NE
+ljubičasto kao SWAP-ova pouzdanost, da se rizik nikad ne pomeša sa "koliko smo sigurni da
+je ovo swap"), i **povezane transferFrom aktivnosti**: broj transakcija, ukupno povučeno,
+prva/poslednja transferFrom (iznos, vreme, heš), odredište(a) — sve već postojeći podaci
+iz §14's `correlations[]`, samo prikazani.
+
+**Dodatno, kad postoje**: puna lista risk indikatora (§15.2, `label` + `reasons[]` svaki) —
+van eksplicitno tražene liste, ali direktno relevantno za "risk" polje koje JESTE traženo,
+pa je prirodno prikazati i OBRAZLOŽENJE, ne samo krajnji nivo.
+
+### 17.5 "Ako postoji transferFrom povezan sa approval-om, prikaži ga kao stvarnu token transakciju" — već ispunjeno, bez ijedne nove linije koda
+
+Ključno otkriće (obrazloženo u §8.1, sad iskorišćeno ovde): approve()/permit()/transferFrom
+redovi u osnovnoj CSV šemi **i dalje pišu u** `sender_address`/`recipient_address` (baznim,
+obaveznim kolonama koje SVAKA analiza čita) — za `transferFrom` red, to je `owner →
+stvarni primalac sredstava`. To znači da taj red **već** ulazi u
+`build_transaction_graph` i **već** postoji kao obična, puna, plava TRANSFER veza na
+grafu — potpuno nezavisno od ovog overlay-a, bez ijedne dodatne linije koda. Overlay
+namerno **ne iscrtava** posebnu vezu za transferFrom (to bi bio duplikat već postojeće
+prave veze) — umesto toga, klik na APPROVAL granu u panelu (§17.4) SAMO navodi podatke o
+toj već-postojećoj transferFrom transakciji (iznos/vreme/heš/odredište), tako da
+analitičar zna GDE na grafu da je nađe (obična plava veza `owner → odredište`), umesto da
+je overlay duplira kao nešto treće.
+
+### 17.6 Ne diraj postojeće — provereno, ne samo tvrđeno
+
+- **Blockchain edge-ovi (TRANSFER)**: `buildElements()`'s `nodes`/`links` mapiranje —
+  linije koje grade OBIČNE grane od `graph.links` — nisu dirane ni jednim karakterom;
+  dodate su samo NOVE promenljive (`approvalEdges`) spojene u isti finalni niz
+  (`[...nodes, ...links, ...swapEdges, ...approvalEdges, ...investigatorLinkEdges]`).
+- **Taint algoritam**: `backend/app/analytics/plugins/taint_analysis.py` — nula izmena
+  (nije ni otvoren u ovom koraku). Frontend takođe ne poziva nijednu taint-vezanu funkciju
+  za APPROVAL grane (za razliku od SWAP-a, koje IMA `swapCarriedTaint()` most — §10 u
+  DEX-SWAP-ANALIZA.md — APPROVAL panel to namerno nema, vidi tabelu u §17.3).
+- **DEX Swap overlay**: `dexSwapEvents`/`selectedSwapEvent`/`buildSwapEdgeElements`/
+  `edge.swap-edge` stilovi — nula izmena, samo dodati reset-ovi (`selectedApprovalEntry =
+  null`) u NJIHOVIM tap handlerima, analogno kako je swap sam nekad dodao reset u node
+  handler.
+- **Investigator link overlay**: identično — nula izmena sopstvene logike, samo dodat
+  reset.
+- Provereno stvarnim `npx ng build --configuration development` (strict mode) posle SVIH
+  izmena iz §16 i §17 zajedno — **0 grešaka**, `token-approval-component` i glavni
+  `graph-visualization` chunk-ovi oba prisutna u izlazu.
+
+### 17.7 Testirano
+
+```bash
+npx ng build --configuration development
+# Application bundle generation complete. 0 errors.
+```
+
+Kompilacija (uključujući strict template type-checking za novododati `*ngIf`/`*ngFor`/
+metod-pozive u `graph-visualization.component.html`) prolazi čisto. Ručno funkcionalno
+testiranje kroz pravi browser (klik na APPROVAL granu, provera panela, toggle dugme) nije
+urađeno u ovom koraku — preporučeno pre puštanja u produkciju, isto upozorenje kao §16.11.
+
+### 17.8 Ograničenja / van obima
+
+- Overlay se učitava BEZ `address` filtera (cela evidencija odjednom, kao i DEX Swap
+  overlay) — na slučaju sa hiljadama odobrenja ovo bi moglo biti sporo; nema paginacije
+  niti ograničenja broja iscrtanih APPROVAL grana u ovoj verziji (isto ograničenje kao
+  postojeći DEX Swap overlay već ima, ne novo).
+  Nijedan bezbedonosni/taint most ka APPROVAL granama (za razliku od SWAP-a) — namerna
+  odluka (§17.3/§17.6), ne previd: approve/permit ne pomera sredstva, pa "taint kroz
+  approval" nema forenzički smisao kao broj.
+- Vremenska traka (timeline) ne uključuje APPROVAL grane u sopstvenu hronologiju (nema
+  `chronoRank`) — iste kao SWAP/Investigator Link, uvek vidljive nezavisno od pozicije
+  trake, isključivo pod kontrolom sopstvenog toggle-a (§17.1's `applyVisibilityFilters`
+  izmena).
+- Nema custody/PDF/audit log ni za ovaj overlay (nepromenjeno iz §16.12) — čisto vizuelni,
+  pasivan prikaz, ista klasa read-only funkcionalnosti kao ostatak Faze 1.
