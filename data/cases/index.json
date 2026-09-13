@@ -1,6 +1,18 @@
 {
   "cases": [
     {
+      "id": "2284c6d9001e",
+      "name": "Smoke Risk",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-13T11:25:55.077028+00:00",
+      "updated_at": "2026-09-13T11:25:55.117029+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 435,
+      "last_imported_at": "2026-09-13T11:25:55.117029+00:00"
+    },
+    {
       "id": "43de1fe7bc48",
       "name": "Smoke Correlation",
       "description": null,

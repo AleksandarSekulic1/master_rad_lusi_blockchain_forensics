@@ -4,7 +4,9 @@ from typing import Any
 
 import pandas as pd
 
+from app.analytics.dex_swap_analysis import _load_known_dex_contracts, classify_dex_node
 from app.analytics.plugins.blacklist_check import _normalize_address
+from app.services.address_enrichment import get_known_entity
 
 # Token Approval / Ice Phishing Analysis - a new, standalone module (see
 # TOKEN-APPROVAL-IMPLEMENTATION.md), built the same way as DEX Swap Analysis
@@ -123,6 +125,28 @@ MAX_UNLIMITED_THRESHOLD = 1e40
 DEFAULT_RAPID_USE_SECONDS = 3600
 MIN_RAPID_USE_SECONDS = 0
 MAX_RAPID_USE_SECONDS = 30 * 24 * 3600
+
+# "Large amount transferred" magnitude heuristic - same float64/no-decimals-registry
+# caveat as DEFAULT_UNLIMITED_THRESHOLD above (see TOKEN-APPROVAL-IMPLEMENTATION.md #7.4):
+# configurable, always labelled a heuristic, never a confirmed dollar figure (no price
+# oracle exists in this project - see #7.4).
+DEFAULT_LARGE_AMOUNT_THRESHOLD = 1_000_000.0
+MIN_LARGE_AMOUNT_THRESHOLD = 0.0
+MAX_LARGE_AMOUNT_THRESHOLD = 1e40
+
+# "Multiple transferFrom operations" - how many separate draws against one grant before
+# that pattern itself becomes worth a second look (a single top-up-then-spend pair is
+# normal usage; many small draws can indicate automated/scripted draining).
+DEFAULT_MULTIPLE_TRANSFER_THRESHOLD = 3
+MIN_MULTIPLE_TRANSFER_THRESHOLD = 2
+MAX_MULTIPLE_TRANSFER_THRESHOLD = 1000
+
+# "Approval remained active for a long period" - default 90 days. An open-ended allowance
+# left unattended for a long time is a wider attack window, independent of whether it was
+# ever unlimited in amount.
+DEFAULT_LONG_ACTIVE_PERIOD_SECONDS = 90 * 24 * 3600
+MIN_LONG_ACTIVE_PERIOD_SECONDS = 3600
+MAX_LONG_ACTIVE_PERIOD_SECONDS = 10 * 365 * 24 * 3600
 
 
 def _clean_text(value: object) -> str | None:
@@ -367,6 +391,63 @@ STATUS_USED = 'USED'
 STATUS_UNKNOWN = 'UNKNOWN'
 
 
+# Forensic risk indicators - TOKEN-APPROVAL-IMPLEMENTATION.md #15. Deliberately named
+# "indicators", never "malicious"/"scam"/"phishing" in code or label text: each one is a
+# single, explainable, heuristic observation an investigator can weigh - not an accusation.
+# `risk_level` (LOW/MEDIUM/HIGH, see _risk_level below) is a WEIGHTED COUNT of which
+# indicators fired, not a probability or a verdict - see the disclaimer text every response
+# carries, and #15.2 for why each weight was picked.
+RISK_LEVEL_LOW = 'LOW'
+RISK_LEVEL_MEDIUM = 'MEDIUM'
+RISK_LEVEL_HIGH = 'HIGH'
+
+# code -> weight. Higher = a stronger, more specific signal on its own; lower = worth
+# noting but common enough on its own to mean little (see #15.2 for the reasoning behind
+# each individual weight, not just the tiers).
+RISK_INDICATOR_WEIGHTS: dict[str, int] = {
+    'unlimited_never_used': 2,
+    'unlimited_rapid_drain': 3,
+    'rapid_first_use': 2,
+    'revoked_after_use': 1,
+    'active_used_never_revoked': 1,
+    'spender_multi_owner': 3,
+    'unknown_spender': 1,
+    'large_amount_transferred': 2,
+    'multiple_transferfrom_operations': 1,
+    'long_active_period': 1,
+    'multiple_tokens_same_spender': 2,
+}
+
+# A single strong indicator (weight 3) alone lands on MEDIUM, not HIGH - HIGH requires
+# either two strong signals or one strong plus real corroboration, never one heuristic in
+# isolation (see #15.3 for the full table of which combinations land where).
+RISK_LEVEL_HIGH_THRESHOLD = 5
+RISK_LEVEL_MEDIUM_THRESHOLD = 2
+
+
+def _risk_level(score: int) -> str:
+    if score >= RISK_LEVEL_HIGH_THRESHOLD:
+        return RISK_LEVEL_HIGH
+    if score >= RISK_LEVEL_MEDIUM_THRESHOLD:
+        return RISK_LEVEL_MEDIUM
+    return RISK_LEVEL_LOW
+
+
+def _is_known_spender(spender: str, known_dex_contracts: dict[str, dict[str, str]]) -> bool:
+    """A spender is "known" when it matches either of this project's two existing, local,
+    read-only curated registries - never a new one invented for this feature (see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #15.4): app.services.address_enrichment's
+    known_entities.json (exchanges/mixers/sanctioned addresses) or
+    dex_swap_analysis.known_dex_contracts.json (+ its brand-keyword fallback for demo
+    pseudo-addresses) via the exact same classify_dex_node() DEX Swap Analysis itself
+    uses. Neither lookup is modified by this call - both are read-only, already-existing
+    local data."""
+    if get_known_entity(spender) is not None:
+        return True
+    name, basis = classify_dex_node(spender, known_dex_contracts)
+    return name is not None and basis is not None
+
+
 def _build_group_result(
     key: tuple[str, str, str | None],
     approvals: list[dict[str, Any]],
@@ -374,7 +455,12 @@ def _build_group_result(
     plausible_unconfirmed_transfers: list[dict[str, Any]],
     unlimited_threshold: float,
     rapid_use_seconds: int,
+    large_amount_threshold: float,
+    multiple_transfer_threshold: int,
+    long_active_period_seconds: int,
     spender_owner_counts: dict[str, int],
+    owner_spender_token_counts: dict[tuple[str, str], set[str]],
+    known_dex_contracts: dict[str, dict[str, str]],
     now: pd.Timestamp,
 ) -> dict[str, Any]:
     approvals_sorted = sorted(approvals, key=lambda event: event['timestamp'])
@@ -588,6 +674,99 @@ def _build_group_result(
             ],
         })
 
+    # --- Novi indikatori (TOKEN-APPROVAL-IMPLEMENTATION.md #15) ------------------------
+
+    is_spender_known = _is_known_spender(spender_display, known_dex_contracts)
+    if not is_spender_known:
+        risk_indicators.append({
+            'code': 'unknown_spender',
+            'label': 'Spender nije prepoznat ni u jednom lokalnom registru',
+            'reasons': [
+                'Adresa spendera se ne poklapa ni sa jednim poznatim exchange/mixer/sankcionisanim '
+                'entitetom (known_entities.json) niti sa poznatim/verovatnim DEX kontraktom '
+                '(known_dex_contracts.json).',
+                'Ne znači da je zloćudan - većina legitimnih ugovora prosto nije u ova dva malena, '
+                'ručno kurirana spiska; ovo samo znači da nema DODATNE potvrde legitimnosti iz njih.',
+            ],
+        })
+
+    if total_transferred_amount >= large_amount_threshold:
+        risk_indicators.append({
+            'code': 'large_amount_transferred',
+            'label': 'Povučen veliki iznos preko ove dozvole',
+            'reasons': [
+                f'Ukupno povučeno preko ove dozvole ({total_transferred_amount:g}) dostiže ili prelazi '
+                f'podesiv prag ({large_amount_threshold:g}).',
+                'Prag je heuristika po veličini broja - bez registra decimala po tokenu ne postoji '
+                'pouzdan način da se ovo prevede u USD vrednost (vidi ograničenja u dokumentaciji).',
+            ],
+        })
+
+    if transfer_from_count >= multiple_transfer_threshold:
+        risk_indicators.append({
+            'code': 'multiple_transferfrom_operations',
+            'label': 'Više transferFrom operacija nad istom dozvolom',
+            'reasons': [
+                f'Zabeleženo je {transfer_from_count} transferFrom transakcija nad ovom dozvolom '
+                f'(prag: {multiple_transfer_threshold}).',
+                'Više odvojenih povlačenja može ukazivati na automatizovano/skriptovano trošenje '
+                'dozvole - i dalje može biti sasvim legitimno korišćenje.',
+            ],
+        })
+
+    longest_single_grant_duration = max(
+        (record['active_duration_seconds'] for record in approval_records if record['active_duration_seconds'] is not None),
+        default=None,
+    )
+    if longest_single_grant_duration is not None and longest_single_grant_duration >= long_active_period_seconds:
+        risk_indicators.append({
+            'code': 'long_active_period',
+            'label': 'Dozvola je (bila) aktivna dugo vremena',
+            'reasons': [
+                f'Bar jedno odobrenje u ovoj grupi je bilo na snazi {longest_single_grant_duration / 86400:.1f} dana '
+                f'(prag: {long_active_period_seconds / 86400:.1f} dana).',
+                'Duže otvoren pristup znači širi vremenski prozor za eventualnu zloupotrebu, nezavisno '
+                'od toga da li je iznos ikad bio neograničen.',
+            ],
+        })
+
+    rapid_first_use_seconds = first_use_record['seconds_since_approval'] if first_use_record else None
+    first_use_was_unlimited_grant = bool(first_use_record and first_use_record['preceding_approval_unlimited_basis'] is not None)
+    if (
+        rapid_first_use_seconds is not None
+        and rapid_first_use_seconds <= rapid_use_seconds
+        and not first_use_was_unlimited_grant
+    ):
+        # Deliberately excludes the case already covered by 'unlimited_rapid_drain' above
+        # (same underlying signal, more specific label when the drained grant was
+        # unlimited) - this is the general form, for an ordinary-sized allowance drained
+        # just as quickly.
+        risk_indicators.append({
+            'code': 'rapid_first_use',
+            'label': 'Prvo korišćenje usledilo ubrzo posle odobrenja',
+            'reasons': [
+                f'Prva transferFrom transakcija je usledila {int(rapid_first_use_seconds)}s posle odobrenja '
+                f'koje je bilo na snazi (prag: {rapid_use_seconds}s).',
+                'Isti obrazac kao "unlimited_rapid_drain", ovde bez potvrde da je sam iznos bio neograničen.',
+            ],
+        })
+
+    if len(owner_spender_token_counts.get((key[0], key[1]), set())) > 1:
+        distinct_token_count = len(owner_spender_token_counts[(key[0], key[1])])
+        risk_indicators.append({
+            'code': 'multiple_tokens_same_spender',
+            'label': 'Isti spender odobren za više različitih tokena',
+            'reasons': [
+                f'Ovaj (owner, spender) par ima odobrenja za {distinct_token_count} različita, '
+                'identifikovana tokena u ovoj evidenciji.',
+                'Širok pristup preko više tokena istom ugovoru je tipičan obrazac kod "potpiši ovde" '
+                'phishing dApp-ova koji traže odobrenje za ceo novčanik odjednom.',
+            ],
+        })
+
+    risk_score = sum(RISK_INDICATOR_WEIGHTS.get(indicator['code'], 1) for indicator in risk_indicators)
+    risk_level = _risk_level(risk_score)
+
     return {
         'owner': owner_display,
         'spender': spender_display,
@@ -609,7 +788,10 @@ def _build_group_result(
         'time_to_first_use_anomaly': time_to_first_use_anomaly,
         'related_addresses': related_addresses,
         'spender_multi_owner': spender_multi_owner,
+        'spender_known': is_spender_known,
         'risk_indicators': risk_indicators,
+        'risk_score': risk_score,
+        'risk_level': risk_level,
     }
 
 
@@ -618,6 +800,9 @@ def analyze_token_approvals(
     target_address: str | None = None,
     unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
     rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    large_amount_threshold: float = DEFAULT_LARGE_AMOUNT_THRESHOLD,
+    multiple_transfer_threshold: int = DEFAULT_MULTIPLE_TRANSFER_THRESHOLD,
+    long_active_period_seconds: int = DEFAULT_LONG_ACTIVE_PERIOD_SECONDS,
     now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
     """Token Approval / Ice Phishing Analysis: extracts and classifies ERC-20
@@ -639,6 +824,13 @@ def analyze_token_approvals(
     project's core algorithms; here it is unavoidable since the question itself ("how long
     has this been active") is inherently relative to the present moment.
 
+    Forensic risk indicators (large_amount_threshold/multiple_transfer_threshold/
+    long_active_period_seconds, plus unlimited_threshold/rapid_use_seconds above) are all
+    configurable heuristic thresholds feeding each group's `risk_indicators`/`risk_score`/
+    `risk_level` - see TOKEN-APPROVAL-IMPLEMENTATION.md #15. `risk_level` is a heuristic
+    signal for an investigator to prioritize review, NEVER a claim that an address or
+    contract is malicious.
+
     See TOKEN-APPROVAL-IMPLEMENTATION.md for the full field-by-field justification of what
     is read directly vs. derived vs. explicitly reported as unavailable.
     """
@@ -648,7 +840,11 @@ def analyze_token_approvals(
 
     unlimited_threshold = max(MIN_UNLIMITED_THRESHOLD, min(MAX_UNLIMITED_THRESHOLD, float(unlimited_threshold)))
     rapid_use_seconds = max(MIN_RAPID_USE_SECONDS, min(MAX_RAPID_USE_SECONDS, int(rapid_use_seconds)))
+    large_amount_threshold = max(MIN_LARGE_AMOUNT_THRESHOLD, min(MAX_LARGE_AMOUNT_THRESHOLD, float(large_amount_threshold)))
+    multiple_transfer_threshold = max(MIN_MULTIPLE_TRANSFER_THRESHOLD, min(MAX_MULTIPLE_TRANSFER_THRESHOLD, int(multiple_transfer_threshold)))
+    long_active_period_seconds = max(MIN_LONG_ACTIVE_PERIOD_SECONDS, min(MAX_LONG_ACTIVE_PERIOD_SECONDS, int(long_active_period_seconds)))
     now = now if now is not None else pd.Timestamp.now(tz='UTC')
+    known_dex_contracts = _load_known_dex_contracts()
 
     frame = _prepare_frame(transactions)
 
@@ -715,6 +911,16 @@ def analyze_token_approvals(
         spender_owner_keys.setdefault(event['spender_key'], set()).add(event['owner_key'])
     spender_owner_counts = {spender: len(owners) for spender, owners in spender_owner_keys.items()}
 
+    # Same idea, other axis: for each (owner, spender) pair, how many DISTINCT identified
+    # tokens has that owner approved to that spender - 'multiple_tokens_same_spender'
+    # below. Only counts a token when it was actually declared (token_key is not None) -
+    # an undeclared token never inflates this count (see TOKEN-APPROVAL-IMPLEMENTATION.md
+    # #12.4 on why an undeclared token cannot be safely distinguished from another).
+    owner_spender_token_counts: dict[tuple[str, str], set[str]] = {}
+    for event in approval_events:
+        if event['token_key']:
+            owner_spender_token_counts.setdefault((event['owner_key'], event['spender_key']), set()).add(event['token_key'])
+
     approval_groups: dict[tuple[str, str, str | None], list[dict[str, Any]]] = {}
     for event in approval_events:
         approval_groups.setdefault(_group_key(event), []).append(event)
@@ -764,7 +970,12 @@ def analyze_token_approvals(
             unattributed_by_owner_key.get(key[0], []),
             unlimited_threshold,
             rapid_use_seconds,
+            large_amount_threshold,
+            multiple_transfer_threshold,
+            long_active_period_seconds,
             spender_owner_counts,
+            owner_spender_token_counts,
+            known_dex_contracts,
             now,
         )
         for key, events in approval_groups.items()
@@ -808,12 +1019,16 @@ def analyze_token_approvals(
         },
         'unlimited_threshold': unlimited_threshold,
         'rapid_use_seconds': rapid_use_seconds,
+        'large_amount_threshold': large_amount_threshold,
+        'multiple_transfer_threshold': multiple_transfer_threshold,
+        'long_active_period_seconds': long_active_period_seconds,
         'disclaimer': (
             'Token Approval Analysis čita isključivo polja koja evidencija stvarno deklariše - ništa nije '
             'dekodirano sa lanca (projekat danas ne povlači Approval/permit evente automatski - vidi '
-            'TOKEN-APPROVAL-IMPLEMENTATION.md #7). Neograničena dozvola, brzo povlačenje i "spender sa više '
-            'vlasnika" su OZNAČENE HEURISTIKE, ne dokaz zloupotrebe - svaki nalaz nosi razlog na osnovu kog je '
-            'izveden i treba dodatnu proveru pre bilo kakvog forenzičkog zaključka.'
+            'TOKEN-APPROVAL-IMPLEMENTATION.md #7). Svi "risk_indicators" i izvedeni "risk_level" '
+            '(LOW/MEDIUM/HIGH) po grupi su OZNAČENE HEURISTIKE za prioritizaciju pregleda - NIKAD tvrdnja '
+            'da je adresa ili ugovor zloćudan/kriminalan, i NIKAD dokaz. Svaki nalaz nosi razlog na osnovu '
+            'kog je izveden i treba dodatnu proveru pre bilo kakvog forenzičkog zaključka.'
         ),
     }
 
@@ -823,6 +1038,9 @@ def build_token_approval_history(
     address: str,
     unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
     rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    large_amount_threshold: float = DEFAULT_LARGE_AMOUNT_THRESHOLD,
+    multiple_transfer_threshold: int = DEFAULT_MULTIPLE_TRANSFER_THRESHOLD,
+    long_active_period_seconds: int = DEFAULT_LONG_ACTIVE_PERIOD_SECONDS,
     now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
     """Reconstructs the APPROVE -> allowance change -> eventual REVOCATION -> current
@@ -851,6 +1069,9 @@ def build_token_approval_history(
         target_address=address,
         unlimited_threshold=unlimited_threshold,
         rapid_use_seconds=rapid_use_seconds,
+        large_amount_threshold=large_amount_threshold,
+        multiple_transfer_threshold=multiple_transfer_threshold,
+        long_active_period_seconds=long_active_period_seconds,
         now=now,
     )
 
@@ -897,6 +1118,9 @@ def build_token_approval_history(
         'data_completeness': base['data_completeness'],
         'unlimited_threshold': base['unlimited_threshold'],
         'rapid_use_seconds': base['rapid_use_seconds'],
+        'large_amount_threshold': base['large_amount_threshold'],
+        'multiple_transfer_threshold': base['multiple_transfer_threshold'],
+        'long_active_period_seconds': base['long_active_period_seconds'],
         'disclaimer': base['disclaimer'],
     }
 
@@ -947,6 +1171,9 @@ def correlate_approval_usage(
     target_address: str | None = None,
     unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
     rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    large_amount_threshold: float = DEFAULT_LARGE_AMOUNT_THRESHOLD,
+    multiple_transfer_threshold: int = DEFAULT_MULTIPLE_TRANSFER_THRESHOLD,
+    long_active_period_seconds: int = DEFAULT_LONG_ACTIVE_PERIOD_SECONDS,
     now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
     """Correlates each individual approve()/permit() GRANT with its later transferFrom()
@@ -974,6 +1201,9 @@ def correlate_approval_usage(
         target_address=target_address,
         unlimited_threshold=unlimited_threshold,
         rapid_use_seconds=rapid_use_seconds,
+        large_amount_threshold=large_amount_threshold,
+        multiple_transfer_threshold=multiple_transfer_threshold,
+        long_active_period_seconds=long_active_period_seconds,
         now=now,
     )
 
@@ -1025,9 +1255,13 @@ def correlate_approval_usage(
         'address': target_address,
         'correlation_count': len(correlations),
         'correlations': correlations,
+        'groups': base['groups'],
         'unattributed_transfers': base['unattributed_transfers'],
         'data_completeness': base['data_completeness'],
         'unlimited_threshold': base['unlimited_threshold'],
         'rapid_use_seconds': base['rapid_use_seconds'],
+        'large_amount_threshold': base['large_amount_threshold'],
+        'multiple_transfer_threshold': base['multiple_transfer_threshold'],
+        'long_active_period_seconds': base['long_active_period_seconds'],
         'disclaimer': base['disclaimer'],
     }

@@ -12,10 +12,19 @@ from app.analytics.case_graph import build_case_graph, clean_evidence_frames, co
 from app.analytics.dex_swap_analysis import DEFAULT_MAX_GAP_SECONDS, MAX_MAX_GAP_SECONDS, MIN_MAX_GAP_SECONDS, detect_dex_swaps
 from app.analytics.timezone_heuristics import estimate_timezone_compatibility
 from app.analytics.token_approval_analysis import (
+    DEFAULT_LARGE_AMOUNT_THRESHOLD,
+    DEFAULT_LONG_ACTIVE_PERIOD_SECONDS,
+    DEFAULT_MULTIPLE_TRANSFER_THRESHOLD,
     DEFAULT_RAPID_USE_SECONDS,
     DEFAULT_UNLIMITED_THRESHOLD,
+    MAX_LARGE_AMOUNT_THRESHOLD,
+    MAX_LONG_ACTIVE_PERIOD_SECONDS,
+    MAX_MULTIPLE_TRANSFER_THRESHOLD,
     MAX_RAPID_USE_SECONDS,
     MAX_UNLIMITED_THRESHOLD,
+    MIN_LARGE_AMOUNT_THRESHOLD,
+    MIN_LONG_ACTIVE_PERIOD_SECONDS,
+    MIN_MULTIPLE_TRANSFER_THRESHOLD,
     MIN_RAPID_USE_SECONDS,
     MIN_UNLIMITED_THRESHOLD,
     analyze_token_approvals,
@@ -482,6 +491,9 @@ def get_case_token_approval_analysis(
     evidence: str | None = None,
     unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
     rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+    large_amount_threshold: float = Query(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD),
+    multiple_transfer_threshold: int = Query(default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD),
+    long_active_period_seconds: int = Query(default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS),
 ) -> dict[str, object]:
     """Token Approval / Ice Phishing Analysis: extracts and classifies ERC-20
     approve()/EIP-2612 permit() grants and their transferFrom() usage from the case's
@@ -514,6 +526,9 @@ def get_case_token_approval_analysis(
             target_address=normalized_address,
             unlimited_threshold=unlimited_threshold,
             rapid_use_seconds=rapid_use_seconds,
+            large_amount_threshold=large_amount_threshold,
+            multiple_transfer_threshold=multiple_transfer_threshold,
+            long_active_period_seconds=long_active_period_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -531,6 +546,9 @@ def get_case_token_approval_history(
     evidence: str | None = None,
     unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
     rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+    large_amount_threshold: float = Query(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD),
+    multiple_transfer_threshold: int = Query(default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD),
+    long_active_period_seconds: int = Query(default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS),
 ) -> dict[str, object]:
     """Token Approval history for ONE address: reconstructs APPROVE -> allowance change ->
     eventual REVOCATION -> current status per grant (see
@@ -554,6 +572,9 @@ def get_case_token_approval_history(
             address=normalized_address,
             unlimited_threshold=unlimited_threshold,
             rapid_use_seconds=rapid_use_seconds,
+            large_amount_threshold=large_amount_threshold,
+            multiple_transfer_threshold=multiple_transfer_threshold,
+            long_active_period_seconds=long_active_period_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -571,6 +592,9 @@ def get_case_token_approval_correlation(
     evidence: str | None = None,
     unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
     rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+    large_amount_threshold: float = Query(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD),
+    multiple_transfer_threshold: int = Query(default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD),
+    long_active_period_seconds: int = Query(default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS),
 ) -> dict[str, object]:
     """Correlates each individual approve()/permit() grant with its later transferFrom()
     usage: OWNER -> APPROVAL -> SPENDER -> transferFrom -> token transfer (see
@@ -594,6 +618,9 @@ def get_case_token_approval_correlation(
             target_address=normalized_address,
             unlimited_threshold=unlimited_threshold,
             rapid_use_seconds=rapid_use_seconds,
+            large_amount_threshold=large_amount_threshold,
+            multiple_transfer_threshold=multiple_transfer_threshold,
+            long_active_period_seconds=long_active_period_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

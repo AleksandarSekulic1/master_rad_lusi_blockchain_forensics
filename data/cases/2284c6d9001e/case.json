@@ -1,0 +1,23 @@
+{
+  "id": "2284c6d9001e",
+  "name": "Smoke Risk",
+  "description": null,
+  "analyst": "admin",
+  "status": "open",
+  "created_at": "2026-09-13T11:25:55.077028+00:00",
+  "updated_at": "2026-09-13T11:25:55.117029+00:00",
+  "evidence": [
+    {
+      "file_name": "risk.csv",
+      "stored_name": "20260913_112555_099047_risk.csv",
+      "imported_at": "2026-09-13T11:25:55.117029+00:00",
+      "size_bytes": 435,
+      "sha256": "55f6017d2228254406dcc8ce42026776b66968a0e9fd92f82a32f418725caf7d",
+      "analyst": "admin",
+      "currency": null
+    }
+  ],
+  "evidence_count": 1,
+  "total_size_bytes": 435,
+  "last_imported_at": "2026-09-13T11:25:55.117029+00:00"
+}

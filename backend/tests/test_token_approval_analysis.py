@@ -18,10 +18,16 @@ import pytest
 
 from app.analytics.token_approval_analysis import (
     DEFAULT_UNLIMITED_THRESHOLD,
+    RISK_INDICATOR_WEIGHTS,
     analyze_token_approvals,
     build_token_approval_history,
     correlate_approval_usage,
 )
+
+# A real, publicly known Uniswap V2 Router address already curated in
+# dex_swap_analysis.known_dex_contracts.json - used to test the "known spender" (NOT
+# unknown_spender) path without inventing a new registry entry.
+KNOWN_DEX_SPENDER = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D'
 
 BASE_COLUMNS = [
     'sender_address', 'recipient_address', 'amount', 'timestamp', 'metadata',
@@ -647,3 +653,161 @@ class TestApprovalUsageCorrelation:
         assert all_result['correlation_count'] == 2
         assert scoped_result['correlation_count'] == 1
         assert scoped_result['correlations'][0]['owner'] == '0xOwnerA'
+
+
+class TestForensicRiskIndicators:
+    """Indikatori za procenu rizika (LOW/MEDIUM/HIGH + lista razloga) - nikad tvrdnja o zloupotrebi"""
+
+    def test_no_indicators_means_low_risk(self):
+        """Bez ijednog upaljenog indikatora - LOW rizik, prazna lista"""
+        frame = frame_from_rows([approve_row('0xOwner', KNOWN_DEX_SPENDER, 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        group = result['groups'][0]
+        assert group['risk_indicators'] == []
+        assert group['risk_level'] == 'LOW'
+        assert group['risk_score'] == 0
+
+    def test_unknown_spender_fires_for_unrecognized_address(self):
+        """Nepoznat spender (nema ga ni u known_entities.json ni u known_dex_contracts.json) -> 'unknown_spender'"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSomeRandomUnlabeledContract', 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'unknown_spender' in codes
+        assert result['groups'][0]['spender_known'] is False
+
+    def test_known_dex_spender_does_not_trigger_unknown_spender(self):
+        """Poznata DEX router adresa (postojeći known_dex_contracts.json) se NE prijavljuje kao unknown_spender"""
+        frame = frame_from_rows([approve_row('0xOwner', KNOWN_DEX_SPENDER, 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'unknown_spender' not in codes
+        assert result['groups'][0]['spender_known'] is True
+
+    def test_large_amount_transferred_uses_configurable_threshold(self):
+        """Veliki ukupan povučen iznos (preko podesivog praga) -> 'large_amount_transferred'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', KNOWN_DEX_SPENDER, 10_000_000.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', KNOWN_DEX_SPENDER, '0xDest', 5_000_000.0, '2026-01-01T01:00:00Z', token_address='0xTokenA'),
+        ])
+
+        result = analyze_token_approvals(frame, large_amount_threshold=1_000_000.0, now=NOW)
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'large_amount_transferred' in codes
+
+    def test_multiple_transferfrom_operations_uses_configurable_threshold(self):
+        """Tri ili više transferFrom transakcija (prag) -> 'multiple_transferfrom_operations'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', KNOWN_DEX_SPENDER, 900.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', KNOWN_DEX_SPENDER, '0xDest', 100.0, '2026-01-01T01:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', KNOWN_DEX_SPENDER, '0xDest', 100.0, '2026-01-01T02:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', KNOWN_DEX_SPENDER, '0xDest', 100.0, '2026-01-01T03:00:00Z', token_address='0xTokenA'),
+        ])
+
+        result = analyze_token_approvals(frame, multiple_transfer_threshold=3, now=NOW)
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'multiple_transferfrom_operations' in codes
+
+    def test_long_active_period_fires_for_old_still_open_approval(self):
+        """Odobrenje otvoreno dugo vremena (preko podesivog praga) -> 'long_active_period'"""
+        far_future = pd.Timestamp('2026-06-01T00:00:00Z')  # ~150 dana posle approve
+        frame = frame_from_rows([approve_row('0xOwner', KNOWN_DEX_SPENDER, 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, long_active_period_seconds=90 * 24 * 3600, now=far_future)
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'long_active_period' in codes
+
+    def test_recent_approval_does_not_trigger_long_active_period(self):
+        """Skoro odobrena, i dalje otvorena dozvola NE prijavljuje 'long_active_period'"""
+        frame = frame_from_rows([approve_row('0xOwner', KNOWN_DEX_SPENDER, 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, long_active_period_seconds=90 * 24 * 3600, now=NOW)  # NOW = 9 dana kasnije
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'long_active_period' not in codes
+
+    def test_rapid_first_use_fires_for_ordinary_sized_grant(self):
+        """Brzo prvo korišćenje OBIČNE (ne neograničene) dozvole -> 'rapid_first_use', ne 'unlimited_rapid_drain'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', KNOWN_DEX_SPENDER, 500.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', KNOWN_DEX_SPENDER, '0xDest', 500.0, '2026-01-01T00:02:00Z', token_address='0xTokenA'),
+        ])
+
+        result = analyze_token_approvals(frame, rapid_use_seconds=3600, now=NOW)
+
+        codes = [indicator['code'] for indicator in result['groups'][0]['risk_indicators']]
+        assert 'rapid_first_use' in codes
+        assert 'unlimited_rapid_drain' not in codes
+
+    def test_multiple_tokens_same_spender_fires_across_declared_tokens(self):
+        """Isti (owner, spender) par sa odobrenjima za 2+ različita, deklarisana tokena -> 'multiple_tokens_same_spender'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', KNOWN_DEX_SPENDER, 100.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            approve_row('0xOwner', KNOWN_DEX_SPENDER, 200.0, '2026-01-01T00:00:00Z', token_address='0xTokenB'),
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        for group in result['groups']:
+            codes = [indicator['code'] for indicator in group['risk_indicators']]
+            assert 'multiple_tokens_same_spender' in codes
+
+    def test_risk_score_is_sum_of_fired_indicator_weights(self):
+        """risk_score je zbir težina upaljenih indikatora (RISK_INDICATOR_WEIGHTS)"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xUnrecognizedSpender', 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        group = result['groups'][0]
+        expected = sum(RISK_INDICATOR_WEIGHTS.get(indicator['code'], 1) for indicator in group['risk_indicators'])
+        assert group['risk_score'] == expected
+
+    def test_two_strong_indicators_reach_high_risk_level(self):
+        """Konvergencija VIŠE jakih indikatora -> HIGH (ne samo jedan usamljen signal)"""
+        frame = frame_from_rows([
+            # spender_multi_owner (weight 3): dva različita owner-a odobravaju isti spender
+            approve_row('0xOwnerA', '0xUnrecognizedSpender', 100.0, '2026-01-01T00:00:00Z', token_address='0xTokenA', is_unlimited='true'),
+            approve_row('0xOwnerB', '0xUnrecognizedSpender', 200.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            # unlimited_rapid_drain (weight 3) za grupu OwnerA
+            transfer_from_row('0xOwnerA', '0xUnrecognizedSpender', '0xDest', 50.0, '2026-01-01T00:02:00Z', token_address='0xTokenA'),
+        ])
+
+        result = analyze_token_approvals(frame, rapid_use_seconds=3600, now=NOW)
+
+        owner_a_group = next(group for group in result['groups'] if group['owner'] == '0xOwnerA')
+        assert owner_a_group['risk_level'] == 'HIGH'
+        assert owner_a_group['risk_score'] >= 5
+
+    def test_single_weak_indicator_stays_low_risk(self):
+        """Jedan slab indikator sam za sebe ne podiže rizik iznad LOW"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', KNOWN_DEX_SPENDER, 900.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            # 3h kasnije (van podrazumevanog rapid_use_seconds=3600) - jedini upaljen indikator
+            # ovde treba da bude 'active_used_never_revoked' (weight 1), ne i 'rapid_first_use'.
+            transfer_from_row('0xOwner', KNOWN_DEX_SPENDER, '0xDest', 300.0, '2026-01-01T03:00:00Z', token_address='0xTokenA'),
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        group = result['groups'][0]
+        codes = [indicator['code'] for indicator in group['risk_indicators']]
+        assert codes == ['active_used_never_revoked']
+        assert group['risk_level'] == 'LOW'
+
+    def test_disclaimer_explicitly_says_heuristic_not_malicious_claim(self):
+        """Disclaimer eksplicitno kaže da risk_level nije tvrdnja o zloupotrebi"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 5.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        disclaimer_lower = result['disclaimer'].lower()
+        assert 'heuristik' in disclaimer_lower
+        assert 'nikad' in disclaimer_lower or 'nije dokaz' in disclaimer_lower or 'nije tvrdnja' in disclaimer_lower

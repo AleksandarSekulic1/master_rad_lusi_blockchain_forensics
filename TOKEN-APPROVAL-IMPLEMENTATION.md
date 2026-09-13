@@ -34,6 +34,7 @@ zahtevu, ništa se ne izmišlja.
 | [12. Implementacija — backend, Faza 1](#12-implementacija--backend-faza-1) | **✅ urađeno** — novi/izmenjeni fajlovi, API, metode, ograničenja, testovi |
 | [13. Implementacija — Istorija odobrenja po adresi](#13-implementacija--istorija-odobrenja-po-adresi) | **✅ urađeno** — APPROVE → promena → REVOCATION → status, po odobrenju |
 | [14. Implementacija — Korelacija Approval ↔ transferFrom](#14-implementacija--korelacija-approval--transferfrom) | **✅ urađeno** — OWNER → APPROVAL → SPENDER → transferFrom → transfer, kombinovan status |
+| [15. Implementacija — Forenzički risk indikatori](#15-implementacija--forenzički-risk-indikatori) | **✅ urađeno** — LOW/MEDIUM/HIGH + lista razloga, nikad tvrdnja o zloupotrebi |
 
 ---
 
@@ -1160,3 +1161,168 @@ reda su imala `spender_address`, pa su pouzdano uparena).
   "tačno-jedan-kandidat-inače-neatribuirano" pravilu, ne po nagađanju.
 - Van obima (nepromenjeno): custody/PDF izveštaj/audit log/frontend/graph overlay za ovu
   korelaciju nisu urađeni u ovom koraku.
+
+---
+
+## 15. Implementacija — Forenzički risk indikatori
+
+**Zahtev:** dodati forenzičke indikatore koji pomažu istražitelju da PROCENI rizik —
+**nikad** automatska tvrdnja da je adresa/ugovor malicious. Rezultat: `risk_level`
+(LOW/MEDIUM/HIGH) + lista razloga, po grupi (owner, spender, token) — sa primerima
+(Unlimited approval, Unknown spender, Approval later used, Large token amount transferred,
+Multiple transferFrom operations, Approval remained active for long period, Approval
+followed by rapid token draining, Multiple tokens approved to same spender, Multiple
+addresses approving same spender — ovo poslednje "ako postoje podaci").
+
+**Obim:** i dalje backend-only, Faza 1 (isti okvir kao §12/§13/§14). Nula izmena
+Taint/Graph/Pathfinding/Behavioral/DEX Swap koda — **postojeća dva registra ponovo
+korišćena, nijedan nov spisak "malicioznih" adresa nije napravljen** (vidi §15.4).
+
+### 15.1 Novi/izmenjeni fajlovi
+
+| Fajl | Šta je dodato |
+|---|---|
+| `backend/app/analytics/token_approval_analysis.py` (izmenjen — dodato, ništa obrisano) | 6 novih risk indikatora + `risk_score`/`risk_level` na svakoj grupi (`_build_group_result`); helperi `_risk_level()`, `_is_known_spender()`; 3 nova podesiva praga (`large_amount_threshold`, `multiple_transfer_threshold`, `long_active_period_seconds`) provučena kroz `analyze_token_approvals()`, `build_token_approval_history()` i `correlate_approval_usage()`; 2 nova (read-only) importa — `classify_dex_node`/`_load_known_dex_contracts` iz `dex_swap_analysis.py`, `get_known_entity` iz `address_enrichment.py`. |
+| `backend/app/api/routes/cases.py` (izmenjen — dodato) | Sve tri postojeće rute (`token-approval-analysis`, `-history`, `-correlation`) dobijaju tri nova opciona query parametra i prosleđuju ih dalje. |
+| `backend/tests/test_token_approval_analysis.py` (izmenjen — dodato) | 13 novih testova (`TestForensicRiskIndicators`) — ukupno sad **57** testova u fajlu. |
+
+### 15.2 Devet indikatora — pet postojećih (§12.4, nepromenjeni) + šest novih
+
+| Kod | Otkad postoji | Šta znači | Težina* |
+|---|---|---|---|
+| `unlimited_never_used` | §12 | Neograničen allowance, nikad iskorišćen | 2 |
+| `unlimited_rapid_drain` | §12 | Neograničen allowance povučen ubrzo posle odobrenja | 3 |
+| `revoked_after_use` | §12 | Opozvano tek posle korišćenja (informativno) | 1 |
+| `active_used_never_revoked` | §12 | Aktivno i već korišćeno, nikad opozvano | 1 |
+| `spender_multi_owner` | §12 | Spender odobren od **više vlasnika** — "Multiple addresses approving same spender" iz zahteva, **računa se samo ako podaci postoje** (potreban `spender_address`/derivacija iz `recipient_address` — kad ga nema, indikator prosto nikad ne upali za tu grupu, ne pretvara se u false positive) | 3 |
+| `unknown_spender` | **novo** | Spender NIJE prepoznat ni u jednom postojećem lokalnom registru (§15.4) | 1 |
+| `large_amount_transferred` | **novo** | Ukupno povučeno preko dozvole ≥ podesiv prag (`large_amount_threshold`, podrazumevano `1 000 000`) | 2 |
+| `multiple_transferfrom_operations` | **novo** | Broj transferFrom transakcija ≥ podesiv prag (`multiple_transfer_threshold`, podrazumevano `3`) | 1 |
+| `long_active_period` | **novo** | Bar jedno odobrenje u grupi bilo je na snazi ≥ podesiv prag (`long_active_period_seconds`, podrazumevano 90 dana) — računa se preko **svih** odobrenja u istoriji grupe (§13's `active_duration_seconds`), ne samo trenutno aktivnog | 1 |
+| `rapid_first_use` | **novo** | Uopšteni oblik "Approval followed by rapid token draining" — brzo prvo korišćenje **običnog** (ne nužno neograničenog) odobrenja; namerno isključuje slučaj koji već pokriva `unlimited_rapid_drain` (§15.3) da ne bi dva indikatora signalizirala isto | 2 |
+| `multiple_tokens_same_spender` | **novo** | Isti (owner, spender) par ima odobrenja za **2+ različita, deklarisana** tokena | 2 |
+
+\* Težina se koristi samo za `risk_score`/`risk_level` (§15.3) — sve težine i pragovi su
+otvoreno navedeni brojevi u kodu (`RISK_INDICATOR_WEIGHTS`), ne skriveni "crna kutija"
+model.
+
+Svaki indikator (staro i novo) je oblika `{code, label, reasons: [...]}` — `reasons`
+UVEK objašnjava TAČNO na osnovu čega je upaljen (isti disciplina kao DEX Swap Analysis
+`reasons[]`/`dex_match_basis`).
+
+### 15.3 `risk_score` / `risk_level` — transparentna formula, ne "crna kutija"
+
+```python
+risk_score = sum(RISK_INDICATOR_WEIGHTS[indicator.code] for indicator in fired_indicators)
+
+risk_level = 'HIGH'   if risk_score >= 5
+           = 'MEDIUM' if risk_score >= 2
+           = 'LOW'    inače (0 ili 1)
+```
+
+**Namerna odluka:** JEDAN usamljen jak indikator (težina 3, npr. samo `spender_multi_owner`
+i ništa drugo) daje `risk_score=3` → **MEDIUM**, ne HIGH. `HIGH` zahteva KONVERGENCIJU —
+dva jaka signala zajedno, ili jedan jak plus korišćenje/veličina/trajanje koji ga
+potkrepljuju. Ovo direktno sprovodi zahtev "ne tvrdi automatski da je adresa/ugovor
+malicious": nijedan pojedinačan heuristički signal sam po sebi ne može dogurati do
+najvišeg nivoa.
+
+Testirano: `test_two_strong_indicators_reach_high_risk_level` (spender_multi_owner +
+unlimited_rapid_drain + active_used_never_revoked + unknown_spender = score 8 → HIGH),
+`test_single_weak_indicator_stays_low_risk` (samo `active_used_never_revoked`, score 1 →
+LOW), `test_risk_score_is_sum_of_fired_indicator_weights` (opšta provera formule).
+
+### 15.4 `unknown_spender` / `spender_known` — ponovna upotreba POSTOJEĆIH registara, ne nov spisak
+
+Po zahtevu "ne menjaj postojeće analize" i duhu "koristi postojeću arhitekturu", `spender`
+se proverava protiv **dva već postojeća, lokalna, read-only registra** — bez ijedne izmene
+njih samih:
+
+1. `app.services.address_enrichment.get_known_entity()` — kurirani spisak poznatih
+   exchange/mixer/sankcionisanih adresa (`known_entities.json`), koristi ga već
+   Pathfinding.
+2. `app.analytics.dex_swap_analysis.classify_dex_node()` (+ njegov
+   `known_dex_contracts.json`) — ista funkcija koju DEX Swap Analysis koristi za
+   prepoznavanje DEX router/pool adresa, uključujući brand-keyword fallback za demo
+   pseudo-adrese.
+
+Spender koji pogodi BILO KOJI od ova dva → `spender_known: true`, indikator
+`unknown_spender` se **ne** upaljuje. Bitno: ovo je **namerno slab, informativan**
+indikator (težina 1) — u realnim, ručno pripremljenim CSV podacima VEĆINA spender adresa
+neće biti u ova dva mala spiska, pa će se `unknown_spender` upaljivati često. `reasons[]`
+to eksplicitno kaže ("ne znači da je zloćudan..."), sprečavajući pogrešno čitanje "unknown
+= sumnjivo".
+
+**Nijedan nov "spisak poznatih drainer/phishing ugovora" nije napravljen** — tačno kao što
+je već najavljeno u §8.4 kao namerno izostavljeno (nema pouzdanog izvora takvih podataka u
+projektu danas).
+
+### 15.5 API — tri nova, konzistentna query parametra na sve tri rute
+
+```
+GET /cases/{id}/token-approval-analysis
+GET /cases/{id}/token-approval-history
+GET /cases/{id}/token-approval-correlation
+```
+
+svaka sad prima, uz već postojeće `unlimited_threshold`/`rapid_use_seconds`:
+
+| Parametar | Podrazumevano | Opseg |
+|---|---|---|
+| `large_amount_threshold` | `1 000 000` | `0 – 1e40` |
+| `multiple_transfer_threshold` | `3` | `2 – 1000` |
+| `long_active_period_seconds` | `7 776 000` (90 dana) | `3600 – 315 360 000` (10 godina) |
+
+Svaka grupa u odgovoru (`groups[]`, na sve tri rute — `-history`/`-correlation` sada i
+same vraćaju `groups` radi ovoga) dobija dva nova polja: `risk_score` (int),
+`risk_level` (`'LOW'|'MEDIUM'|'HIGH'`), plus `spender_known` (bool). Top-level
+`disclaimer` je ažuriran da EKSPLICITNO kaže: *"Svi risk_indicators i izvedeni risk_level
+... su OZNAČENE HEURISTIKE za prioritizaciju pregleda - NIKAD tvrdnja da je adresa ili
+ugovor zloćudan/kriminalan, i NIKAD dokaz."*
+
+### 15.6 Testirano
+
+**Jedinični testovi** (`TestForensicRiskIndicators`, 13, ukupno **57** u fajlu): nema
+indikatora ⇒ LOW/score 0; `unknown_spender` za neprepoznatu adresu; poznata DEX router
+adresa (`0x7a25...2488D`, stvarna, iz `known_dex_contracts.json`) NE prijavljuje
+`unknown_spender`; `large_amount_transferred`/`multiple_transferfrom_operations` sa
+podesivim pragom; `long_active_period` za staro odobrenje (i NE za skoro odobrenje, sa
+istim pragom); `rapid_first_use` za običnu (ne neograničenu) dozvolu, i eksplicitna
+provera da se `unlimited_rapid_drain` u tom slučaju NE dupira; `multiple_tokens_same_spender`
+preko dva deklarisana tokena; `risk_score` = zbir težina; konvergencija više jakih
+indikatora ⇒ HIGH; usamljen slab indikator ⇒ LOW; disclaimer eksplicitno kaže
+"heuristika"/"nikad" bez tvrdnje o zloupotrebi.
+
+```bash
+python -m pytest backend/tests/test_token_approval_analysis.py -v   # 57 passed
+python -m pytest backend/ -q                                        # 359 passed (302 + 57), 0 failed
+```
+
+**End-to-end kroz pravu rutu** (`TestClient`): dva vlasnika (`0xOwnerA`, `0xOwnerB`)
+odobravaju isti, neprepoznat `0xShadySpender` za veliki/neograničen iznos; `0xOwnerA`-ino
+odobrenje se brzo povuče. `GET .../token-approval-analysis` vraća obe grupe sa
+`risk_level: "HIGH"` (score 11 za OwnerA - konvergencija `unlimited_rapid_drain` +
+`active_used_never_revoked` + `spender_multi_owner` + `unknown_spender` +
+`large_amount_transferred` + `long_active_period`; score 7 za OwnerB), i disclaimer
+sadrži tačan tekst o heuristici.
+
+### 15.7 Ograničenja (dodatna, specifična za risk indikatore)
+
+- **`risk_level` je heuristički prioritizacioni signal, NIJE dokaz kriminalne
+  aktivnosti** — eksplicitno ponovljeno ovde po zahtevu, ne samo u kodu/disclaimer-u.
+- Težine (`RISK_INDICATOR_WEIGHTS`) i pragovi HIGH/MEDIUM su **inženjerska procena**, ne
+  formalno izveden/kalibrisan model (nema označenog dataset-a stvarnih ice-phishing
+  slučajeva u projektu da bi se kalibrisalo) — namerno jednostavni i transparentni radi
+  objašnjivosti, ne radi statističke tačnosti.
+- `large_amount_transferred`/`unlimited_*` pate od istog ograničenja kao §7.4/§12.6: bez
+  registra decimala po tokenu, "veliko" je heuristika po SIROVOM broju iz evidencije, ne
+  po stvarnoj (USD ili čak token) vrednosti — demonstrirano u §15.6's end-to-end primeru
+  (18-decimalni raw iznosi lako prelaze podrazumevani prag).
+- `spender_multi_owner`/`multiple_tokens_same_spender` su tačni SAMO u opsegu evidencije
+  koja je analizirana (jedan slučaj/jedna kombinacija fajlova) — isti owner/spender par u
+  DRUGOM slučaju se ne vidi (vidi IDEJE-NOVE-ANALIZE.md #1, "unakrsna provera adresa kroz
+  slučajeve" — nepovezano, van obima).
+- `unknown_spender` je slab, čest signal (§15.4) — NE treba ga čitati kao "sumnjivo" samo
+  zato što je upaljen; `reasons[]` to eksplicitno kaže.
+- Van obima (nepromenjeno): custody/PDF izveštaj/audit log/frontend prikaz risk nivoa nisu
+  urađeni u ovom koraku.
