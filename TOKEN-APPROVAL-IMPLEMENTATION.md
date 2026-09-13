@@ -35,6 +35,7 @@ zahtevu, ništa se ne izmišlja.
 | [13. Implementacija — Istorija odobrenja po adresi](#13-implementacija--istorija-odobrenja-po-adresi) | **✅ urađeno** — APPROVE → promena → REVOCATION → status, po odobrenju |
 | [14. Implementacija — Korelacija Approval ↔ transferFrom](#14-implementacija--korelacija-approval--transferfrom) | **✅ urađeno** — OWNER → APPROVAL → SPENDER → transferFrom → transfer, kombinovan status |
 | [15. Implementacija — Forenzički risk indikatori](#15-implementacija--forenzički-risk-indikatori) | **✅ urađeno** — LOW/MEDIUM/HIGH + lista razloga, nikad tvrdnja o zloupotrebi |
+| [16. Implementacija — Frontend stranica `/token-approval`](#16-implementacija--frontend-stranica-token-approval) | **✅ urađeno** — Address+ANALYZE, sažetak, tabela, detalji, Show on Graph, Add Investigator Note |
 
 ---
 
@@ -1326,3 +1327,218 @@ sadrži tačan tekst o heuristici.
   zato što je upaljen; `reasons[]` to eksplicitno kaže.
 - Van obima (nepromenjeno): custody/PDF izveštaj/audit log/frontend prikaz risk nivoa nisu
   urađeni u ovom koraku.
+
+---
+
+## 16. Implementacija — Frontend stranica `/token-approval`
+
+**Zahtev:** potpuno nova stranica, naziv "Token Approval Analysis", čist/forenzički UI:
+Address + ANALYZE na vrhu, sažetak (6 brojeva) posle analize, tabela (Token/Spender/
+Allowance/Status/Risk/Date), klik na red → detalji (što više dostupnih podataka) sa
+dugmadima **[Show on Graph]** i **[Add Investigator Note]**, uz korišćenje postojećeg
+frontend stila i komponenti.
+
+**Obim:** čist frontend rad nad već postojećim backend-om (§12–§15) — **nijedna backend
+ruta nije menjana niti dodavana** u ovom koraku (postojeća `GET
+.../token-approval-correlation` iz §14 je jedini poziv koji stranica pravi). Nula izmena
+Taint/Graph/Pathfinding/Behavioral/DEX Swap koda i komponenti — samo NOVI, dodati fajlovi
+plus tri sitna, aditivna zakačenja (ruta, stavka menija, jedna nova metoda u
+`api.service.ts`).
+
+### 16.1 Novi fajlovi
+
+| Fajl | Sadržaj |
+|---|---|
+| `frontend/src/app/features/token-approval/token-approval.component.ts` | Cela logika stranice. |
+| `frontend/src/app/features/token-approval/token-approval.component.html` | Šablon. |
+| `frontend/src/app/features/token-approval/token-approval.component.scss` | Stilovi — sopstveni `--ta-*` tokeni, kopija istog vizuelnog jezika kao `dex-swap-analysis.component.scss`/`pathfinding.component.scss` (Angular stilove skopira po komponenti — ovo NIJE deljen import, isti obrazac kao svaka druga stranica analize u projektu). |
+
+### 16.2 Izmenjeni fajlovi — tačan obim izmene
+
+| Fajl | Šta je izmenjeno |
+|---|---|
+| `frontend/src/app/app.routes.ts` | Dodata jedna nova ruta `token-approval` (lazy-loaded, `authGuard`), odmah posle `dex-swaps`. |
+| `frontend/src/app/app.component.ts` | Dodata jedna nova stavka u `navItems` ("Token Approval"), odmah posle "DEX razmene". |
+| `frontend/src/app/core/services/api.service.ts` | Dodata JEDNA nova metoda, `getTokenApprovalCorrelation()` (GET, read-only) — ništa postojeće nije menjano. |
+| `frontend/src/app/models/blockchain-forensics.models.ts` | Dodat nov blok tipova (`TokenApproval*`) na kraju fajla — ništa postojeće nije menjano. |
+
+### 16.3 Koji backend endpoint stranica koristi, i zašto baš taj
+
+Stranica koristi **isključivo** `GET /cases/{id}/token-approval-correlation?address=...`
+(§14) — NE `/token-approval-analysis` (§12) ni `/token-approval-history` (§13), iako sva
+tri postoje. Razlog:
+
+- Tabela traži **Token / Spender / Allowance / Status / Risk / Date** — po JEDNOM
+  odobrenju (ne po grupi), sa statusom koji nezavisno kaže i da li je KORIŠĆENO i da li je
+  OPOZVANO. §14's korelacija tačno to vraća (`correlations[]`, kombinovan status
+  `APPROVED`/`APPROVED + USED`/`APPROVED + REVOKED`/`APPROVED + USED + REVOKED`/`UNKNOWN`)
+  — §13's istorija bi za isti slučaj vratila JEDNOREČAN status po §13.2 prioritetu (npr.
+  "korišćeno pa opozvano" bi se svelo samo na `USED`), što ne bi omogućilo sažetak koji
+  odvojeno broji "Aktivnih"/"Opozvanih"/"Korišćenih" kao tri nezavisna broja (§16.5).
+  §12's grupni prikaz uopšte nema jedan red po odobrenju.
+- Korelacija (posle §12.6 dopune) **već vraća `groups[]`** (sa `risk_level`/
+  `risk_indicators`/`spender_known`), pa je JEDAN poziv dovoljan i za tabelu i za risk
+  podatke — nije trebalo dodavati drugi poziv niti menjati backend.
+- `getTokenApprovalAnalysis`/`getTokenApprovalHistory` **NISU** dodati u
+  `api.service.ts` u ovom koraku — YAGNI (nijedna trenutna UI potreba ih ne koristi); kad
+  zatreba stranica koja prikazuje §13's per-adresnu istoriju kao vremensku liniju, to je
+  odvojen, mali dodatak.
+
+### 16.4 Layout — tačno traženi redosled, ništa više na početnom ekranu
+
+```
+[ ta-controls: aktivan slučaj + Prikaz transakcija ]   ← isti obrazac kao sve ostale stranice analize
+TOKEN APPROVAL ANALYSIS
+Address  [ 0x........................ ]   [ ANALIZIRAJ ]
+                                            ↓ (tek posle uspešne analize)
+[ 6 sažetak kartica ]
+[ data-note ako evidencija ima ograničenja (§7 notes) ]
+[ tabela: Token | Spender | Allowance | Status | Risk | Date ]
+[ disclaimer ]
+```
+
+Pre prve analize, ekran pokazuje SAMO gornju kontrolnu traku + naslov + polje za adresu +
+dugme + kratko uputstvo — ni sažetak ni tabela se ne renderuju dok `result` ne postoji
+(`*ngIf="result"` obavija ceo taj blok), tačno po zahtevu "nemoj pretrpavati početni
+ekran". Detalji (§16.6) se otvaraju isključivo u modalu na klik — nikad inline u toku
+tabele, da tabela ostane skenabilna kad ima više redova.
+
+### 16.5 Sažetak — šest brojeva, računati na frontend-u iz `correlations[]`
+
+Nijedan od ovih brojeva nije nova backend ruta/polje — svi se računaju od već postojećih
+polja u odgovoru (`get`-eri na komponenti, ne keširana stanja — uvek u skladu sa poslednjim
+učitanim `result`-om):
+
+| Kartica | Izvor |
+|---|---|
+| Total approvals | `correlations.length` |
+| Unlimited approvals | broj sa `unlimited_basis !== null` |
+| Active approvals | broj sa `revoked === false` |
+| Revoked approvals | broj sa `revoked === true` |
+| Used approvals | broj sa `used === true` (`null` — neizvesno — se NE broji ni kao korišćeno ni kao nekorišćeno) |
+| Potentially risky | broj čija grupa (§16.7 mapiranje) ima `risk_level !== 'LOW'` (MEDIUM **ili** HIGH) |
+
+`Active`/`Revoked`/`Used` su namerno NEZAVISNI brojevi (mogu se preklapati — jedno
+odobrenje može biti i aktivno i korišćeno), ne particija — tačno prati §14's `used`/
+`revoked` par nezavisnih boolean polja, ne §13's jedan-od-četiri enum.
+
+### 16.6 Detalji — modal, sva tražena polja plus par korisnih dodatnih
+
+Klik na red (ili Enter dok je red fokusiran, `tabindex="0"`) otvara modal (isti vizuelni
+obrazac kao `.signature-overlay`/`.signature-dialog` iz DEX Swap/Taint/Pathfinding — fiksni
+backdrop, klik van modala zatvara). Sadrži TAČNO traženu listu:
+
+owner, spender (+ značka `?` kad `spender_known` nije `true` — §15.4), token/token
+kontrakt (**jedno polje** — projekat nema registar simbola tokena, samo adresu kontrakta,
+pa "token" i "token contract" iz zahteva prikazuju istu vrednost, pošteno obeleženo kao
+"Token / token kontrakt"), allowance, neograničen status (`declared` / heuristika po
+veličini / nije neograničeno — §7.4/§8.3), datum odobrenja, blok, heš transakcije
+(odobrenje), status (kombinovan badge), prvo korišćenje, vreme do prvog korišćenja, broj
+transferFrom transakcija, ukupno povučeno, odredište(a), risk indikatori (puna lista sa
+`label` + `reasons[]` po indikatoru, §15.2).
+
+**Dodatno, van eksplicitne liste iz zahteva (podaci koji već postoje u odgovoru, pa nema
+razloga da se sakriju — "što više dostupnih podataka"):** kad je odobrenje opozvano —
+vreme/heš opoziva i tačno vreme do opoziva (§13.2.1/§14); heš svake pojedinačne
+transferFrom transakcije (`transaction_hashes.transfer_from[]`); broj različitih vlasnika
+koji su odobrili istog spendera, kad je `spender_multi_owner` prisutan (§15.2).
+
+### 16.7 Risk lookup — korelacija ↔ grupa, ista logika kao backend, bez novog poziva
+
+`correlations[]` (jedan red = jedno odobrenje) i `groups[]` (jedan red = `(owner, spender,
+token)` veza) su **dva prikaza istih podataka** iz istog odgovora (§14.5/§15.5) — frontend
+gradi lokalnu mapu (`groupByKey`, ključ `owner|spender|token` malim slovima) posle svakog
+uspešnog ANALIZIRAJ poziva, i tabelu/modal čita risk polja (`risk_level`,
+`risk_indicators`, `spender_known`, `spender_multi_owner`) iz nje — nula dodatnih HTTP
+poziva, nula rizika da se dva prikaza razminu (isti mehanizam kao backend-ovo sopstveno
+grupisanje, samo primenjen na klijentu nad već dobijenim podacima).
+
+### 16.8 [Show on Graph]
+
+Postavlja **spender** adresu izabranog odobrenja kao izabran čvor u
+`AnalysisStateService` (`setSelectedNode`) — isti servis/mehanizam koji Graf stranica
+sama koristi kad se klikne na čvor (`GraphNodeData` sa samo `id`/`address`/`label`,
+minimalan oblik koji taj tip već dozvoljava) — pa navigira na `/graph`
+(`router.navigateByUrl`). Kad se Graf stranica učita, njen već postojeći
+`ensureValidSelectedNode` mehanizam zadržava taj izbor ČIM se graf učita i sadrži tu
+adresu kao čvor.
+
+Zašto ovo pouzdano radi bez ijedne nove backend/graf izmene: approve()/permit()/
+transferFrom redovi u osnovnoj šemi i dalje pišu u `sender_address`/`recipient_address`
+(§8.1) — pa i owner i spender **stvarno postoje** kao čvorovi u deljenom grafu transakcija
+tog slučaja (tačno kao i svaka druga adresa), ne kao poseban "Token Approval" koncept koji
+graf ne bi prepoznao.
+
+**Namerna odluka:** dugme fokusira SPENDER, ne owner — owner je već poznat (to je adresa
+koju je analitičar sam upisao u polje "Address"); spender je novootkriveni entitet oko kog
+se nalaz zapravo vrti.
+
+### 16.9 [Add Investigator Note]
+
+Ponovo koristi **postojeću** `InvestigatorNodeDialogComponent` (već koristi Graf stranica,
+`mode="notes"`) — nijedna nova komponenta za beleške nije napravljena. Pošto su
+istražiteljske beleške vezane za jednu ISTRAGU (investigation), ne za sam slučaj (CASE-
+MANAGEMENT-IMPLEMENTATION.md), a ova stranica namerno NE gradi sopstveni birač istrage
+(izbegava dupliranje Grafove pune "investigator layer" UI, u duhu "nemoj pretrpavati"),
+dugme čita **isti** `localStorage` ključ (`lusi_selected_investigation`) koji Graf
+stranica već piše i koji `taint-analysis.component.ts` već čita (read-only tamo) — ista
+konvencija, treća stranica koja je sad koristi.
+
+- Ako istraga JOJ nikad nije izabrana na Graf stranici → dugme je **onemogućeno**, sa
+  `title` objašnjenjem ("Izaberi istragu na Graf stranici da bi mogao da dodaješ
+  beleške") — ne skriva se, da analitičar zna da funkcija postoji.
+- Ako jeste → dugme otvara dijalog za `noteDialogAddress = entry.spender` (ista adresa
+  kao §16.8, iz iste rezonovanja) u toj istrazi; dijalog sam (nepromenjen) upravlja
+  listom/dodavanjem/izmenom/brisanjem beleški preko već postojećeg
+  `ApiService.getInvestigatorNotes`/`addInvestigatorNote`.
+
+### 16.10 Prikazivanje "unlimited" i drugih heuristika — nikad lažna preciznost
+
+- Tabela za neograničenu dozvolu prikazuje **"NEOGRANIČENO"** (badge), ne sirov,
+  astronomski broj — sirova vrednost je i dalje dostupna u modalu (hover `title` u tabeli,
+  eksplicitno polje u detaljima) — isto opredeljenje kao backend-ovo razdvajanje
+  `declared`/`potential_by_magnitude` (§7.4/§8.3), sad prevedeno u UI: labela u detaljima
+  kaže TAČNO koji je osnov ("Deklarisano u evidenciji" nasuprot "Heuristika po veličini
+  iznosa (nije potvrđeno)").
+- `used: null` (§13.3/§14.3 neizvesnost) se u UI prikazuje kao **"Nepoznato (neatribuiran
+  transfer postoji)"**, nikad tiho kao "Ne" — ista disciplina prenesena iz backend-a.
+- Response-ov `disclaimer` (§15.5 — eksplicitno kaže da `risk_level`/indikatori nisu dokaz
+  zloupotrebe) se prikazuje i na glavnom ekranu ispod tabele I u svakom detalj-modalu —
+  dva mesta, nikad izostavljen.
+
+### 16.11 Testirano
+
+```bash
+npx ng build --configuration development
+# Application bundle generation complete. token-approval-component chunk present, 0 errors.
+```
+
+Angular strict mode (`tsconfig.json`'s `"strict": true"`, template type-checking uključen
+po default-u u ovoj verziji Angular-a) je prošao čist build bez ijedne greške ili
+upozorenja — potvrđuje da su svi tipovi (`TokenApprovalCorrelationEntry`,
+`TokenApprovalGroup`, ...) tačno usklađeni sa onim što šablon stvarno koristi, i da su svi
+servisni pozivi (`ApiService.getTokenApprovalCorrelation`,
+`AnalysisStateService.setSelectedNode`, `InvestigatorNodeDialogComponent`'s `@Input`-ovi)
+ispravno ožičeni. Ručno funkcionalno testiranje kroz pravi browser (klik-po-klik) nije
+urađeno u ovom koraku — preporučeno pre puštanja u produkciju.
+
+### 16.12 Ograničenja / van obima (nepromenjeno iz §12.6/§13.8/§15.7, plus novo za frontend)
+
+- I dalje važi: nema custody dijaloga, nema PDF izveštaja, nema audit log unosa za
+  Token Approval Analysis — ANALIZIRAJ zove isključivo read-only rutu (§14/§16.3), tačno
+  kao što backend Faza 1 i dozvoljava. Kad se Faza 2 (custody-gated `POST .../run` +
+  izveštaj + log) doda na backend, ovoj stranici bi trebalo dodati isti "Razlog pristupa i
+  potpis" dijalog koji DEX Swap/Behavioral/Taint/Pathfinding već koriste (isti obrazac,
+  §9.6 predlog).
+- Adresa se pretražuje **tačnim (case-sensitive) poklapanjem** — ista konvencija kao
+  Pathfinding/Behavioral/DEX Swap (§12.5) — nema normalizacije na malim slovima pri unosu.
+- Autocomplete liste adresa (`<datalist>`) je pogodnost, ne garancija — radi samo za
+  adrese koje se pojavljuju kao sender/recipient U OSNOVNOM grafu te evidencije (isti
+  izvor kao DEX Swap stranice sopstveni "Adrese iz slučaja"); adresa van tog spiska se i
+  dalje može upisati ručno i analizirati normalno.
+- Nema graf overlay-a (isprekidane APPROVE veze preko `/graph` platna, kao što DEX Swap
+  ima za SWAP veze, DEX-SWAP-ANALIZA.md §9) — `[Show on Graph]` samo fokusira POSTOJEĆI
+  čvor, ne crta nove veze; ostaje otvorena mogućnost za kasniju fazu.
+- "Add Investigator Note" ne nudi biranje IZMEĐU owner/spender adrese — uvek spender
+  (§16.9) — ako analitičar želi belešku na owner adresi, to i dalje može uraditi na Graf
+  stranici (gde owner takođe postoji kao čvor).

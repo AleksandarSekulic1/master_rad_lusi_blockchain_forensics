@@ -47,6 +47,7 @@ import {
   SuiteListResponse,
   SuiteRunResponse,
   TestScenario,
+  TokenApprovalCorrelationResult,
   TransactionCustodyEntry,
   UploadCsvResponse,
   UserStatus,
@@ -365,6 +366,22 @@ export class ApiService {
     const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
     const body: Record<string, unknown> = { address, custody };
     return this.http.post<DexSwapAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/dex-swap-analysis/run`, body, { params });
+  }
+
+  /** Token Approval / Ice Phishing Analysis - correlates each approve()/permit() grant for
+   * `address` with its later transferFrom() usage (see
+   * analytics/token_approval_analysis.correlate_approval_usage and
+   * TOKEN-APPROVAL-IMPLEMENTATION.md #14/#16). Read-only - Token Approval's backend is
+   * Phase 1 (extraction/correlation/risk indicators only): there is no deliberate/
+   * custody-gated "run" variant yet, so unlike getDexSwapAnalysis/runDexSwapAnalysis above
+   * there is only ONE method here, not a passive/deliberate pair (see
+   * TOKEN-APPROVAL-IMPLEMENTATION.md #12.6/#16.7 for what is deliberately out of scope). */
+  getTokenApprovalCorrelation(caseId: string, address: string, evidence?: string | null): Observable<TokenApprovalCorrelationResult> {
+    let params = new HttpParams().set('address', address);
+    if (evidence) {
+      params = params.set('evidence', evidence);
+    }
+    return this.http.get<TokenApprovalCorrelationResult>(`${this.apiUrl}/api/v1/cases/${caseId}/token-approval-correlation`, { params });
   }
 
   listUsers(search?: string | null): Observable<{ users: AuthUser[] }> {

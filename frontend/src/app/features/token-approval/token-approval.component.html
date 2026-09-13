@@ -1,0 +1,287 @@
+<div class="ta-shell">
+  <div class="ta-controls">
+    <div class="ta-bar">
+      <div class="ta-case" *ngIf="activeCase; else noCase">
+        <span class="ta-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="ta-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
+
+      <label class="ta-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="ta-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="ta-header">
+    <p class="panel-kicker">{{ t('Token Approval analiza', 'Token Approval Analysis') }}</p>
+    <h2>TOKEN APPROVAL ANALYSIS</h2>
+    <p class="ta-subhead">
+      {{
+        t(
+          'Za jednu adresu (vlasnik ili odobreni trošilac): koje je ERC-20 approve/permit dozvole dala ili primila, i šta se dogodilo sa svakom.',
+          'For one address (owner or approved spender): which ERC-20 approve/permit grants it gave or received, and what happened to each one.'
+        )
+      }}
+    </p>
+  </div>
+
+  <div class="address-panel">
+    <div class="address-form">
+      <label class="address-field">
+        {{ t('Adresa', 'Address') }}
+        <input
+          type="text"
+          list="ta-case-addresses"
+          [(ngModel)]="address"
+          placeholder="0x..."
+          (keydown.enter)="analyze()"
+          [disabled]="!activeCase"
+        />
+        <datalist id="ta-case-addresses">
+          <option *ngFor="let addr of caseAddresses" [value]="addr"></option>
+        </datalist>
+      </label>
+
+      <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+        {{ isAnalyzing ? t('Analiza...', 'Analyzing...') : t('ANALIZIRAJ', 'ANALYZE') }}
+      </button>
+    </div>
+
+    <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+  </div>
+
+  <ng-container *ngIf="result">
+    <!-- Sažetak - tek POSLE analize, ne na početnom ekranu. -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-value">{{ totalApprovals }}</span>
+        <span class="summary-label">{{ t('Ukupno odobrenja', 'Total approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ unlimitedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Neograničenih', 'Unlimited approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ activeApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Aktivnih', 'Active approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ revokedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Opozvanih', 'Revoked approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ usedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Korišćenih', 'Used approvals') }}</span>
+      </div>
+      <div class="summary-card" [class.summary-card-risk]="riskyApprovalsCount > 0">
+        <span class="summary-value">{{ riskyApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Potencijalno rizičnih', 'Potentially risky') }}</span>
+      </div>
+    </div>
+
+    <p class="data-note" *ngIf="result.data_completeness.notes.length > 0">
+      <span *ngFor="let note of result.data_completeness.notes">{{ note }}</span>
+    </p>
+
+    <div class="ta-table-wrap" *ngIf="result.correlations.length > 0; else noApprovals">
+      <table class="ta-table">
+        <thead>
+          <tr>
+            <th>{{ t('Token', 'Token') }}</th>
+            <th>{{ t('Spender', 'Spender') }}</th>
+            <th>{{ t('Allowance', 'Allowance') }}</th>
+            <th>{{ t('Status', 'Status') }}</th>
+            <th>{{ t('Rizik', 'Risk') }}</th>
+            <th>{{ t('Datum', 'Date') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of result.correlations" (click)="openDetail(entry)" tabindex="0" (keydown.enter)="openDetail(entry)">
+            <td class="mono-clip" [title]="entry.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+              {{ entry.token_address ?? '?' }}
+            </td>
+            <td class="mono-clip" [title]="entry.spender">{{ entry.spender }}</td>
+            <td [title]="entry.unlimited_basis ? formatAmount(entry.approval_amount) : null">{{ allowanceLabel(entry) }}</td>
+            <td><span class="status-pill" [ngClass]="statusClass(entry.status)">{{ entry.status }}</span></td>
+            <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(entry))">{{ riskLevelFor(entry) }}</span></td>
+            <td class="ta-date">{{ entry.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ng-template #noApprovals>
+      <p class="empty-hint">
+        {{
+          t(
+            'Nijedno approve/permit odobrenje nije pronađeno za ovu adresu u izabranoj evidenciji.',
+            'No approve/permit grant was found for this address in the selected evidence.'
+          )
+        }}
+      </p>
+    </ng-template>
+
+    <p class="disclaimer-note">{{ result.disclaimer }}</p>
+  </ng-container>
+
+  <p class="empty-hint" *ngIf="!result && !analysisError">
+    {{
+      t(
+        'Unesi adresu i klikni "ANALIZIRAJ" da vidiš njene Token Approval događaje.',
+        'Enter an address and click "ANALYZE" to see its Token Approval events.'
+      )
+    }}
+  </p>
+</div>
+
+<!-- Detalji jednog odobrenja - modal, otvara se klikom na red tabele. -->
+<div class="ta-modal-overlay" *ngIf="selectedEntry as entry" (click)="closeDetail()">
+  <div class="ta-modal" (click)="$event.stopPropagation()">
+    <div class="ta-modal-head">
+      <div>
+        <p class="panel-kicker">{{ t('Detalji odobrenja', 'Approval details') }}</p>
+        <span class="status-pill" [ngClass]="statusClass(entry.status)">{{ entry.status }}</span>
+        <span class="risk-pill" [ngClass]="riskClass(riskLevelFor(entry))">{{ riskLevelFor(entry) }} {{ t('rizik', 'risk') }}</span>
+      </div>
+      <button type="button" class="ta-modal-close" (click)="closeDetail()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <dl class="ta-detail-grid">
+      <div>
+        <dt>{{ t('Vlasnik (owner)', 'Owner') }}</dt>
+        <dd class="mono-address">{{ entry.owner }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Odobreni trošilac (spender)', 'Spender') }}</dt>
+        <dd class="mono-address">
+          {{ entry.spender }}
+          <span class="unknown-badge" *ngIf="!spenderKnownFor(entry)" [title]="t('Nije prepoznat ni u jednom lokalnom registru (DEX/exchange) - ne znači da je zloćudan', 'Not recognised in any local registry (DEX/exchange) - does not mean malicious')">?</span>
+        </dd>
+      </div>
+      <div>
+        <dt>{{ t('Token / token kontrakt', 'Token / token contract') }}</dt>
+        <dd class="mono-address">{{ entry.token_address ?? t('nije deklarisano', 'not declared') }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Allowance', 'Allowance') }}</dt>
+        <dd>{{ formatAmount(entry.approval_amount) }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Neograničen status', 'Unlimited status') }}</dt>
+        <dd>{{ unlimitedBasisLabel(entry) ?? t('Nije neograničeno', 'Not unlimited') }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Datum odobrenja', 'Approval date') }}</dt>
+        <dd>{{ entry.approval_timestamp | date : 'yyyy-MM-dd HH:mm:ss' : 'UTC' }} UTC</dd>
+      </div>
+      <div>
+        <dt>{{ t('Blok', 'Block') }}</dt>
+        <dd>{{ entry.approval_block_number ?? t('n/d (nije u evidenciji)', 'n/a (not in evidence)') }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Heš transakcije (odobrenje)', 'Transaction hash (approval)') }}</dt>
+        <dd class="mono-address">{{ entry.approval_transaction_hash ?? t('n/d', 'n/a') }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Korišćeno (used)', 'Used') }}</dt>
+        <dd>{{ formatUsed(entry.used) }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Prvo korišćenje', 'First use') }}</dt>
+        <dd>{{ entry.first_use_timestamp ? (entry.first_use_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC') + ' UTC' : t('nikad', 'never') }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Vreme do prvog korišćenja', 'Time to first use') }}</dt>
+        <dd>{{ formatDuration(entry.time_to_first_use_seconds) }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Broj transferFrom transakcija', 'transferFrom count') }}</dt>
+        <dd>{{ entry.transfer_from_count }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Ukupno povučeno', 'Total withdrawn') }}</dt>
+        <dd>{{ formatAmount(entry.total_amount_transferred) }}</dd>
+      </div>
+      <div *ngIf="entry.receiving_destinations.length > 0">
+        <dt>{{ t('Odredište(a)', 'Destination(s)') }}</dt>
+        <dd>
+          <span class="mono-address" *ngFor="let dest of entry.receiving_destinations">{{ dest }}</span>
+        </dd>
+      </div>
+      <div *ngIf="entry.revoked">
+        <dt>{{ t('Opozvano', 'Revoked') }}</dt>
+        <dd>
+          {{ entry.revocation_timestamp ? (entry.revocation_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC') + ' UTC' : t('n/d', 'n/a') }}
+          <ng-container *ngIf="entry.seconds_to_revocation !== null"> · {{ formatDuration(entry.seconds_to_revocation) }} {{ t('posle odobrenja', 'after approval') }}</ng-container>
+        </dd>
+      </div>
+      <div *ngIf="entry.revocation_transaction_hash">
+        <dt>{{ t('Heš transakcije (opoziv)', 'Transaction hash (revocation)') }}</dt>
+        <dd class="mono-address">{{ entry.revocation_transaction_hash }}</dd>
+      </div>
+      <div *ngIf="entry.transaction_hashes.transfer_from.length > 0">
+        <dt>{{ t('Heševi transferFrom transakcija', 'transferFrom transaction hashes') }}</dt>
+        <dd>
+          <span class="mono-address" *ngFor="let hash of entry.transaction_hashes.transfer_from">{{ hash }}</span>
+        </dd>
+      </div>
+      <div *ngIf="spenderMultiOwnerFor(entry) as ownerCount">
+        <dt>{{ t('Spender odobren od', 'Spender approved by') }}</dt>
+        <dd>{{ ownerCount }} {{ t('različitih vlasnika u ovoj evidenciji', 'different owners in this evidence') }}</dd>
+      </div>
+    </dl>
+
+    <div class="risk-indicators-block" *ngIf="riskIndicatorsFor(entry).length > 0">
+      <p class="ta-block-title">{{ t('Risk indikatori', 'Risk indicators') }}</p>
+      <ul class="risk-indicator-list">
+        <li *ngFor="let indicator of riskIndicatorsFor(entry)">
+          <p class="risk-indicator-label">{{ indicator.label }}</p>
+          <ul>
+            <li *ngFor="let reason of indicator.reasons" class="risk-indicator-reason">{{ reason }}</li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+
+    <p class="disclaimer-note">{{ result?.disclaimer }}</p>
+
+    <div class="ta-modal-actions">
+      <button type="button" class="ghost-button" (click)="showOnGraph(entry.spender)">
+        {{ t('Prikaži na grafu', 'Show on Graph') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="openNoteDialog(entry.spender)"
+        [disabled]="!storedInvestigationId"
+        [title]="
+          storedInvestigationId
+            ? t('Dodaj istražiteljsku belešku za spender adresu', 'Add an investigator note for the spender address')
+            : t('Izaberi istragu na Graf stranici da bi mogao da dodaješ beleške', 'Select an investigation on the Graph page to add notes')
+        "
+      >
+        {{ t('Dodaj istražiteljsku belešku', 'Add Investigator Note') }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<app-investigator-node-dialog
+  *ngIf="isNoteDialogOpen && storedInvestigationId && noteDialogAddress"
+  [investigationId]="storedInvestigationId"
+  [address]="noteDialogAddress"
+  mode="notes"
+  (closed)="closeNoteDialog()"
+></app-investigator-node-dialog>
