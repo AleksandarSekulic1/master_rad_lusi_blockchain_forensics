@@ -5,42 +5,47 @@
   <article class="panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Ispravnost algoritma</p>
-        <h2>Sistemski testovi</h2>
-        <p class="panel-subtitle">
-          Fiksni testovi nad taint algoritmom: haircut matematika, raspodela po izvorima i podaci za vremensku traku.
-        </p>
-        <p class="panel-subtitle">
-          Nalaze se u verzionisanom kodu i <strong>ne mogu se menjati kroz aplikaciju</strong> — dokaz ispravnosti koji se može
-          izmeniti dok ne prođe više nije dokaz.
-        </p>
+        <p class="panel-kicker">{{ t('Ispravnost algoritma', 'Algorithm correctness') }}</p>
+        <h2>{{ t('Sistemski testovi', 'System tests') }}</h2>
       </div>
       <div class="toolbar">
         <button type="button" class="primary-button" (click)="runSuite()" [disabled]="isRunningSuite">
-          {{ isRunningSuite ? 'Pokretanje...' : 'Pokreni sistemske testove' }}
+          {{ isRunningSuite ? t('Pokretanje...', 'Running...') : t('Pokreni sistemske testove', 'Run system tests') }}
         </button>
       </div>
     </div>
 
     <div class="summary-bar" *ngIf="suiteRan" [class.all-passed]="suiteFailed === 0" [class.has-failures]="suiteFailed > 0">
       <span class="summary-icon">{{ suiteFailed === 0 ? '✓' : '✕' }}</span>
-      <strong>{{ suitePassed }} prošlo</strong>
-      <span *ngIf="suiteFailed > 0">· {{ suiteFailed }} palo</span>
+      <strong>{{ suitePassed }} {{ t('prošlo', 'passed') }}</strong>
+      <span *ngIf="suiteFailed > 0">· {{ suiteFailed }} {{ t('palo', 'failed') }}</span>
       <span class="muted">· {{ suiteDurationMs | number : '1.0-0' }} ms</span>
     </div>
     <p class="muted hint" *ngIf="!suiteRan && suiteTests.length > 0">
-      {{ suiteTests.length }} testova je pronađeno. Klikni "Pokreni sistemske testove" da vidiš rezultat.
+      {{ suiteTests.length }} {{ t('testova je pronađeno. Klikni', 'tests were found. Click') }}
+      "{{ t('Pokreni sistemske testove', 'Run system tests') }}" {{ t('da vidiš rezultat.', 'to see the result.') }}
     </p>
     <p class="error-banner" *ngIf="suiteError">{{ suiteError }}</p>
 
     <div class="test-group" *ngFor="let group of suiteGroups">
-      <p class="group-title">{{ group.group }}</p>
-      <ul class="test-list">
+      <button
+        type="button"
+        class="group-header"
+        (click)="toggleGroup(group.group)"
+        [attr.aria-expanded]="isGroupExpanded(group.group)"
+      >
+        <span class="chevron group-chevron" [class.open]="isGroupExpanded(group.group)">›</span>
+        <span class="group-title">{{ group.group }}</span>
+        <span class="group-count muted">{{ group.tests.length }}</span>
+        <span class="failed-flag" *ngIf="failedCountIn(group.tests) as failedCount">{{ failedCount }} {{ t('palo', 'failed') }}</span>
+      </button>
+
+      <ul class="test-list" *ngIf="isGroupExpanded(group.group)">
         <li *ngFor="let test of group.tests; trackBy: trackByTest" class="test-item" [ngClass]="'status-' + (test.status || 'unknown')">
           <button type="button" class="test-row" (click)="toggleTestDetails(test)" [attr.aria-expanded]="isTestExpanded(test)">
             <span class="status-dot"></span>
             <span class="test-name">{{ test.name }}</span>
-            <span class="failed-flag" *ngIf="test.status === 'failed'">pao</span>
+            <span class="failed-flag" *ngIf="test.status === 'failed'">{{ t('pao', 'failed') }}</span>
             <span class="test-duration" *ngIf="test.duration_ms != null">{{ test.duration_ms | number : '1.0-0' }} ms</span>
             <span class="chevron" [class.open]="isTestExpanded(test)">›</span>
           </button>
@@ -49,12 +54,12 @@
             <p class="detail-explanation" *ngIf="test.explanation">{{ test.explanation }}</p>
 
             <div class="detail-block" *ngIf="test.message">
-              <p class="detail-label">Zašto je pao</p>
+              <p class="detail-label">{{ t('Zašto je pao', 'Why it failed') }}</p>
               <pre class="failure-detail">{{ test.message }}</pre>
             </div>
 
             <div class="detail-block" *ngIf="test.source">
-              <p class="detail-label">Šta test tačno proverava</p>
+              <p class="detail-label">{{ t('Šta test tačno proverava', 'What the test actually checks') }}</p>
               <pre class="source-code">{{ test.source }}</pre>
             </div>
           </div>
@@ -67,20 +72,13 @@
   <article class="panel">
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Referentni slučajevi</p>
-        <h2>Validacioni scenariji</h2>
-        <p class="panel-subtitle">
-          Scenario je <strong>opis podataka, ne kod</strong>: transakcije, izvori (seed adrese) i očekivani procenti.
-        </p>
-        <p class="panel-subtitle">
-          Propuštaju se kroz <strong>pravi</strong> taint algoritam, pa se mogu slobodno kreirati, menjati i brisati — ništa
-          uneto se ne izvršava.
-        </p>
+        <p class="panel-kicker">{{ t('Referentni slučajevi', 'Reference cases') }}</p>
+        <h2>{{ t('Validacioni scenariji', 'Validation scenarios') }}</h2>
       </div>
       <div class="toolbar">
-        <button type="button" class="ghost-button" (click)="startNewScenario()">Novi scenario</button>
+        <button type="button" class="ghost-button" (click)="startNewScenario()">{{ t('Novi scenario', 'New scenario') }}</button>
         <button type="button" class="primary-button" (click)="runAllScenarios()" [disabled]="isRunningScenarios || scenarios.length === 0">
-          {{ isRunningScenarios ? 'Pokretanje...' : 'Pokreni sve scenarije' }}
+          {{ isRunningScenarios ? t('Pokretanje...', 'Running...') : t('Pokreni sve scenarije', 'Run all scenarios') }}
         </button>
       </div>
     </div>
@@ -92,56 +90,56 @@
       [class.has-failures]="summary.failed > 0"
     >
       <span class="summary-icon">{{ summary.failed === 0 ? '✓' : '✕' }}</span>
-      <strong>{{ summary.passed }} / {{ summary.total }} scenarija prošlo</strong>
-      <span *ngIf="summary.failed > 0">· {{ summary.failed }} nije</span>
+      <strong>{{ summary.passed }} / {{ summary.total }} {{ t('scenarija prošlo', 'scenarios passed') }}</strong>
+      <span *ngIf="summary.failed > 0">· {{ summary.failed }} {{ t('nije', "didn't") }}</span>
     </div>
 
     <p class="status" *ngIf="statusMessage">{{ statusMessage }}</p>
 
     <!-- Forma za kreiranje / izmenu -->
     <div class="scenario-form" *ngIf="draft as form">
-      <h3>{{ form.id ? 'Izmena scenarija' : 'Novi scenario' }}</h3>
+      <h3>{{ form.id ? t('Izmena scenarija', 'Edit scenario') : t('Novi scenario', 'New scenario') }}</h3>
 
       <label class="field">
-        Naziv
-        <input type="text" [(ngModel)]="form.name" placeholder="npr. Mikser razblažuje čistim prilivom" />
+        {{ t('Naziv', 'Name') }}
+        <input type="text" [(ngModel)]="form.name" [placeholder]="t('npr. Mikser razblažuje čistim prilivom', 'e.g. Mixer dilutes with clean inflow')" />
       </label>
       <label class="field">
-        Opis
-        <input type="text" [(ngModel)]="form.description" placeholder="Šta ovaj scenario dokazuje" />
+        {{ t('Opis', 'Description') }}
+        <input type="text" [(ngModel)]="form.description" [placeholder]="t('Šta ovaj scenario dokazuje', 'What this scenario proves')" />
       </label>
 
-      <p class="field-label">Transakcije</p>
+      <p class="field-label">{{ t('Transakcije', 'Transactions') }}</p>
       <div class="row-editor" *ngFor="let tx of form.transactions; let i = index">
-        <input type="text" [(ngModel)]="tx.sender" placeholder="pošiljalac" />
+        <input type="text" [(ngModel)]="tx.sender" [placeholder]="t('pošiljalac', 'sender')" />
         <span class="arrow">→</span>
-        <input type="text" [(ngModel)]="tx.recipient" placeholder="primalac" />
-        <input type="number" [(ngModel)]="tx.amount" placeholder="iznos" class="narrow" />
+        <input type="text" [(ngModel)]="tx.recipient" [placeholder]="t('primalac', 'recipient')" />
+        <input type="number" [(ngModel)]="tx.amount" [placeholder]="t('iznos', 'amount')" class="narrow" />
         <input type="text" [(ngModel)]="tx.timestamp" placeholder="2026-03-01T00:00:00Z" />
-        <button type="button" class="remove-button" (click)="removeTransaction(i)" title="Ukloni">✕</button>
+        <button type="button" class="remove-button" (click)="removeTransaction(i)" [title]="t('Ukloni', 'Remove')">✕</button>
       </div>
-      <button type="button" class="ghost-button small" (click)="addTransaction()">+ Dodaj transakciju</button>
+      <button type="button" class="ghost-button small" (click)="addTransaction()">+ {{ t('Dodaj transakciju', 'Add transaction') }}</button>
 
       <label class="field">
-        Izvori (seed adrese, odvojene zarezom)
+        {{ t('Izvori (seed adrese, odvojene zarezom)', 'Sources (seed addresses, comma-separated)') }}
         <input type="text" [(ngModel)]="form.seedInput" placeholder="0xThief, 0xHacker2" />
       </label>
 
-      <p class="field-label">Očekivani rezultati</p>
+      <p class="field-label">{{ t('Očekivani rezultati', 'Expected results') }}</p>
       <div class="row-editor" *ngFor="let item of form.expectations; let i = index">
-        <input type="text" [(ngModel)]="item.address" placeholder="adresa" />
+        <input type="text" [(ngModel)]="item.address" [placeholder]="t('adresa', 'address')" />
         <span class="arrow">=</span>
         <input type="number" [(ngModel)]="item.expected_percentage" placeholder="%" class="narrow" step="0.01" />
         <span class="unit">%</span>
-        <button type="button" class="remove-button" (click)="removeExpectation(i)" title="Ukloni">✕</button>
+        <button type="button" class="remove-button" (click)="removeExpectation(i)" [title]="t('Ukloni', 'Remove')">✕</button>
       </div>
-      <button type="button" class="ghost-button small" (click)="addExpectation()">+ Dodaj očekivanje</button>
+      <button type="button" class="ghost-button small" (click)="addExpectation()">+ {{ t('Dodaj očekivanje', 'Add expectation') }}</button>
 
       <div class="form-actions">
         <button type="button" class="primary-button" (click)="saveScenario()" [disabled]="isSaving">
-          {{ isSaving ? 'Čuvanje...' : 'Sačuvaj' }}
+          {{ isSaving ? t('Čuvanje...', 'Saving...') : t('Sačuvaj', 'Save') }}
         </button>
-        <button type="button" class="ghost-button" (click)="cancelEdit()">Odustani</button>
+        <button type="button" class="ghost-button" (click)="cancelEdit()">{{ t('Odustani', 'Cancel') }}</button>
       </div>
     </div>
 
@@ -155,26 +153,26 @@
               *ngIf="resultFor(scenario) as result; else notRun"
               [ngClass]="'status-' + result.status"
             >
-              {{ result.status === 'passed' ? '✓ prošao' : result.status === 'error' ? '! greška' : '✕ pao' }}
+              {{ result.status === 'passed' ? ('✓ ' + t('prošao', 'passed')) : result.status === 'error' ? ('! ' + t('greška', 'error')) : ('✕ ' + t('pao', 'failed')) }}
             </span>
-            <ng-template #notRun><span class="scenario-status status-unknown">nije pokrenut</span></ng-template>
+            <ng-template #notRun><span class="scenario-status status-unknown">{{ t('nije pokrenut', 'not run') }}</span></ng-template>
             <strong>{{ scenario.name }}</strong>
           </div>
           <div class="scenario-actions">
             <button type="button" class="ghost-button small" (click)="runOneScenario(scenario)" [disabled]="runningScenarioId === scenario.id">
-              {{ runningScenarioId === scenario.id ? '...' : 'Pokreni' }}
+              {{ runningScenarioId === scenario.id ? '...' : t('Pokreni', 'Run') }}
             </button>
-            <button type="button" class="ghost-button small" (click)="editScenario(scenario)">Izmeni</button>
-            <button type="button" class="ghost-button small danger" (click)="deleteScenario(scenario)">Obriši</button>
+            <button type="button" class="ghost-button small" (click)="editScenario(scenario)">{{ t('Izmeni', 'Edit') }}</button>
+            <button type="button" class="ghost-button small danger" (click)="deleteScenario(scenario)">{{ t('Obriši', 'Delete') }}</button>
           </div>
         </div>
 
         <p class="scenario-description" *ngIf="scenario.description">{{ scenario.description }}</p>
 
         <div class="scenario-meta">
-          <span>{{ scenario.transactions.length }} transakcija</span>
+          <span>{{ scenario.transactions.length }} {{ t('transakcija', 'transaction(s)') }}</span>
           <span>·</span>
-          <span>izvori: <code>{{ scenario.seed_addresses.join(', ') }}</code></span>
+          <span>{{ t('izvori', 'sources') }}: <code>{{ scenario.seed_addresses.join(', ') }}</code></span>
         </div>
 
         <div class="checks" *ngIf="resultFor(scenario) as result">
@@ -182,9 +180,9 @@
           <table *ngIf="result.checks.length > 0">
             <thead>
               <tr>
-                <th>Adresa</th>
-                <th>Očekivano</th>
-                <th>Dobijeno</th>
+                <th>{{ t('Adresa', 'Address') }}</th>
+                <th>{{ t('Očekivano', 'Expected') }}</th>
+                <th>{{ t('Dobijeno', 'Got') }}</th>
                 <th></th>
               </tr>
             </thead>
@@ -205,7 +203,10 @@
     </div>
 
     <ng-template #noScenarios>
-      <p class="empty-state">Nema definisanih scenarija. Klikni "Novi scenario" da dodaš prvi.</p>
+      <p class="empty-state">
+        {{ t('Nema definisanih scenarija. Klikni', 'No scenarios defined yet. Click') }}
+        "{{ t('Novi scenario', 'New scenario') }}" {{ t('da dodaš prvi.', 'to add the first one.') }}
+      </p>
     </ng-template>
   </article>
 </section>

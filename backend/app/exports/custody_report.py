@@ -16,6 +16,8 @@ from typing import Any
 
 from app.exports.custody_pdf_common import (
     CustodyReportPDF,
+    L,
+    Lang,
     TEXT_GRAY,
     draw_context_banner,
     draw_entries_table,
@@ -26,13 +28,17 @@ from app.exports.custody_pdf_common import (
 from app.exports.pdf_fonts import register_unicode_font
 
 
-def build_custody_pdf(header: dict[str, Any], entries: list[dict[str, Any]]) -> bytes:
-    pdf = CustodyReportPDF(font_family='helvetica', title='Lanac dokaza po transakciji')
+def build_custody_pdf(header: dict[str, Any], entries: list[dict[str, Any]], lang: Lang = 'sr') -> bytes:
+    pdf = CustodyReportPDF(
+        font_family='helvetica',
+        title=L(lang, 'Lanac dokaza po transakciji', 'Chain of custody by transaction'),
+        lang=lang,
+    )
     font = register_unicode_font(pdf)
     pdf._font_family = font  # noqa: SLF001 - header/footer need the resolved family
     pdf.add_page()
 
-    draw_obrazac_title(pdf, font)
+    draw_obrazac_title(pdf, font, lang)
 
     # Which transaction this form is FOR - context the paper form doesn't need for a
     # physical exhibit, but which is exactly what identifies a transaction here.
@@ -40,18 +46,20 @@ def build_custody_pdf(header: dict[str, Any], entries: list[dict[str, Any]]) -> 
     tx_line = f'{header.get("sender_address", "?")}  ->  {header.get("recipient_address", "?")}'
     amount = header.get('amount')
     if amount is not None:
-        tx_line += f'   |   {amount} {header.get("currency") or "nije navedena valuta"}'
+        currency = header.get('currency') or L(lang, 'nije navedena valuta', 'currency not specified')
+        tx_line += f'   |   {amount} {currency}'
     tx_time = dmy(header.get('tx_timestamp'))
     if tx_time:
         tx_line += f'   |   {tx_time}'
-    draw_context_banner(pdf, font, f'Transakcija: {tx_line}')
+    draw_context_banner(pdf, font, f'{L(lang, "Transakcija", "Transaction")}: {tx_line}')
 
-    draw_kv_header_block(pdf, font, header)
+    draw_kv_header_block(pdf, font, header, lang)
 
     draw_entries_table(
         pdf, font, entries,
         usable_width=usable_width,
-        empty_message='Nema zabelezenih pristupa ovoj transakciji.',
+        empty_message=L(lang, 'Nema zabelezenih pristupa ovoj transakciji.', 'No recorded access to this transaction.'),
+        lang=lang,
     )
 
     pdf.ln(6)
@@ -59,9 +67,16 @@ def build_custody_pdf(header: dict[str, Any], entries: list[dict[str, Any]]) -> 
     pdf.set_text_color(*TEXT_GRAY)
     pdf.multi_cell(
         usable_width, 4.5,
-        'Svaka stavka predstavlja poseban pristup ovoj konkretnoj transakciji prilikom pokretanja taint analize. '
-        'Datum i potpis odgovaraju trenutku pristupa (pokretanja analize), a ne trenutku same transakcije na lancu. '
-        'Puni tekst opisa radnje, ako je skracen u tabeli, dostupan je na stranici "Lanac dokaza" u aplikaciji.',
+        L(
+            lang,
+            'Svaka stavka predstavlja poseban pristup ovoj konkretnoj transakciji prilikom pokretanja taint analize. '
+            'Datum i potpis odgovaraju trenutku pristupa (pokretanja analize), a ne trenutku same transakcije na lancu. '
+            'Puni tekst opisa radnje, ako je skracen u tabeli, dostupan je na stranici "Lanac dokaza" u aplikaciji.',
+            'Each row represents a separate access to this specific transaction when a taint analysis was run. '
+            'The date and signature correspond to the moment of access (the analysis run), not to the transaction '
+            'itself on the chain. The full action description text, if shortened in the table, is available on the '
+            '"Chain of custody" page in the application.',
+        ),
     )
 
     return bytes(pdf.output())

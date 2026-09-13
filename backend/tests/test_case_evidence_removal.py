@@ -36,6 +36,7 @@ def _make_case_with_two_files() -> str:
 
 
 def test_remove_evidence_drops_the_entry_and_renormalizes():
+    """Uklanjanje dokaza briše zapis i ponovo izračunava zbirne vrednosti"""
     case_id = _make_case_with_two_files()
 
     updated = case_management.remove_evidence(case_id, 'stored_a.csv')
@@ -47,6 +48,7 @@ def test_remove_evidence_drops_the_entry_and_renormalizes():
 
 
 def test_remove_evidence_persists_to_disk():
+    """Uklanjanje dokaza se trajno čuva na disku"""
     case_id = _make_case_with_two_files()
     case_management.remove_evidence(case_id, 'stored_b.csv')
 
@@ -55,12 +57,14 @@ def test_remove_evidence_persists_to_disk():
 
 
 def test_remove_unknown_evidence_raises():
+    """Uklanjanje nepostojećeg dokaza prijavljuje grešku"""
     case_id = _make_case_with_two_files()
     with pytest.raises(FileNotFoundError):
         case_management.remove_evidence(case_id, 'stored_nepostojeci.csv')
 
 
 def test_remove_last_evidence_clears_derived_fields():
+    """Uklanjanje poslednjeg dokaza vraća izvedena polja na početno stanje"""
     case = case_management.create_case(name='Solo', analyst='tester')
     case_id = str(case['id'])
     case_management.append_evidence(

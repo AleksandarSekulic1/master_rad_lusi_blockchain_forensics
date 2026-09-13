@@ -1,30 +1,31 @@
 <section class="admin-grid">
   <article class="panel create-panel">
+    <span class="panel-accent" aria-hidden="true"></span>
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Upravljanje nalozima</p>
-        <h2>Novi korisnik</h2>
+        <p class="panel-kicker">{{ t('Upravljanje nalozima', 'Account management') }}</p>
+        <h2>{{ t('Novi korisnik', 'New user') }}</h2>
       </div>
     </div>
 
     <div class="user-form">
       <label>
-        Korisničko ime
-        <input [(ngModel)]="newUsername" type="text" placeholder="npr. analyst2" />
+        {{ t('Korisničko ime', 'Username') }}
+        <input [(ngModel)]="newUsername" type="text" [placeholder]="t('npr. analyst2', 'e.g. analyst2')" />
       </label>
       <label>
-        Lozinka
-        <input [(ngModel)]="newPassword" type="password" placeholder="bar 6 karaktera" />
+        {{ t('Lozinka', 'Password') }}
+        <input [(ngModel)]="newPassword" type="password" [placeholder]="t('bar 6 karaktera', 'at least 6 characters')" />
       </label>
       <label>
-        Uloga
+        {{ t('Uloga', 'Role') }}
         <select [(ngModel)]="newRole">
-          <option value="analyst">Analitičar</option>
-          <option value="admin">Administrator</option>
+          <option value="analyst">{{ t('Analitičar', 'Analyst') }}</option>
+          <option value="admin">{{ t('Administrator', 'Administrator') }}</option>
         </select>
       </label>
       <button type="button" class="primary-button" (click)="createUser()" [disabled]="isCreating">
-        {{ isCreating ? 'Kreiranje...' : 'Kreiraj nalog' }}
+        {{ isCreating ? t('Kreiranje...', 'Creating...') : t('Kreiraj nalog', 'Create account') }}
       </button>
     </div>
 
@@ -32,53 +33,153 @@
   </article>
 
   <article class="panel list-panel">
+    <span class="panel-accent" aria-hidden="true"></span>
     <div class="panel-heading">
       <div>
-        <p class="panel-kicker">Nalozi</p>
-        <h2>Svi korisnici</h2>
+        <p class="panel-kicker">{{ t('Nalozi', 'Accounts') }}</p>
+        <h2>{{ t('Svi korisnici', 'All users') }}</h2>
       </div>
-      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">Osveži</button>
+      <button class="ghost-button" type="button" (click)="loadUsers()" [disabled]="isLoading">
+        <span aria-hidden="true">⟳</span>
+        {{ t('Osveži', 'Refresh') }}
+      </button>
+    </div>
+
+    <div class="search-bar">
+      <span class="search-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </span>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (ngModelChange)="onSearchChange($event)"
+        [placeholder]="t('Pretraži po korisničkom imenu...', 'Search by username...')"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button *ngIf="searchQuery" type="button" class="search-clear" (click)="clearSearch()"
+              [attr.aria-label]="t('Obriši pretragu', 'Clear search')">×</button>
     </div>
 
     <div class="table-wrapper" *ngIf="users.length > 0; else emptyUsers">
       <table>
         <thead>
           <tr>
-            <th>Korisničko ime</th>
-            <th>Uloga</th>
-            <th>Status</th>
-            <th>Kreiran</th>
-            <th>Akcije</th>
+            <th></th>
+            <th>{{ t('Korisničko ime', 'Username') }}</th>
+            <th>{{ t('Uloga', 'Role') }}</th>
+            <th>{{ t('Status', 'Status') }}</th>
+            <th>{{ t('Kreiran', 'Created') }}</th>
+            <th>{{ t('Akcije', 'Actions') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let user of users">
-            <td>{{ user.username }}</td>
-            <td>{{ user.role === 'admin' ? 'Administrator' : 'Analitičar' }}</td>
-            <td>
-              <span class="pill" [class.blocked]="user.status === 'blocked'">
-                {{ user.status === 'blocked' ? 'Blokiran' : 'Aktivan' }}
-              </span>
-            </td>
-            <td>{{ user.created_at }}</td>
-            <td class="actions">
-              <button type="button" class="ghost-button" (click)="toggleStatus(user)">
-                {{ user.status === 'blocked' ? 'Odblokiraj' : 'Blokiraj' }}
-              </button>
-              <button type="button" class="ghost-button" (click)="generateResetLink(user)">Reset lozinke</button>
-            </td>
-          </tr>
+          <ng-container *ngFor="let user of pagedUsers">
+            <tr class="user-row" [class.is-expanded]="isExpanded(user)" (click)="toggleUserDetails(user)">
+              <td class="col-toggle">
+                <span class="chevron" [class.open]="isExpanded(user)" aria-hidden="true">›</span>
+              </td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.role === 'admin' ? t('Administrator', 'Administrator') : t('Analitičar', 'Analyst') }}</td>
+              <td>
+                <span class="pill" [class.blocked]="user.status === 'blocked'">
+                  {{ user.status === 'blocked' ? t('Blokiran', 'Blocked') : t('Aktivan', 'Active') }}
+                </span>
+              </td>
+              <td>{{ formatDateTime(user.created_at) }}</td>
+              <td class="actions" (click)="$event.stopPropagation()">
+                <button
+                  type="button"
+                  class="action-button"
+                  [class.warning]="user.status !== 'blocked'"
+                  [class.success]="user.status === 'blocked'"
+                  (click)="toggleStatus(user)"
+                >
+                  {{ user.status === 'blocked' ? t('Odblokiraj', 'Unblock') : t('Blokiraj', 'Block') }}
+                </button>
+                <button type="button" class="action-button info" (click)="generateResetLink(user)">{{ t('Reset lozinke', 'Reset password') }}</button>
+              </td>
+            </tr>
+
+            <tr class="detail-row" *ngIf="isExpanded(user)">
+              <td colspan="6" (click)="$event.stopPropagation()">
+                <div class="detail-panel">
+                  <div class="detail-block">
+                    <label class="detail-label">{{ t('Korisničko ime', 'Username') }}</label>
+                    <div class="detail-edit-row">
+                      <input type="text" [(ngModel)]="editUsername" (keydown.enter)="renameUser(user)" />
+                      <button
+                        type="button"
+                        class="action-button info"
+                        (click)="renameUser(user)"
+                        [disabled]="isRenaming || !editUsername.trim() || editUsername.trim() === user.username"
+                      >
+                        {{ isRenaming ? t('Čuvanje...', 'Saving...') : t('Sačuvaj', 'Save') }}
+                      </button>
+                    </div>
+                    <p class="detail-error" *ngIf="renameError">{{ renameError }}</p>
+                  </div>
+
+                  <div class="detail-block detail-danger">
+                    <label class="detail-label">{{ t('Opasna zona', 'Danger zone') }}</label>
+
+                    <ng-container *ngIf="confirmingDeleteId !== user.id; else confirmDelete">
+                      <button type="button" class="action-button danger" (click)="askDeleteUser(user)">
+                        {{ t('Obriši korisnika trajno', 'Permanently delete user') }}
+                      </button>
+                    </ng-container>
+                    <ng-template #confirmDelete>
+                      <p class="detail-confirm-text">
+                        {{ t('Ova akcija je trajna i ne može se poništiti. Obrisati nalog', 'This action is permanent and cannot be undone. Delete account') }}
+                        <strong>{{ user.username }}</strong>?
+                      </p>
+                      <div class="detail-edit-row">
+                        <button type="button" class="action-button danger" (click)="confirmDeleteUser(user)" [disabled]="isDeleting">
+                          {{ isDeleting ? t('Brisanje...', 'Deleting...') : t('Da, obriši', 'Yes, delete') }}
+                        </button>
+                        <button type="button" class="ghost-button" (click)="cancelDeleteUser()" [disabled]="isDeleting">
+                          {{ t('Otkaži', 'Cancel') }}
+                        </button>
+                      </div>
+                    </ng-template>
+                    <p class="detail-error" *ngIf="deleteError">{{ deleteError }}</p>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </ng-container>
         </tbody>
       </table>
 
+      <div class="pagination" *ngIf="users.length > pageSize">
+        <span class="page-range muted">{{ t('Strana', 'Page') }} {{ currentPage }} / {{ totalPages }}</span>
+        <div class="page-nav">
+          <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+            ‹ {{ t('Prethodna', 'Previous') }}
+          </button>
+          <button type="button" class="ghost-button page-nav-button" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+            {{ t('Sledeća', 'Next') }} ›
+          </button>
+        </div>
+      </div>
+
       <div class="reset-link-box" *ngFor="let entry of resetLinkByUsername | keyvalue">
-        <span>Link za {{ entry.key }}:</span>
+        <span>{{ t('Link za', 'Link for') }} {{ entry.key }}:</span>
         <code>{{ entry.value }}</code>
       </div>
     </div>
 
     <ng-template #emptyUsers>
-      <p class="empty-state">Nema kreiranih korisnika.</p>
+      <p class="empty-state" *ngIf="searchQuery; else noUsersAtAll">
+        {{ t('Nijedan korisnik ne odgovara pretrazi', 'No user matches') }} "{{ searchQuery }}".
+        <button type="button" class="link-button" (click)="clearSearch()">{{ t('Obriši pretragu', 'Clear search') }}</button>
+      </p>
+      <ng-template #noUsersAtAll>
+        <p class="empty-state">{{ t('Nema kreiranih korisnika.', 'No users created yet.') }}</p>
+      </ng-template>
     </ng-template>
   </article>
 </section>

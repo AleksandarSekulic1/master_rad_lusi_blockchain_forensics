@@ -1,3 +1,16 @@
+/* Boje se oslanjaju na globalne temske tokene iz styles.scss (--surface, --text-primary,
+   --accent, ...) - isti tokeni koje koristi app-shell/topbar - umesto sopstvenih, tako da
+   ova stranica (dostupna i BEZ prijave) prati temu isto kao ostatak aplikacije, uključujući
+   promenu teme dok se korisnik nalazi baš na /login (vidi app.component.html). Samo error
+   tekst nema globalni token (topbar ga ne koristi), pa dobija sopstveni ovde. */
+:host {
+  --auth-error-text: #fca5a5;
+}
+
+:host-context([data-theme='light']) {
+  --auth-error-text: #b91c1c;
+}
+
 .auth-shell {
   min-height: calc(100vh - 8rem);
   display: grid;
@@ -8,10 +21,10 @@
   width: 100%;
   max-width: 24rem;
   padding: 2rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--surface-border);
   border-radius: 1.25rem;
-  background: rgba(8, 15, 29, 0.74);
-  box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
+  background: var(--surface);
+  box-shadow: var(--shadow-topbar);
   backdrop-filter: blur(16px);
 }
 
@@ -20,18 +33,18 @@
   font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--text-eyebrow);
 }
 
 h1 {
   margin: 0 0 0.5rem;
   font-size: 1.4rem;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .subtitle {
   margin: 0 0 1.5rem;
-  color: #8ea6c7;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -44,15 +57,15 @@ h1 {
   display: grid;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: #8ea6c7;
+  color: var(--text-muted);
 }
 
 .auth-form input {
   padding: 0.8rem 0.95rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  background: var(--chip-bg);
 }
 
 .primary-button {
@@ -72,13 +85,13 @@ h1 {
 
 .error {
   margin: 0;
-  color: #fca5a5;
+  color: var(--auth-error-text);
   font-size: 0.85rem;
 }
 
 .hint {
   margin: 1.5rem 0 0;
-  color: #8ea6c7;
+  color: var(--text-muted);
   font-size: 0.8rem;
   text-align: center;
 }

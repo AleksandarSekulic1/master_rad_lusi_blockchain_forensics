@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 
 @Component({
   selector: 'app-login',
@@ -21,11 +22,19 @@ export class LoginComponent {
   constructor(
     private readonly auth: AuthService,
     private readonly router: Router,
+    protected readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as every other page's own t()) - the theme/language toggle is now
+   * reachable from this page too (see app.component.html), so this page has to react to it. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   submit(): void {
     if (!this.username.trim() || !this.password) {
-      this.errorMessage = 'Unesite korisničko ime i lozinku.';
+      this.errorMessage = this.t('Unesite korisničko ime i lozinku.', 'Enter your username and password.');
       return;
     }
 
@@ -51,6 +60,6 @@ export class LoginComponent {
         return errorObject.error.detail;
       }
     }
-    return 'Prijava nije uspela. Proverite podatke i pokušajte ponovo.';
+    return this.t('Prijava nije uspela. Proverite podatke i pokušajte ponovo.', 'Login failed. Check your credentials and try again.');
   }
 }

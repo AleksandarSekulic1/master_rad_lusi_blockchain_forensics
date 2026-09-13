@@ -367,8 +367,10 @@ export class ApiService {
     return this.http.post<DexSwapAnalysisResult>(`${this.apiUrl}/api/v1/cases/${caseId}/dex-swap-analysis/run`, body, { params });
   }
 
-  listUsers(): Observable<{ users: AuthUser[] }> {
-    return this.http.get<{ users: AuthUser[] }>(`${this.apiUrl}/api/v1/users`);
+  listUsers(search?: string | null): Observable<{ users: AuthUser[] }> {
+    const trimmed = search?.trim();
+    const params = trimmed ? new HttpParams().set('search', trimmed) : undefined;
+    return this.http.get<{ users: AuthUser[] }>(`${this.apiUrl}/api/v1/users`, { params });
   }
 
   createUser(request: CreateUserRequest): Observable<AuthUser> {
@@ -381,6 +383,14 @@ export class ApiService {
 
   generateResetLink(userId: string): Observable<ResetLinkResponse> {
     return this.http.post<ResetLinkResponse>(`${this.apiUrl}/api/v1/users/${userId}/reset-link`, {});
+  }
+
+  renameUser(userId: string, username: string): Observable<AuthUser> {
+    return this.http.patch<AuthUser>(`${this.apiUrl}/api/v1/users/${userId}`, { username });
+  }
+
+  deleteUser(userId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/api/v1/users/${userId}`);
   }
 
   /** Registers a report before the PDF is built, returning the verification code that
@@ -538,8 +548,9 @@ export class ApiService {
     return this.http.get<CustodyFieldSuggestions>(`${this.apiUrl}/api/v1/cases/${caseId}/custody/suggestions`);
   }
 
-  exportCustodyPdf(caseId: string, txId: string): Observable<Blob> {
+  exportCustodyPdf(caseId: string, txId: string, lang: 'sr' | 'en' = 'sr'): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/custody/transactions/${encodeURIComponent(txId)}/export.pdf`, {
+      params: { lang },
       responseType: 'blob',
     });
   }
@@ -558,8 +569,9 @@ export class ApiService {
     );
   }
 
-  exportCustodyEvidencePdf(caseId: string, evidenceStoredName: string): Observable<Blob> {
+  exportCustodyEvidencePdf(caseId: string, evidenceStoredName: string, lang: 'sr' | 'en' = 'sr'): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/api/v1/cases/${caseId}/custody/evidence/${encodeURIComponent(evidenceStoredName)}/export.pdf`, {
+      params: { lang },
       responseType: 'blob',
     });
   }

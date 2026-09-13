@@ -10,7 +10,8 @@ from __future__ import annotations
 import base64
 import io
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -24,6 +25,14 @@ WHITE = (255, 255, 255)
 HEADER_BG = (226, 235, 245)
 
 ROW_HEIGHT = 16
+
+ASSETS_DIR = Path(__file__).resolve().parent.parent / 'assets'
+
+Lang = Literal['sr', 'en']
+
+
+def L(lang: Lang, sr: str, en: str) -> str:
+    return sr if lang == 'sr' else en
 
 
 def dmy(value: Any) -> str:
@@ -65,21 +74,34 @@ def draw_signature(pdf: FPDF, signature: Image.Image, *, x: float, y: float, box
 
 class CustodyReportPDF(FPDF):
     """A4 portrait shell with the Lusi navy header/footer band - `title` names which of
-    the two forms this is, printed in the top band (e.g. "Lanac dokaza po transakciji")."""
+    the two forms this is, printed in the top band (e.g. "Lanac dokaza po transakciji").
+    Carries the same cat emblem in the header as every other report in this app (see
+    activity_report.py's own header())."""
 
-    def __init__(self, *, font_family: str, title: str) -> None:
+    def __init__(self, *, font_family: str, title: str, lang: Lang = 'sr') -> None:
         super().__init__(format='A4', orientation='P')
         self._font_family = font_family
         self._title = title
+        self._lang = lang
         self.set_auto_page_break(auto=True, margin=18)
         self.set_top_margin(24)
 
     def header(self) -> None:  # noqa: D102 - fpdf2 lifecycle hook
         self.set_fill_color(*NAVY)
         self.rect(0, 0, self.w, 16, style='F')
+
+        title_x = 12.0
+        cat_path = ASSETS_DIR / 'cat_pdf.png'
+        if cat_path.exists():
+            emblem = 11.0
+            with Image.open(cat_path) as cat_img:
+                emblem_w = emblem * (cat_img.width / cat_img.height)
+            self.image(str(cat_path), x=12, y=(16 - emblem) / 2, w=emblem_w, h=emblem)
+            title_x = 12 + emblem_w + 3
+
         self.set_text_color(*WHITE)
         self.set_font(self._font_family, 'B', 11)
-        self.set_xy(12, 4)
+        self.set_xy(title_x, 4)
         self.cell(0, 8, f'Lusi v1.0 - {self._title}', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(*TEXT_DARK)
         self.set_xy(self.l_margin, 20)
@@ -88,15 +110,23 @@ class CustodyReportPDF(FPDF):
         self.set_y(-12)
         self.set_font(self._font_family, '', 8)
         self.set_text_color(*TEXT_GRAY)
-        self.cell(0, 8, f'Lusi v1.0 forenzicki izvoz | Strana {self.page_no()}', align='C')
+        page_word = L(self._lang, 'Strana', 'Page')
+        export_word = L(self._lang, 'forenzicki izvoz', 'forensic export')
+        self.cell(0, 8, f'Lusi v1.0 {export_word} | {page_word} {self.page_no()}', align='C')
 
 
-def draw_obrazac_title(pdf: FPDF, font: str) -> None:
-    """The fixed title block, verbatim from the reference paper form, common to both."""
+def draw_obrazac_title(pdf: FPDF, font: str, lang: Lang = 'sr') -> None:
+    """The fixed title block, verbatim from the reference paper form when Serbian is
+    selected; translated the same way the on-screen "Lanac dokaza" page translates it
+    when English is selected (see custody-log.component.html)."""
     pdf.set_font(font, 'B', 14)
     pdf.set_text_color(*NAVY)
-    pdf.cell(0, 7, 'ОБРАЗАЦ', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(0, 7, 'ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 7, L(lang, 'ОБРАЗАЦ', 'FORM'), align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(
+        0, 7,
+        L(lang, 'ЕВИДЕНЦИЈЕ РУКОВАЊА ДОКАЗНИМ МАТЕРИЈАЛОМ', 'EVIDENCE HANDLING RECORD'),
+        align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+    )
     pdf.ln(3)
     pdf.set_text_color(*TEXT_DARK)
 
@@ -113,9 +143,10 @@ def draw_context_banner(pdf: FPDF, font: str, text: str) -> None:
     pdf.ln(3)
 
 
-def draw_kv_header_block(pdf: FPDF, font: str, header: dict[str, Any]) -> None:
+def draw_kv_header_block(pdf: FPDF, font: str, header: dict[str, Any], lang: Lang = 'sr') -> None:
     """The Идентификатор предмета / доказног материјала / произвођач / модел / серијски
     број block - identical field set for both forms, only the VALUES differ per case.
+    Labels translate the same way as the on-screen "Lanac dokaza" page's own field labels.
 
     The label column is sized to the WIDEST label ("Идентификатор доказног материјала:"
     is much longer than the others) rather than a fixed guess - a fixed width that turns
@@ -123,11 +154,11 @@ def draw_kv_header_block(pdf: FPDF, font: str, header: dict[str, Any]) -> None:
     the bug this fixes. Values wrap with multi_cell instead of being confined to one line,
     so a long evidence file name or a hash never gets silently clipped."""
     rows: list[tuple[str, Any]] = [
-        ('Идентификатор предмета:', header.get('identifikator_predmeta')),
-        ('Идентификатор доказног материјала:', header.get('identifikator_dokaznog_materijala')),
-        ('Произвођач:', header.get('proizvodjac')),
-        ('Модел:', header.get('model')),
-        ('Серијски број:', header.get('serijski_broj')),
+        (L(lang, 'Идентификатор предмета:', 'Case identifier:'), header.get('identifikator_predmeta')),
+        (L(lang, 'Идентификатор доказног материјала:', 'Evidence item identifier:'), header.get('identifikator_dokaznog_materijala')),
+        (L(lang, 'Произвођач:', 'Manufacturer:'), header.get('proizvodjac')),
+        (L(lang, 'Модел:', 'Model:'), header.get('model')),
+        (L(lang, 'Серијски број:', 'Serial number:'), header.get('serijski_broj')),
     ]
 
     pdf.set_font(font, 'B', 9.5)
@@ -151,12 +182,21 @@ def draw_kv_header_block(pdf: FPDF, font: str, header: dict[str, Any]) -> None:
     pdf.ln(3)
 
 
-def draw_entries_table(pdf: FPDF, font: str, entries: list[dict[str, Any]], *, usable_width: float, empty_message: str) -> None:
+def draw_entries_table(
+    pdf: FPDF, font: str, entries: list[dict[str, Any]], *, usable_width: float, empty_message: str, lang: Lang = 'sr',
+) -> None:
     """The Бр./Датум/Име и презиме/Опис радње/Потпис table - identical shape for both
-    forms, the row DATA is whatever `entries` (already numbered) contains."""
+    forms, the row DATA is whatever `entries` (already numbered) contains. Column headers
+    translate the same way as the on-screen "Lanac dokaza" page's own table headers."""
     widths = [12, 24, 40, 0, 45]
     widths[3] = usable_width - sum(widths)
-    headers_row = ['Бр.', 'Датум', 'Име и презиме', 'Опис радње', 'Потпис']
+    headers_row = [
+        L(lang, 'Бр.', 'No.'),
+        L(lang, 'Датум', 'Date'),
+        L(lang, 'Име и презиме', 'Full name'),
+        L(lang, 'Опис радње', 'Action description'),
+        L(lang, 'Потпис', 'Signature'),
+    ]
 
     def draw_header_row() -> None:
         pdf.set_font(font, 'B', 9)

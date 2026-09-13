@@ -14,7 +14,9 @@
           </h1>
         </div>
       </div>
-      <div class="session" *ngIf="auth.currentUser$ | async as user">
+      <div class="session">
+        <!-- Tema/jezik su podesivi i pre prijave (na /login) - preferencija je per-uređaj,
+             ne per-nalog, pa nema razloga da čeka na ulogovanog korisnika. -->
         <div class="prefs" role="group" aria-label="Podešavanja">
           <button
             type="button"
@@ -35,10 +37,12 @@
             {{ settings.lang() === 'sr' ? 'EN' : 'SR' }}
           </button>
         </div>
-        <span class="user-chip">{{ user.username }}</span>
-        <button type="button" class="logout-button" (click)="logout()">
-          {{ settings.lang() === 'sr' ? 'Odjava' : 'Log out' }}
-        </button>
+        <ng-container *ngIf="auth.currentUser$ | async as user">
+          <span class="user-chip">{{ user.username }}</span>
+          <button type="button" class="logout-button" (click)="logout()">
+            {{ settings.lang() === 'sr' ? 'Odjava' : 'Log out' }}
+          </button>
+        </ng-container>
       </div>
     </div>
     <nav class="topbar-nav" *ngIf="auth.currentUser$ | async as user">

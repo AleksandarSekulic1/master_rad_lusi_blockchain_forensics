@@ -1,3 +1,71 @@
+/* Temski tokeni - tamna tema podrazumevano, prepisani pod [data-theme='light'] (isti
+   pristup kao activity-log / custody-log .scss), tako da ova stranica u obe teme izgleda
+   kao sestra ostalih stranica aplikacije. */
+:host {
+  --um-border: rgba(148, 163, 184, 0.18);
+  --um-border-soft: rgba(148, 163, 184, 0.12);
+  --um-surface: rgba(8, 15, 29, 0.74);
+  --um-kicker: #7bd6ff;
+  --um-heading: #eef4ff;
+  --um-text: #d5e0f6;
+  --um-muted: #8ea6c7;
+  --um-field-bg: rgba(255, 255, 255, 0.03);
+  --um-btn-text: #d9e6ff;
+  --um-row-hover: rgba(96, 165, 250, 0.06);
+  --um-select-option-text: #0b1526;
+  --um-select-option-bg: #ffffff;
+
+  /* Per-action button colour, one hue per action rather than a single grey "ghost"
+     look for everything - Block/Unblock/Reset are meaningfully different in weight, so
+     they shouldn't read as identical buttons that happen to say different words. */
+  --um-warning-text: #fbbf24;
+  --um-warning-bg: rgba(251, 191, 36, 0.12);
+  --um-warning-border: rgba(251, 191, 36, 0.32);
+  --um-success-text: #4ade80;
+  --um-success-bg: rgba(74, 222, 128, 0.12);
+  --um-success-border: rgba(74, 222, 128, 0.32);
+  --um-info-text: #c4b5fd;
+  --um-info-bg: rgba(167, 139, 250, 0.12);
+  --um-info-border: rgba(167, 139, 250, 0.32);
+  --um-danger-text: #f87171;
+  --um-danger-bg: rgba(248, 113, 113, 0.12);
+  --um-danger-border: rgba(248, 113, 113, 0.32);
+  --um-row-expanded: rgba(96, 165, 250, 0.08);
+  --um-detail-bg: rgba(4, 10, 20, 0.4);
+  --um-danger-zone-bg: rgba(248, 113, 113, 0.05);
+}
+
+:host-context([data-theme='light']) {
+  --um-border: rgba(15, 23, 42, 0.12);
+  --um-border-soft: rgba(15, 23, 42, 0.1);
+  --um-surface: #ffffff;
+  --um-kicker: #2563eb;
+  --um-heading: #16233b;
+  --um-text: #26344c;
+  --um-muted: #55658c;
+  --um-field-bg: rgba(15, 23, 42, 0.03);
+  --um-btn-text: #1e293b;
+  --um-row-hover: rgba(37, 99, 235, 0.05);
+  --um-select-option-text: #16233b;
+  --um-select-option-bg: #ffffff;
+
+  --um-warning-text: #b45309;
+  --um-warning-bg: rgba(180, 83, 9, 0.1);
+  --um-warning-border: rgba(180, 83, 9, 0.3);
+  --um-success-text: #15803d;
+  --um-success-bg: rgba(21, 128, 61, 0.1);
+  --um-success-border: rgba(21, 128, 61, 0.3);
+  --um-info-text: #7c3aed;
+  --um-info-bg: rgba(124, 58, 237, 0.08);
+  --um-info-border: rgba(124, 58, 237, 0.28);
+  --um-danger-text: #b91c1c;
+  --um-danger-bg: rgba(220, 38, 38, 0.08);
+  --um-danger-border: rgba(220, 38, 38, 0.28);
+  --um-row-expanded: rgba(37, 99, 235, 0.07);
+  --um-detail-bg: rgba(15, 23, 42, 0.03);
+  --um-danger-zone-bg: rgba(220, 38, 38, 0.04);
+}
+
 .admin-grid {
   display: grid;
   gap: 1rem;
@@ -5,12 +73,23 @@
 }
 
 .panel {
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--um-border);
   border-radius: 1.25rem;
-  background: rgba(8, 15, 29, 0.74);
+  background: var(--um-surface);
   box-shadow: 0 24px 50px rgba(4, 10, 20, 0.24);
   backdrop-filter: blur(16px);
   padding: 1.15rem;
+}
+
+/* Thin colour strip on the panel's leading edge - same touch as the Cases/Lanac dokaza
+   pages' own .panel-accent, so this reads as a finished panel rather than a bare block. */
+.panel-accent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--um-kicker), var(--um-info-text));
 }
 
 .create-panel {
@@ -31,15 +110,18 @@
 
 .panel-kicker {
   margin: 0 0 0.15rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #7bd6ff;
+  color: var(--um-kicker);
 }
 
 h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: var(--um-heading);
 }
 
 .user-form {
@@ -51,53 +133,89 @@ h2 {
   display: grid;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: #8ea6c7;
+  color: var(--um-muted);
 }
 
 .user-form input,
 .user-form select {
   padding: 0.8rem 0.95rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: #eef4ff;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--um-border);
+  color: var(--um-heading);
+  background: var(--um-field-bg);
+  font: inherit;
+  transition: border-color 0.14s ease;
+}
+
+.user-form input:focus,
+.user-form select:focus {
+  outline: none;
+  border-color: var(--um-kicker);
 }
 
 .user-form select option {
-  color: #0b1526;
-  background: #ffffff;
+  color: var(--um-select-option-text);
+  background: var(--um-select-option-bg);
 }
 
 .primary-button,
 .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   padding: 0.7rem 0.95rem;
   border: none;
   border-radius: 0.9rem;
   cursor: pointer;
+  font: inherit;
   font-size: 0.85rem;
+  font-weight: 500;
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
 }
 
 .primary-button {
   color: #04111f;
+  font-weight: 600;
   background: linear-gradient(135deg, #7dd3fc, #93c5fd);
 }
 
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .ghost-button {
-  color: #d9e6ff;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.02);
+  color: var(--um-btn-text);
+  border: 1px solid var(--um-border);
+  background: var(--um-field-bg);
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: var(--um-kicker);
+}
+
+.ghost-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .status,
 .empty-state {
   margin: 1rem 0 0;
-  color: #8ea6c7;
+  color: var(--um-muted);
 }
 
 .pill {
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
   font-size: 0.78rem;
+  font-weight: 600;
   color: #04111f;
   background: linear-gradient(135deg, #86efac, #4ade80);
 }
@@ -105,6 +223,80 @@ h2 {
 .pill.blocked {
   color: #fff1f2;
   background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
+/* ---------- Pretraga (isti obrazac kao cases.component.scss's own .search-bar) ---------- */
+
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  display: inline-flex;
+  color: var(--um-muted);
+  pointer-events: none;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 0.7rem 2.4rem 0.7rem 2.5rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--um-border);
+  background: var(--um-field-bg);
+  color: var(--um-heading);
+  font: inherit;
+  font-size: 0.85rem;
+  transition: border-color 0.15s ease;
+}
+
+.search-bar input::placeholder {
+  color: var(--um-muted);
+  opacity: 0.8;
+}
+
+.search-bar input:focus {
+  outline: none;
+  border-color: var(--um-kicker);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.5rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--um-muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.search-clear:hover {
+  background: var(--um-field-bg);
+  color: var(--um-heading);
+}
+
+.link-button {
+  margin-left: 0.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--um-kicker);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .table-wrapper {
@@ -122,15 +314,24 @@ td {
   padding: 0.7rem 0.6rem;
   text-align: left;
   white-space: nowrap;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  color: #d5e0f6;
+  border-bottom: 1px solid var(--um-border-soft);
+  color: var(--um-text);
 }
 
 th {
-  color: #8ea6c7;
-  font-size: 0.72rem;
+  color: var(--um-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+tbody tr {
+  transition: background 0.14s ease;
+}
+
+tbody tr:hover {
+  background: var(--um-row-hover);
 }
 
 .actions {
@@ -138,22 +339,205 @@ th {
   gap: 0.5rem;
 }
 
+/* Per-action button - outlined "chip" rather than a solid fill, so a row of them next to
+   the status pill doesn't compete with it for attention; colour alone (see the tokens
+   above) tells Block from Reset from Unblock apart at a glance. */
+.action-button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.7rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.action-button.warning {
+  color: var(--um-warning-text);
+  background: var(--um-warning-bg);
+  border-color: var(--um-warning-border);
+}
+
+.action-button.success {
+  color: var(--um-success-text);
+  background: var(--um-success-bg);
+  border-color: var(--um-success-border);
+}
+
+.action-button.info {
+  color: var(--um-info-text);
+  background: var(--um-info-bg);
+  border-color: var(--um-info-border);
+}
+
+.action-button.danger {
+  color: var(--um-danger-text);
+  background: var(--um-danger-bg);
+  border-color: var(--um-danger-border);
+}
+
+.action-button:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ---------- Red korisnika (klik otvara detalje: preimenovanje i brisanje) ---------- */
+
+.col-toggle {
+  width: 1.6rem;
+  padding-right: 0;
+}
+
+.chevron {
+  display: inline-block;
+  color: var(--um-muted);
+  transition: transform 0.16s ease;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.user-row {
+  cursor: pointer;
+}
+
+.user-row.is-expanded {
+  background: var(--um-row-expanded);
+}
+
+.user-row.is-expanded td {
+  border-bottom-color: transparent;
+}
+
+.detail-row td {
+  padding-top: 0;
+  background: var(--um-row-expanded);
+  white-space: normal;
+}
+
+.detail-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 0.9rem 1rem 1rem;
+  margin-bottom: 0.4rem;
+  border-radius: 0.9rem;
+  background: var(--um-detail-bg);
+  border: 1px solid var(--um-border-soft);
+}
+
+.detail-block {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.detail-danger {
+  padding: 0.9rem 1rem 1rem;
+  margin: 0 -1rem -1rem;
+  border-top: 1px solid var(--um-border-soft);
+  border-radius: 0 0 0.9rem 0.9rem;
+  background: var(--um-danger-zone-bg);
+}
+
+.detail-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--um-muted);
+}
+
+.detail-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.detail-edit-row input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--um-border);
+  color: var(--um-heading);
+  background: var(--um-field-bg);
+  font: inherit;
+}
+
+.detail-edit-row input:focus {
+  outline: none;
+  border-color: var(--um-kicker);
+}
+
+.detail-confirm-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--um-text);
+}
+
+.detail-confirm-text strong {
+  color: var(--um-heading);
+}
+
+.detail-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--um-danger-text);
+}
+
+/* ---------- Paginacija ---------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--um-border-soft);
+  font-size: 0.8rem;
+}
+
+.page-range {
+  color: var(--um-muted);
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.page-nav-button {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+}
+
 .reset-link-box {
   margin-top: 0.85rem;
   padding: 0.75rem 0.9rem;
   border-radius: 0.85rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--um-field-bg);
+  border: 1px solid var(--um-border-soft);
   display: grid;
   gap: 0.3rem;
   font-size: 0.82rem;
 }
 
 .reset-link-box span {
-  color: #8ea6c7;
+  color: var(--um-muted);
 }
 
 .reset-link-box code {
-  color: #7bd6ff;
+  color: var(--um-kicker);
   word-break: break-all;
 }
 
@@ -161,5 +545,12 @@ th {
   .create-panel,
   .list-panel {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 30rem) {
+  .pagination {
+    justify-content: center;
+    text-align: center;
   }
 }

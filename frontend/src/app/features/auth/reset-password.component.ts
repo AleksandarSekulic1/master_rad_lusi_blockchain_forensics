@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 
 @Component({
   selector: 'app-reset-password',
@@ -24,12 +25,22 @@ export class ResetPasswordComponent implements OnInit {
     private readonly route: ActivatedRoute,
     private readonly auth: AuthService,
     private readonly router: Router,
+    protected readonly settings: SettingsService,
   ) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as every other page's own t(), including login.component.ts). */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   ngOnInit(): void {
     this.token = this.route.snapshot.queryParamMap.get('token') ?? '';
     if (!this.token) {
-      this.errorMessage = 'Link za resetovanje lozinke nije validan. Zatražite novi od administratora.';
+      this.errorMessage = this.t(
+        'Link za resetovanje lozinke nije validan. Zatražite novi od administratora.',
+        'The password reset link is invalid. Ask an administrator for a new one.',
+      );
     }
   }
 
@@ -39,12 +50,12 @@ export class ResetPasswordComponent implements OnInit {
     }
 
     if (this.newPassword.length < 6) {
-      this.errorMessage = 'Lozinka mora imati bar 6 karaktera.';
+      this.errorMessage = this.t('Lozinka mora imati bar 6 karaktera.', 'The password must be at least 6 characters.');
       return;
     }
 
     if (this.newPassword !== this.confirmPassword) {
-      this.errorMessage = 'Lozinke se ne poklapaju.';
+      this.errorMessage = this.t('Lozinke se ne poklapaju.', 'The passwords do not match.');
       return;
     }
 
@@ -54,7 +65,7 @@ export class ResetPasswordComponent implements OnInit {
     this.auth.resetPassword(this.token, this.newPassword).subscribe({
       next: () => {
         this.isSubmitting = false;
-        this.successMessage = 'Lozinka je uspešno promenjena. Možete se prijaviti.';
+        this.successMessage = this.t('Lozinka je uspešno promenjena. Možete se prijaviti.', 'The password was changed successfully. You can now log in.');
         setTimeout(() => this.router.navigate(['/login']), 2000);
       },
       error: (error: unknown) => {
@@ -71,6 +82,6 @@ export class ResetPasswordComponent implements OnInit {
         return errorObject.error.detail;
       }
     }
-    return 'Resetovanje lozinke nije uspelo.';
+    return this.t('Resetovanje lozinke nije uspelo.', 'Failed to reset the password.');
   }
 }

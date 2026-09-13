@@ -1,28 +1,28 @@
 <section class="auth-shell">
   <article class="auth-card">
     <p class="eyebrow">Lusi v1.0</p>
-    <h1>Prijava</h1>
-    <p class="subtitle">Pristup je ograničen na registrovane analitičare i administratore.</p>
+    <h1>{{ t('Prijava', 'Log in') }}</h1>
+    <p class="subtitle">{{ t('Pristup je ograničen na registrovane analitičare i administratore.', 'Access is limited to registered analysts and administrators.') }}</p>
 
     <form class="auth-form" (ngSubmit)="submit()">
       <label>
-        Korisničko ime
+        {{ t('Korisničko ime', 'Username') }}
         <input [(ngModel)]="username" name="username" type="text" autocomplete="username" placeholder="npr. analyst1" />
       </label>
       <label>
-        Lozinka
+        {{ t('Lozinka', 'Password') }}
         <input [(ngModel)]="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" />
       </label>
 
       <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
 
       <button type="submit" class="primary-button" [disabled]="isSubmitting">
-        {{ isSubmitting ? 'Prijavljivanje...' : 'Prijavi se' }}
+        {{ isSubmitting ? t('Prijavljivanje...', 'Logging in...') : t('Prijavi se', 'Log in') }}
       </button>
     </form>
 
     <p class="hint">
-      Zaboravili ste lozinku? Kontaktirajte administratora — on može da generiše link za resetovanje.
+      {{ t('Zaboravili ste lozinku? Kontaktirajte administratora — on može da generiše link za resetovanje.', 'Forgot your password? Contact an administrator — they can generate a reset link.') }}
     </p>
   </article>
 </section>

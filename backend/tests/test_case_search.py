@@ -16,15 +16,18 @@ def isolated_cases(tmp_path, monkeypatch):
 
 
 def test_no_search_returns_everything():
+    """Bez pretrage vraćaju se svi slučajevi"""
     assert len(case_management.list_cases()) == 3
 
 
 def test_search_is_case_insensitive_substring():
+    """Pretraga ne pravi razliku između velikih i malih slova"""
     hits = [case['name'] for case in case_management.list_cases(search='laundering')]
     assert hits == ['Sumnjiva LAUNDERING šema']
 
 
 def test_search_matches_multiple():
+    """Pretraga pronalazi sve slučajeve koji odgovaraju upitu"""
     assert {case['name'] for case in case_management.list_cases(search='a')} == {
         'Hakovanje berze Q3',
         'Sumnjiva LAUNDERING šema',
@@ -33,14 +36,17 @@ def test_search_matches_multiple():
 
 
 def test_blank_search_is_ignored():
+    """Prazna pretraga se ignoriše"""
     assert len(case_management.list_cases(search='   ')) == 3
 
 
 def test_search_with_no_match_returns_empty():
+    """Pretraga bez poklapanja vraća praznu listu"""
     assert case_management.list_cases(search='nepostojeci-slucaj') == []
 
 
 def test_open_cases_are_listed_before_closed():
+    """Otvoreni slučajevi se prikazuju pre zatvorenih"""
     by_name = {case['name']: case['id'] for case in case_management.list_cases()}
     case_management.set_case_status(by_name['Hakovanje berze Q3'], 'closed')
 

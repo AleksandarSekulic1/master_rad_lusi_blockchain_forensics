@@ -20,13 +20,25 @@ import pytest
 
 from app.evidence import audit_log
 from app.investigations import repository
+from app.services import user_management
 
 
 @pytest.fixture(autouse=True)
-def isolated_store(tmp_path, monkeypatch):
+def isolated_store(tmp_path, tmp_path_factory, monkeypatch):
     """Sav investigator-layer upis ide u tmp; pravi data/ se ne dira."""
     monkeypatch.setattr(repository, '_root', lambda: tmp_path / 'investigations')
     monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
+    # TestClient(app) below triggers app.main's lifespan (bootstrap_admin) AND the real
+    # /auth/login route this file's `_token` helper calls - both read/write the users
+    # store. Without this, every test here quietly touched the REAL data/users.json
+    # instead of an isolated one - see test_case_management_full_pass.py's own comment on
+    # the identical fixture for why that's a race the moment more than one process
+    # touches that same real file at once. Kept in its OWN temp dir (not under `tmp_path`)
+    # so it stays invisible to this file's own "nothing outside investigations/ was
+    # written" assertion below.
+    users_dir = tmp_path_factory.mktemp('account-store')
+    monkeypatch.setattr(user_management, '_users_path', lambda: users_dir / 'users.json')
+    user_management.create_user(username='admin', password='admin123', role='admin')
     return tmp_path
 
 
