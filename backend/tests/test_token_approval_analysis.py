@@ -19,6 +19,7 @@ import pytest
 from app.analytics.token_approval_analysis import (
     DEFAULT_UNLIMITED_THRESHOLD,
     analyze_token_approvals,
+    build_token_approval_history,
 )
 
 BASE_COLUMNS = [
@@ -374,3 +375,157 @@ class TestDataCompleteness:
         result = analyze_token_approvals(frame)
 
         assert 'heuristik' in result['disclaimer'].lower() or 'heuristič' in result['disclaimer'].lower()
+
+
+NOW = pd.Timestamp('2026-01-10T00:00:00Z')
+
+
+class TestPerApprovalHistoryStatus:
+    """APPROVE -> promena -> REVOCATION -> status (ACTIVE/REVOKED/USED/UNKNOWN po odobrenju)"""
+
+    def test_single_open_approval_is_active_and_duration_counts_to_now(self):
+        """Jedino, još otvoreno odobrenje je ACTIVE, trajanje se računa do 'now'"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        approval = result['groups'][0]['approvals'][0]
+        assert approval['status'] == 'ACTIVE'
+        assert approval['active_duration_ongoing'] is True
+        assert approval['active_duration_seconds'] == pytest.approx(9 * 24 * 3600.0)
+        assert approval['used_before_end'] is False
+
+    def test_approval_with_confirmed_transfer_is_used(self):
+        """Odobrenje sa potvrđenim transferFrom je USED"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', '0xSpender', '0xSpender', 40.0, '2026-01-01T01:00:00Z', token_address='0xTokenA'),
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        approval = result['groups'][0]['approvals'][0]
+        assert approval['status'] == 'USED'
+        assert approval['used_before_end'] is True
+        assert approval['active_duration_ongoing'] is True  # still the current grant, just already used once
+
+    def test_explicit_approve_zero_row_is_revoked(self):
+        """approve(spender, 0) red je uvek REVOKED"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 0.0, '2026-01-01T00:00:00Z')])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        approval = result['groups'][0]['approvals'][0]
+        assert approval['status'] == 'REVOKED'
+        assert approval['active_duration_seconds'] is None
+
+    def test_earlier_grant_revoked_by_later_explicit_zero_has_precise_duration_and_revocation_time(self):
+        """Odobrenje koje neposredno prethodi approve(0) dobija tačno trajanje i vreme do opoziva"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z'),
+            approve_row('0xOwner', '0xSpender', 0.0, '2026-01-01T05:00:00Z'),
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        first, second = result['groups'][0]['approvals']
+        assert first['status'] == 'REVOKED'
+        assert first['active_duration_seconds'] == pytest.approx(5 * 3600.0)
+        assert first['active_duration_ongoing'] is False
+        assert first['seconds_to_explicit_revocation'] == pytest.approx(5 * 3600.0)
+        assert second['status'] == 'REVOKED'
+        assert second['seconds_to_explicit_revocation'] is None  # nothing revokes the revocation itself
+
+    def test_earlier_grant_superseded_by_change_is_revoked_but_has_no_explicit_revocation_time(self):
+        """Odobrenje zamenjeno NOVIM iznosom (ne approve(0)) je i dalje REVOKED status, ali bez tačnog vremena opoziva"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z'),
+            approve_row('0xOwner', '0xSpender', 500.0, '2026-01-01T02:00:00Z'),
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        first, second = result['groups'][0]['approvals']
+        assert first['status'] == 'REVOKED'
+        assert first['seconds_to_explicit_revocation'] is None
+        assert first['active_duration_seconds'] == pytest.approx(2 * 3600.0)
+        assert second['status'] == 'ACTIVE'
+
+    def test_unattributed_transfer_for_same_owner_yields_unknown_not_active(self):
+        """Neatribuiran transferFrom istog owner-a (bez spender_address) daje UNKNOWN, ne ACTIVE"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z'),
+            {'sender_address': '0xOwner', 'recipient_address': '0xThirdParty', 'amount': 40.0, 'timestamp': '2026-01-01T01:00:00Z', 'event_type': 'transferFrom'},
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        approval = result['groups'][0]['approvals'][0]
+        assert approval['status'] == 'UNKNOWN'
+        assert approval['used_before_end'] is None
+
+    def test_unattributed_transfer_before_approval_does_not_taint_status(self):
+        """Neatribuiran transfer PRE odobrenja ne utiče na status (van vremenskog prozora odobrenja)"""
+        frame = frame_from_rows([
+            {'sender_address': '0xOwner', 'recipient_address': '0xThirdParty', 'amount': 40.0, 'timestamp': '2025-12-31T00:00:00Z', 'event_type': 'transferFrom'},
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z'),
+        ])
+
+        result = analyze_token_approvals(frame, now=NOW)
+
+        approval = result['groups'][0]['approvals'][0]
+        assert approval['status'] == 'ACTIVE'
+
+
+class TestApprovalHistory:
+    """build_token_approval_history - rekonstrukcija istorije za jednu adresu"""
+
+    def test_address_is_required(self):
+        """Adresa je obavezna za istoriju - prazna adresa baca ValueError"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z')])
+
+        with pytest.raises(ValueError):
+            build_token_approval_history(frame, address='')
+
+    def test_history_is_sorted_chronologically_across_groups(self):
+        """Istorija je hronološki sortirana (najstarije prvo) i preko više grupa (spendera/tokena)"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpenderB', 200.0, '2026-01-02T00:00:00Z'),
+            approve_row('0xOwner', '0xSpenderA', 100.0, '2026-01-01T00:00:00Z'),
+        ])
+
+        result = build_token_approval_history(frame, address='0xOwner', now=NOW)
+
+        assert result['entry_count'] == 2
+        timestamps = [entry['approval_timestamp'] for entry in result['history']]
+        assert timestamps == sorted(timestamps)
+        assert result['history'][0]['spender'] == '0xSpenderA'
+
+    def test_history_entry_marks_role_as_owner_or_spender(self):
+        """Svaki unos u istoriji označava ulogu tražene adrese (owner ili spender)"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z')])
+
+        as_owner = build_token_approval_history(frame, address='0xOwner', now=NOW)
+        as_spender = build_token_approval_history(frame, address='0xSpender', now=NOW)
+
+        assert as_owner['history'][0]['role'] == 'owner'
+        assert as_spender['history'][0]['role'] == 'spender'
+
+    def test_history_entries_carry_full_field_set(self):
+        """Svaki unos u istoriji nosi token/spender/allowance/vreme/tx hash/block/status"""
+        frame = frame_from_rows([
+            approve_row(
+                '0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z',
+                token_address='0xTokenA', metadata='0xapprovetx', block_number=18500000,
+            ),
+        ])
+
+        result = build_token_approval_history(frame, address='0xOwner', now=NOW)
+
+        entry = result['history'][0]
+        assert entry['token_address'] == '0xTokenA'
+        assert entry['spender'] == '0xSpender'
+        assert entry['allowance_amount'] == 100.0
+        assert entry['transaction_hash'] == '0xapprovetx'
+        assert entry['block_number'] == 18500000
+        assert entry['status'] == 'ACTIVE'

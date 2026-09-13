@@ -19,6 +19,7 @@ from app.analytics.token_approval_analysis import (
     MIN_RAPID_USE_SECONDS,
     MIN_UNLIMITED_THRESHOLD,
     analyze_token_approvals,
+    build_token_approval_history,
 )
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
@@ -510,6 +511,46 @@ def get_case_token_approval_analysis(
         result = analyze_token_approvals(
             combined_frame,
             target_address=normalized_address,
+            unlimited_threshold=unlimited_threshold,
+            rapid_use_seconds=rapid_use_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+@router.get('/{case_id}/token-approval-history')
+def get_case_token_approval_history(
+    case_id: str,
+    address: str = Query(min_length=1),
+    evidence: str | None = None,
+    unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
+    rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+) -> dict[str, object]:
+    """Token Approval history for ONE address: reconstructs APPROVE -> allowance change ->
+    eventual REVOCATION -> current status per grant (see
+    analytics/token_approval_analysis.build_token_approval_history and
+    TOKEN-APPROVAL-IMPLEMENTATION.md #13). Unlike get_case_token_approval_analysis above,
+    `address` is REQUIRED - a "history" only makes sense for a specific address.
+
+    Same read-only treatment as get_case_token_approval_analysis: no custody dialog, no
+    audit log entry - backend collection/extraction phase only (see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #12.6/#13 for what is deliberately out of scope).
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip()
+
+    try:
+        result = build_token_approval_history(
+            combined_frame,
+            address=normalized_address,
             unlimited_threshold=unlimited_threshold,
             rapid_use_seconds=rapid_use_seconds,
         )

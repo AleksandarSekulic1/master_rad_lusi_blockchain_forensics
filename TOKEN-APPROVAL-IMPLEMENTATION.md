@@ -32,6 +32,7 @@ zahtevu, ništa se ne izmišlja.
 | [10. Gde bi šta bilo u kodu](#10-gde-bi-šta-bilo-u-kodu) | putanje (predlog) |
 | [11. Otvorena pitanja za usaglašavanje](#11-otvorena-pitanja-za-usaglašavanje) | odluke pre pisanja koda |
 | [12. Implementacija — backend, Faza 1](#12-implementacija--backend-faza-1) | **✅ urađeno** — novi/izmenjeni fajlovi, API, metode, ograničenja, testovi |
+| [13. Implementacija — Istorija odobrenja po adresi](#13-implementacija--istorija-odobrenja-po-adresi) | **✅ urađeno** — APPROVE → promena → REVOCATION → status, po odobrenju |
 
 ---
 
@@ -813,3 +814,205 @@ i ove rute.
 - Frontend stranica (§9.4) i graph overlay (§9.2, opciono).
 - Demo seed skripta (`seed_demo_token_approval_evidence.py`) — nije tražena u ovom koraku;
   ručni test u §12.5.2 je odigrao tu ulogu za potrebe verifikacije.
+
+---
+
+## 13. Implementacija — Istorija odobrenja po adresi
+
+**Zahtev:** rekonstruisati lanac `APPROVE → promena allowance-a → eventualni REVOCATION →
+trenutni status` za analiziranu adresu, sa statusom **po pojedinačnom odobrenju**
+(`ACTIVE`/`REVOKED`/`USED`/`UNKNOWN`), i (gde je moguće) trajanjem aktivnosti, vremenom do
+opoziva, i da li je allowance korišćen pre opoziva.
+
+**Obim:** i dalje backend-only (isti Faza-1 okvir kao §12) — nova, samostalna funkcija +
+jedna nova pasivna (read-only) ruta, izgrađena **na vrhu** postojeće `analyze_token_approvals`
+logike (§12), bez ijedne izmene Taint/Graph/Pathfinding/Behavioral/DEX Swap koda.
+
+### 13.1 Novi/izmenjeni fajlovi
+
+| Fajl | Šta je dodato |
+|---|---|
+| `backend/app/analytics/token_approval_analysis.py` (izmenjen — dodato, ništa obrisano) | Nova funkcija `build_token_approval_history()`; `_build_group_result()` prošireno da svaki pojedinačni `approvals[]` unos nosi i istorijska polja (§13.2); nove status konstante `STATUS_ACTIVE`/`STATUS_REVOKED`/`STATUS_USED`/`STATUS_UNKNOWN`. |
+| `backend/app/api/routes/cases.py` (izmenjen — dodato, ništa obrisano) | Nova ruta `get_case_token_approval_history` (§13.4), dodat import `build_token_approval_history`. |
+| `backend/tests/test_token_approval_analysis.py` (izmenjen — dodato) | 11 novih testova: `TestPerApprovalHistoryStatus` (7) + `TestApprovalHistory` (4) — ukupno sad **36** testova u fajlu. |
+
+Ništa iz `graph_building.py`/`case_graph.py`/`path_finding.py`/`behavioral_analysis.py`/
+`dex_swap_analysis.py`/`plugins/*.py`/`ingestion.py` nije dirano — nula izmena, isto kao §12.
+
+### 13.2 Status po pojedinačnom odobrenju — tačna definicija (bitna odluka, obrazložena)
+
+Svaki `approve()`/`permit()` red u grupi (već postojeće grupisanje iz §12 —
+`(owner, spender, token)`, hronološki sortirano) sada dobija SVOJ **`status`**, odvojeno od
+postojećeg `sequence_status` (koji ostaje nepromenjen — `superseded`/`revoked`/`active`,
+koristi ga §12's grupni prikaz). Ovo NIJE bilo eksplicitno u prvobitnom §8.3 predlogu —
+dizajnirano i obrazloženo sada, jer je zahtevan zatvoren skup od tačno četiri vrednosti:
+
+```
+event.amount == 0                              → REVOKED   (ovaj red JESTE čin opoziva)
+transferFrom pouzdano povezan sa ovim odobrenjem → USED      (bez obzira da li je kasnije i superseded/revoked)
+odobrenje NIJE poslednje u grupi (postoji kasniji approve/permit) → REVOKED
+   (širа definicija — pokriva i eksplicitan approve(0) i "promenu" na drugi iznos;
+    PRECIZNO vreme do opoziva, seconds_to_explicit_revocation, ostaje null osim kad je
+    IMEDIATNO sledeći događaj baš approve(0) — vidi §13.2.1 zašto su namerno razdvojena
+    dva različita pitanja pod jednim "REVOKED" labelom)
+odobrenje JE poslednje, NEMA potvrđenog korišćenja, ALI postoji neatribuiran transferFrom
+   istog vlasnika u njegovom vremenskom prozoru (§13.3)          → UNKNOWN
+inače (poslednje, nekorišćeno, ništa sumnjivo neatribuirano)     → ACTIVE
+```
+
+**Redosled provere je gore odozgo naniže** (prvi uslov koji je tačan pobeđuje) — npr.
+odobrenje koje je i korišćeno I kasnije zamenjeno novim iznosom se prijavljuje kao `USED`,
+ne `REVOKED`, jer je korišćenje forenzički važnija činjenica.
+
+#### 13.2.1 Zašto `status` i `seconds_to_explicit_revocation` namerno NE dele jedan uslov
+
+Zahtevana su tačno četiri statusa — nema petog "CHANGED"/"SUPERSEDED" za slučaj kad je
+odobrenje zamenjeno NOVIM (nenultim) iznosom, ne eksplicitnim `approve(spender, 0)`. Radije
+nego da se ta dva različita događaja veštački razdvoje u status labelu (čime bi zahtevani
+zatvoreni skup vrednosti bio narušen), odlučeno je:
+
+- **`status: REVOKED`** — široko, "ovo odobrenje više nije na snazi", bilo da je razlog
+  eksplicitan opoziv ILI promena iznosa. Odgovara koraku "promena allowance-a" I koraku
+  "eventualni REVOCATION" iz zahtevanog dijagrama — oba завrešavaju život OVOG konkretnog
+  odobrenja.
+- **`seconds_to_explicit_revocation`** — usko, precizno, `None` osim kad je sledeći događaj
+  BAŠ `approve(spender, 0)`. Ovo je polje koje odgovara na tačno postavljeno pitanje "koliko
+  dugo je prošlo do revocation-a" — namerno strože od statusa, da bi ostalo tačno kad neko
+  kasnije pita "koliko dugo JE OVO odobrenje trajalo do EKSPLICITNOG opoziva" nasuprot "koliko
+  dugo do bilo koje sledeće promene".
+
+Test koji ovo direktno pokriva:
+`test_earlier_grant_superseded_by_change_is_revoked_but_has_no_explicit_revocation_time`.
+
+### 13.3 `UNKNOWN` — konkretan, testiran slučaj (ne mrtav kod)
+
+`UNKNOWN` se javlja **samo** za poslednje (trenutno "otvoreno") odobrenje u grupi, i samo
+kad:
+1. Nema nijednog **potvrđenog** (atribuiranog) `transferFrom`-a za to odobrenje, **i**
+2. Postoji bar jedan **neatribuiran** `transferFrom` (iz §12.4 — `no_spender_column` ili
+   `ambiguous_token_multiple_approvals`) **istog vlasnika** (owner), čiji `timestamp` pada
+   u vremenski prozor ovog odobrenja (od njegovog `timestamp`-a do sledećeg događaja ili do
+   "sada").
+
+Drugim rečima: `ACTIVE` znači "nema TRAGA korišćenja, I nema ničeg neobjašnjenog u
+evidenciji što bi moglo biti to korišćenje"; `UNKNOWN` znači "nema POTVRĐENOG korišćenja,
+ALI postoji transferFrom u evidenciji koji bismo MOGLI propustiti zbog nedostatka
+`spender_address` podatka — pošteno je reći 'ne znamo', ne 'nije korišćeno'". Ako
+`spender_address` uopšte nije deklarisan u evidenciji (najčešći realan slučaj — §12.6),
+SVAKO trenutno otvoreno odobrenje tog vlasnika će dobiti `UNKNOWN` umesto lažno-sigurnog
+`ACTIVE`, čim postoji I JEDAN transferFrom red za tog vlasnika u odgovarajućem vremenskom
+prozoru — testirano (`test_unattributed_transfer_for_same_owner_yields_unknown_not_active`),
+uključujući i negativan slučaj kad je neatribuiran transfer PRE odobrenja pa ne sme da utiče
+(`test_unattributed_transfer_before_approval_does_not_taint_status`).
+
+### 13.4 Trajanje aktivnosti i vreme do opoziva
+
+Za svako odobrenje (`approvals[]` unos, i u §12's grupnom prikazu i u §13's `history`):
+
+| Polje | Značenje | Kad je `null` |
+|---|---|---|
+| `active_duration_seconds` | Koliko je OVO odobrenje bilo (ili je i dalje) na snazi | Samo za sam red opoziva (`is_zero=true`) — opoziv nema sopstveni "životni vek"; trajanje odobrenja KOJE JE ON opozvao je na TOM (prethodnom) redu. |
+| `active_duration_ongoing` | `true` ako se trajanje i dalje računa "do sada" (odobrenje je i dalje poslednje u grupi i nije opoziv) | — (uvek `bool`) |
+| `seconds_to_explicit_revocation` | Precizno vreme do EKSPLICITNOG `approve(spender, 0)` (§13.2.1) | Kad odobrenje nikad nije eksplicitno opozvano (samo promenjeno, ili je i dalje aktivno), ili je red sam opoziv. |
+| `used_before_end` | Da li je OVO odobrenje korišćeno (transferFrom) pre nego što je prestalo da važi | `true` potvrđeno korišćeno; `false` potvrđeno nekorišćeno; `null` kad je nekorišćenje neizvesno (§13.3) ili red sam opoziv (nema šta da se "koristi"). |
+
+`active_duration_seconds` za odobrenje koje je JOŠ na snazi (`active_duration_ongoing:
+true`) računa se u odnosu na `now` — realno trenutno vreme servera, sa istom **closed-world
+pretpostavkom** koju `taint_analysis.py` već eksplicitno koristi za sopstveni "zatvoreni
+svet" model ("nema pristupa prilivima van uvezenih transakcija"): ovde to znači
+pretpostavku da NIJE došlo do opoziva koji evidencija ne sadrži. `now` je parametrizovan
+(`analyze_token_approvals(..., now=...)`/`build_token_approval_history(..., now=...)`,
+podrazumevano `pd.Timestamp.now(tz='UTC')`) — isključivo radi determinističkog testiranja
+(svi testovi u §13 prosleđuju fiksan `NOW`), ruta ga NE prosleđuje spolja (uvek stvarno
+"sada").
+
+### 13.5 `build_token_approval_history()` — nova funkcija
+
+`backend/app/analytics/token_approval_analysis.py`:
+
+```python
+def build_token_approval_history(
+    transactions: pd.DataFrame,
+    address: str,                         # OBAVEZNO (za razliku od analyze_token_approvals)
+    unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
+    rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    now: pd.Timestamp | None = None,
+) -> dict[str, Any]
+```
+
+Namerno izgrađena **na vrhu** `analyze_token_approvals()` (poziva je internо sa
+`target_address=address`), ne kao paralelna, nezavisna implementacija — isto grupisanje,
+isto uparivanje, isti rizik-indikatori, garantovano bez rizika da se dve funkcije
+"razminu" u tumačenju istih podataka. Doprinos ove funkcije je isključivo **preoblikovanje**:
+spljoštava `groups[].approvals[]` u JEDAN hronološki (najstarije prvo) `history[]` niz preko
+SVIH grupa te adrese (bez obzira da li se adresa u toj grupi javlja kao `owner` ili
+`spender` — svaki unos nosi `role` polje koje to kaže), sa poljima tačno kako je zahtevano:
+`token_address`, `spender`, `allowance_amount`, `approval_timestamp`, `transaction_hash`,
+`block_number`, `status`, plus §13.4 trajanja — i `owner`/`event_type`/`unlimited_basis`/
+`permit_deadline`/`permit_nonce`/`token_identified` za potpunost.
+
+Prazna/nepostojeća adresa → `ValueError` (ista konvencija, ruta → 404/422 zavisno od uzroka
+— vidi §13.6).
+
+### 13.6 API endpoint
+
+```
+GET /api/v1/cases/{case_id}/token-approval-history?address=<OBAVEZNO>&evidence=<opciono>&unlimited_threshold=<opciono>&rapid_use_seconds=<opciono>
+```
+
+- `address` je **obavezan** query parametar (`Query(min_length=1)`, bez podrazumevane
+  vrednosti) — izostavljen ⇒ FastAPI vraća `422` (validacija), pre nego što ruta uopšte
+  izvrši ijednu liniju; adresa koja se nigde ne pojavljuje u evidenciji ⇒ `404` (isti
+  `ValueError` mehanizam kao §12.5).
+- Read-only, bez custody upisa i bez audit log unosa — isti namerni obim kao §12.6.
+- Odgovor = `groups` (već filtrirano na tu adresu, identičan oblik kao §12.5, sada sa
+  dodatnim §13.2/§13.4 poljima na svakom `approvals[]` unosu) **plus** flat `history[]`
+  (§13.5) **plus** `entry_count`.
+
+### 13.7 Testirano
+
+**Jedinični testovi** (`backend/tests/test_token_approval_analysis.py`, sad 36 ukupno,
+11 novih):
+
+- `TestPerApprovalHistoryStatus` (7): jedino otvoreno odobrenje ⇒ `ACTIVE` + trajanje do
+  `now`; potvrđeno korišćeno ⇒ `USED`; `approve(spender,0)` red ⇒ `REVOKED` bez trajanja;
+  odobrenje neposredno pre eksplicitnog opoziva ⇒ tačno trajanje + tačno
+  `seconds_to_explicit_revocation`; odobrenje zamenjeno NOVIM iznosom (ne eksplicitan
+  opoziv) ⇒ i dalje `REVOKED` status, ali `seconds_to_explicit_revocation: null` (§13.2.1);
+  neatribuiran transfer istog vlasnika u prozoru odobrenja ⇒ `UNKNOWN`, ne `ACTIVE`;
+  neatribuiran transfer PRE odobrenja ⇒ ne utiče (i dalje `ACTIVE`).
+- `TestApprovalHistory` (4): prazna adresa ⇒ `ValueError`; istorija sortirana hronološki
+  preko više grupa (različiti spenderi); `role` tačno označava owner/spender; svaki unos
+  nosi pun skup traženih polja.
+
+```bash
+python -m pytest backend/tests/test_token_approval_analysis.py -v   # 36 passed
+python -m pytest backend/ -q                                        # 338 passed (302 + 36), 0 failed
+```
+
+**End-to-end kroz pravu rutu** (`TestClient`): CSV sa jednim odobrenjem, jednim
+`transferFrom`, i jednim `approve(spender, 0)` opozivom → `GET .../token-approval-history
+?address=0xOwner` vraća tačno: prvo odobrenje `status: "USED"`,
+`active_duration_seconds: 86400.0` (razmak do opoziva), `seconds_to_explicit_revocation:
+86400.0`, `used_before_end: true`; drugi (opoziv) red `status: "REVOKED"`,
+`active_duration_seconds: null`. Bez `address` parametra → `422`. Sa nepostojećom adresom →
+`404`. Grupni `current_status` (§12) ostaje `"revoked"`, u skladu sa §13's per-event
+statusima — dva prikaza (grupni sažetak iz §12 i istorijski niz iz §13) se ne razilaze, jer
+dele isti izvor podataka (§13.5).
+
+### 13.8 Ograničenja (dodatna, specifična za istoriju)
+
+- `UNKNOWN` je namerno **konzervativan** signal — javlja se i kada je stvarna verovatnoća
+  da je neatribuiran transfer baš OVO odobrenje mala (npr. mnogo drugih grupa istog
+  vlasnika bi podjednako moglo biti "osumnjičeno"). Bolje prijaviti neizvesnost nego lažnu
+  sigurnost (`ACTIVE`), ali analitičar treba da zna da `UNKNOWN` NE znači "verovatno
+  korišćeno", samo "ne može se isključiti".
+- `active_duration_seconds` za `active_duration_ongoing: true` redove je vezano za realno
+  vreme servera u trenutku poziva (closed-world pretpostavka, §13.4) — dva poziva iste rute
+  minut razmaka će vratiti (blago) različit broj za isto, i dalje otvoreno odobrenje; ovo
+  je očekivano ponašanje, ne nekonzistentnost.
+- I dalje važi sve iz §12.6 (nema on-chain izvora, `amount` je float64, nema registra
+  decimala, itd.) — §13 ne uvodi nijedan nov izvor podataka, samo novi način tumačenja
+  već izvučenih polja.
+- Van obima (nepromenjeno iz §12.6): custody/PDF izveštaj/audit log/frontend/graph overlay
+  za ovu istoriju takođe nisu urađeni u ovom koraku.

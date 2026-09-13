@@ -357,23 +357,133 @@ def _seconds_between(later: pd.Timestamp, earlier: pd.Timestamp) -> float:
     return float((later - earlier).total_seconds())
 
 
+# Per-approval history status - the APPROVE -> allowance change -> eventual REVOCATION ->
+# current status chain from TOKEN-APPROVAL-IMPLEMENTATION.md #13, one label per approval
+# ROW (not just one per group): each approve()/permit() call gets its own verdict about
+# what became of THAT SPECIFIC grant, not only the group's latest state.
+STATUS_ACTIVE = 'ACTIVE'
+STATUS_REVOKED = 'REVOKED'
+STATUS_USED = 'USED'
+STATUS_UNKNOWN = 'UNKNOWN'
+
+
 def _build_group_result(
     key: tuple[str, str, str | None],
     approvals: list[dict[str, Any]],
     linked_transfers: list[dict[str, Any]],
+    plausible_unconfirmed_transfers: list[dict[str, Any]],
     unlimited_threshold: float,
     rapid_use_seconds: int,
     spender_owner_counts: dict[str, int],
+    now: pd.Timestamp,
 ) -> dict[str, Any]:
     approvals_sorted = sorted(approvals, key=lambda event: event['timestamp'])
+
+    # For each linked transfer, find the approval that was actually "in force" at that
+    # moment (the latest approval at/before the transfer's own timestamp) - not just the
+    # group's first approval - so time_to_first_use reflects the grant that was really
+    # spent, even when several approve() calls happened in between. Computed BEFORE the
+    # per-approval loop below so each approval record can look up whether IT SPECIFICALLY
+    # was the one used (see usage_by_approval_index).
+    linked_records: list[dict[str, Any]] = []
+    usage_by_approval_index: dict[int, list[dict[str, Any]]] = {}
+    for transfer in sorted(linked_transfers, key=lambda event: event['timestamp']):
+        preceding_index = next(
+            (index for index in range(len(approvals_sorted) - 1, -1, -1) if approvals_sorted[index]['timestamp'] <= transfer['timestamp']),
+            None,
+        )
+        preceding_approval = approvals_sorted[preceding_index] if preceding_index is not None else None
+        seconds_since_approval = (
+            _seconds_between(transfer['timestamp'], preceding_approval['timestamp']) if preceding_approval else None
+        )
+        # Which grant was actually "in force" for THIS transfer, not just whether the
+        # group ever had an unlimited approval anywhere in its history - a group can mix
+        # a small early approval with a later unlimited one, and only a transfer that
+        # followed the UNLIMITED grant should count toward the rapid-drain indicator.
+        preceding_unlimited_basis = _unlimited_basis(preceding_approval, unlimited_threshold) if preceding_approval else None
+        record = {
+            'amount': transfer['amount'],
+            'timestamp': transfer['timestamp'].isoformat(),
+            'transaction_hash': transfer['transaction_hash'],
+            'block_number': transfer['block_number'],
+            'recipient': transfer['recipient'],
+            'preceding_approval_timestamp': preceding_approval['timestamp'].isoformat() if preceding_approval else None,
+            'preceding_approval_unlimited_basis': preceding_unlimited_basis,
+            'seconds_since_approval': seconds_since_approval,
+            'before_any_approval': preceding_approval is None,
+        }
+        linked_records.append(record)
+        if preceding_index is not None:
+            usage_by_approval_index.setdefault(preceding_index, []).append(record)
 
     approval_records: list[dict[str, Any]] = []
     for index, event in enumerate(approvals_sorted):
         is_last = index == len(approvals_sorted) - 1
+        next_event = approvals_sorted[index + 1] if not is_last else None
+
         if not is_last:
             sequence_status = 'superseded'
         else:
             sequence_status = 'revoked' if event['is_zero'] else 'active'
+
+        # This event's own "in force" window: from its own timestamp up to whatever
+        # superseded it (next_event), or up to `now` if it is still the group's current
+        # grant - used both for the ACTIVE/USED/UNKNOWN decision below and for the
+        # duration fields (see TOKEN-APPROVAL-IMPLEMENTATION.md #13.2).
+        window_end = next_event['timestamp'] if next_event is not None else now
+        confirmed_usage = usage_by_approval_index.get(index, [])
+        plausible_unconfirmed_in_window = [
+            entry for entry in plausible_unconfirmed_transfers
+            if event['timestamp'] <= entry['timestamp'] < window_end
+            and (entry['spender_key'] is None or entry['spender_key'] == key[1])
+        ]
+
+        if event['is_zero']:
+            status = STATUS_REVOKED
+        elif confirmed_usage:
+            status = STATUS_USED
+        elif not is_last:
+            # Superseded by a later approve()/permit() (zero OR a changed nonzero amount) -
+            # this specific grant is no longer the one in force either way. Whether the
+            # LATER event was an explicit revocation is a separate, more precise question
+            # answered by `seconds_to_explicit_revocation` below, not by this status label.
+            status = STATUS_REVOKED
+        elif plausible_unconfirmed_in_window:
+            # Cannot confirm actual use, but there IS at least one transferFrom in this
+            # window whose spender was never declared (or was ambiguous between several of
+            # this owner's approvals) - honestly reported as unknown rather than assumed
+            # unused. See TOKEN-APPROVAL-IMPLEMENTATION.md #13.3.
+            status = STATUS_UNKNOWN
+        else:
+            status = STATUS_ACTIVE
+
+        if next_event is not None:
+            active_duration_seconds = _seconds_between(next_event['timestamp'], event['timestamp'])
+            active_duration_ongoing = False
+        elif event['is_zero']:
+            # A revocation row itself has no "grant lifetime" of its own to report - the
+            # duration of the grant IT ended is already on the PRECEDING approval record.
+            active_duration_seconds = None
+            active_duration_ongoing = False
+        else:
+            active_duration_seconds = max(0.0, _seconds_between(now, event['timestamp']))
+            active_duration_ongoing = True
+
+        # Only set when the IMMEDIATE next event is an explicit approve(spender, 0) - a
+        # precise metric, deliberately narrower than the broader REVOKED status label above
+        # (which also covers "superseded by a changed nonzero amount").
+        seconds_to_explicit_revocation = (
+            _seconds_between(next_event['timestamp'], event['timestamp'])
+            if next_event is not None and next_event['is_zero'] and not event['is_zero']
+            else None
+        )
+
+        if confirmed_usage:
+            used_before_end = True
+        elif plausible_unconfirmed_in_window:
+            used_before_end = None
+        else:
+            used_before_end = False if not event['is_zero'] else None
 
         approval_records.append({
             'event_type': event['event_type'],
@@ -382,6 +492,11 @@ def _build_group_result(
             'unlimited_basis': _unlimited_basis(event, unlimited_threshold),
             'is_unlimited_declared': event['is_unlimited_declared'],
             'sequence_status': sequence_status,
+            'status': status,
+            'active_duration_seconds': active_duration_seconds,
+            'active_duration_ongoing': active_duration_ongoing,
+            'seconds_to_explicit_revocation': seconds_to_explicit_revocation,
+            'used_before_end': used_before_end,
             'timestamp': event['timestamp'].isoformat(),
             'transaction_hash': event['transaction_hash'],
             'block_number': event['block_number'],
@@ -393,34 +508,6 @@ def _build_group_result(
     current_status = 'revoked' if latest_event['is_zero'] else 'active'
     current_unlimited_basis = _unlimited_basis(latest_event, unlimited_threshold)
     ever_unlimited = any(record['unlimited_basis'] is not None for record in approval_records)
-
-    # For each linked transfer, find the approval that was actually "in force" at that
-    # moment (the latest approval at/before the transfer's own timestamp) - not just the
-    # group's first approval - so time_to_first_use reflects the grant that was really
-    # spent, even when several approve() calls happened in between.
-    linked_records: list[dict[str, Any]] = []
-    for transfer in sorted(linked_transfers, key=lambda event: event['timestamp']):
-        preceding = [event for event in approvals_sorted if event['timestamp'] <= transfer['timestamp']]
-        preceding_approval = preceding[-1] if preceding else None
-        seconds_since_approval = (
-            _seconds_between(transfer['timestamp'], preceding_approval['timestamp']) if preceding_approval else None
-        )
-        # Which grant was actually "in force" for THIS transfer, not just whether the
-        # group ever had an unlimited approval anywhere in its history - a group can mix
-        # a small early approval with a later unlimited one, and only a transfer that
-        # followed the UNLIMITED grant should count toward the rapid-drain indicator.
-        preceding_unlimited_basis = _unlimited_basis(preceding_approval, unlimited_threshold) if preceding_approval else None
-        linked_records.append({
-            'amount': transfer['amount'],
-            'timestamp': transfer['timestamp'].isoformat(),
-            'transaction_hash': transfer['transaction_hash'],
-            'block_number': transfer['block_number'],
-            'recipient': transfer['recipient'],
-            'preceding_approval_timestamp': preceding_approval['timestamp'].isoformat() if preceding_approval else None,
-            'preceding_approval_unlimited_basis': preceding_unlimited_basis,
-            'seconds_since_approval': seconds_since_approval,
-            'before_any_approval': preceding_approval is None,
-        })
 
     transfer_from_count = len(linked_records)
     total_transferred_amount = sum(record['amount'] for record in linked_records)
@@ -524,6 +611,7 @@ def analyze_token_approvals(
     target_address: str | None = None,
     unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
     rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
     """Token Approval / Ice Phishing Analysis: extracts and classifies ERC-20
     approve()/EIP-2612 permit() grants and their transferFrom() usage from `transactions`
@@ -536,6 +624,14 @@ def analyze_token_approvals(
     ValueError (the route layer turns this into a 404) rather than silently returning an
     empty result for a typo'd address.
 
+    `now` (default: the real current UTC time) is ONLY used to measure how long a still-open
+    approval has been active (see approvals[].active_duration_seconds /
+    build_token_approval_history) - accepting it as a parameter (instead of always calling
+    pd.Timestamp.now internally) makes that duration deterministic and testable, the same
+    reason node_taint_series-style "as of now" figures elsewhere are usually avoided in this
+    project's core algorithms; here it is unavoidable since the question itself ("how long
+    has this been active") is inherently relative to the present moment.
+
     See TOKEN-APPROVAL-IMPLEMENTATION.md for the full field-by-field justification of what
     is read directly vs. derived vs. explicitly reported as unavailable.
     """
@@ -545,6 +641,7 @@ def analyze_token_approvals(
 
     unlimited_threshold = max(MIN_UNLIMITED_THRESHOLD, min(MAX_UNLIMITED_THRESHOLD, float(unlimited_threshold)))
     rapid_use_seconds = max(MIN_RAPID_USE_SECONDS, min(MAX_RAPID_USE_SECONDS, int(rapid_use_seconds)))
+    now = now if now is not None else pd.Timestamp.now(tz='UTC')
 
     frame = _prepare_frame(transactions)
 
@@ -620,32 +717,48 @@ def analyze_token_approvals(
         approval_groups_by_owner_spender.setdefault((key[0], key[1]), []).append(key)
 
     linked_transfers_by_group: dict[tuple[str, str, str | None], list[dict[str, Any]]] = {}
-    unattributed_transfers: list[dict[str, Any]] = []
+    # Kept in RAW form (owner_key/spender_key/pd.Timestamp intact, not yet serialized) -
+    # fed into _build_group_result so a group can tell "there IS a transferFrom that might
+    # have used my allowance, but we structurally cannot confirm it" (STATUS_UNKNOWN) apart
+    # from "there is genuinely no evidence of use at all" (STATUS_ACTIVE). See
+    # TOKEN-APPROVAL-IMPLEMENTATION.md #13.3.
+    unattributed_transfers_raw: list[dict[str, Any]] = []
     for transfer in transfer_events:
         matched_key, match_basis, reason = _match_transfer_to_group(transfer, approval_groups, approval_groups_by_owner_spender)
         if matched_key is None:
-            unattributed_transfers.append({
-                'owner': transfer['owner'],
-                'spender': transfer['spender'],
-                'recipient': transfer['recipient'],
-                'token_address': transfer['token_address'],
-                'amount': transfer['amount'],
-                'timestamp': transfer['timestamp'].isoformat(),
-                'transaction_hash': transfer['transaction_hash'],
-                'block_number': transfer['block_number'],
-                'reason': reason,
-            })
+            unattributed_transfers_raw.append({**transfer, '_reason': reason})
             continue
         linked_transfers_by_group.setdefault(matched_key, []).append({**transfer, '_match_basis': match_basis})
+
+    unattributed_by_owner_key: dict[str, list[dict[str, Any]]] = {}
+    for entry in unattributed_transfers_raw:
+        unattributed_by_owner_key.setdefault(entry['owner_key'], []).append(entry)
+
+    unattributed_transfers = [
+        {
+            'owner': entry['owner'],
+            'spender': entry['spender'],
+            'recipient': entry['recipient'],
+            'token_address': entry['token_address'],
+            'amount': entry['amount'],
+            'timestamp': entry['timestamp'].isoformat(),
+            'transaction_hash': entry['transaction_hash'],
+            'block_number': entry['block_number'],
+            'reason': entry['_reason'],
+        }
+        for entry in unattributed_transfers_raw
+    ]
 
     groups = [
         _build_group_result(
             key,
             events,
             linked_transfers_by_group.get(key, []),
+            unattributed_by_owner_key.get(key[0], []),
             unlimited_threshold,
             rapid_use_seconds,
             spender_owner_counts,
+            now,
         )
         for key, events in approval_groups.items()
     ]
@@ -695,4 +808,87 @@ def analyze_token_approvals(
             'vlasnika" su OZNAČENE HEURISTIKE, ne dokaz zloupotrebe - svaki nalaz nosi razlog na osnovu kog je '
             'izveden i treba dodatnu proveru pre bilo kakvog forenzičkog zaključka.'
         ),
+    }
+
+
+def build_token_approval_history(
+    transactions: pd.DataFrame,
+    address: str,
+    unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
+    rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    now: pd.Timestamp | None = None,
+) -> dict[str, Any]:
+    """Reconstructs the APPROVE -> allowance change -> eventual REVOCATION -> current
+    status timeline for ONE address (as owner and/or spender), per
+    TOKEN-APPROVAL-IMPLEMENTATION.md #13.
+
+    Deliberately built ON TOP of analyze_token_approvals rather than re-implementing
+    extraction/grouping/matching - same groups, same matching rules, so the history view
+    and the general (optional-address) analysis can never silently disagree with each
+    other. `address` is REQUIRED here (unlike analyze_token_approvals's optional one) -
+    "history" only means something for a specific address; propagates the same ValueError
+    (-> 404 at the route) for an address that never appears in the evidence at all.
+
+    Returns the same `groups` analyze_token_approvals would (already scoped to `address`),
+    PLUS a flat `history` list: every individual approve()/permit() event across ALL of
+    that address's groups, sorted chronologically ascending (oldest first, reads top-to-
+    bottom as a timeline) - each entry already carries token/spender/allowance/timestamp/
+    tx hash/block/status/duration fields (see _build_group_result), so a caller does not
+    need to re-flatten `groups` itself.
+    """
+    if not address or not address.strip():
+        raise ValueError('Adresa je obavezna za istoriju Token Approval-a.')
+
+    base = analyze_token_approvals(
+        transactions,
+        target_address=address,
+        unlimited_threshold=unlimited_threshold,
+        rapid_use_seconds=rapid_use_seconds,
+        now=now,
+    )
+
+    history: list[dict[str, Any]] = []
+    for group in base['groups']:
+        if group['owner'] == address:
+            role = 'owner'
+        elif group['spender'] == address:
+            role = 'spender'
+        else:
+            role = 'unknown'  # defensive - analyze_token_approvals already filters to owner/spender matches only
+
+        for approval in group['approvals']:
+            history.append({
+                'owner': group['owner'],
+                'spender': group['spender'],
+                'role': role,
+                'token_address': group['token_address'],
+                'token_identified': group['token_identified'],
+                'event_type': approval['event_type'],
+                'allowance_amount': approval['amount'],
+                'is_zero': approval['is_zero'],
+                'unlimited_basis': approval['unlimited_basis'],
+                'approval_timestamp': approval['timestamp'],
+                'transaction_hash': approval['transaction_hash'],
+                'block_number': approval['block_number'],
+                'permit_deadline': approval['permit_deadline'],
+                'permit_nonce': approval['permit_nonce'],
+                'status': approval['status'],
+                'active_duration_seconds': approval['active_duration_seconds'],
+                'active_duration_ongoing': approval['active_duration_ongoing'],
+                'seconds_to_explicit_revocation': approval['seconds_to_explicit_revocation'],
+                'used_before_end': approval['used_before_end'],
+            })
+
+    history.sort(key=lambda entry: entry['approval_timestamp'])
+
+    return {
+        'address': address,
+        'entry_count': len(history),
+        'history': history,
+        'groups': base['groups'],
+        'unattributed_transfers': base['unattributed_transfers'],
+        'data_completeness': base['data_completeness'],
+        'unlimited_threshold': base['unlimited_threshold'],
+        'rapid_use_seconds': base['rapid_use_seconds'],
+        'disclaimer': base['disclaimer'],
     }
