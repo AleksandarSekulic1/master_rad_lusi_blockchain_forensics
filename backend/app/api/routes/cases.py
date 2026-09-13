@@ -20,6 +20,7 @@ from app.analytics.token_approval_analysis import (
     MIN_UNLIMITED_THRESHOLD,
     analyze_token_approvals,
     build_token_approval_history,
+    correlate_approval_usage,
 )
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
@@ -551,6 +552,46 @@ def get_case_token_approval_history(
         result = build_token_approval_history(
             combined_frame,
             address=normalized_address,
+            unlimited_threshold=unlimited_threshold,
+            rapid_use_seconds=rapid_use_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+@router.get('/{case_id}/token-approval-correlation')
+def get_case_token_approval_correlation(
+    case_id: str,
+    address: str | None = Query(default=None),
+    evidence: str | None = None,
+    unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
+    rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+) -> dict[str, object]:
+    """Correlates each individual approve()/permit() grant with its later transferFrom()
+    usage: OWNER -> APPROVAL -> SPENDER -> transferFrom -> token transfer (see
+    analytics/token_approval_analysis.correlate_approval_usage and
+    TOKEN-APPROVAL-IMPLEMENTATION.md #14). `address` is optional - omitted, every grant in
+    the evidence is correlated; given, scoped to grants where that address is the owner or
+    spender (404 if it never appears in the evidence at all).
+
+    Same read-only treatment as get_case_token_approval_analysis/-history: no custody
+    dialog, no audit log entry - backend collection/extraction phase only.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip() if address else None
+
+    try:
+        result = correlate_approval_usage(
+            combined_frame,
+            target_address=normalized_address,
             unlimited_threshold=unlimited_threshold,
             rapid_use_seconds=rapid_use_seconds,
         )

@@ -33,6 +33,7 @@ zahtevu, ništa se ne izmišlja.
 | [11. Otvorena pitanja za usaglašavanje](#11-otvorena-pitanja-za-usaglašavanje) | odluke pre pisanja koda |
 | [12. Implementacija — backend, Faza 1](#12-implementacija--backend-faza-1) | **✅ urađeno** — novi/izmenjeni fajlovi, API, metode, ograničenja, testovi |
 | [13. Implementacija — Istorija odobrenja po adresi](#13-implementacija--istorija-odobrenja-po-adresi) | **✅ urađeno** — APPROVE → promena → REVOCATION → status, po odobrenju |
+| [14. Implementacija — Korelacija Approval ↔ transferFrom](#14-implementacija--korelacija-approval--transferfrom) | **✅ urađeno** — OWNER → APPROVAL → SPENDER → transferFrom → transfer, kombinovan status |
 
 ---
 
@@ -1016,3 +1017,146 @@ dele isti izvor podataka (§13.5).
   već izvučenih polja.
 - Van obima (nepromenjeno iz §12.6): custody/PDF izveštaj/audit log/frontend/graph overlay
   za ovu istoriju takođe nisu urađeni u ovom koraku.
+
+---
+
+## 14. Implementacija — Korelacija Approval ↔ transferFrom
+
+**Zahtev:** za SVAKI approval pokušati pronaći povezane transferFrom aktivnosti duž lanca
+`OWNER → APPROVAL → SPENDER → kasniji transferFrom → token transfer`, sa detaljima (approval
+timestamp, first/last use, broj i ukupan iznos transferFrom transakcija, odredišta, tx
+heševi) i **kombinovanim** statusom: `APPROVED` / `APPROVED + USED` / `APPROVED + REVOKED` /
+`APPROVED + USED + REVOKED` / `UNKNOWN` — bez nagađanja kad podaci nisu dovoljni.
+
+**Obim:** i dalje backend-only, Faza 1 okvir (isti kao §12/§13) — nova funkcija + nova
+pasivna ruta, izgrađena na vrhu postojeće `analyze_token_approvals`/§13 logike. Nula izmena
+Taint/Graph/Pathfinding/Behavioral/DEX Swap koda.
+
+### 14.1 Novi/izmenjeni fajlovi
+
+| Fajl | Šta je dodato |
+|---|---|
+| `backend/app/analytics/token_approval_analysis.py` (izmenjen — dodato, ništa obrisano) | Nova funkcija `correlate_approval_usage()` + helperi `_correlation_status()`/`_transfer_summary()`; `_build_group_result()` dodatno prošireno da svaki `approvals[]` unos nosi i `linked_transfers` (transferFrom redovi upareni baš sa TIM odobrenjem), `revocation_transaction_hash`, `revocation_timestamp`. |
+| `backend/app/api/routes/cases.py` (izmenjen — dodato) | Nova ruta `get_case_token_approval_correlation` (§14.4), dodat import `correlate_approval_usage`. |
+| `backend/tests/test_token_approval_analysis.py` (izmenjen — dodato) | 8 novih testova (`TestApprovalUsageCorrelation`) — ukupno sad **44** testa u fajlu. |
+
+### 14.2 Zašto se ne ponavlja ekstrakcija — i zašto je status OVDE drugačiji od §13
+
+`correlate_approval_usage()` poziva `analyze_token_approvals()` interno (isti obrazac kao
+`build_token_approval_history()`, §13.5) — isto grupisanje, isto uparivanje, isti podaci,
+garantovano bez razmimoilaženja između tri različita prikaza (§12 grupni sažetak, §13
+istorija, §14 korelacija) nad istom evidencijom.
+
+**Bitna, namerna razlika od §13:** §13's `status` (ACTIVE/REVOKED/USED/UNKNOWN) je
+**jednorečan**, biran po prioritetu (USED pobeđuje REVOKED — "korišćeno pa opozvano" se u
+§13 prikazuje samo kao `USED`, jer je korišćenje forenzički važnije za brz pregled).
+Zahtev ovde traži **kombinovan** status koji SVE relevantne činjenice prikazuje ODJEDNOM
+(`APPROVED + USED + REVOKED` je stvarno različito stanje od `APPROVED + REVOKED` — jedno
+znači "iscrpljeno pa zatvoreno", drugo "zatvoreno a NIKAD dirano"). Zato `_correlation_status()`
+gradi status iz DVA nezavisna, već izračunata polja (nijedna nova heuristika):
+
+```
+used_before_end (§13, tri-state True/False/None)         → REVOKED signal:
+seconds_to_explicit_revocation (§13.2.1, precizno)         → is not None
+```
+
+```python
+if used_before_end is None:
+    return 'UNKNOWN'            # ne nagađa - vidi §14.3
+parts = ['APPROVED']
+if used_before_end: parts.append('USED')
+if seconds_to_explicit_revocation is not None: parts.append('REVOKED')
+return ' + '.join(parts)
+```
+
+`revoked` komponenta ovde koristi **strogu** definiciju iz §13.2.1 (samo eksplicitan
+`approve(spender, 0)` koji NEPOSREDNO sledi) — namerno UŽE od §13's opšteg `REVOKED` statusa
+(koji pokriva i "zamenjeno drugim iznosom"). Obrazloženje: `APPROVED + REVOKED` treba da
+znači "vlasnik je svesno zatvorio ovaj pristup", ne "neko je slučajno odobrio veći/manji
+iznos kasnije" — ta druga situacija nije "revocation" u smislu koji zahtev traži.
+
+### 14.3 `UNKNOWN` — ista, već testirana osnova (§13.3), ne novi mehanizam
+
+Korelacija NE uvodi novu neizvesnost — koristi identičan `used_before_end` tri-state signal
+iz §13.3 (neatribuiran `transferFrom` istog vlasnika u vremenskom prozoru odobrenja ⇒ ne
+može se pouzdano reći "nekorišćeno"). Kad je `used_before_end is None`, `status` je
+**isključivo** `'UNKNOWN'` — nikad `'APPROVED + REVOKED'` ili bilo koja druga kombinacija
+koja bi prećutno tvrdila "sigurno nekorišćeno". Ovo je direktna primena zahtevanog "ako
+podaci nisu dovoljni da se nešto pouzdano poveže, nemoj nagađati" — testirano
+(`test_unconfirmable_usage_is_unknown_not_guessed`).
+
+### 14.4 Šta ulazi u korelaciju, šta ne
+
+- **Jedan zapis po NENULTOM approve()/permit() redu** ("grant") — `approve(spender, 0)` red
+  sam po sebi **nije** grant za korelaciju (nema šta da se "koristi"), pa se preskače
+  (`test_revocation_row_itself_produces_no_correlation_entry`). Njegov uticaj se i dalje
+  vidi — na PRETHODNOM grant-u, kroz `revoked`/`seconds_to_revocation`/
+  `revocation_transaction_hash`/`revocation_timestamp`.
+- Svako polje iz zahteva mapirano na već izvučene/izračunate podatke — ništa novo
+  pogađano:
+
+| Traženo polje | Izvor |
+|---|---|
+| `approval_timestamp`, `approval_transaction_hash`, `approval_block_number`, `approval_amount` | direktno sa approval reda (§12) |
+| `first_use_timestamp` / `time_to_first_use_seconds` | prvi (hronološki) upareni `transferFrom` iz `linked_transfers` (§12.4's uparivanje) |
+| `transfer_from_count` / `total_amount_transferred` | `len()`/`sum()` nad istim `linked_transfers` |
+| `first_transfer_from` / `last_transfer_from` | prvi/poslednji element već hronološki sortiranog `linked_transfers` |
+| `receiving_destinations` | skup različitih `recipient` vrednosti iz `linked_transfers` (isto polje koje §12 već koristi za `related_addresses`, ovde po pojedinačnom odobrenju umesto po celoj grupi) |
+| `transaction_hashes` | `{approval, revocation, transfer_from: [...]}` — sve već poznati heševi, samo sabrani na jedno mesto |
+| `status` | §14.2 |
+
+Test `test_first_last_count_total_and_destinations_across_multiple_transfers` proverava
+sve gorenavedeno odjednom, sa tri `transferFrom` reda na dva različita odredišta.
+
+### 14.5 API endpoint
+
+```
+GET /api/v1/cases/{case_id}/token-approval-correlation?address=<opciono>&evidence=<opciono>&unlimited_threshold=<opciono>&rapid_use_seconds=<opciono>
+```
+
+- `address` je **opciono** (za razliku od §13's istorije, koja zahteva adresu) — izostavljeno,
+  korelira SVAKO odobrenje u evidenciji; zadato, ograničava na odobrenja gde je ta adresa
+  owner ili spender (isti obrazac kao `analyze_token_approvals`, §12.5) — `404` ako se
+  adresa nigde ne pojavljuje.
+- Read-only, bez custody upisa i bez audit log unosa — isti namerni obim kao §12.6/§13.8.
+- Odgovor: `{address, correlation_count, correlations: [...], unattributed_transfers,
+  data_completeness, unlimited_threshold, rapid_use_seconds, disclaimer, case_id, evidence,
+  generated_at}`.
+
+### 14.6 Testirano
+
+**Jedinični testovi** (`TestApprovalUsageCorrelation`, 8, ukupno **44** u fajlu): sve pet
+statusnih kombinacija pojedinačno (`APPROVED`, `APPROVED + USED`, `APPROVED + REVOKED`,
+`APPROVED + USED + REVOKED`, `UNKNOWN`), revocation red ne pravi svoj zapis, first/last/
+count/total/destinacije/heševi preko tri transferFrom transakcije na dva odredišta, i
+opciono filtriranje po adresi (owner ili spender).
+
+```bash
+python -m pytest backend/tests/test_token_approval_analysis.py -v   # 44 passed
+python -m pytest backend/ -q                                        # 346 passed (302 + 44), 0 failed
+```
+
+**End-to-end kroz pravu rutu** (`TestClient`): CSV sa jednim odobrenjem (`is_unlimited:
+true`), dve `transferFrom` transakcije na dva različita odredišta, i eksplicitnim
+`approve(spender, 0)` opozivom → `GET .../token-approval-correlation` vraća tačno JEDAN
+korelacioni zapis: `status: "APPROVED + USED + REVOKED"`, `transfer_from_count: 2`,
+`total_amount_transferred` = tačan zbir, `first_transfer_from`/`last_transfer_from` sa
+tačnim tx hešem/odredištem svaki, `receiving_destinations: ["0xDestA", "0xDestB"]`,
+`transaction_hashes` sa sva tri heša (approval + revocation + oba transferFrom-a),
+`seconds_to_revocation` tačno izračunato. `unattributed_transfers: []` (oba transferFrom
+reda su imala `spender_address`, pa su pouzdano uparena).
+
+### 14.7 Ograničenja (dodatna, specifična za korelaciju)
+
+- Isto kao §12.6/§13.8 (nema on-chain izvora, `amount` float64, nema registra decimala) —
+  §14 ne dodaje nijedan nov izvor podataka, samo treći način tumačenja već izvučenih
+  approval/transferFrom polja.
+- `revoked` ovde namerno NE pokriva "zamenjeno novim iznosom" (§14.2) — analitičar koji želi
+  taj širi signal treba §13's `status` polje (jednorečno, `REVOKED` pokriva oba slučaja) ili
+  §12's grupni `sequence_status`.
+- Kad `token_address` nije deklarisan a isti (owner, spender) par ima grantove za više
+  (neidentifikovanih) tokena, `linked_transfers`/korelacija nasleđuje isto ograničenje kao
+  §12.4/§12.6 — transferFrom redovi bez `token_address` se uparuju po istom
+  "tačno-jedan-kandidat-inače-neatribuirano" pravilu, ne po nagađanju.
+- Van obima (nepromenjeno): custody/PDF izveštaj/audit log/frontend/graph overlay za ovu
+  korelaciju nisu urađeni u ovom koraku.

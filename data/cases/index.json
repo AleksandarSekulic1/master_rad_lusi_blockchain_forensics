@@ -1,6 +1,18 @@
 {
   "cases": [
     {
+      "id": "43de1fe7bc48",
+      "name": "Smoke Correlation",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-13T11:13:59.071246+00:00",
+      "updated_at": "2026-09-13T11:13:59.114596+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 484,
+      "last_imported_at": "2026-09-13T11:13:59.114596+00:00"
+    },
+    {
       "id": "196f67f95d12",
       "name": "Smoke History",
       "description": null,

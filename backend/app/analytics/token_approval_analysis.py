@@ -472,11 +472,12 @@ def _build_group_result(
         # Only set when the IMMEDIATE next event is an explicit approve(spender, 0) - a
         # precise metric, deliberately narrower than the broader REVOKED status label above
         # (which also covers "superseded by a changed nonzero amount").
+        is_explicitly_revoked_next = next_event is not None and next_event['is_zero'] and not event['is_zero']
         seconds_to_explicit_revocation = (
-            _seconds_between(next_event['timestamp'], event['timestamp'])
-            if next_event is not None and next_event['is_zero'] and not event['is_zero']
-            else None
+            _seconds_between(next_event['timestamp'], event['timestamp']) if is_explicitly_revoked_next else None
         )
+        revocation_transaction_hash = next_event['transaction_hash'] if is_explicitly_revoked_next else None
+        revocation_timestamp = next_event['timestamp'].isoformat() if is_explicitly_revoked_next else None
 
         if confirmed_usage:
             used_before_end = True
@@ -496,12 +497,18 @@ def _build_group_result(
             'active_duration_seconds': active_duration_seconds,
             'active_duration_ongoing': active_duration_ongoing,
             'seconds_to_explicit_revocation': seconds_to_explicit_revocation,
+            'revocation_transaction_hash': revocation_transaction_hash,
+            'revocation_timestamp': revocation_timestamp,
             'used_before_end': used_before_end,
             'timestamp': event['timestamp'].isoformat(),
             'transaction_hash': event['transaction_hash'],
             'block_number': event['block_number'],
             'permit_deadline': event['permit_deadline'],
             'permit_nonce': event['permit_nonce'],
+            # Only the transferFrom rows matched to THIS SPECIFIC approval's window (see
+            # usage_by_approval_index above) - used by correlate_approval_usage to build
+            # first/last/count/total/destinations/hashes without re-deriving the matching.
+            'linked_transfers': confirmed_usage,
         })
 
     latest_event = approvals_sorted[-1]
@@ -886,6 +893,138 @@ def build_token_approval_history(
         'entry_count': len(history),
         'history': history,
         'groups': base['groups'],
+        'unattributed_transfers': base['unattributed_transfers'],
+        'data_completeness': base['data_completeness'],
+        'unlimited_threshold': base['unlimited_threshold'],
+        'rapid_use_seconds': base['rapid_use_seconds'],
+        'disclaimer': base['disclaimer'],
+    }
+
+
+# Correlation status: OWNER -> APPROVAL -> SPENDER -> (eventual) transferFrom -> token
+# transfer, per TOKEN-APPROVAL-IMPLEMENTATION.md #14. A COMBINABLE label, deliberately
+# different in shape from build_token_approval_history's single-word per-approval `status`
+# (ACTIVE/REVOKED/USED/UNKNOWN, §13): that one picks ONE word by precedence (USED wins over
+# REVOKED so "used then revoked" still just reads USED); this one reports BOTH facts at
+# once, because a correlation record's whole point is showing whether usage and revocation
+# each happened, independently - "APPROVED + USED + REVOKED" is a real, meaningful state
+# distinct from "APPROVED + REVOKED" (approved, revoked, NEVER used) that the single-word
+# status cannot express. Built from the exact same underlying fields (used_before_end,
+# seconds_to_explicit_revocation) as §13 - no new heuristic, only a different combination.
+CORRELATION_APPROVED = 'APPROVED'
+CORRELATION_UNKNOWN = 'UNKNOWN'
+
+
+def _correlation_status(approval: dict[str, Any]) -> str:
+    if approval['used_before_end'] is None:
+        # Cannot rule out use (§13.3's UNKNOWN condition) - reporting "APPROVED" alone, or
+        # "APPROVED + REVOKED", would silently assert "never used", which is exactly the
+        # guess the request says not to make.
+        return CORRELATION_UNKNOWN
+
+    parts = [CORRELATION_APPROVED]
+    if approval['used_before_end']:
+        parts.append('USED')
+    if approval['seconds_to_explicit_revocation'] is not None:
+        parts.append('REVOKED')
+    return ' + '.join(parts)
+
+
+def _transfer_summary(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    if record is None:
+        return None
+    return {
+        'amount': record['amount'],
+        'timestamp': record['timestamp'],
+        'transaction_hash': record['transaction_hash'],
+        'block_number': record['block_number'],
+        'recipient': record['recipient'],
+    }
+
+
+def correlate_approval_usage(
+    transactions: pd.DataFrame,
+    target_address: str | None = None,
+    unlimited_threshold: float = DEFAULT_UNLIMITED_THRESHOLD,
+    rapid_use_seconds: int = DEFAULT_RAPID_USE_SECONDS,
+    now: pd.Timestamp | None = None,
+) -> dict[str, Any]:
+    """Correlates each individual approve()/permit() GRANT with its later transferFrom()
+    usage - the OWNER -> APPROVAL -> SPENDER -> transferFrom -> token transfer chain from
+    TOKEN-APPROVAL-IMPLEMENTATION.md #14. Built on top of analyze_token_approvals (§12) -
+    same grouping/matching, no separate extraction logic to keep in sync (same discipline
+    as build_token_approval_history, §13).
+
+    One correlation record per NONZERO approve()/permit() row (an approve(spender, 0) row
+    is a revocation ACT, not a grant to correlate usage against - it already appears as the
+    `revocation_*` fields on the grant it ended, via seconds_to_explicit_revocation/
+    revocation_transaction_hash/revocation_timestamp computed in _build_group_result).
+
+    `target_address` is OPTIONAL (unlike build_token_approval_history's required address) -
+    omitted, every grant in the evidence is correlated; given, scoped to grants where that
+    address is the owner or spender (same convention as analyze_token_approvals).
+
+    Every numeric/timestamp/hash field is read directly from already-extracted approval/
+    transferFrom rows or a straightforward count/sum/min/max over them - nothing is
+    inferred beyond what §12's matching already established, and status is UNKNOWN rather
+    than guessed when usage cannot be confirmed (see _correlation_status).
+    """
+    base = analyze_token_approvals(
+        transactions,
+        target_address=target_address,
+        unlimited_threshold=unlimited_threshold,
+        rapid_use_seconds=rapid_use_seconds,
+        now=now,
+    )
+
+    correlations: list[dict[str, Any]] = []
+    for group in base['groups']:
+        for approval in group['approvals']:
+            if approval['is_zero']:
+                continue  # a revocation call, not a grant - nothing to correlate usage against
+
+            linked = approval['linked_transfers']
+            first_transfer = linked[0] if linked else None
+            last_transfer = linked[-1] if linked else None
+            receiving_destinations = sorted({record['recipient'] for record in linked if record['recipient']})
+
+            correlations.append({
+                'owner': group['owner'],
+                'spender': group['spender'],
+                'token_address': group['token_address'],
+                'token_identified': group['token_identified'],
+                'approval_event_type': approval['event_type'],
+                'approval_amount': approval['amount'],
+                'unlimited_basis': approval['unlimited_basis'],
+                'approval_timestamp': approval['timestamp'],
+                'approval_transaction_hash': approval['transaction_hash'],
+                'approval_block_number': approval['block_number'],
+                'status': _correlation_status(approval),
+                'used': approval['used_before_end'],
+                'revoked': approval['seconds_to_explicit_revocation'] is not None,
+                'revocation_timestamp': approval['revocation_timestamp'],
+                'revocation_transaction_hash': approval['revocation_transaction_hash'],
+                'seconds_to_revocation': approval['seconds_to_explicit_revocation'],
+                'transfer_from_count': len(linked),
+                'total_amount_transferred': sum(record['amount'] for record in linked),
+                'first_use_timestamp': first_transfer['timestamp'] if first_transfer else None,
+                'time_to_first_use_seconds': first_transfer['seconds_since_approval'] if first_transfer else None,
+                'first_transfer_from': _transfer_summary(first_transfer),
+                'last_transfer_from': _transfer_summary(last_transfer),
+                'receiving_destinations': receiving_destinations,
+                'transaction_hashes': {
+                    'approval': approval['transaction_hash'],
+                    'revocation': approval['revocation_transaction_hash'],
+                    'transfer_from': [record['transaction_hash'] for record in linked if record['transaction_hash']],
+                },
+            })
+
+    correlations.sort(key=lambda entry: entry['approval_timestamp'])
+
+    return {
+        'address': target_address,
+        'correlation_count': len(correlations),
+        'correlations': correlations,
         'unattributed_transfers': base['unattributed_transfers'],
         'data_completeness': base['data_completeness'],
         'unlimited_threshold': base['unlimited_threshold'],

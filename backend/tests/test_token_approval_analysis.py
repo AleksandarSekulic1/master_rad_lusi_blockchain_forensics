@@ -20,6 +20,7 @@ from app.analytics.token_approval_analysis import (
     DEFAULT_UNLIMITED_THRESHOLD,
     analyze_token_approvals,
     build_token_approval_history,
+    correlate_approval_usage,
 )
 
 BASE_COLUMNS = [
@@ -529,3 +530,120 @@ class TestApprovalHistory:
         assert entry['transaction_hash'] == '0xapprovetx'
         assert entry['block_number'] == 18500000
         assert entry['status'] == 'ACTIVE'
+
+
+class TestApprovalUsageCorrelation:
+    """OWNER -> APPROVAL -> SPENDER -> transferFrom -> token transfer korelacija"""
+
+    def test_approved_only_no_usage_no_revocation(self):
+        """Odobreno, nikad korišćeno, nikad opozvano -> 'APPROVED'"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z')])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        entry = result['correlations'][0]
+        assert entry['status'] == 'APPROVED'
+        assert entry['used'] is False
+        assert entry['revoked'] is False
+        assert entry['transfer_from_count'] == 0
+
+    def test_approved_and_used_not_revoked(self):
+        """Odobreno i korišćeno, nikad eksplicitno opozvano -> 'APPROVED + USED'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 1000.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', '0xSpender', '0xThirdParty', 300.0, '2026-01-01T01:00:00Z', token_address='0xTokenA'),
+        ])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        entry = result['correlations'][0]
+        assert entry['status'] == 'APPROVED + USED'
+        assert entry['used'] is True
+        assert entry['revoked'] is False
+
+    def test_approved_and_revoked_never_used(self):
+        """Odobreno pa eksplicitno opozvano, nikad korišćeno -> 'APPROVED + REVOKED'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z'),
+            approve_row('0xOwner', '0xSpender', 0.0, '2026-01-01T02:00:00Z'),
+        ])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        entry = result['correlations'][0]
+        assert entry['status'] == 'APPROVED + REVOKED'
+        assert entry['used'] is False
+        assert entry['revoked'] is True
+        assert entry['seconds_to_revocation'] == pytest.approx(2 * 3600.0)
+        assert entry['revocation_transaction_hash'] is not None or entry['revocation_timestamp'] is not None
+
+    def test_approved_used_and_revoked(self):
+        """Odobreno, korišćeno, PA eksplicitno opozvano -> 'APPROVED + USED + REVOKED'"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 1000.0, '2026-01-01T00:00:00Z', token_address='0xTokenA'),
+            transfer_from_row('0xOwner', '0xSpender', '0xThirdParty', 300.0, '2026-01-01T01:00:00Z', token_address='0xTokenA'),
+            approve_row('0xOwner', '0xSpender', 0.0, '2026-01-01T05:00:00Z', token_address='0xTokenA'),
+        ])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        entry = result['correlations'][0]
+        assert entry['status'] == 'APPROVED + USED + REVOKED'
+        assert entry['used'] is True
+        assert entry['revoked'] is True
+
+    def test_unconfirmable_usage_is_unknown_not_guessed(self):
+        """Kad se korišćenje ne može pouzdano potvrditi, status je 'UNKNOWN', ne pretpostavka"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 100.0, '2026-01-01T00:00:00Z'),
+            {'sender_address': '0xOwner', 'recipient_address': '0xThirdParty', 'amount': 40.0, 'timestamp': '2026-01-01T01:00:00Z', 'event_type': 'transferFrom'},
+        ])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        entry = result['correlations'][0]
+        assert entry['status'] == 'UNKNOWN'
+        assert entry['used'] is None
+
+    def test_revocation_row_itself_produces_no_correlation_entry(self):
+        """approve(spender, 0) red sam po sebi NIJE odobrenje za korelaciju - ne pravi zaseban unos"""
+        frame = frame_from_rows([approve_row('0xOwner', '0xSpender', 0.0, '2026-01-01T00:00:00Z')])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        assert result['correlation_count'] == 0
+
+    def test_first_last_count_total_and_destinations_across_multiple_transfers(self):
+        """first/last transferFrom, broj, ukupan iznos i odredišta preko VIŠE transferFrom transakcija"""
+        frame = frame_from_rows([
+            approve_row('0xOwner', '0xSpender', 1_000_000.0, '2026-01-01T00:00:00Z', token_address='0xTokenA', metadata='0xapprove1'),
+            transfer_from_row('0xOwner', '0xSpender', '0xDestA', 100.0, '2026-01-01T01:00:00Z', token_address='0xTokenA', metadata='0xtx1'),
+            transfer_from_row('0xOwner', '0xSpender', '0xDestB', 200.0, '2026-01-02T00:00:00Z', token_address='0xTokenA', metadata='0xtx2'),
+            transfer_from_row('0xOwner', '0xSpender', '0xDestA', 50.0, '2026-01-03T00:00:00Z', token_address='0xTokenA', metadata='0xtx3'),
+        ])
+
+        result = correlate_approval_usage(frame, now=NOW)
+
+        entry = result['correlations'][0]
+        assert entry['transfer_from_count'] == 3
+        assert entry['total_amount_transferred'] == pytest.approx(350.0)
+        assert entry['first_transfer_from']['transaction_hash'] == '0xtx1'
+        assert entry['last_transfer_from']['transaction_hash'] == '0xtx3'
+        assert entry['receiving_destinations'] == ['0xDestA', '0xDestB']
+        assert entry['transaction_hashes']['approval'] == '0xapprove1'
+        assert entry['transaction_hashes']['transfer_from'] == ['0xtx1', '0xtx2', '0xtx3']
+        assert entry['time_to_first_use_seconds'] == pytest.approx(3600.0)
+
+    def test_optional_address_scopes_correlations_to_owner_or_spender(self):
+        """address je opciono - kad je zadato, korelacije se ograničavaju na owner/spender"""
+        frame = frame_from_rows([
+            approve_row('0xOwnerA', '0xSpenderA', 100.0, '2026-01-01T00:00:00Z'),
+            approve_row('0xOwnerB', '0xSpenderB', 200.0, '2026-01-01T00:00:00Z'),
+        ])
+
+        all_result = correlate_approval_usage(frame, now=NOW)
+        scoped_result = correlate_approval_usage(frame, target_address='0xOwnerA', now=NOW)
+
+        assert all_result['correlation_count'] == 2
+        assert scoped_result['correlation_count'] == 1
+        assert scoped_result['correlations'][0]['owner'] == '0xOwnerA'
