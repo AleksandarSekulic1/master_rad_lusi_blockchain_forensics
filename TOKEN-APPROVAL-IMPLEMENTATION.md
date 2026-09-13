@@ -1,10 +1,15 @@
-# Token Approval / Ice Phishing Analysis — analiza pre implementacije
+# Token Approval / Ice Phishing Analysis — dokumentacija implementacije
 
-Ovaj dokument je **priprema**, ne opis gotove funkcije (uporedi sa DEX-SWAP-ANALIZA.md,
-BEHAVIORAL-ANALIZA.md, TAINT-ANALIZA.md, PATHFINDING-ANALIZA.md, koji opisuju već
-implementirane analize). Ništa iz njega još nije implementirano — ovo je istraživanje
-postojećeg projekta plus predlog arhitekture, koji ćemo koristiti kao referencu kroz ceo
-proces implementacije Token Approval / Ice Phishing analize.
+> **Status:** §1–§11 su izvorna priprema (istraživanje projekta + predlog arhitekture),
+> napisana PRE ijedne linije koda. §12 dokumentuje šta je stvarno urađeno u **Fazi 1 —
+> backend: prikupljanje i ekstrakcija podataka** (bez custody/PDF izveštaja/audit log
+> integracije/frontend-a — te faze ostaju otvorene, vidi §12.6). Ništa iz §1–§11 nije
+> naknadno izmenjeno da bi "ispalo tačno" — §12 na kraju kaže tačno gde se stvarna
+> implementacija razlikuje od prvobitnog predloga i zašto.
+
+Ovaj dokument prati ceo proces implementacije Token Approval / Ice Phishing analize, po
+uzoru na DEX-SWAP-ANALIZA.md/BEHAVIORAL-ANALIZA.md/TAINT-ANALIZA.md/PATHFINDING-ANALIZA.md
+koji opisuju već implementirane analize.
 
 **Metodologija ovog dokumenta:** svaki backend fajl naveden ispod je stvarno pročitan
 (ne pretpostavljen iz naziva). Svaka tvrdnja o tome šta postoji/ne postoji u podacima je
@@ -26,6 +31,7 @@ zahtevu, ništa se ne izmišlja.
 | [9. Predložena arhitektura implementacije](#9-predložena-arhitektura-implementacije) | modul, ruta, frontend, custody, izveštaj |
 | [10. Gde bi šta bilo u kodu](#10-gde-bi-šta-bilo-u-kodu) | putanje (predlog) |
 | [11. Otvorena pitanja za usaglašavanje](#11-otvorena-pitanja-za-usaglašavanje) | odluke pre pisanja koda |
+| [12. Implementacija — backend, Faza 1](#12-implementacija--backend-faza-1) | **✅ urađeno** — novi/izmenjeni fajlovi, API, metode, ograničenja, testovi |
 
 ---
 
@@ -539,28 +545,271 @@ nepostojeća adresa → `ValueError`/404, `data_completeness` tačan.
 
 ## 11. Otvorena pitanja za usaglašavanje
 
-Namerno navedena OVDE, pre pisanja koda — svaka od njih menja konkretan detalj arhitekture
-iz §8/§9:
+Navedena OVDE, pre pisanja koda. **Status posle §12 implementacije:** 1–3 su rešena (odluka
+i obrazloženje u §12.2/§12.4); 4–6 ostaju otvorena za sledeću fazu (vidi §12.6).
 
-1. **Naziv kolone za token ugovor.** `token` je već zauzet aliasom ka `currency`
-   (§8.2/§7.3). Predlog: `token_address` bez ikakvog aliasa. Treba potvrditi da ovo ne
-   koliduje sa planovima za neku drugu analizu.
-2. **Da li `event_type` postaje deo `COLUMN_ALIASES`** (npr. prihvatiti i `type`/`action`
-   kao alias) ili ostaje striktno `event_type`, bez alternativa — manje "magije", lakše za
-   objasniti u dokumentaciji, ali manje fleksibilno za CSV-ove sa drugačijim nazivom kolone.
-3. **Prag za "unlimited" heuristiku** (§8.3) kad `is_unlimited` kolona nije data — fiksna
-   konstanta u kodu (rizik: pogrešna pretpostavka o raw/human jedinicama) ili obavezan query
-   parametar (isti stil kao `max_gap_seconds` kod DEX Swap, korisnik/frontend ga postavlja
-   eksplicitno)?
-4. **Da li se radi i graph overlay** (§9.2, opciono) u prvoj verziji, ili tek posle osnovnog
-   modula + PDF-a (kao što je DEX Swap prvo imao osnovnu analizu, overlay je dodat kasnije
-   kao §9 njegovog dokumenta)?
-5. **Da li se u ovoj fazi dira `onchain_ingestion.py`** (§7.2 — pravi `getLogs` poziv za
-   Approval event) ili ostaje isključivo na CSV/ručno pripremljenoj evidenciji za prvu
-   verziju? Ovo je najveća odluka po obimu posla — §7.2 postoji baš da bi ova odluka bila
-   informisana, ne nagađana.
-6. **Demo podaci** — treba li novi CSV u POSTOJEĆI demo slučaj (`46ae7f91db9b`, isti kao
-   DEX Swap/Taint/Behavioral demo) radi konzistentnosti kroz sve analize, ili zaseban demo
-   slučaj posvećen ice-phishing scenariju?
+1. ~~**Naziv kolone za token ugovor.**~~ **Rešeno:** `token_address`, bez aliasa u
+   `COLUMN_ALIASES` (i bez potrebe da se ijedna alias-lista uopšte menja — vidi §12.2).
+2. ~~**Da li `event_type` postaje deo `COLUMN_ALIASES`**~~ **Rešeno:** ostaje striktno
+   `event_type`, bez alternativnih naziva — vidi §12.2 za obrazloženje (izbegava sporedne
+   efekte na CSV-ove koje ne pišemo mi).
+3. ~~**Prag za "unlimited" heuristiku**~~ **Rešeno:** query parametar
+   (`unlimited_threshold`, podrazumevano `1e15`), isti stil kao `max_gap_seconds` — vidi
+   §12.3/§12.4.
+4. **Da li se radi i graph overlay** — i dalje otvoreno, namerno van obima Faze 1 (§12.6).
+5. **Da li se u ovoj fazi dira `onchain_ingestion.py`** — **odlučeno za Fazu 1: NE.**
+   Ništa u `onchain_ingestion.py` nije menjano ni dodavano — Faza 1 čita isključivo
+   evidenciju koju analitičar uveze (CSV sa opcionim kolonama, §8.2), tačno kao što je
+   zahtevano ("ne izmišljaj ABI, evente ili podatke"). §7.2 ostaje kao informisan opis
+   koraka koji bi bio potreban za PRAVI on-chain izvor, van obima za sada.
+6. **Demo podaci** — i dalje otvoreno; Faza 1 nema seed skriptu (nije traženo u ovom
+   koraku) — vidi §12.6.
 
-Ovaj dokument se ažurira kako se ova pitanja reše i kako implementacija napreduje.
+Ovaj dokument se dalje ažurira kako implementacija napreduje (Faza 2: custody, PDF
+izveštaj, audit log, frontend).
+
+---
+
+## 12. Implementacija — backend, Faza 1
+
+**Obim ove faze (po zahtevu):** samo backend prikupljanje i ekstrakcija Token Approval
+podataka — analitički modul + jedna, pasivna (read-only) API ruta. **Nije** rađeno u ovoj
+fazi: custody-gated `POST .../run` varijanta, PDF izveštaj, audit log/Log aktivnosti unos,
+frontend stranica, graph overlay, izmena `onchain_ingestion.py`. Ništa od postojećih
+analiza (Graph/Taint/Pathfinding/Behavioral/DEX Swap) nije dirano — potvrđeno i punim
+pytest prolazom (§12.5).
+
+### 12.1 Novi fajlovi
+
+| Fajl | Sadržaj |
+|---|---|
+| `backend/app/analytics/token_approval_analysis.py` | Ceo algoritam — ekstrakcija, grupisanje, uparivanje, risk indikatori. Jedina javna ulazna tačka: `analyze_token_approvals()`. Nema pydantic modela (isti stil kao `dex_swap_analysis.py`/`path_finding.py` — analitički sloj vraća obične `dict`-ove, pydantic modeli se koriste samo na nivou rute za request/response tela sa telom zahteva, a ova ruta nema telo). |
+| `backend/tests/test_token_approval_analysis.py` | 25 pytest testova (§12.5). |
+
+### 12.2 Izmenjeni fajlovi — tačan obim izmene
+
+| Fajl | Šta je izmenjeno | Šta NIJE dirano |
+|---|---|---|
+| `backend/app/api/routes/cases.py` | (a) Dodat import `from app.analytics.token_approval_analysis import (...)` odmah posle DEX Swap importa; (b) dodata JEDNA nova funkcija `get_case_token_approval_analysis`, ubačena između `run_case_dex_swap_analysis` i `get_seed_suggestions` — ni jedan postojeći red u fajlu nije obrisan niti izmenjen. | Sve postojeće rute (`get_case_graph`, `run_case_analytics`, `get_case_dex_swap_analysis`, `run_case_dex_swap_analysis`, `_record_custody_access`, ...) — nula izmena. |
+
+**`backend/app/analytics/ingestion.py` NIJE menjan** — namerno, i to je ključna
+arhitektonska odluka (rešava otvoreno pitanje §11.1/§11.2): `_normalize_columns` već
+propušta svaku nepoznatu kolonu netaknutu (§7.3) — kolona nazvana tačno `event_type`,
+`token_address`, `owner_address`, `spender_address`, `is_unlimited`, `block_number`,
+`permit_deadline` ili `permit_nonce` stiže do `combined_frame` bez ijedne izmene u
+`COLUMN_ALIASES`. Ovo je isti mehanizam kojim `currency` danas stiže do DEX Swap Analysis,
+samo primenjen bez potrebe da se kolona uopšte doda u alias-mapu — pošto joj nije potreban
+nijedan alternativni naziv (§11 tačka 2). Posledica: **nula rizika** da izmena
+`ingestion.py` slučajno utiče na neku drugu analizu, jer fajl nije ni dotaknut.
+
+`backend/app/analytics/graph_building.py`, `case_graph.py`, `path_finding.py`,
+`behavioral_analysis.py`, `dex_swap_analysis.py`, `plugins/*.py` — **nula izmena**, u
+potpunosti u skladu sa zahtevom.
+
+### 12.3 Model podataka — kolone koje modul čita (implementirano tačno po §8.2)
+
+Sve OPCIONE, sve sa **case-sensitive** tačnim nazivom kolone (bez aliasa):
+
+| Kolona | Tip (posle parsiranja) | Koristi se za |
+|---|---|---|
+| `event_type` | `'approve'` \| `'permit'` \| `'transferFrom'` (case-insensitive vrednost, uski skup aliasa — `approve`/`erc20_approve`, `permit`/`eip2612_permit`/`eip-2612_permit`, `transferfrom`/`transfer_from`) | Da li se red uopšte razmatra za ovu analizu |
+| `token_address` | tekst | Grupisanje po tokenu |
+| `owner_address` | tekst, fallback na `sender_address` | Vlasnik tokena |
+| `spender_address` | tekst; za approve/permit fallback na `recipient_address`, za transferFrom **bez fallback-a** (§12.4) | Odobreni trošilac / stvarni pozivalac transferFrom |
+| `is_unlimited` | tri-state bool (`true/false/1/0/yes/no/unlimited/infinite/nepoznato`) | Deklarisana (najjača) osnova za "unlimited" |
+| `block_number` | int (parsira i decimalne stringove kao `"18500000.0"`) | Čisto prikazno polje |
+| `permit_deadline` | opaque tekst (nema pokušaja parsiranja formata — vidi §12.4) | Samo za `event_type=permit` redove |
+| `permit_nonce` | int | Samo za `event_type=permit` redove |
+
+Postojeće, ponovo iskorišćene kolone (bez izmene semantike za ostale analize):
+`sender_address`, `recipient_address`, `amount` (allowance za approve/permit, preneta
+količina za transferFrom), `timestamp`, `metadata` (tx hash).
+
+### 12.4 Metode/servisna logika — šta tačno rade i zašto (uključujući odluke van §8 predloga)
+
+Sve u `token_approval_analysis.py`, funkcija `analyze_token_approvals(transactions,
+target_address=None, unlimited_threshold=1e15, rapid_use_seconds=3600)`:
+
+- **`_extract_approval_rows`** — razdvaja evidenciju u `approval_events`/`transfer_events`/
+  `skipped_rows`, i **eksplicitno prijavljuje** (`unrecognized_event_type_values`) svaku
+  vrednost `event_type` koja ne pogodi poznat alias (npr. tipfeler `"aproove"`) — umesto da
+  je ćutke ignoriše kao običan transfer.
+- **Grupisanje** — `(owner, spender, token)` normalizovan (mala slova) ključ za grupisanje/
+  uparivanje, ali **prikazna vrednost adrese ostaje onakva kakva se prvi put pojavila** u
+  evidenciji — ista disciplina kao `dex_swap_analysis.classify_dex_node`.
+- **Redosled odobrenja i status** — approve()/permit() u realnom ERC-20 ugovoru
+  **PREPISUJE** prethodnu dozvolu, ne sabira se s njom. Implementacija to modelira
+  eksplicitno: u svakoj grupi se odobrenja sortiraju hronološki; SVAKO osim POSLEDNJEG
+  dobija `sequence_status: 'superseded'`, bez obzira na sopstveni iznos; samo poslednje
+  određuje `current_status` (`'revoked'` ako mu je iznos 0, inače `'active'`). Ovo je
+  odluka koja nije bila eksplicitna u §8.3 predlogu — dodata tokom implementacije jer je
+  neophodna za tačnu semantiku approve().
+- **`approve(spender, 0)` / opoziv** — tačna provera `amount == 0.0` (bezbedno, nema
+  problema sa float preciznošću blizu nule) — posebno testirano (§12.5).
+- **"Unlimited" — dva jasno razdvojena nivoa** (odluka doneta tokom implementacije, vidi
+  §7.4/§8.3 obrazloženje): `'declared'` kad `is_unlimited` kolona to kaže direktno,
+  `'potential_by_magnitude'` kad `amount >= unlimited_threshold` (podrazumevano `1e15`,
+  podesivo kroz ceo opseg `[1.0, 1e40]`) — **nikad `'declared'` samo na osnovu veličine
+  broja**, jer `amount` stiže kao `float64` (already parsed by `pd.to_numeric` upstream u
+  `ingestion.py`) i ne može pouzdano potvrditi tačnu jednakost sa 78-cifrenim
+  `2**256-1` sentinelom, a projekat nema registar decimala tokena da bi znao da li je
+  `amount` u raw ili human-readable jedinicama (§7.4 — ograničenje, ne previd).
+- **Uparivanje transferFrom → odobrenje, dva nivoa** (§8.3 predlog, implementiran tačno):
+  1. **Tačno poklapanje** `(owner, spender, token)`.
+  2. **Fallback**: ako tačnog poklapanja nema (npr. transferFrom red nema `token_address`),
+     a za dati `(owner, spender)` postoji **TAČNO JEDNA** grupa odobrenja bez obzira na
+     token — uparuje se, uz oznaku da je token **izveden**, ne potvrđen.
+     Ako postoji **više** kandidata (isti owner/spender, različiti tokeni) — transfer
+     ostaje **neatribuiran**, sa razlogom (`ambiguous_token_multiple_approvals`), umesto
+     nagađanja koji token je u pitanju.
+  3. transferFrom bez `spender_address` uopšte **nikad se ne uparuje** — razlog
+     `no_spender_column` — jer se `recipient_address` (stvarni primalac sredstava) NE sme
+     poistovetiti sa spender-om (oni mogu biti različiti — §8.1 tabela).
+- **Vreme do prvog korišćenja** — računa se u odnosu na odobrenje koje je stvarno bilo **na
+  snazi** u trenutku transfera (poslednje odobrenje sa `timestamp <= transfer.timestamp`),
+  ne nužno prvo odobrenje u grupi — bitno kad grupa ima više uzastopnih odobrenja.
+  Transfer koji prethodi SVAKOM odobrenju u evidenciji dobija `before_any_approval: true`
+  (anomalija, prijavljena, ne skrivena).
+- **Risk indikatori** (`risk_indicators`, lista `{code, label, reasons}` po grupi):
+  - `unlimited_never_used` — neograničeno + aktivno + nula transferFrom.
+  - `unlimited_rapid_drain` — transferFrom unutar `rapid_use_seconds` od odobrenja **koje
+    je i samo bilo neograničeno** (ne "grupa je NEKAD imala neograničeno odobrenje" —
+    namerno precizirano tokom implementacije, da rani mali approve + kasniji unlimited +
+    brz transfer posle MALOG ne bi lažno pao pod ovaj indikator).
+  - `revoked_after_use` — opozvano, a bar jedan transfer je već prošao pre opoziva.
+  - `active_used_never_revoked` — aktivno i već korišćeno.
+  - `spender_multi_owner` — spender adresa koju je odobrilo **≥2 različita owner-a** u
+    CELOJ evidenciji (računa se PRE filtriranja po `target_address`, da rezultat ne zavisi
+    od toga da li je adresa tražena).
+- **`data_completeness.notes`** — lista rečenica na srpskom, jedna po opcionoj koloni koja
+  nije deklarisana NI U JEDNOM redu, sa objašnjenjem šta tačno to ograničava (isti obrazac
+  kao `dex_swap_analysis`'s `data_completeness.note`, samo prošireno na više polja).
+
+### 12.5 API endpoint
+
+```
+GET /api/v1/cases/{case_id}/token-approval-analysis?address=<opciono>&evidence=<opciono>&unlimited_threshold=<opciono, 1.0-1e40>&rapid_use_seconds=<opciono, 0-2592000>
+```
+
+- **Read-only, bez custody upisa i bez audit log unosa** — isti tretman kao
+  `GET .../dex-swap-analysis` i `GET .../behavioral-analysis` (pasivne varijante). Ovo je
+  namerna, dokumentovana granica Faze 1 (§12.6), ne previd.
+- `address` opciono — izostavljeno, vraća SVE grupe odobrenja u evidenciji; zadato, filtrira
+  na grupe gde je ta adresa owner ILI spender (case-sensitive tačno poklapanje, ista
+  konvencija kao Pathfinding/Behavioral/DEX Swap); `404` ako se adresa nigde ne pojavljuje
+  (proveravano preko `sender_address`/`recipient_address`/`owner_address`/`spender_address`
+  — šire od DEX Swap-ove provere, jer eksplicitan `owner_address` može biti adresa koja se
+  NIGDE ne pojavljuje kao običan sender/recipient — vidi §12.4).
+- Odgovor (skraćeno, pun oblik proveren stvarnim pozivom kroz `TestClient`, §12.5.2):
+  ```json
+  {
+    "case_id": "...", "evidence": null, "address": null, "generated_at": "...",
+    "total_approval_events": 1, "total_approve_events": 1, "total_permit_events": 0,
+    "total_transferfrom_events": 1, "unattributed_transferfrom_count": 0,
+    "unique_owners": 1, "unique_spenders": 1, "unique_tokens": 1,
+    "groups": [{
+      "owner": "0xOwner", "spender": "0xSpender", "token_address": "0xTokenA",
+      "token_identified": true, "current_status": "active",
+      "current_allowance_amount": 1e18, "current_unlimited_basis": "declared",
+      "ever_unlimited": true, "approval_event_count": 1,
+      "first_approval_timestamp": "...", "latest_approval_timestamp": "...",
+      "approvals": [{"event_type": "approve", "amount": 1e18, "is_zero": false,
+        "unlimited_basis": "declared", "is_unlimited_declared": true,
+        "sequence_status": "active", "timestamp": "...", "transaction_hash": "0xapprovehash1",
+        "block_number": null, "permit_deadline": null, "permit_nonce": null}],
+      "transfer_from_count": 1, "total_transferred_amount": 5e17,
+      "linked_transfers": [{"amount": 5e17, "timestamp": "...", "transaction_hash": "...",
+        "block_number": null, "recipient": "0xThirdParty",
+        "preceding_approval_timestamp": "...", "preceding_approval_unlimited_basis": "declared",
+        "seconds_since_approval": 3600.0, "before_any_approval": false}],
+      "first_use_timestamp": "...", "time_to_first_use_seconds": 3600.0,
+      "time_to_first_use_anomaly": false, "related_addresses": ["0xThirdParty"],
+      "spender_multi_owner": null,
+      "risk_indicators": [{"code": "unlimited_rapid_drain", "label": "...", "reasons": ["...", "...", "..."]},
+                           {"code": "active_used_never_revoked", "label": "...", "reasons": ["...", "..."]}]
+    }],
+    "unattributed_transfers": [], "skipped_row_count": 0, "unrecognized_event_type_values": [],
+    "data_completeness": {"event_type_declared": true, "token_address_declared": true,
+      "owner_address_declared": false, "spender_address_declared": true,
+      "is_unlimited_declared": true, "block_number_declared": false,
+      "permit_fields_declared": false, "notes": ["..."]},
+    "unlimited_threshold": 1e15, "rapid_use_seconds": 3600,
+    "disclaimer": "Token Approval Analysis čita isključivo polja koja evidencija stvarno deklariše - ..."
+  }
+  ```
+
+#### 12.5.1 Testovi (pytest, `backend/tests/test_token_approval_analysis.py`)
+
+25 testova, grupisano: `TestRequiredColumns` (2 — nedostatak obavezne kolone baca grešku,
+nedostatak `event_type` vraća prazan-ali-validan rezultat), `TestOwnerSpenderExtraction` (3
+— fallback na sender/recipient, eksplicitan `owner_address` override za permit,
+neprepoznata `event_type` vrednost se prijavljuje), `TestUnlimitedDetection` (3 —
+deklarisano/heuristika-po-veličini/običan iznos), `TestApprovalStatusSequence` (3 —
+`approve(spender,0)` ⇒ revoked, `approve(spender,amount>0)` ⇒ active, ranije odobrenje ⇒
+superseded), `TestTransferFromLinking` (5 — tačno poklapanje, nedostatak
+`spender_address` ⇒ neatribuirano, nejednoznačan token uz više odobrenja ⇒ neatribuirano,
+jedan nedvosmislen kandidat ⇒ izvedeno poklapanje, vreme do prvog korišćenja se računa
+prema odobrenju na snazi), `TestRiskIndicators` (5 — sve pet indikatora, uključujući
+namernu proveru da `unlimited_rapid_drain` NE opali kad je iskorišćeno odobrenje bilo malo
+a neograničeno tek kasnije), `TestAddressFiltering` (2 — 404 za nepostojeću adresu,
+filtriranje po owner adresi), `TestDataCompleteness` (2 — odsutne kolone se prijavljuju,
+disclaimer uvek prisutan).
+
+```bash
+python -m pytest backend/tests/test_token_approval_analysis.py -v   # 25 passed
+```
+
+#### 12.5.2 Testirano i kroz pravu rutu (ne samo jedinični testovi)
+
+End-to-end provera kroz `TestClient` (prijava → kreiranje slučaja → `POST /upload/csv` sa
+CSV-om koji ima `event_type`/`token_address`/`spender_address`/`is_unlimited` kolone → `GET
+.../token-approval-analysis`): stvaran HTTP 200 sa tačno očekivanim poljima (prikazano u
+§12.5 iznad — svaka vrednost u tom primeru je stvarno vraćena od aplikacije, ne ručno
+sastavljena), i stvaran HTTP 404 za adresu koja se ne pojavljuje u evidenciji. Potvrđuje da
+`POST /upload/csv` (nepromenjen, §7.3) zaista pušta nove kolone kroz ceo lanac do ove nove
+rute.
+
+#### 12.5.3 Puna regresija
+
+```bash
+python -m pytest backend/ -q   # 327 passed (302 postojećih + 25 novih), 0 failed
+```
+
+Potvrđuje: nijedna postojeća analiza (Graph/Taint/Pathfinding/Behavioral/DEX Swap),
+lanac dokaza, izveštaji, upload, niti bilo šta drugo nije pokvareno dodavanjem ovog modula
+i ove rute.
+
+### 12.6 Ograničenja — i šta OSTAJE otvoreno (van obima Faze 1)
+
+**Ograničenja podataka (nasleđena iz §7, potvrđena implementacijom, ništa novo izmišljeno):**
+
+- I dalje važi u potpunosti: nema automatskog on-chain izvora za approve/permit/
+  transferFrom (§7.1) — Faza 1 svesno NE dodaje `getLogs`/`tokentx` poziv.
+- **Novo, uočeno tokom implementacije:** `amount` je `float64` (posledica postojećeg
+  `ingestion.clean_transaction_csv`-a, koji ovaj modul namerno ne menja) — svaka tvrdnja o
+  "tačnoj" `2**256-1`/`2**96-1` vrednosti bi bila lažna preciznost, pa je "unlimited"
+  ISKLJUČIVO deklarisano (`is_unlimited` kolona) ili heuristika-po-veličini praga, nikad
+  "potvrđeno po tačnoj vrednosti sentinela".
+- **Novo, uočeno tokom implementacije:** bez registra decimala po tokenu, modul ne zna da
+  li je `amount` u raw baznim jedinicama ili već human-scaled — dodatan razlog zašto
+  fiksni brojčani sentinel ne bi bio pouzdan (već pokriveno gore, ali eksplicitno vredno
+  ponoviti kao ograničenje, ne kao previd).
+- Grupisanje po `(owner, spender, token)` kad `token_address` nije deklarisan **spaja**
+  sve tokene tog para u jednu grupu — `token_identified: false` to obeležava po grupi, ali
+  ne razdvaja retroaktivno ono što evidencija sama nije razdvojila.
+- transferFrom bez `spender_address` je **trajno neatribuiran** u ovoj verziji — nema
+  fallback nagađanja (namerno, §12.4).
+- `block_number` i `permit_deadline`/`permit_nonce` su čisti passthrough — nikad izvedeni,
+  nikad validirani protiv nekog spoljnog izvora (nema ga).
+
+**Van obima Faze 1 (planirano, ne urađeno — vidi §9/§11 za predlog kad se bude radilo):**
+
+- `POST /cases/{id}/token-approval-analysis/run` — custody-gated deliberatna varijanta
+  (§9.6) — `_record_custody_access` je već generički i ne treba mu nijedna izmena kad se
+  ovo doda.
+- PDF izveštaj (§9.5, `report_type: 'token_approval'`).
+- Log aktivnosti unos (§9.7 — `ACTION_LABELS`, `_REPORT_TYPE_LABELS`, `ACTION_HUE_ORDER`
+  na oba mesta, backend i frontend).
+- Frontend stranica (§9.4) i graph overlay (§9.2, opciono).
+- Demo seed skripta (`seed_demo_token_approval_evidence.py`) — nije tražena u ovom koraku;
+  ručni test u §12.5.2 je odigrao tu ulogu za potrebe verifikacije.

@@ -11,6 +11,15 @@ from app.analytics.behavioral_analysis import analyze_time_of_day
 from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
 from app.analytics.dex_swap_analysis import DEFAULT_MAX_GAP_SECONDS, MAX_MAX_GAP_SECONDS, MIN_MAX_GAP_SECONDS, detect_dex_swaps
 from app.analytics.timezone_heuristics import estimate_timezone_compatibility
+from app.analytics.token_approval_analysis import (
+    DEFAULT_RAPID_USE_SECONDS,
+    DEFAULT_UNLIMITED_THRESHOLD,
+    MAX_RAPID_USE_SECONDS,
+    MAX_UNLIMITED_THRESHOLD,
+    MIN_RAPID_USE_SECONDS,
+    MIN_UNLIMITED_THRESHOLD,
+    analyze_token_approvals,
+)
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
 from app.analytics.plugins.manager import run_plugin_pipeline
@@ -457,6 +466,55 @@ def run_case_dex_swap_analysis(
             custody=request.custody,
             user=str(current_user['username']),
         )
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+@router.get('/{case_id}/token-approval-analysis')
+def get_case_token_approval_analysis(
+    case_id: str,
+    address: str | None = Query(default=None),
+    evidence: str | None = None,
+    unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
+    rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+) -> dict[str, object]:
+    """Token Approval / Ice Phishing Analysis: extracts and classifies ERC-20
+    approve()/EIP-2612 permit() grants and their transferFrom() usage from the case's
+    combined, cleaned evidence (see analytics/token_approval_analysis.py and
+    TOKEN-APPROVAL-IMPLEMENTATION.md for exactly which fields are read vs. derived vs.
+    reported as unavailable). `address` is optional - omitted, every approval group found
+    in the evidence is returned; given, the result is scoped to groups where that address
+    is the owner OR the spender (404 if it never appears in the evidence at all).
+
+    Reads the case's cleaned per-transaction DataFrame directly (NOT the shared
+    transaction graph), same reason as get_case_dex_swap_analysis above - the shared graph
+    deliberately does not carry the extra fields (event_type, token_address,
+    spender_address...) this analysis needs.
+
+    Read-only, same treatment as get_case_dex_swap_analysis/get_case_behavioral_analysis:
+    only re-reads already-cleaned evidence, no custody dialog, no audit log entry. This is
+    the backend collection/extraction phase only - the deliberate custody-gated variant,
+    PDF report, activity log entry and frontend page are a later phase (see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #9/#11).
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip() if address else None
+
+    try:
+        result = analyze_token_approvals(
+            combined_frame,
+            target_address=normalized_address,
+            unlimited_threshold=unlimited_threshold,
+            rapid_use_seconds=rapid_use_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     result['case_id'] = case_id
     result['evidence'] = evidence
