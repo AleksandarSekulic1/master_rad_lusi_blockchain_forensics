@@ -703,20 +703,25 @@ export class TokenApprovalComponent implements OnInit {
   /** Every correlation entry currently on screen - one address' worth in single-address
    * mode, all analyzed addresses' combined in multi-address mode. */
   protected get activeCorrelations(): TokenApprovalCorrelationEntry[] {
-    if (this.multiResults.length > 0) {
-      return this.multiResults.flatMap((entry) => entry.result?.correlations ?? []);
-    }
-    return this.result?.correlations ?? [];
+    const base = this.multiResults.length > 0
+      ? this.multiResults.flatMap((entry) => entry.result?.correlations ?? [])
+      : (this.result?.correlations ?? []);
+    // Findings fetched by "Proveri kroz Taint analizu" (§checkSelectedInTaint) are ALSO
+    // "on screen" - without this, running that check without a prior ANALIZIRAJ leaves
+    // canExportPdf/suggestedTaintAddresses empty even though a real Token Approval result
+    // is sitting right there in its own panel (see the bug report this fixed: no PDF
+    // button after a suggestion-only "Proveri kroz Taint analizu").
+    return base.concat(this.taintCheckTokenApprovalResults.flatMap((entry) => entry.result?.correlations ?? []));
   }
 
   /** Every (owner, spender, token) group currently on screen - same combining rule as
    * activeCorrelations above. Powers the "Predlog za dalju analizu" ranking (§suggested
    * addresses) across however many addresses were just analyzed. */
   protected get activeGroups(): TokenApprovalGroup[] {
-    if (this.multiResults.length > 0) {
-      return this.multiResults.flatMap((entry) => entry.result?.groups ?? []);
-    }
-    return this.result?.groups ?? [];
+    const base = this.multiResults.length > 0
+      ? this.multiResults.flatMap((entry) => entry.result?.groups ?? [])
+      : (this.result?.groups ?? []);
+    return base.concat(this.taintCheckTokenApprovalResults.flatMap((entry) => entry.result?.groups ?? []));
   }
 
   /** data_completeness.notes across whichever address(es) are on screen - deduplicated,
@@ -1021,7 +1026,11 @@ export class TokenApprovalComponent implements OnInit {
   }
 
   protected get canExportPdf(): boolean {
-    return this.activeCorrelations.length > 0 && !this.isAnalyzing && !this.isExportingPdf;
+    // Either real Token Approval findings (own analysis or a "Proveri kroz Taint
+    // analizu" fetch), or at least a taint check result on its own (e.g. every
+    // suggestion's own approval fetch happened to fail, but the taint side succeeded) -
+    // there is always SOMETHING worth signing and exporting in either case.
+    return (this.activeCorrelations.length > 0 || !!this.taintCheckResult) && !this.isAnalyzing && !this.isExportingPdf;
   }
 
   /** Human-readable "which address(es) is this about" for the PDF header/summary/report
@@ -1032,7 +1041,16 @@ export class TokenApprovalComponent implements OnInit {
       const resolved = this.multiResults.filter((entry) => entry.result).map((entry) => entry.address);
       return resolved.length > 0 ? resolved.join(', ') : this.t('(nijedna adresa nije pronađena)', '(no address found)');
     }
-    return this.result?.address ?? this.t('(sve adrese)', '(all addresses)');
+    if (this.result) {
+      return this.result.address ?? this.t('(sve adrese)', '(all addresses)');
+    }
+    // No ANALIZIRAJ result at all - "Proveri kroz Taint analizu" was run straight from a
+    // suggestion, so the checked addresses ARE what this report is about.
+    const checked = this.taintCheckTokenApprovalResults.map((entry) => entry.address);
+    if (checked.length > 0) {
+      return checked.join(', ');
+    }
+    return this.taintCheckResult?.seed_addresses.join(', ') ?? this.t('(sve adrese)', '(all addresses)');
   }
 
   openSignatureDialog(): void {
@@ -1070,7 +1088,9 @@ export class TokenApprovalComponent implements OnInit {
     // unlimited_threshold/rapid_use_seconds are the same run-time parameters for every
     // address analyzed together (the page has no per-address threshold override), so
     // whichever result actually exists carries the right figures for all of them.
-    const thresholdSource = this.result ?? this.multiResults.find((entry) => entry.result)?.result;
+    const thresholdSource = this.result
+      ?? this.multiResults.find((entry) => entry.result)?.result
+      ?? this.taintCheckTokenApprovalResults.find((entry) => entry.result)?.result;
     return {
       case_id: this.activeCase!.id,
       evidence: this.selectedEvidence ?? 'combined',
@@ -1197,12 +1217,28 @@ export class TokenApprovalComponent implements OnInit {
     // actually resolved (failed ones were already reported inline, see confirmCustody
     // AndAnalyze) - the loop below adds an "ADRESA: X" sub-heading per entry only when
     // there is more than one, so a single-address export's layout never changes.
-    const addressEntries: Array<{ address: string; result: TokenApprovalCorrelationResult; groupByKey: Map<string, TokenApprovalGroup> }> =
+    type PdfAddressEntry = { address: string; result: TokenApprovalCorrelationResult; groupByKey: Map<string, TokenApprovalGroup> };
+    const baseEntries: PdfAddressEntry[] =
       this.multiResults.length > 0
         ? this.multiResults
             .filter((entry): entry is { address: string; result: TokenApprovalCorrelationResult; error: string | null } => !!entry.result)
             .map((entry) => ({ address: entry.address, result: entry.result, groupByKey: this.groupsToMap(entry.result.groups) }))
-        : [{ address: this.result!.address ?? this.analyzedAddressLabel, result: this.result!, groupByKey: this.groupByKey }];
+        : this.result
+          ? [{ address: this.result.address ?? this.analyzedAddressLabel, result: this.result, groupByKey: this.groupByKey }]
+          : [];
+    // "Proveri kroz Taint analizu" (§checkSelectedInTaint) fetches Token Approval findings
+    // for addresses that were never run through ANALIZIRAJ at all (a suggested spender) -
+    // those get their own report sections too, deduplicated by address in the (unlikely)
+    // case the same address is already covered above.
+    const seenAddresses = new Set(baseEntries.map((entry) => entry.address.toLowerCase()));
+    for (const checked of this.taintCheckTokenApprovalResults) {
+      if (!checked.result || seenAddresses.has(checked.address.toLowerCase())) {
+        continue;
+      }
+      seenAddresses.add(checked.address.toLowerCase());
+      baseEntries.push({ address: checked.address, result: checked.result, groupByKey: this.groupsToMap(checked.result.groups) });
+    }
+    const addressEntries = baseEntries;
     const isMultiAddressReport = addressEntries.length > 1;
     // riskLevelFor/riskIndicatorsFor below always read `this.groupByKey`, which
     // confirmCustodyAndAnalyze already sets to the UNION of every analyzed address's

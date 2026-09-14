@@ -254,6 +254,33 @@
     </div>
   </ng-container>
 
+  <!-- Van gornjeg *ngIf="result || multiResults..." namerno - PDF/Taint provera moraju
+       raditi i kad je "Proveri kroz Taint analizu" pokrenuto direktno iz predloga, bez
+       ijednog prethodnog ANALIZIRAJ (result i multiResults su tada oba prazna, ali
+       taintCheckTokenApprovalResults/taintCheckResult nisu - vidi activeCorrelations). -->
+  <div class="ta-toolbar" *ngIf="activeCorrelations.length > 0 || taintCheckResult">
+    <button
+      type="button"
+      class="ghost-button"
+      *ngIf="result || multiResults.length > 0"
+      (click)="checkAnalyzedAddressInTaint()"
+      [disabled]="isRunningTaintCheck"
+      [title]="t('Proveri taint (kretanje sredstava) za baš ovu analiziranu adresu', 'Check taint (fund movement) for this exact analyzed address')"
+    >
+      {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+    </button>
+    <button
+      type="button"
+      class="ghost-button export-pdf-button"
+      *ngIf="canExportPdf"
+      (click)="openSignatureDialog()"
+      [disabled]="isExportingPdf"
+      [title]="t('Izvezi potpisan PDF forenzički izveštaj sa svim nalazima', 'Export a signed PDF forensic report with all findings')"
+    >
+      {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+    </button>
+  </div>
+
   <ng-container *ngIf="result || multiResults.length > 0">
     <!-- Sažetak - tek POSLE analize, ne na početnom ekranu. Multi-address aware (§addressList
          iznad): brojevi su ZBIR preko svih analiziranih adresa kad ih ima više. -->
@@ -335,28 +362,6 @@
           {{ t('ili otvori pun graf →', 'or open full graph →') }}
         </button>
       </div>
-    </div>
-
-    <div class="ta-toolbar" *ngIf="activeCorrelations.length > 0">
-      <button
-        type="button"
-        class="ghost-button"
-        (click)="checkAnalyzedAddressInTaint()"
-        [disabled]="isRunningTaintCheck"
-        [title]="t('Proveri taint (kretanje sredstava) za baš ovu analiziranu adresu', 'Check taint (fund movement) for this exact analyzed address')"
-      >
-        {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
-      </button>
-      <button
-        type="button"
-        class="ghost-button export-pdf-button"
-        *ngIf="canExportPdf"
-        (click)="openSignatureDialog()"
-        [disabled]="isExportingPdf"
-        [title]="t('Izvezi potpisan PDF forenzički izveštaj sa svim nalazima', 'Export a signed PDF forensic report with all findings')"
-      >
-        {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
-      </button>
     </div>
 
     <!-- Jedna adresa - jedna, ravna tabela (nepromenjeno ponašanje). -->
