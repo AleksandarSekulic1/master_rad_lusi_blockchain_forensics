@@ -695,5 +695,24 @@
       "potentially_risky_approvals": 2
     },
     "registered_at": "2026-09-14T11:20:24.237583+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-V7AL-GWN4",
+    "content_hash": "6d3f0c74a293dbc0b31b5e0015b5dfd9f2ef20ef4d3eebe5c6f94f0b6a7fde74",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički, gde je naznačeno) nad navedenom evidencijom.",
+    "summary": {
+      "address": "0xDrainerContract, 0xSweepContract",
+      "total_approvals": 4,
+      "unlimited_approvals": 2,
+      "active_approvals": 4,
+      "revoked_approvals": 0,
+      "used_approvals": 1,
+      "unused_approvals": 3,
+      "potentially_risky_approvals": 4
+    },
+    "registered_at": "2026-09-14T12:52:09.925259+00:00"
   }
 ]
