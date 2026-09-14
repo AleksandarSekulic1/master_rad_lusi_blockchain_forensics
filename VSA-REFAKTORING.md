@@ -56,14 +56,91 @@ na `app.api.routes.<naziv>`.
 `test_investigator_notes.py`, `test_investigator_links.py`,
 `test_case_management_full_pass.py` — uvoze modele/servise sa novih putanja.
 
+## app/shared/case_access.py, app/shared/custody_recording.py — novo
+
+Zajednička infrastruktura za sve "case"-slice-ove (nastalo razbijanjem `cases.py`, vidi
+ispod): `case_access.py` (`get_case_or_404`, `get_case_evidence_paths_or_404`,
+`filter_evidence_paths`) i `custody_recording.py` (`TransactionCustodyEntry`,
+`record_custody_access`) — svaka analiza koja se tretira kao namerni pristup dokazu
+(taint/pathfinding/behavioral/dex-swap/token-approval) upisuje kroz ovo isto mesto.
+
+## app/api/routes/cases.py (1231 linija) — obrisano, razbijeno na 8 slice-ova
+
+Router je mešao CRUD nad slučajem sa 7 različitih analiza. Svaki use-case sada ima svoj
+folder u `app/features/`:
+
+- **case_management/** — CRUD slučaja, evidence lista/brisanje, status (`models.py`,
+  `router.py`)
+- **case_graph/** — pregled transakcionog grafa + CSV izvoz (`router.py`)
+- **case_behavioral_analysis/** — analiza doba dana (GET + POST run) (`models.py`,
+  `router.py`)
+- **case_dex_swap_analysis/** — detekcija DEX swap-ova (GET + POST run) (`models.py`,
+  `router.py`)
+- **case_token_approval_analysis/** — token approval analiza/istorija/korelacija + POST
+  run, uključujući pomoćne funkcije za upis u lanac dokaza (`models.py`, `service.py`,
+  `router.py`)
+- **case_seed_suggestion/** — predlozi seed adresa za taint analizu (`router.py`)
+- **case_analytics_run/** — pokretanje plugin pipeline-a (taint/chain-hopping/peel-chains/
+  wallet-clustering) (`models.py`, `router.py`)
+- **case_pathfinding/** — BFS pretraga puta, uklj. "nearest CEX" (`models.py`,
+  `router.py`)
+
+## app/api/router.py — izmenjeno
+
+Jedan uvoz `cases_router` zamenjen sa 8 uvoza (po jedan iz svakog gornjeg slice-a), svi i
+dalje mount-ovani pod `/cases` sa istim `authenticated` gate-om.
+
+## tests/ — izmenjeno (samo uvozi/monkeypatch mete, sadržaj testova nepromenjen)
+
+`test_custody_log.py`, `test_token_approval_custody.py` — uvoze
+`TransactionCustodyEntry`/`record_custody_access`/`combine_frames_with_evidence_tag`/
+`token_approval_custody_enrichment` sa novih putanja. `test_path_finding_bfs.py` — monkeypatch
+mete `get_case`/`get_case_evidence_paths` prebačene sa starog `cases` modula na
+`app.shared.case_access`.
+
 ## Status
 
-`pytest tests/` → **372 testa, svi prolaze.** Backend pretražen na "smeće" komentare
-(mrtav kod, TODO) — nije nađen nijedan; postojeći komentari su forenzičko/poslovno
-obrazloženje i ostaju netaknuti.
+`pytest tests/` → **372 testa, svi prolaze.** Svih 25 `/cases/...` putanja iz starog
+router-a i dalje postoji (provereno preko OpenAPI šeme). Nijedan drugi modul u kodu više ne
+referencira obrisani `app.api.routes.cases`.
 
-## Sledeće na redu
+## app/api/routes/ — obrisano (poslednjih 13 route-ova preseljeno)
 
-Razbijanje `app/api/routes/cases.py` (1231 linija, meša CRUD/evidence/taint/dex-swap/
-token-approval/path-finding/seed-suggestion) na zasebne slice-ove — najveći preostali
-zahvat.
+Svaki od preostalih route fajlova je već bio samostalna, 1:1 router↔servis celina (za
+razliku od `cases.py`), pa je premeštanje bilo čisto fizičko — bez cepanja, bez menjanja
+logike. Svaki dobija sopstveni folder u `app/features/` (samo `router.py`, pošto su im
+Pydantic request modeli mali i već kolocirani uz rutu koja ih koristi):
+
+`auth/`, `addresses/`, `users/`, `investigation_management/` (CRUD nad
+`InvestigationCase` kontejnerom — nazvan drugačije od `investigation_notes/links/pins`
+da se ne meša sa opštim `app/investigations/` paketom), `graph/` (pregled grafa direktno
+nad raw CSV-om iz `data/raw/`, odvojeno od `case_graph` koji radi nad dokazima
+slučaja), `onchain/`, `upload/`, `custody/`, `exports/`, `reports/`, `analytics/` (raw
+CSV plugin run, odvojeno od `case_analytics_run`), `activity_log/`, `test_suite/`.
+
+Folder `app/api/routes/` je posle ovoga bio prazan i obrisan je u celosti.
+
+**Izmenjeno:** `app/api/router.py` (svi uvozi), `app/analytics/ingestion.py` (komentar),
+`tests/test_activity_report.py`, `tests/test_custody_export_audit.py`,
+`tests/test_token_approval_run_route.py` (putanje uvoza/monkeypatch meta, sadržaj testova
+nepromenjen).
+
+**Ostaje van `app/features/` (namerno, deljeno):** `app/services/*.py` i
+`app/analytics/*.py` — servisni/algoritamski moduli koje koristi više od jednog slice-a
+(npr. `report_registry.py` koriste i `reports` i `activity_log`; `address_enrichment.py`
+koriste i `addresses` i `case_pathfinding`), pa ostaju zajednička infrastruktura umesto da
+se dupliraju.
+
+## Status
+
+`pytest tests/` → **372 testa, svi prolaze.** OpenAPI šema pokazuje svih 64 ruta iz
+originalne aplikacije (0 izgubljenih/duplih), `app.api.routes` više nigde nije
+referenciran u kodu.
+
+## Rezultat
+
+Ceo backend je sada organizovan po funkcionalnosti (`app/features/<naziv>/`, ~24 slice-a),
+umesto po tehničkom sloju. `app/api/routes/` više ne postoji; `app/shared/` je
+kernel-infrastruktura (vreme, pristup slučaju, upis u lanac dokaza); `app/services/` i
+`app/analytics/` su namerno ostali zajednički moduli koje slice-ovi pozivaju, ne
+duplira ih se.

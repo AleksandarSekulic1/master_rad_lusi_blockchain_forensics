@@ -1,23 +1,30 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user, require_admin
-from app.api.routes.activity_log import router as activity_log_router
-from app.api.routes.addresses import router as addresses_router
-from app.api.routes.analytics import router as analytics_router
-from app.api.routes.auth import router as auth_router
-from app.api.routes.cases import router as cases_router
-from app.api.routes.custody import router as custody_router
-from app.api.routes.exports import router as exports_router
-from app.api.routes.graph import router as graph_router
-from app.api.routes.investigations import router as investigations_router
+from app.features.activity_log.router import router as activity_log_router
+from app.features.addresses.router import router as addresses_router
+from app.features.analytics.router import router as analytics_router
+from app.features.auth.router import router as auth_router
+from app.features.case_analytics_run.router import router as case_analytics_run_router
+from app.features.case_behavioral_analysis.router import router as case_behavioral_analysis_router
+from app.features.case_dex_swap_analysis.router import router as case_dex_swap_analysis_router
+from app.features.case_graph.router import router as case_graph_router
+from app.features.case_management.router import router as case_management_router
+from app.features.case_pathfinding.router import router as case_pathfinding_router
+from app.features.case_seed_suggestion.router import router as case_seed_suggestion_router
+from app.features.case_token_approval_analysis.router import router as case_token_approval_analysis_router
+from app.features.custody.router import router as custody_router
+from app.features.exports.router import router as exports_router
+from app.features.graph.router import router as graph_router
 from app.features.investigation_links.router import router as investigation_links_router
+from app.features.investigation_management.router import router as investigations_router
 from app.features.investigation_notes.router import router as investigation_notes_router
 from app.features.investigation_pins.router import router as investigation_pins_router
-from app.api.routes.onchain import router as onchain_router
-from app.api.routes.reports import router as reports_router
-from app.api.routes.tests import router as tests_router
-from app.api.routes.upload import router as upload_router
-from app.api.routes.users import router as users_router
+from app.features.onchain.router import router as onchain_router
+from app.features.reports.router import router as reports_router
+from app.features.test_suite.router import router as tests_router
+from app.features.upload.router import router as upload_router
+from app.features.users.router import router as users_router
 
 
 api_router = APIRouter()
@@ -30,7 +37,18 @@ authenticated = [Depends(get_current_user)]
 api_router.include_router(analytics_router, dependencies=authenticated)
 api_router.include_router(graph_router, dependencies=authenticated)
 api_router.include_router(upload_router, dependencies=authenticated)
-api_router.include_router(cases_router, dependencies=authenticated)
+# The `Case` (evidence container) feature, split into one slice per capability rather than
+# one 1000+ line router - see VSA-REFAKTORING.md. All eight share the '/cases' prefix and
+# only ever READ a case through app.shared.case_access, so mounting them together here is
+# equivalent to the single router this used to be.
+api_router.include_router(case_management_router, dependencies=authenticated)
+api_router.include_router(case_graph_router, dependencies=authenticated)
+api_router.include_router(case_behavioral_analysis_router, dependencies=authenticated)
+api_router.include_router(case_dex_swap_analysis_router, dependencies=authenticated)
+api_router.include_router(case_token_approval_analysis_router, dependencies=authenticated)
+api_router.include_router(case_seed_suggestion_router, dependencies=authenticated)
+api_router.include_router(case_analytics_run_router, dependencies=authenticated)
+api_router.include_router(case_pathfinding_router, dependencies=authenticated)
 # Investigator layer container (pinned nodes / off-chain links attach here later too).
 # Separate entity from the evidence Case above; same "any authenticated user" access.
 api_router.include_router(investigations_router, dependencies=authenticated)

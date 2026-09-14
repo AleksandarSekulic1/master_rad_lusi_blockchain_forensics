@@ -22,7 +22,7 @@ def isolated_stores(tmp_path, tmp_path_factory, monkeypatch):
     monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
     monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
     monkeypatch.setattr(custody_evidence_log, '_evidence_custody_log_path', lambda: tmp_path / 'custody_evidence_log.jsonl')
-    from app.api.routes import upload as upload_routes
+    from app.features.upload import router as upload_routes
     from app.services import case_management, user_management
 
     raw_dir = tmp_path / 'raw'

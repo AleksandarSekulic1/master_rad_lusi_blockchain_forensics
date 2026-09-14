@@ -104,7 +104,7 @@ def detect_currencies(file_path: str | Path) -> list[str]:
 def split_by_currency(file_path: str | Path) -> dict[str | None, pd.DataFrame]:
     """Splits a raw (not yet cleaned) evidence CSV into one DataFrame per declared
     currency label, preserving the file's own original columns/headers exactly as
-    uploaded - used when an upload mixes currencies (see app.api.routes.upload) so each
+    uploaded - used when an upload mixes currencies (see app.features.upload.router) so each
     resulting evidence file is internally consistent for the taint model, instead of
     asking the analyst to split it by hand outside the app.
 

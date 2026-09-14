@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.api.routes.activity_log import _parse_users_param, _resolve_users, _validate_date
+from app.features.activity_log.router import _parse_users_param, _resolve_users, _validate_date
 from app.evidence.audit_log import local_day_bounds_utc
 from app.exports.activity_report import (
     action_label,

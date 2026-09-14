@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.routes import custody as custody_routes
+from app.features.custody import router as custody_routes
 from app.evidence import audit_log, custody_evidence_log, custody_log
 
 
