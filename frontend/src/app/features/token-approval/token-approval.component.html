@@ -571,9 +571,9 @@
       <p class="ta-block-title">{{ t('Indikatori rizika', 'Risk indicators') }}</p>
       <ul class="risk-indicator-list">
         <li *ngFor="let indicator of riskIndicatorsFor(entry)">
-          <p class="risk-indicator-label">{{ indicator.label }}</p>
+          <p class="risk-indicator-label">{{ riskIndicatorLabel(indicator) }}</p>
           <ul>
-            <li *ngFor="let reason of indicator.reasons" class="risk-indicator-reason">{{ reason }}</li>
+            <li *ngFor="let reason of riskIndicatorReasons(indicator)" class="risk-indicator-reason">{{ reason }}</li>
           </ul>
         </li>
       </ul>

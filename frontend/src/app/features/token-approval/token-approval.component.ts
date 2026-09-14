@@ -23,6 +23,7 @@ import {
   TokenApprovalCorrelationEntry,
   TokenApprovalCorrelationResult,
   TokenApprovalGroup,
+  TokenApprovalRiskIndicator,
   TokenApprovalRiskLevel,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
@@ -501,6 +502,110 @@ export class TokenApprovalComponent implements OnInit {
     return this.groupFor(entry)?.risk_indicators ?? [];
   }
 
+  // --- English translation for risk indicator label/reasons -------------------------
+  // The backend (token_approval_analysis.py) only ever produces this text in Serbian -
+  // every OTHER piece of UI text on this page already goes through t(), but this one
+  // comes straight from the API response, so switching the app to English used to leave
+  // these two paragraphs stuck in Serbian (see the bug report this fixed). Rather than
+  // touch the backend (a much bigger, riskier change - 57 existing tests assert exact
+  // Serbian wording) this is a small, purely-additive frontend lookup keyed by the
+  // indicator's stable `code`, applied only when settings.lang() === 'en'. Labels are
+  // always static text, so a straight 1:1 map is exact. Reasons that embed a number
+  // (rapid_use_seconds, distinct_owner_count, ...) keep the exact figure by extracting it
+  // straight out of the Serbian sentence the backend already computed it into, rather than
+  // re-deriving it from raw group data this page doesn't otherwise need to carry - an
+  // unrecognised code/index (e.g. a future backend addition) always falls back to the
+  // original Serbian text instead of showing nothing.
+  private static readonly RISK_INDICATOR_LABELS_EN: Record<string, string> = {
+    unlimited_never_used: 'Unlimited allowance, never used',
+    unlimited_rapid_drain: 'Unlimited allowance drained shortly after approval',
+    revoked_after_use: 'Revoked only after use',
+    active_used_never_revoked: 'Active grant, already used, never revoked',
+    spender_multi_owner: 'Spender address approved by multiple owners',
+    unknown_spender: 'Spender not recognised in any local registry',
+    large_amount_transferred: 'Large amount withdrawn through this grant',
+    multiple_transferfrom_operations: 'Multiple transferFrom operations on the same grant',
+    long_active_period: 'Grant has been (or was) active for a long time',
+    rapid_first_use: 'First use followed shortly after approval',
+    multiple_tokens_same_spender: 'Same spender approved for multiple tokens',
+  };
+
+  /** code -> one function per reason, in the SAME order the backend appends them -
+   * `nums` is every number found in the original Serbian sentence, left to right. */
+  private static readonly RISK_INDICATOR_REASONS_EN: Record<string, Array<(nums: number[]) => string>> = {
+    unlimited_never_used: [
+      () => 'At least one approve/permit in this group has an unlimited (or very large) allowance.',
+      () => 'No transferFrom transaction in the available evidence uses this grant.',
+      () => 'The grant is still active (not revoked via an approve(0) call) - an open, unused risk.',
+    ],
+    unlimited_rapid_drain: [
+      (n) => `At least one transferFrom transaction followed within ${n[0]}s of the approval that was in force.`,
+      () => 'Classic ice-phishing pattern: the victim signs/approves, funds are drained shortly after.',
+      () => 'The threshold is a configurable parameter (rapid_use_seconds), not a fixed forensic standard.',
+    ],
+    revoked_after_use: [
+      () => 'The last approve/permit in this group has amount 0 (a revocation).',
+      () => 'At least one transferFrom transaction was recorded before the revocation - informative, not necessarily an open risk.',
+    ],
+    active_used_never_revoked: [
+      () => 'The grant is still active (no approve(0) after the last approval).',
+      () => 'At least one transferFrom transaction has already used this grant.',
+    ],
+    spender_multi_owner: [
+      (n) => `This spender address appears as the approved spender for ${n[0]} different owner addresses in this evidence.`,
+      () => 'A structural signal (a possible drainer/phishing contract with several victims) - not confirmation, needs further review.',
+    ],
+    unknown_spender: [
+      () => 'The spender address does not match any known exchange/mixer/sanctioned entity (known_entities.json) nor any known/likely DEX contract (known_dex_contracts.json).',
+      () => 'Does not mean it is malicious - most legitimate contracts simply are not on these two small, hand-curated lists; this only means there is no ADDITIONAL confirmation of legitimacy from them.',
+    ],
+    large_amount_transferred: [
+      (n) => `The total withdrawn through this grant (${n[0]}) reaches or exceeds the configurable threshold (${n[1]}).`,
+      () => 'The threshold is a heuristic by number size - without a per-token decimals registry there is no reliable way to translate this into a USD value (see the limitations in the documentation).',
+    ],
+    multiple_transferfrom_operations: [
+      (n) => `${n[0]} transferFrom transactions were recorded against this grant (threshold: ${n[1]}).`,
+      () => 'Several separate withdrawals can indicate automated/scripted spending of the grant - it can still be entirely legitimate use.',
+    ],
+    long_active_period: [
+      (n) => `At least one approval in this group was in force for ${n[0]} days (threshold: ${n[1]} days).`,
+      () => 'A longer open access means a wider time window for eventual abuse, independent of whether the amount was ever unlimited.',
+    ],
+    rapid_first_use: [
+      (n) => `The first transferFrom transaction followed ${n[0]}s after the approval that was in force (threshold: ${n[1]}s).`,
+      () => 'Same pattern as "unlimited_rapid_drain", here without confirmation that the amount itself was unlimited.',
+    ],
+    multiple_tokens_same_spender: [
+      (n) => `This (owner, spender) pair has grants for ${n[0]} different, identified tokens in this evidence.`,
+      () => 'Broad access across several tokens to the same contract is a typical pattern in "sign here" phishing dApps that request approval for the whole wallet at once.',
+    ],
+  };
+
+  protected riskIndicatorLabel(indicator: TokenApprovalRiskIndicator): string {
+    if (this.settings.lang() !== 'en') {
+      return indicator.label;
+    }
+    return TokenApprovalComponent.RISK_INDICATOR_LABELS_EN[indicator.code] ?? indicator.label;
+  }
+
+  protected riskIndicatorReasons(indicator: TokenApprovalRiskIndicator): string[] {
+    if (this.settings.lang() !== 'en') {
+      return indicator.reasons;
+    }
+    const templates = TokenApprovalComponent.RISK_INDICATOR_REASONS_EN[indicator.code];
+    if (!templates) {
+      return indicator.reasons;
+    }
+    return indicator.reasons.map((original, index) => {
+      const template = templates[index];
+      if (!template) {
+        return original;
+      }
+      const nums = [...original.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+      return template(nums);
+    });
+  }
+
   protected spenderKnownFor(entry: TokenApprovalCorrelationEntry): boolean {
     return this.groupFor(entry)?.spender_known ?? false;
   }
@@ -537,7 +642,7 @@ export class TokenApprovalComponent implements OnInit {
         owner: group.owner,
         riskLevel: group.risk_level,
         riskScore: group.risk_score,
-        topReasonLabel: group.risk_indicators[0]?.label ?? null,
+        topReasonLabel: group.risk_indicators[0] ? this.riskIndicatorLabel(group.risk_indicators[0]) : null,
       });
     }
     return [...bySpender.values()].sort((a, b) => b.riskScore - a.riskScore);
@@ -749,8 +854,11 @@ export class TokenApprovalComponent implements OnInit {
           this.taintCheckTokenApprovalResults = [];
           this.saveSessionState();
         },
-        error: () => {
+        error: (error: unknown) => {
           this.isRunningTaintCheck = false;
+          // Logged so a failure that only shows a generic message on screen can still be
+          // diagnosed from the browser console (status code, backend detail, ...).
+          console.error('Token Approval: taint-only check failed', error);
           const message = this.t('Neuspešna taint provera.', 'The taint check failed.');
           this.taintCustodyError = message;
           this.taintCheckError = message;
@@ -784,8 +892,9 @@ export class TokenApprovalComponent implements OnInit {
         this.groupByKey = this.groupsToMap([...this.groupByKey.values(), ...approvalEntries.flatMap((entry) => entry.result?.groups ?? [])]);
         this.saveSessionState();
       },
-      error: () => {
+      error: (error: unknown) => {
         this.isRunningTaintCheck = false;
+        console.error('Token Approval: combined taint+approval check failed', error);
         const message = this.t('Neuspešna provera.', 'The check failed.');
         this.taintCustodyError = message;
         this.taintCheckError = message;
