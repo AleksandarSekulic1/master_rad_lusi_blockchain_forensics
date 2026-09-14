@@ -988,8 +988,28 @@
 .ta-toolbar {
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ta-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.5rem;
+  margin-left: auto;
+}
+
+.close-analysis-button {
+  color: var(--ta-error);
+  border-color: color-mix(in srgb, var(--ta-error) 40%, transparent);
+}
+
+.close-analysis-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ta-error) 12%, transparent);
+  border-color: var(--ta-error);
+  color: var(--ta-error);
 }
 
 .export-pdf-button {

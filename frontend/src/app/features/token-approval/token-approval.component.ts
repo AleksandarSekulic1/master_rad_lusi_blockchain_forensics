@@ -48,6 +48,32 @@ interface SuggestedRiskyAddress {
   topReasonLabel: string | null;
 }
 
+/** One address' Token Approval fetch outcome - the same shape multiResults and
+ * taintCheckTokenApprovalResults both already use, named once so the sessionStorage
+ * snapshot type below doesn't have to repeat it. */
+interface AddressResultEntry {
+  address: string;
+  result: TokenApprovalCorrelationResult | null;
+  error: string | null;
+}
+
+/** What survives a refresh (§"Zatvori analizu" - see saveSessionState/restoreSessionState/
+ * closeAnalysis). Deliberately NOT everything on the page: transient UI state (open
+ * dialogs, which suggestion checkboxes are ticked, the signature pad) makes no sense to
+ * restore and some of it (the signature pad) can't be serialized at all - only the actual
+ * fetched RESULTS are worth surviving an accidental refresh. sessionStorage, not
+ * localStorage: this is scoped to "as long as this browser tab stays open", the same
+ * lifetime an unsaved result already implicitly had before this existed - never a
+ * permanent record (that's what the chain of evidence / report registry are for). */
+interface PersistedTokenApprovalSnapshot {
+  evidence: string | null;
+  address: string;
+  result: TokenApprovalCorrelationResult | null;
+  multiResults: AddressResultEntry[];
+  taintCheckResult: TaintAnalysisResult | null;
+  taintCheckTokenApprovalResults: AddressResultEntry[];
+}
+
 /** Token Approval / Ice Phishing Analysis - "for this address, what ERC-20 allowances did
  * it grant (or receive), and what happened to each one" (see
  * TOKEN-APPROVAL-IMPLEMENTATION.md #16-19). A full peer of Graph/Taint/Pathfinding/
@@ -165,11 +191,100 @@ export class TokenApprovalComponent implements OnInit {
         this.clearResult();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
+          // A refresh (or simply switching back to this case) never has to re-run
+          // anything - whatever was last found is still right here (see
+          // saveSessionState/closeAnalysis). May override selectedEvidence above with
+          // whatever evidence scope that result was actually fetched under.
+          this.restoreSessionState(this.activeCase.id);
           this.loadCaseAddresses();
         } else {
           this.caseAddresses = [];
         }
       });
+  }
+
+  // --- Session persistence (survive an accidental refresh) - §"Zatvori analizu" -------
+  // sessionStorage, keyed per case: cleared by clearResult() (case/evidence switch, or the
+  // explicit "Zatvori analizu" button below), written after every successful fetch. Never
+  // a source of truth on its own - it is only ever read back into the exact same
+  // result/multiResults/taintCheck* fields a fresh fetch would have populated, so every
+  // existing risk lookup (groupByKey) and getter (activeCorrelations, ...) already work on
+  // restored data with zero special-casing.
+
+  private sessionStorageKey(caseId: string): string {
+    return `lusi_token_approval_session_${caseId}`;
+  }
+
+  private saveSessionState(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      return;
+    }
+    try {
+      const snapshot: PersistedTokenApprovalSnapshot = {
+        evidence: this.selectedEvidence,
+        address: this.address,
+        result: this.result,
+        multiResults: this.multiResults,
+        taintCheckResult: this.taintCheckResult,
+        taintCheckTokenApprovalResults: this.taintCheckTokenApprovalResults,
+      };
+      sessionStorage.setItem(this.sessionStorageKey(caseId), JSON.stringify(snapshot));
+    } catch {
+      // Storage unavailable/full (private window, quota) - the result already on screen
+      // still works, it just won't survive a refresh this one time.
+    }
+  }
+
+  private restoreSessionState(caseId: string): void {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(this.sessionStorageKey(caseId));
+    } catch {
+      return;
+    }
+    if (!raw) {
+      return;
+    }
+    try {
+      const snapshot = JSON.parse(raw) as PersistedTokenApprovalSnapshot;
+      this.selectedEvidence = snapshot.evidence ?? null;
+      this.address = snapshot.address ?? '';
+      this.result = snapshot.result ?? null;
+      this.multiResults = snapshot.multiResults ?? [];
+      this.taintCheckResult = snapshot.taintCheckResult ?? null;
+      this.taintCheckTokenApprovalResults = snapshot.taintCheckTokenApprovalResults ?? [];
+      this.groupByKey = this.groupsToMap([
+        ...(this.result?.groups ?? []),
+        ...this.multiResults.flatMap((entry) => entry.result?.groups ?? []),
+        ...this.taintCheckTokenApprovalResults.flatMap((entry) => entry.result?.groups ?? []),
+      ]);
+    } catch {
+      // Corrupt or old-shape snapshot (e.g. from before this feature existed) - ignore it
+      // rather than crash the page; it stays overwritten the next time something is saved.
+    }
+  }
+
+  private purgeSessionState(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      return;
+    }
+    try {
+      sessionStorage.removeItem(this.sessionStorageKey(caseId));
+    } catch {
+      /* nothing to clean up if storage isn't available in the first place */
+    }
+  }
+
+  /** "Zatvori analizu" - the deliberate counterpart to the auto-restore above: clears both
+   * the on-screen result AND its saved snapshot, so the next refresh (or case revisit)
+   * starts genuinely fresh instead of bringing this one back. Never touches the CASE's own
+   * open/closed status (Slučajevi page) - purely this page's own view state. */
+  protected closeAnalysis(): void {
+    this.address = '';
+    this.clearResult();
+    this.purgeSessionState();
   }
 
   private loadEvidenceOptions(caseId: string): void {
@@ -202,6 +317,9 @@ export class TokenApprovalComponent implements OnInit {
   protected onEvidenceSelected(storedName: string): void {
     this.selectedEvidence = storedName || null;
     this.clearResult();
+    // The saved snapshot (if any) was fetched under the PREVIOUS evidence scope - keeping
+    // it around would restore stale, mismatched results on a later refresh.
+    this.purgeSessionState();
     this.loadCaseAddresses();
   }
 
@@ -302,6 +420,7 @@ export class TokenApprovalComponent implements OnInit {
           this.isAnalyzing = false;
           this.isCustodyDialogOpen = false;
           this.loadDexSwapCrossReference(caseId);
+          this.saveSessionState();
         },
         error: (error: HttpErrorResponse) => {
           this.isAnalyzing = false;
@@ -344,6 +463,7 @@ export class TokenApprovalComponent implements OnInit {
         this.groupByKey = this.groupsToMap(entries.flatMap((entry) => entry.result?.groups ?? []));
         this.isCustodyDialogOpen = false;
         this.loadDexSwapCrossReference(caseId);
+        this.saveSessionState();
       },
       error: () => {
         this.isAnalyzing = false;
@@ -627,6 +747,7 @@ export class TokenApprovalComponent implements OnInit {
           this.taintCheckError = null;
           this.taintCheckResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
           this.taintCheckTokenApprovalResults = [];
+          this.saveSessionState();
         },
         error: () => {
           this.isRunningTaintCheck = false;
@@ -661,6 +782,7 @@ export class TokenApprovalComponent implements OnInit {
         // Folded into the SAME shared groupByKey (§summary counters comment) so a click on
         // any of these new rows opens the detail modal with correct risk lookups too.
         this.groupByKey = this.groupsToMap([...this.groupByKey.values(), ...approvalEntries.flatMap((entry) => entry.result?.groups ?? [])]);
+        this.saveSessionState();
       },
       error: () => {
         this.isRunningTaintCheck = false;

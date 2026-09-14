@@ -261,24 +261,34 @@
   <div class="ta-toolbar" *ngIf="activeCorrelations.length > 0 || taintCheckResult">
     <button
       type="button"
-      class="ghost-button"
-      *ngIf="result || multiResults.length > 0"
-      (click)="checkAnalyzedAddressInTaint()"
-      [disabled]="isRunningTaintCheck"
-      [title]="t('Proveri taint (kretanje sredstava) za baš ovu analiziranu adresu', 'Check taint (fund movement) for this exact analyzed address')"
+      class="ghost-button close-analysis-button"
+      (click)="closeAnalysis()"
+      [title]="t('Očisti prikaz i pripremi stranicu za sledeću analizu - ne dira sam slučaj niti evidenciju', 'Clear the view and reset the page for the next analysis - does not touch the case or its evidence')"
     >
-      {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+      {{ t('Zatvori analizu', 'Close analysis') }}
     </button>
-    <button
-      type="button"
-      class="ghost-button export-pdf-button"
-      *ngIf="canExportPdf"
-      (click)="openSignatureDialog()"
-      [disabled]="isExportingPdf"
-      [title]="t('Izvezi potpisan PDF forenzički izveštaj sa svim nalazima', 'Export a signed PDF forensic report with all findings')"
-    >
-      {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
-    </button>
+    <div class="ta-toolbar-actions">
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="result || multiResults.length > 0"
+        (click)="checkAnalyzedAddressInTaint()"
+        [disabled]="isRunningTaintCheck"
+        [title]="t('Proveri taint (kretanje sredstava) za baš ovu analiziranu adresu', 'Check taint (fund movement) for this exact analyzed address')"
+      >
+        {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button export-pdf-button"
+        *ngIf="canExportPdf"
+        (click)="openSignatureDialog()"
+        [disabled]="isExportingPdf"
+        [title]="t('Izvezi potpisan PDF forenzički izveštaj sa svim nalazima', 'Export a signed PDF forensic report with all findings')"
+      >
+        {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+      </button>
+    </div>
   </div>
 
   <ng-container *ngIf="result || multiResults.length > 0">
