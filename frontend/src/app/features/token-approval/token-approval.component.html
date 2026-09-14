@@ -31,13 +31,13 @@
 
   <div class="address-panel">
     <div class="address-form">
-      <label class="address-field">
+      <label class="address-field" [title]="t('Može i više adresa odjednom, razdvojenih zarezom.', 'Several addresses at once are fine, separated by commas.')">
         {{ t('Adresa', 'Address') }}
         <input
           type="text"
           list="ta-case-addresses"
           [(ngModel)]="address"
-          placeholder="0x..."
+          placeholder="0x... (ili 0x..., 0x..., ...)"
           (keydown.enter)="openCustodyDialog()"
           [disabled]="!activeCase"
         />
@@ -63,7 +63,7 @@
         [disabled]="!canSuggestCaseAddresses"
         [title]="t('Skenira celu izabranu evidenciju bez upisane adrese.', 'Scans the whole selected evidence without typing an address.')"
       >
-        {{ isSuggestingCaseAddresses ? t('Predlaganje...', 'Suggesting...') : t('🔎 Predloži adrese', '🔎 Suggest addresses') }}
+        {{ isSuggestingCaseAddresses ? t('Predlaganje...', 'Suggesting...') : t('Predloži adrese', 'Suggest addresses') }}
       </button>
     </div>
 
@@ -203,8 +203,9 @@
     </p>
   </div>
 
-  <ng-container *ngIf="result">
-    <!-- Sažetak - tek POSLE analize, ne na početnom ekranu. -->
+  <ng-container *ngIf="result || multiResults.length > 0">
+    <!-- Sažetak - tek POSLE analize, ne na početnom ekranu. Multi-address aware (§addressList
+         iznad): brojevi su ZBIR preko svih analiziranih adresa kad ih ima više. -->
     <div class="summary-grid">
       <div class="summary-card">
         <span class="summary-value">{{ totalApprovals }}</span>
@@ -236,8 +237,8 @@
       </div>
     </div>
 
-    <p class="data-note" *ngIf="result.data_completeness.notes.length > 0">
-      <span *ngFor="let note of result.data_completeness.notes">{{ note }}</span>
+    <p class="data-note" *ngIf="activeDataCompletenessNotes.length > 0">
+      <span *ngFor="let note of activeDataCompletenessNotes">{{ note }}</span>
     </p>
 
     <!-- Predlog adresa za dalju analizu - ne novi algoritam, samo risk_score/risk_level
@@ -285,7 +286,7 @@
       </div>
     </div>
 
-    <div class="ta-toolbar" *ngIf="result.correlations.length > 0">
+    <div class="ta-toolbar" *ngIf="activeCorrelations.length > 0">
       <button
         type="button"
         class="ghost-button export-pdf-button"
@@ -298,52 +299,104 @@
       </button>
     </div>
 
-    <div class="ta-table-wrap" *ngIf="result.correlations.length > 0; else noApprovals">
-      <table class="ta-table">
-        <thead>
-          <tr>
-            <th>{{ t('Token', 'Token') }}</th>
-            <th>{{ t('Spender', 'Spender') }}</th>
-            <th>{{ t('Allowance', 'Allowance') }}</th>
-            <th>{{ t('Status', 'Status') }}</th>
-            <th>{{ t('Rizik', 'Risk') }}</th>
-            <th>{{ t('Datum', 'Date') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let entry of result.correlations" (click)="openDetail(entry)" tabindex="0" (keydown.enter)="openDetail(entry)">
-            <td class="mono-clip" [title]="entry.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
-              {{ entry.token_address ?? '?' }}
-            </td>
-            <td class="mono-clip" [title]="entry.spender">{{ entry.spender }}</td>
-            <td [title]="entry.unlimited_basis ? formatAmount(entry.approval_amount) : null">{{ allowanceLabel(entry) }}</td>
-            <td><span class="status-pill" [ngClass]="statusClass(entry.status)">{{ entry.status }}</span></td>
-            <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(entry))">{{ riskLevelFor(entry) }}</span></td>
-            <td class="ta-date">{{ entry.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- Jedna adresa - jedna, ravna tabela (nepromenjeno ponašanje). -->
+    <ng-container *ngIf="result && multiResults.length === 0">
+      <div class="ta-table-wrap" *ngIf="result.correlations.length > 0; else noApprovals">
+        <table class="ta-table">
+          <thead>
+            <tr>
+              <th>{{ t('Token', 'Token') }}</th>
+              <th>{{ t('Spender', 'Spender') }}</th>
+              <th>{{ t('Allowance', 'Allowance') }}</th>
+              <th>{{ t('Status', 'Status') }}</th>
+              <th>{{ t('Rizik', 'Risk') }}</th>
+              <th>{{ t('Datum', 'Date') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let entry of result.correlations" (click)="openDetail(entry)" tabindex="0" (keydown.enter)="openDetail(entry)">
+              <td class="mono-clip" [title]="entry.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+                {{ entry.token_address ?? '?' }}
+              </td>
+              <td class="mono-clip" [title]="entry.spender">{{ entry.spender }}</td>
+              <td [title]="entry.unlimited_basis ? formatAmount(entry.approval_amount) : null">{{ allowanceLabel(entry) }}</td>
+              <td><span class="status-pill" [ngClass]="statusClass(entry.status)">{{ entry.status }}</span></td>
+              <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(entry))">{{ riskLevelFor(entry) }}</span></td>
+              <td class="ta-date">{{ entry.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-    <ng-template #noApprovals>
-      <p class="empty-hint">
-        {{
-          t(
-            'Nijedno approve/permit odobrenje nije pronađeno za ovu adresu u izabranoj evidenciji.',
-            'No approve/permit grant was found for this address in the selected evidence.'
-          )
-        }}
-      </p>
-    </ng-template>
+      <ng-template #noApprovals>
+        <p class="empty-hint">
+          {{
+            t(
+              'Nijedno approve/permit odobrenje nije pronađeno za ovu adresu u izabranoj evidenciji.',
+              'No approve/permit grant was found for this address in the selected evidence.'
+            )
+          }}
+        </p>
+      </ng-template>
+    </ng-container>
 
-    <p class="disclaimer-note">{{ result.disclaimer }}</p>
+    <!-- Više adresa - jedna sekcija po adresi (§addressList) - ista tabela, ponovljena po
+         sekciji, isti obrazac kao ostali dupliran "shell" blok u ovoj aplikaciji. -->
+    <ng-container *ngIf="multiResults.length > 0">
+      <div class="address-section" *ngFor="let entry of multiResults">
+        <div class="address-section-head">
+          <h3 class="mono-clip">{{ entry.address }}</h3>
+          <span class="address-section-count" *ngIf="entry.result">
+            {{ entry.result.correlations.length }} {{ t('odobrenja', 'approvals') }}
+          </span>
+        </div>
+
+        <p class="error-inline" *ngIf="entry.error">{{ entry.error }}</p>
+
+        <ng-container *ngIf="entry.result as sectionResult">
+          <div class="ta-table-wrap" *ngIf="sectionResult.correlations.length > 0; else noApprovalsForAddress">
+            <table class="ta-table">
+              <thead>
+                <tr>
+                  <th>{{ t('Token', 'Token') }}</th>
+                  <th>{{ t('Spender', 'Spender') }}</th>
+                  <th>{{ t('Allowance', 'Allowance') }}</th>
+                  <th>{{ t('Status', 'Status') }}</th>
+                  <th>{{ t('Rizik', 'Risk') }}</th>
+                  <th>{{ t('Datum', 'Date') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of sectionResult.correlations" (click)="openDetail(row)" tabindex="0" (keydown.enter)="openDetail(row)">
+                  <td class="mono-clip" [title]="row.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+                    {{ row.token_address ?? '?' }}
+                  </td>
+                  <td class="mono-clip" [title]="row.spender">{{ row.spender }}</td>
+                  <td [title]="row.unlimited_basis ? formatAmount(row.approval_amount) : null">{{ allowanceLabel(row) }}</td>
+                  <td><span class="status-pill" [ngClass]="statusClass(row.status)">{{ row.status }}</span></td>
+                  <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(row))">{{ riskLevelFor(row) }}</span></td>
+                  <td class="ta-date">{{ row.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noApprovalsForAddress>
+            <p class="empty-hint">
+              {{ t('Nijedno approve/permit odobrenje nije pronađeno za ovu adresu.', 'No approve/permit grant was found for this address.') }}
+            </p>
+          </ng-template>
+        </ng-container>
+      </div>
+    </ng-container>
+
+    <p class="disclaimer-note">{{ activeDisclaimer }}</p>
   </ng-container>
 
-  <p class="empty-hint" *ngIf="!result && !analysisError">
+  <p class="empty-hint" *ngIf="!result && multiResults.length === 0 && !analysisError">
     {{
       t(
-        'Unesi adresu i klikni "ANALIZIRAJ" da vidiš njene Token Approval događaje.',
-        'Enter an address and click "ANALYZE" to see its Token Approval events.'
+        'Unesi adresu (ili više adresa, razdvojenih zarezom) i klikni "ANALIZIRAJ" da vidiš Token Approval događaje.',
+        'Enter an address (or several, separated by commas) and click "ANALYZE" to see its Token Approval events.'
       )
     }}
   </p>
@@ -462,7 +515,7 @@
       </ul>
     </div>
 
-    <p class="disclaimer-note">{{ result?.disclaimer }}</p>
+    <p class="disclaimer-note">{{ activeDisclaimer }}</p>
 
     <div class="ta-modal-actions">
       <button type="button" class="ghost-button" (click)="showOnGraph(entry.spender)">

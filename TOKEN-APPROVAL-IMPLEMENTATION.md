@@ -161,13 +161,37 @@ bar jednu grupu ocenjenu MEDIUM ili HIGH (kad se ista spender adresa pojavi u vi
 zadržava se ona sa najvišim skorom), sortirano opadajuće po skoru, sa najkraćim razlogom
 (labela prvog upaljenog indikatora).
 
-Analitičar čekira jednu, više, ili sve (**"Izaberi sve"**) i klikne **"Pošalji izabrane u
-Taint analizu"** — stranica Taint analiza se otvara sa tim adresama već dodatim u listu
-seed adresa (identičan mehanizam kao postojeće dugme "Otvori u Pathfinding": jednokratna
-predaja preko `AnalysisStateService`, Taint analiza sama odlučuje da li/kako da pokrene
-analizu — ova stranica ne pokreće taint analizu umesto nje). U panelu §5.2, klik na samu
-adresu (umesto na čekboks) je umesto toga upisuje u polje **Adresa** iznad, spreman za
-običan, custody-gated "ANALIZIRAJ" nad tom jednom adresom.
+Analitičar čekira jednu, više, ili sve (**"Izaberi sve"**). U panelu §5.2, klik na samu
+adresu (umesto na čekboks) upisuje je u polje **Adresa** iznad, spreman za običan,
+custody-gated "ANALIZIRAJ" nad tom jednom adresom.
+
+### 5.3 "Proveri kroz Taint analizu" — bez napuštanja stranice
+
+Glavno dugme ispod izabranih adresa je **"Proveri kroz Taint analizu"** — ne vodi na drugu
+stranicu. Otvara **sopstveni** dijalog "Razlog pristupa i potpis" (odvojen od onog za
+ANALIZIRAJ — ovo JESTE zaseban, deliberatan pristup evidenciji), pa poziva **isti**
+`POST .../analytics/run` koji Taint analizina "Pokreni taint analizu" koristi, sa izabranim
+adresama kao seed. Rezultat se prikazuje kao **kompaktan panel odmah na ovoj stranici**:
+seed adrese, do kojih adresa sredstva dalje stižu (rangirano po % zaprljanosti), i
+napomena ako evidencija prati novac samo jedan skok. Nema grafa, nema vremenske trake — za
+to postoji dugme **"ili otvori pun graf →"** odmah pored, koje ipak vodi na punu Taint
+analizu (isti stari mehanizam, sad sekundarna opcija).
+
+Rezultat provere **ulazi u PDF izveštaj** (§7.6 ispod) kao poseban odeljak "Taint provera",
+i u otisak sadržaja koji se heš-uje pri potpisivanju — izmena tih brojeva posle izvoza bi
+bila otkrivena isto kao i izmena bilo kog drugog nalaza u izveštaju.
+
+### 5.4 Analiza više adresa odjednom
+
+Polje **Adresa** prihvata više adresa odjednom, razdvojenih zarezom (npr.
+`0xVictimWallet, 0xVictimWallet2`) — jedan klik na ANALIZIRAJ i jedan potpis pokreće
+analizu za sve odjednom (jedan `POST` po adresi, ista potpisana dozvola za pristup
+ponovo iskorišćena za svaku). Rezultat se prikazuje kao **odvojena sekcija po adresi**
+(naslov + sopstvena tabela), dok se sažetak od 7 brojeva na vrhu računa kao **zbir preko
+svih analiziranih adresa**. Adresa koja ne postoji u evidenciji ne blokira ostale — ispod
+njenog naslova piše poruka o grešci, a preostale adrese se ipak prikažu. Sve ulazi u isti
+PDF izveštaj (§7.6), sa po jednim "ADRESA: X" pododeljkom za Approval Findings/Usage &
+Revocation/Approval History/Risk Assessment po adresi.
 
 **Provereno stvarnim pozivom** rute nad demo evidencijom (§6) bez ijedne upisane adrese:
 
@@ -275,20 +299,24 @@ Svi brojevi ispod su **stvarno pokrenuti i provereni** (`analyze_token_approvals
    analiza jedne adrese odmah pokazuje i "aktivnu krađu u toku" (Drainer) i "otvorenu,
    još neiskorišćenu izloženost" (Sweep) u istom nalazu.
 
-### 7.2 Korak 2 — Predlog za dalju analizu → Taint analiza
+### 7.2 Korak 2 — Predlog za dalju analizu → Taint provera (bez napuštanja stranice)
 
-*Vidi §5 za pozadinu.* Nastavak istog rezultata (korak 7.1 i dalje na ekranu).
+*Vidi §5.1/§5.3 za pozadinu.* Nastavak istog rezultata (korak 7.1 i dalje na ekranu).
 
 1. Ispod sažetka, panel **"Predlog za dalju analizu"** treba da pokazuje tačno **2** reda:
    `0xDrainerContract` (**HIGH**, razlog: "Neograničen allowance povučen ubrzo posle
    odobrenja") i `0xSweepContract` (**MEDIUM**, razlog: "Spender nije prepoznat ni u jednom
    lokalnom registru"), `0xDrainerContract` prvi (viši risk skor).
 2. Čekiraj **"Izaberi sve"**. **Očekivano:** oba reda postaju čekirana, dugme ispod postaje
-   **"Pošalji izabrane u Taint analizu (2)"**.
-3. Klikni to dugme. **Očekivano:** aplikacija prelazi na stranicu **"Taint analiza"**, sa
-   `0xDrainerContract` i `0xSweepContract` već dodatim kao seed adrese (vidljivi kao čipovi
-   u listi seed-ova) — analiza se **ne pokreće automatski**, samo su adrese predlogom
-   spremne; klik na "Pokreni taint analizu" je i dalje na analitičaru.
+   **"Proveri kroz Taint analizu (2)"**.
+3. Klikni to dugme. **Očekivano:** otvara se **sopstveni** dijalog "Razlog pristupa i
+   potpis" (odvojen od onog za ANALIZIRAJ) — popuni i potpiši.
+4. **Očekivano posle potvrde:** ostaješ na **istoj stranici** — panel **"Taint provera"**
+   se pojavljuje ispod, sa `0xDrainerContract, 0xSweepContract` kao seed adrese i listom
+   do kojih adresa sredstva dalje stižu u ovoj evidenciji (npr. `0xDrainerWallet`, ako je
+   drenirano preko `0xDrainerContract` — vidi §6). Nikakva navigacija se nije desila.
+5. (Opciono) Klikni **"ili otvori pun graf →"** umesto koraka 2-4 da vidiš isti rezultat na
+   punoj Taint analizi (graf, vremenska traka) — sekundarna opcija, ne podrazumevana.
 
 ### 7.3 Korak 3 — Sumnjiv, još neiskorišćen nalog (`0xVictimWallet2`)
 
@@ -348,7 +376,9 @@ Svi brojevi ispod su **stvarno pokrenuti i provereni** (`analyze_token_approvals
 | Backend testovi | `backend/tests/test_token_approval_analysis.py` |
 | Demo podaci | `backend/scripts/seed_demo_token_approval_evidence.py` |
 | Frontend stranica | `frontend/src/app/features/token-approval/` |
-| Predaja adresa u Taint analizu | `AnalysisStateService.setPendingTaintSeeds()`/`consumePendingTaintSeeds()`, pokupljeno u `taint-analysis.component.ts`'s `ngOnInit` |
+| Otvori pun graf u Taint analizi (sekundarna opcija, §5.3) | `AnalysisStateService.setPendingTaintSeeds()`/`consumePendingTaintSeeds()`, pokupljeno u `taint-analysis.component.ts`'s `ngOnInit` |
+| Proveri kroz Taint analizu, inline (§5.3) | `token-approval.component.ts` - `checkSelectedInTaint`/`checkSelectedCaseSuggestionsInTaint`/`confirmTaintCustodyAndCheck`, poziva postojeći `ApiService.runCaseAnalytics()` |
+| Više adresa odjednom (§5.4) | `token-approval.component.ts` - `addressList` getter (parsiranje), `multiResults`, `confirmCustodyAndAnalyze` (grana za >1 adresu, `forkJoin`) |
 | API pozivi | `frontend/src/app/core/services/api.service.ts` |
 | Tipovi | `frontend/src/app/models/blockchain-forensics.models.ts` (`TokenApprovalCorrelationEntry`, `TokenApprovalGroup`, `TokenApprovalCorrelationResult`, ...) |
 

@@ -655,6 +655,27 @@ export class TokenApprovalComponent implements OnInit {
     return this.result?.groups ?? [];
   }
 
+  /** data_completeness.notes across whichever address(es) are on screen - deduplicated,
+   * since the same evidence scope (and so the same missing-column notes) is shared by
+   * every address analyzed together in one run. */
+  protected get activeDataCompletenessNotes(): string[] {
+    const sources = this.multiResults.length > 0
+      ? this.multiResults.flatMap((entry) => entry.result?.data_completeness.notes ?? [])
+      : (this.result?.data_completeness.notes ?? []);
+    return [...new Set(sources)];
+  }
+
+  /** The backend's disclaimer text is a fixed, language-invariant boilerplate string, not
+   * address-specific - so whichever result happens to carry it (the single result, or the
+   * first successful entry in multi-address mode) is the same text every other result
+   * would also carry. */
+  protected get activeDisclaimer(): string | null {
+    if (this.multiResults.length > 0) {
+      return this.multiResults.find((entry) => entry.result)?.result?.disclaimer ?? null;
+    }
+    return this.result?.disclaimer ?? null;
+  }
+
   protected get totalApprovals(): number {
     return this.activeCorrelations.length;
   }
@@ -1009,6 +1030,23 @@ export class TokenApprovalComponent implements OnInit {
           risk_level: this.riskLevelFor(entry),
         }))
         .sort((a, b) => a.approval_timestamp.localeCompare(b.approval_timestamp) || a.spender.localeCompare(b.spender)),
+      // Only present when the analyst actually ran "Proveri kroz Taint analizu" on this
+      // page's own suggestions - folded into the hashed content so a later edit of the
+      // taint-check figures in the exported PDF would be detectable, same discipline as
+      // every other figure in this payload.
+      taint_check: this.taintCheckResult
+        ? {
+            seed_addresses: [...this.taintCheckResult.seed_addresses].sort(),
+            // Every downstream address the PDF's own Taint Check table lists (not the
+            // capped on-screen preview) - see taintCheckDownstream's own comment for why
+            // that one is capped for display only.
+            downstream: this.taintCheckResult.results
+              .filter((node) => !node.is_taint_seed && node.taint_percentage > 0)
+              .map((node) => ({ address: node.address, percentage: node.taint_percentage }))
+              .sort((a, b) => a.address.localeCompare(b.address)),
+            single_hop_evidence: this.taintCheckResult.single_hop_evidence,
+          }
+        : null,
     };
   }
 
@@ -1236,7 +1274,8 @@ export class TokenApprovalComponent implements OnInit {
     y = cardsY + 16 + 6;
     doc.setTextColor(...TEXT_DARK);
 
-    if (!result.data_completeness.event_type_declared) {
+    const missingEventType = addressEntries.filter((entry) => !entry.result.data_completeness.event_type_declared);
+    if (missingEventType.length > 0) {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
@@ -1252,156 +1291,41 @@ export class TokenApprovalComponent implements OnInit {
       doc.setTextColor(...TEXT_DARK);
     }
 
-    // --- APPROVAL FINDINGS ---------------------------------------------------------------
-    sectionTitle(L('Pronadjena odobrenja (Approval Findings)', 'Approval Findings'));
-    const sortedEntries = [...result.correlations].sort((a, b) => a.approval_timestamp.localeCompare(b.approval_timestamp));
-    autoTable(doc, {
-      startY: y,
-      margin: { left: marginX, right: marginX },
-      head: [[L('Owner', 'Owner'), 'Spender', L('Token', 'Token'), L('Allowance', 'Allowance'), L('Status', 'Status'), L('Rizik', 'Risk'), L('Datum', 'Date'), L('Tx hash (odobrenje)', 'Tx hash (approval)')]],
-      body: sortedEntries.map((entry) => [
-        entry.owner,
-        entry.spender,
-        entry.token_address ?? '?',
-        this.formatPdfAllowance(entry),
-        entry.status,
-        this.riskLevelFor(entry),
-        new Date(entry.approval_timestamp).toLocaleString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB'),
-        entry.approval_transaction_hash ?? 'n/a',
-      ]),
-      styles: { fontSize: 6.8, cellPadding: 1.3, font: 'courier', textColor: TEXT_DARK },
-      headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold', fontSize: 7 },
-      alternateRowStyles: { fillColor: [240, 245, 250] },
-      columnStyles: { 5: { cellWidth: 14, font: 'helvetica' } },
-      didParseCell: (data) => {
-        if (data.section === 'body' && data.column.index === 5) {
-          const level = sortedEntries[data.row.index] ? this.riskLevelFor(sortedEntries[data.row.index]) : 'LOW';
-          data.cell.styles.textColor = TokenApprovalComponent.riskColor(level);
-          data.cell.styles.fontStyle = 'bold';
-        }
-      },
-    });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+    // --- Per-address sections: Approval Findings / Usage & Revocation / Approval History /
+    // Risk Assessment - ONE pass through addressEntries. Single-address mode has exactly
+    // one entry, so this loop runs once and produces byte-identical output to before
+    // multi-address support existed (addrSuffix is '' whenever isMultiAddressReport is
+    // false). Combined figures across ALL addresses (Related Activity, Chain of Evidence,
+    // Methodology, Signature) stay OUTSIDE this loop, printed once at the end. ---
+    let allSortedEntries: TokenApprovalCorrelationEntry[] = [];
+    for (const ctx of addressEntries) {
+      const addrSuffix = isMultiAddressReport ? ` — ${this.asciiSafe(ctx.address)}` : '';
 
-    // --- Usage & revocation detail table (second table, same section - keeps the first
-    // table's columns from becoming unreadably cramped, see TOKEN-APPROVAL-
-    // IMPLEMENTATION.md #19.1) ---
-    const withActivity = sortedEntries.filter((entry) => entry.transfer_from_count > 0 || entry.revoked);
-    if (withActivity.length > 0) {
-      if (y > pageHeight - 40) {
-        doc.addPage();
-        y = 16;
-      }
-      sectionTitle(L('Koriscenje i opoziv (Usage & Revocation)', 'Usage & Revocation'));
+      // --- APPROVAL FINDINGS -------------------------------------------------------------
+      sectionTitle(L('Pronadjena odobrenja (Approval Findings)', 'Approval Findings') + addrSuffix);
+      const sortedEntries = [...ctx.result.correlations].sort((a, b) => a.approval_timestamp.localeCompare(b.approval_timestamp));
+      allSortedEntries = allSortedEntries.concat(sortedEntries);
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [[
-          'Spender', L('Prva upotreba', 'First use'), L('Vreme do prve upotrebe', 'Time to first use'),
-          L('# transferFrom', '# transferFrom'), L('Ukupno povuceno', 'Total withdrawn'),
-          L('Odrediste(a)', 'Destination(s)'), L('Opoziv', 'Revocation'),
-        ]],
-        body: withActivity.map((entry) => [
+        head: [[L('Owner', 'Owner'), 'Spender', L('Token', 'Token'), L('Allowance', 'Allowance'), L('Status', 'Status'), L('Rizik', 'Risk'), L('Datum', 'Date'), L('Tx hash (odobrenje)', 'Tx hash (approval)')]],
+        body: sortedEntries.map((entry) => [
+          entry.owner,
           entry.spender,
-          entry.first_use_timestamp ? new Date(entry.first_use_timestamp).toLocaleString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB') : L('nikad', 'never'),
-          this.formatDuration(entry.time_to_first_use_seconds),
-          String(entry.transfer_from_count),
-          TokenApprovalComponent.formatPdfAmount(entry.total_amount_transferred),
-          entry.receiving_destinations.join(', ') || 'n/a',
-          entry.revoked
-            ? `${entry.revocation_timestamp ? new Date(entry.revocation_timestamp).toLocaleDateString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB') : ''} (${this.formatDuration(entry.seconds_to_revocation)} ${L('posle odobrenja', 'after approval')})`
-            : L('nije opozvano', 'not revoked'),
+          entry.token_address ?? '?',
+          this.formatPdfAllowance(entry),
+          entry.status,
+          this.riskLevelFor(entry),
+          new Date(entry.approval_timestamp).toLocaleString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB'),
+          entry.approval_transaction_hash ?? 'n/a',
         ]),
         styles: { fontSize: 6.8, cellPadding: 1.3, font: 'courier', textColor: TEXT_DARK },
-        headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold', fontSize: 6.8 },
+        headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold', fontSize: 7 },
         alternateRowStyles: { fillColor: [240, 245, 250] },
-      });
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
-    }
-
-    // --- APPROVAL HISTORY ----------------------------------------------------------------
-    const groups = this.historyGroups().filter((group) => group.entries.length > 0);
-    if (groups.length > 0) {
-      if (y > pageHeight - 40) {
-        doc.addPage();
-        y = 16;
-      }
-      sectionTitle(L('Istorija odobrenja (Approval History)', 'Approval History'));
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      for (const group of groups) {
-        if (y > pageHeight - 24) {
-          doc.addPage();
-          y = 16;
-        }
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(...NAVY);
-        doc.text(`${group.owner}  ->  ${group.spender}  (${group.token ?? '?'})`, marginX, y);
-        y += 5;
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(7.5);
-        doc.setTextColor(...TEXT_DARK);
-        const steps: string[] = [];
-        group.entries.forEach((entry, index) => {
-          const when = new Date(entry.approval_timestamp).toLocaleDateString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB');
-          steps.push(`${index === 0 ? 'APPROVE' : L('PROMENA', 'CHANGE')} ${this.formatPdfAllowance(entry)} @ ${when}`);
-          if (entry.transfer_from_count > 0) {
-            steps.push(`  -> TRANSFERFROM x${entry.transfer_from_count} (${TokenApprovalComponent.formatPdfAmount(entry.total_amount_transferred)})`);
-          }
-          if (entry.revoked) {
-            steps.push(`  -> REVOKED${entry.revocation_timestamp ? ' @ ' + new Date(entry.revocation_timestamp).toLocaleDateString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB') : ''}`);
-          }
-        });
-        const lines = doc.splitTextToSize(steps.join('   >>   '), usableWidth - 4);
-        if (y + lines.length * 3.6 > pageHeight - 18) {
-          doc.addPage();
-          y = 16;
-        }
-        doc.text(lines, marginX + 2, y);
-        y += lines.length * 3.6 + 4;
-      }
-      doc.setFont('helvetica', 'normal');
-    }
-
-    // --- RISK ASSESSMENT -------------------------------------------------------------------
-    sectionTitle(L('Procena rizika (Risk Assessment)', 'Risk Assessment'));
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...TEXT_GRAY);
-    const riskIntro = doc.splitTextToSize(
-      L(
-        'Ovde navedene ocene NISU dokaz da je spender zlonameran. Formulacije nize opisuju OBRAZAC u podacima koji '
-          + 'zasluzuje dodatnu proveru ("potencijalno rizicno odobrenje", "moguca zloupotreba odobrenja", "sumnjiv '
-          + 'obrazac odobrenja") - nikad tvrdnju o identitetu ili nameri.',
-        'The ratings below are NOT proof that the spender is malicious. The wording describes a PATTERN in the data '
-          + 'that deserves further review ("potentially risky approval", "potential approval abuse", "suspicious '
-          + 'approval pattern") - never a claim about identity or intent.',
-      ),
-      usableWidth,
-    );
-    doc.text(riskIntro, marginX, y);
-    y += riskIntro.length * 4.2 + 4;
-    doc.setTextColor(...TEXT_DARK);
-
-    const riskyEntries = sortedEntries.filter((entry) => this.riskLevelFor(entry) !== 'LOW');
-    if (riskyEntries.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        margin: { left: marginX, right: marginX },
-        head: [['Spender', L('Rizik', 'Risk'), L('Indikatori', 'Indicators')]],
-        body: riskyEntries.map((entry) => [
-          entry.spender,
-          this.riskLevelFor(entry),
-          this.riskIndicatorsFor(entry).map((indicator) => indicator.label).join('; '),
-        ]),
-        styles: { fontSize: 7, cellPadding: 1.4, font: 'helvetica', textColor: TEXT_DARK },
-        headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [253, 246, 227] },
-        columnStyles: { 0: { font: 'courier' }, 1: { cellWidth: 16 } },
+        columnStyles: { 5: { cellWidth: 14, font: 'helvetica' } },
         didParseCell: (data) => {
-          if (data.section === 'body' && data.column.index === 1) {
-            const level = riskyEntries[data.row.index] ? this.riskLevelFor(riskyEntries[data.row.index]) : 'LOW';
+          if (data.section === 'body' && data.column.index === 5) {
+            const level = sortedEntries[data.row.index] ? this.riskLevelFor(sortedEntries[data.row.index]) : 'LOW';
             data.cell.styles.textColor = TokenApprovalComponent.riskColor(level);
             data.cell.styles.fontStyle = 'bold';
           }
@@ -1409,51 +1333,179 @@ export class TokenApprovalComponent implements OnInit {
       });
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
 
-      // Full reasons, one small block per risky finding - the table above is the index,
-      // this is the "why" a reader would actually need before acting on it.
-      for (const entry of riskyEntries) {
-        const indicators = this.riskIndicatorsFor(entry);
-        if (indicators.length === 0) {
-          continue;
-        }
-        if (y > pageHeight - 30) {
+      // --- Usage & revocation detail table (second table, same section - keeps the first
+      // table's columns from becoming unreadably cramped, see TOKEN-APPROVAL-
+      // IMPLEMENTATION.md #19.1) ---
+      const withActivity = sortedEntries.filter((entry) => entry.transfer_from_count > 0 || entry.revoked);
+      if (withActivity.length > 0) {
+        if (y > pageHeight - 40) {
           doc.addPage();
           y = 16;
         }
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.setTextColor(...NAVY);
-        doc.text(`${entry.spender} (${this.riskLevelFor(entry)})`, marginX, y);
-        y += 4.5;
-        for (const indicator of indicators) {
+        sectionTitle(L('Koriscenje i opoziv (Usage & Revocation)', 'Usage & Revocation') + addrSuffix);
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [[
+            'Spender', L('Prva upotreba', 'First use'), L('Vreme do prve upotrebe', 'Time to first use'),
+            L('# transferFrom', '# transferFrom'), L('Ukupno povuceno', 'Total withdrawn'),
+            L('Odrediste(a)', 'Destination(s)'), L('Opoziv', 'Revocation'),
+          ]],
+          body: withActivity.map((entry) => [
+            entry.spender,
+            entry.first_use_timestamp ? new Date(entry.first_use_timestamp).toLocaleString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB') : L('nikad', 'never'),
+            this.formatDuration(entry.time_to_first_use_seconds),
+            String(entry.transfer_from_count),
+            TokenApprovalComponent.formatPdfAmount(entry.total_amount_transferred),
+            entry.receiving_destinations.join(', ') || 'n/a',
+            entry.revoked
+              ? `${entry.revocation_timestamp ? new Date(entry.revocation_timestamp).toLocaleDateString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB') : ''} (${this.formatDuration(entry.seconds_to_revocation)} ${L('posle odobrenja', 'after approval')})`
+              : L('nije opozvano', 'not revoked'),
+          ]),
+          styles: { fontSize: 6.8, cellPadding: 1.3, font: 'courier', textColor: TEXT_DARK },
+          headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold', fontSize: 6.8 },
+          alternateRowStyles: { fillColor: [240, 245, 250] },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      }
+
+      // --- APPROVAL HISTORY ---------------------------------------------------------------
+      const historyGroupsForAddress = this.historyGroups(ctx.result.correlations).filter((group) => group.entries.length > 0);
+      if (historyGroupsForAddress.length > 0) {
+        if (y > pageHeight - 40) {
+          doc.addPage();
+          y = 16;
+        }
+        sectionTitle(L('Istorija odobrenja (Approval History)', 'Approval History') + addrSuffix);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        for (const group of historyGroupsForAddress) {
+          if (y > pageHeight - 24) {
+            doc.addPage();
+            y = 16;
+          }
           doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(...NAVY);
+          doc.text(`${group.owner}  ->  ${group.spender}  (${group.token ?? '?'})`, marginX, y);
+          y += 5;
+          doc.setFont('courier', 'normal');
           doc.setFontSize(7.5);
           doc.setTextColor(...TEXT_DARK);
-          const labelLines = doc.splitTextToSize(`- ${indicator.label}`, usableWidth - 4);
-          doc.text(labelLines, marginX + 2, y);
-          y += labelLines.length * 3.6;
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7);
-          doc.setTextColor(...TEXT_GRAY);
-          for (const reason of indicator.reasons) {
-            const reasonLines = doc.splitTextToSize(`  ${reason}`, usableWidth - 8);
-            if (y + reasonLines.length * 3.4 > pageHeight - 18) {
-              doc.addPage();
-              y = 16;
+          const steps: string[] = [];
+          group.entries.forEach((entry, index) => {
+            const when = new Date(entry.approval_timestamp).toLocaleDateString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB');
+            steps.push(`${index === 0 ? 'APPROVE' : L('PROMENA', 'CHANGE')} ${this.formatPdfAllowance(entry)} @ ${when}`);
+            if (entry.transfer_from_count > 0) {
+              steps.push(`  -> TRANSFERFROM x${entry.transfer_from_count} (${TokenApprovalComponent.formatPdfAmount(entry.total_amount_transferred)})`);
             }
-            doc.text(reasonLines, marginX + 4, y);
-            y += reasonLines.length * 3.4;
+            if (entry.revoked) {
+              steps.push(`  -> REVOKED${entry.revocation_timestamp ? ' @ ' + new Date(entry.revocation_timestamp).toLocaleDateString(this.tokenApprovalPdfLang === 'sr' ? 'sr-RS' : 'en-GB') : ''}`);
+            }
+          });
+          const lines = doc.splitTextToSize(steps.join('   >>   '), usableWidth - 4);
+          if (y + lines.length * 3.6 > pageHeight - 18) {
+            doc.addPage();
+            y = 16;
           }
-          y += 1;
+          doc.text(lines, marginX + 2, y);
+          y += lines.length * 3.6 + 4;
         }
-        y += 2;
+        doc.setFont('helvetica', 'normal');
       }
-    } else {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(L('Nijedno odobrenje nije oznaceno kao rizicno (LOW rizik za sve).', 'No approval is flagged as risky (LOW risk for all).'), marginX, y);
-      y += 6;
+
+      // --- RISK ASSESSMENT -----------------------------------------------------------------
+      sectionTitle(L('Procena rizika (Risk Assessment)', 'Risk Assessment') + addrSuffix);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...TEXT_GRAY);
+      const riskIntro = doc.splitTextToSize(
+        L(
+          'Ovde navedene ocene NISU dokaz da je spender zlonameran. Formulacije nize opisuju OBRAZAC u podacima koji '
+            + 'zasluzuje dodatnu proveru ("potencijalno rizicno odobrenje", "moguca zloupotreba odobrenja", "sumnjiv '
+            + 'obrazac odobrenja") - nikad tvrdnju o identitetu ili nameri.',
+          'The ratings below are NOT proof that the spender is malicious. The wording describes a PATTERN in the data '
+            + 'that deserves further review ("potentially risky approval", "potential approval abuse", "suspicious '
+            + 'approval pattern") - never a claim about identity or intent.',
+        ),
+        usableWidth,
+      );
+      doc.text(riskIntro, marginX, y);
+      y += riskIntro.length * 4.2 + 4;
+      doc.setTextColor(...TEXT_DARK);
+
+      const riskyEntries = sortedEntries.filter((entry) => this.riskLevelFor(entry) !== 'LOW');
+      if (riskyEntries.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [['Spender', L('Rizik', 'Risk'), L('Indikatori', 'Indicators')]],
+          body: riskyEntries.map((entry) => [
+            entry.spender,
+            this.riskLevelFor(entry),
+            this.riskIndicatorsFor(entry).map((indicator) => indicator.label).join('; '),
+          ]),
+          styles: { fontSize: 7, cellPadding: 1.4, font: 'helvetica', textColor: TEXT_DARK },
+          headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [253, 246, 227] },
+          columnStyles: { 0: { font: 'courier' }, 1: { cellWidth: 16 } },
+          didParseCell: (data) => {
+            if (data.section === 'body' && data.column.index === 1) {
+              const level = riskyEntries[data.row.index] ? this.riskLevelFor(riskyEntries[data.row.index]) : 'LOW';
+              data.cell.styles.textColor = TokenApprovalComponent.riskColor(level);
+              data.cell.styles.fontStyle = 'bold';
+            }
+          },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+
+        // Full reasons, one small block per risky finding - the table above is the index,
+        // this is the "why" a reader would actually need before acting on it.
+        for (const entry of riskyEntries) {
+          const indicators = this.riskIndicatorsFor(entry);
+          if (indicators.length === 0) {
+            continue;
+          }
+          if (y > pageHeight - 30) {
+            doc.addPage();
+            y = 16;
+          }
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(...NAVY);
+          doc.text(`${entry.spender} (${this.riskLevelFor(entry)})`, marginX, y);
+          y += 4.5;
+          for (const indicator of indicators) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(...TEXT_DARK);
+            const labelLines = doc.splitTextToSize(`- ${indicator.label}`, usableWidth - 4);
+            doc.text(labelLines, marginX + 2, y);
+            y += labelLines.length * 3.6;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(...TEXT_GRAY);
+            for (const reason of indicator.reasons) {
+              const reasonLines = doc.splitTextToSize(`  ${reason}`, usableWidth - 8);
+              if (y + reasonLines.length * 3.4 > pageHeight - 18) {
+                doc.addPage();
+                y = 16;
+              }
+              doc.text(reasonLines, marginX + 4, y);
+              y += reasonLines.length * 3.4;
+            }
+            y += 1;
+          }
+          y += 2;
+        }
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(L('Nijedno odobrenje nije oznaceno kao rizicno (LOW rizik za sve).', 'No approval is flagged as risky (LOW risk for all).'), marginX, y);
+        y += 6;
+      }
     }
+    const sortedEntries = allSortedEntries;
 
     // --- RELATED ACTIVITY ------------------------------------------------------------------
     sectionTitle(L('Povezana aktivnost (Related Activity)', 'Related Activity'));
@@ -1504,6 +1556,77 @@ export class TokenApprovalComponent implements OnInit {
       }
       doc.text(wrapped, marginX, y);
       y += wrapped.length * 4.4 + 1.5;
+    }
+
+    // --- TAINT PROVERA (Taint Check) - only when the analyst ran "Proveri kroz Taint
+    // analizu" on this page's own suggestions (see checkSelectedInTaint et al.) - never
+    // fabricated when no check was run. ---
+    if (this.taintCheckResult) {
+      sectionTitle(L('Taint provera (Taint Check)', 'Taint Check'));
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...TEXT_DARK);
+      const seedLine = doc.splitTextToSize(
+        `${L('Seed adrese', 'Seed addresses')}: ${this.taintCheckResult.seed_addresses.join(', ')}`,
+        usableWidth,
+      );
+      doc.text(seedLine, marginX, y);
+      y += seedLine.length * 4.4 + 3;
+
+      const downstream = this.taintCheckResult.results.filter((node) => !node.is_taint_seed && node.taint_percentage > 0);
+      if (downstream.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [[L('Adresa dokle sredstva stizu', 'Address funds reach'), L('% zaprljanosti', 'Taint %')]],
+          body: downstream.map((node) => [node.address, `${node.taint_percentage.toFixed(2)}%`]),
+          styles: { fontSize: 7, cellPadding: 1.4, font: 'courier', textColor: TEXT_DARK },
+          headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [240, 245, 250] },
+          columnStyles: { 1: { font: 'helvetica', halign: 'right' } },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      } else {
+        doc.text(
+          L(
+            'U ovoj evidenciji nema daljeg kretanja sredstava sa ovih adresa.',
+            'No further movement of funds from these addresses appears in this evidence.',
+          ),
+          marginX,
+          y,
+        );
+        y += 6;
+      }
+
+      if (this.taintCheckResult.single_hop_evidence) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.setTextColor(...TEXT_GRAY);
+        const caveatLines = doc.splitTextToSize(
+          L(
+            'Evidencija prati novac samo jedan skok dalje - procenti iznad su ivica prikupljenih podataka, ne konacan nalaz.',
+            'The evidence traces money for one hop only - the percentages above are the edge of the collected data, not a final finding.',
+          ),
+          usableWidth,
+        );
+        doc.text(caveatLines, marginX, y);
+        y += caveatLines.length * 4.2 + 3;
+        doc.setTextColor(...TEXT_DARK);
+      }
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...TEXT_GRAY);
+      const taintDisclaimerLines = doc.splitTextToSize(
+        L(
+          'Heuristicka procena (isti taint model kao Taint analiza) - ne dokaz da su sredstva stigla do konkretnog lica.',
+          'A heuristic estimate (same taint model as Taint Analysis) - not proof that funds reached a specific person.',
+        ),
+        usableWidth,
+      );
+      doc.text(taintDisclaimerLines, marginX, y);
+      y += taintDisclaimerLines.length * 4.2 + 4;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...TEXT_DARK);
     }
 
     // --- CHAIN OF EVIDENCE -----------------------------------------------------------------

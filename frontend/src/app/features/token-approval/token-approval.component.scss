@@ -684,6 +684,40 @@
   color: var(--ta-status-unknown-text);
 }
 
+/* ---------- sekcija po adresi (analiza više adresa odjednom) ---------- */
+
+.address-section {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.address-section + .address-section {
+  margin-top: 0.4rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--ta-border);
+}
+
+.address-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.address-section-head h3 {
+  margin: 0;
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ta-heading);
+  max-width: 26rem;
+}
+
+.address-section-count {
+  font-size: 0.72rem;
+  color: var(--ta-dim);
+}
+
 /* ---------- tabela odobrenja ---------- */
 
 .ta-table-wrap {
