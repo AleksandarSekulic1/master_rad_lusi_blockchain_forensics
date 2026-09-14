@@ -3,11 +3,12 @@
 One JSON file per investigation - ``data/investigations/<investigation_id>/links.json`` -
 shaped ``{ "links": [ { <InvestigatorLink fields> }, ... ] }``.
 
-Pure dict I/O via the shared collection helpers in ``app/investigations/repository.py`` -
-no validation (that is ``links_service.py``'s job). The file lives in the per-investigation
-directory, so deleting an investigation removes its links with it. Investigator links are
-a separate forensic layer: nothing here touches the transaction graph, the evidence case,
-or any analysis.
+Pure dict I/O via the shared collection helpers in ``app/investigations/repository.py``
+(the investigation aggregate's own storage module - shared with notes and pins, not part
+of this slice) - no validation, that is ``service.py``'s job. The file lives in the
+per-investigation directory, so deleting an investigation removes its links with it.
+Investigator links are a separate forensic layer: nothing here touches the transaction
+graph, the evidence case, or any analysis.
 """
 
 from __future__ import annotations

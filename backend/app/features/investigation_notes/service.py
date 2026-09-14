@@ -1,20 +1,19 @@
 """Business logic for investigator notes.
 
-Sits between the API routes and `notes_repository.py`. Generates ids/timestamps, keeps
+Sits between the API router and `repository.py`. Generates ids/timestamps, keeps
 `updated_at` moving without ever touching `created_at`, and always verifies the parent
-investigation exists first (reusing step 1's service), so a note can never be created
-against, or read from, an investigation that is not there.
+investigation exists first (reusing the investigation aggregate's own service), so a note
+can never be created against, or read from, an investigation that is not there.
 
-A note targets EITHER an address/node OR a transaction/edge - see
-`app/investigations/notes_models.py`. The transaction identifier is the project's existing
-`tx_id` (`app/evidence/tx_identity.py`); this layer only stores and matches it as an
-opaque string, exactly as it does an address.
+A note targets EITHER an address/node OR a transaction/edge - see `models.py`. The
+transaction identifier is the project's existing `tx_id` (`app/evidence/tx_identity.py`);
+this layer only stores and matches it as an opaque string, exactly as it does an address.
 """
 
 from __future__ import annotations
 
-from app.investigations import notes_repository
-from app.investigations.notes_models import (
+from app.features.investigation_notes import repository
+from app.features.investigation_notes.models import (
     InvestigatorNote,
     InvestigatorNoteCreate,
     InvestigatorNoteUpdate,
@@ -42,11 +41,11 @@ def _coerce_row(row: dict[str, object]) -> dict[str, object]:
 
 
 def _load_models(investigation_id: str) -> list[InvestigatorNote]:
-    return [InvestigatorNote(**_coerce_row(row)) for row in notes_repository.load_notes(investigation_id)]
+    return [InvestigatorNote(**_coerce_row(row)) for row in repository.load_notes(investigation_id)]
 
 
 def _persist(investigation_id: str, notes: list[InvestigatorNote]) -> None:
-    notes_repository.save_notes(investigation_id, [note.model_dump() for note in notes])
+    repository.save_notes(investigation_id, [note.model_dump() for note in notes])
 
 
 def list_notes(

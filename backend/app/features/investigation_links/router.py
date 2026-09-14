@@ -9,6 +9,9 @@ graph edges are never modified, and links are stored only under
 Nested under the investigation container from step 1:
 ``/investigations/{investigation_id}/links``. Any authenticated user, same access level
 as the rest of the investigator layer.
+
+This module, together with `models.py`, `repository.py` and `service.py` in this same
+package, is the complete "investigator links" feature slice.
 """
 
 from __future__ import annotations
@@ -17,15 +20,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
-from app.investigations import links_service
-from app.investigations.links_models import (
+from app.features.investigation_links import service
+from app.features.investigation_links.models import (
     InvestigatorLink,
     InvestigatorLinkCreate,
     InvestigatorLinkUpdate,
 )
-from app.investigations.links_service import InvestigatorLinkNotFoundError
+from app.features.investigation_links.service import InvestigatorLinkNotFoundError
 from app.investigations.service import InvestigationCaseNotFoundError
-
 
 router = APIRouter(prefix='/investigations/{investigation_id}/links', tags=['investigator-links'])
 
@@ -61,7 +63,7 @@ def get_links(
     ),
 ) -> dict[str, object]:
     try:
-        links = links_service.list_links(investigation_id, address=address)
+        links = service.list_links(investigation_id, address=address)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
@@ -79,7 +81,7 @@ def post_link(
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> InvestigatorLink:
     try:
-        link = links_service.create_link(investigation_id, request, author=str(current_user['username']))
+        link = service.create_link(investigation_id, request, author=str(current_user['username']))
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
@@ -93,7 +95,7 @@ def post_link(
 @router.get('/{link_id}')
 def get_link(investigation_id: str, link_id: str) -> InvestigatorLink:
     try:
-        return links_service.get_link(investigation_id, link_id)
+        return service.get_link(investigation_id, link_id)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -106,7 +108,7 @@ def patch_link(
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> InvestigatorLink:
     try:
-        link = links_service.update_link(investigation_id, link_id, request)
+        link = service.update_link(investigation_id, link_id, request)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
@@ -125,8 +127,8 @@ def delete_link_route(
 ) -> None:
     try:
         # Read it first so the deleted link's endpoints can go into the activity log.
-        link = links_service.get_link(investigation_id, link_id)
-        links_service.delete_link(investigation_id, link_id)
+        link = service.get_link(investigation_id, link_id)
+        service.delete_link(investigation_id, link_id)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(

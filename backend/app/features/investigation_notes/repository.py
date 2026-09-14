@@ -4,10 +4,12 @@ One JSON file per investigation - ``data/investigations/<investigation_id>/notes
 shaped ``{ "notes": [ { <InvestigatorNote fields> }, ... ] }``, holding every note
 (address + transaction) for that investigation.
 
-Pure dict I/O via the shared collection helpers in ``app/investigations/repository.py`` -
-no validation, no id/timestamp handling (that is ``notes_service.py``'s job). The file
-lives inside the per-investigation directory, so deleting an investigation removes its
-notes with it. Nothing here touches the transaction graph or the evidence case.
+Pure dict I/O via the shared collection helpers in ``app/investigations/repository.py``
+(the investigation aggregate's own storage module - shared with pins and links, not part
+of this slice) - no validation, no id/timestamp handling, that is ``service.py``'s job.
+The file lives inside the per-investigation directory, so deleting an investigation
+removes its notes with it. Nothing here touches the transaction graph or the evidence
+case.
 """
 
 from __future__ import annotations

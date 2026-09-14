@@ -1,9 +1,9 @@
 """Business logic for investigator links.
 
-Sits between the API routes and ``links_repository.py``. Generates ids/timestamps, keeps
+Sits between the API router and ``repository.py``. Generates ids/timestamps, keeps
 ``updated_at`` moving without ever touching ``created_at``, and always verifies the parent
-investigation exists first (reusing step 1's service), so a link can never be created
-against, or read from, an investigation that is not there.
+investigation exists first (reusing the investigation aggregate's own service), so a link
+can never be created against, or read from, an investigation that is not there.
 
 An investigator link is an additional forensic layer on top of the blockchain graph - a
 **suspected relation** between two addresses based on off-chain evidence. This module
@@ -12,8 +12,8 @@ never imports or touches any analytics / graph code.
 
 from __future__ import annotations
 
-from app.investigations import links_repository
-from app.investigations.links_models import (
+from app.features.investigation_links import repository
+from app.features.investigation_links.models import (
     InvestigatorLink,
     InvestigatorLinkCreate,
     InvestigatorLinkUpdate,
@@ -28,11 +28,11 @@ class InvestigatorLinkNotFoundError(FileNotFoundError):
 
 
 def _load_models(investigation_id: str) -> list[InvestigatorLink]:
-    return [InvestigatorLink(**row) for row in links_repository.load_links(investigation_id)]
+    return [InvestigatorLink(**row) for row in repository.load_links(investigation_id)]
 
 
 def _persist(investigation_id: str, links: list[InvestigatorLink]) -> None:
-    links_repository.save_links(investigation_id, [link.model_dump() for link in links])
+    repository.save_links(investigation_id, [link.model_dump() for link in links])
 
 
 def list_links(investigation_id: str, *, address: str | None = None) -> list[InvestigatorLink]:

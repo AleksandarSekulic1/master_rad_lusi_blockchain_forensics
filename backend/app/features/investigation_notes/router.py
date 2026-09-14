@@ -12,6 +12,9 @@ investigator layer (any authenticated user - the router is mounted with the shar
 Notes are investigator observations. They are stored only under
 `data/investigations/<id>/notes.json` and are never written into the evidence case, the
 transaction graph, or any analysis output.
+
+This module, together with `models.py`, `repository.py` and `service.py` in this same
+package, is the complete "investigator notes" feature slice.
 """
 
 from __future__ import annotations
@@ -20,15 +23,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
-from app.investigations import notes_service
-from app.investigations.notes_models import (
+from app.features.investigation_notes import service
+from app.features.investigation_notes.models import (
     InvestigatorNote,
     InvestigatorNoteCreate,
     InvestigatorNoteUpdate,
 )
-from app.investigations.notes_service import InvestigatorNoteNotFoundError
+from app.features.investigation_notes.service import InvestigatorNoteNotFoundError
 from app.investigations.service import InvestigationCaseNotFoundError
-
 
 router = APIRouter(prefix='/investigations/{investigation_id}/notes', tags=['investigator-notes'])
 
@@ -69,7 +71,7 @@ def get_notes(
         )
 
     try:
-        notes = notes_service.list_notes(
+        notes = service.list_notes(
             investigation_id,
             address=address,
             tx_id=tx_id,
@@ -94,7 +96,7 @@ def post_note(
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> InvestigatorNote:
     try:
-        note = notes_service.create_note(investigation_id, request, author=str(current_user['username']))
+        note = service.create_note(investigation_id, request, author=str(current_user['username']))
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
@@ -108,7 +110,7 @@ def post_note(
 @router.get('/{note_id}')
 def get_note(investigation_id: str, note_id: str) -> InvestigatorNote:
     try:
-        return notes_service.get_note(investigation_id, note_id)
+        return service.get_note(investigation_id, note_id)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -121,7 +123,7 @@ def patch_note(
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> InvestigatorNote:
     try:
-        note = notes_service.update_note(investigation_id, note_id, request)
+        note = service.update_note(investigation_id, note_id, request)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
@@ -141,8 +143,8 @@ def delete_note_route(
     try:
         # Read it first so the deleted note's target can go into the activity log - once
         # it is gone there is nothing left to resolve the id against.
-        note = notes_service.get_note(investigation_id, note_id)
-        notes_service.delete_note(investigation_id, note_id)
+        note = service.get_note(investigation_id, note_id)
+        service.delete_note(investigation_id, note_id)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
