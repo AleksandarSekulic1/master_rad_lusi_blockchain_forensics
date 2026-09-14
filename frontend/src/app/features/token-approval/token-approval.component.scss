@@ -912,6 +912,16 @@
   overflow-wrap: anywhere;
 }
 
+/* Sitan dodatni podatak nakačen na glavnu vrednost (npr. "· 3× transferFrom") umesto
+   posebnog reda - manje redova, isti podaci. */
+.detail-hint {
+  font-size: 0.78rem;
+  color: var(--ta-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .unknown-badge {
   display: inline-flex;
   align-items: center;

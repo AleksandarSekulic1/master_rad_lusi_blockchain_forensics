@@ -849,11 +849,20 @@ export class TokenApprovalComponent implements OnInit {
   /** data_completeness.notes across whichever address(es) are on screen - deduplicated,
    * since the same evidence scope (and so the same missing-column notes) is shared by
    * every address analyzed together in one run. */
+  /** Backend note text ignored here on purpose: "block number not available" fires for
+   * essentially EVERY evidence file today (block_number is never populated by any current
+   * data source - see TOKEN-APPROVAL-IMPLEMENTATION.md §4/§8) - it never actually
+   * distinguishes one evidence file from another, so it is permanent noise rather than a
+   * useful signal. The full explanation still lives in the "Blok" field itself (only shown
+   * when the evidence genuinely carries a block number) and in the docs, not just dropped
+   * silently. */
+  private static readonly SUPPRESSED_DATA_NOTE_MARKER = 'Broj bloka nije dostupan';
+
   protected get activeDataCompletenessNotes(): string[] {
     const sources = this.multiResults.length > 0
       ? this.multiResults.flatMap((entry) => entry.result?.data_completeness.notes ?? [])
       : (this.result?.data_completeness.notes ?? []);
-    return [...new Set(sources)];
+    return [...new Set(sources)].filter((note) => !note.startsWith(TokenApprovalComponent.SUPPRESSED_DATA_NOTE_MARKER));
   }
 
   /** The backend's disclaimer text is a fixed, language-invariant boilerplate string, not
@@ -923,6 +932,40 @@ export class TokenApprovalComponent implements OnInit {
 
   protected riskClass(level: TokenApprovalRiskLevel): string {
     return `risk-${level.toLowerCase()}`;
+  }
+
+  /** Display text for a risk badge - riskClass() above still gets the raw LOW/MEDIUM/HIGH
+   * value (that's what picks the badge color), only what the analyst READS changes. */
+  protected riskLevelLabel(level: TokenApprovalRiskLevel): string {
+    if (level === 'HIGH') {
+      return this.t('VISOK', 'HIGH');
+    }
+    if (level === 'MEDIUM') {
+      return this.t('SREDNJI', 'MEDIUM');
+    }
+    return this.t('NIZAK', 'LOW');
+  }
+
+  /** Display text for a status badge (e.g. "APPROVED + USED + REVOKED") - translated
+   * token-by-token so every combination the backend can send is covered without an
+   * exhaustive lookup table. statusClass() above still reads the raw value. */
+  protected statusLabel(status: string): string {
+    const tokenLabel = (token: string): string => {
+      if (token === 'APPROVED') {
+        return this.t('ODOBRENO', 'APPROVED');
+      }
+      if (token === 'USED') {
+        return this.t('KORIŠĆENO', 'USED');
+      }
+      if (token === 'REVOKED') {
+        return this.t('OPOZVANO', 'REVOKED');
+      }
+      if (token === 'UNKNOWN') {
+        return this.t('NEPOZNATO', 'UNKNOWN');
+      }
+      return token;
+    };
+    return status.split(' + ').map(tokenLabel).join(' + ');
   }
 
   protected unlimitedBasisLabel(entry: TokenApprovalCorrelationEntry): string | null {
