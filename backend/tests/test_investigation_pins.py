@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.investigations import pins_repository, pins_service, repository, service
+from app.features.investigation_pins import repository as pins_repository
+from app.features.investigation_pins import service as pins_service
+from app.features.investigation_pins.models import PinNodeRequest
+from app.features.investigation_pins.service import PinnedNodeNotFoundError
+from app.investigations import repository, service
 from app.investigations.models import InvestigationCaseCreate
-from app.investigations.pins_models import PinNodeRequest
-from app.investigations.pins_service import PinnedNodeNotFoundError
 from app.investigations.service import InvestigationCaseNotFoundError
 
 

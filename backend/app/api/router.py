@@ -11,8 +11,8 @@ from app.api.routes.exports import router as exports_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.investigation_links import router as investigation_links_router
 from app.api.routes.investigation_notes import router as investigation_notes_router
-from app.api.routes.investigation_pins import router as investigation_pins_router
 from app.api.routes.investigations import router as investigations_router
+from app.features.investigation_pins.router import router as investigation_pins_router
 from app.api.routes.onchain import router as onchain_router
 from app.api.routes.reports import router as reports_router
 from app.api.routes.tests import router as tests_router

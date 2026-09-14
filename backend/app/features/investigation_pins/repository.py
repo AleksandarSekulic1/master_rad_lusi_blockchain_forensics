@@ -4,10 +4,12 @@ One JSON file per investigation -
 ``data/investigations/<investigation_id>/pinned_nodes.json`` - shaped
 ``{ "pinned_nodes": [ { <PinnedNode fields> }, ... ] }``.
 
-Pure dict I/O via the shared collection helpers in ``app/investigations/repository.py`` -
-no validation (that is ``pins_service.py``'s job). The file lives in the per-investigation
-directory, so deleting an investigation removes its pins with it. Nothing here touches the
-transaction graph or the evidence case.
+Pure dict I/O via the shared collection helpers in
+``app/investigations/repository.py`` (the investigation aggregate's own storage module -
+shared with notes and links, not part of this slice) - no validation, that is
+``service.py``'s job. The file lives in the per-investigation directory, so deleting an
+investigation removes its pins with it. Nothing here touches the transaction graph or the
+evidence case.
 """
 
 from __future__ import annotations

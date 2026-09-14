@@ -26,11 +26,12 @@ it refers to only if it keeps the exact spelling.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.shared.time_utils import utc_now_iso
 
 ADDRESS_MAX_LENGTH = 256
 REASON_MAX_LENGTH = 5_000
@@ -38,10 +39,6 @@ EVIDENCE_MAX_LENGTH = 2_000
 
 LinkConfidence = Literal['Low', 'Medium', 'High']
 LINK_CONFIDENCE_VALUES: tuple[str, ...] = ('Low', 'Medium', 'High')
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def new_link_id() -> str:

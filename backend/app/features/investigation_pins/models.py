@@ -18,15 +18,11 @@ investigator notes / links, so it lines up with the graph node id.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from pydantic import BaseModel, Field, field_validator
 
+from app.shared.time_utils import utc_now_iso
+
 ADDRESS_MAX_LENGTH = 256
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 class PinNodeRequest(BaseModel):

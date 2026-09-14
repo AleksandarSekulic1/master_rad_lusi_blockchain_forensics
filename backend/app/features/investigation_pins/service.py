@@ -1,17 +1,17 @@
 """Business logic for pinned nodes.
 
-Sits between the API routes and ``pins_repository.py``. Always verifies the parent
-investigation exists first (reusing step 1's service). Pins are keyed by address within an
-investigation - pinning an already-pinned address updates its stored position rather than
-creating a duplicate.
+Sits between the API router and ``repository.py``. Always verifies the parent
+investigation exists first (reusing the investigation aggregate's own service). Pins are
+keyed by address within an investigation - pinning an already-pinned address updates its
+stored position rather than creating a duplicate.
 
 Never imports or touches any analytics / graph code.
 """
 
 from __future__ import annotations
 
-from app.investigations import pins_repository
-from app.investigations.pins_models import PinNodeRequest, PinnedNode, utc_now_iso
+from app.features.investigation_pins import repository
+from app.features.investigation_pins.models import PinNodeRequest, PinnedNode, utc_now_iso
 from app.investigations.service import get_investigation
 
 
@@ -21,11 +21,11 @@ class PinnedNodeNotFoundError(FileNotFoundError):
 
 
 def _load_models(investigation_id: str) -> list[PinnedNode]:
-    return [PinnedNode(**row) for row in pins_repository.load_pins(investigation_id)]
+    return [PinnedNode(**row) for row in repository.load_pins(investigation_id)]
 
 
 def _persist(investigation_id: str, pins: list[PinnedNode]) -> None:
-    pins_repository.save_pins(investigation_id, [pin.model_dump() for pin in pins])
+    repository.save_pins(investigation_id, [pin.model_dump() for pin in pins])
 
 
 def list_pins(investigation_id: str) -> list[PinnedNode]:

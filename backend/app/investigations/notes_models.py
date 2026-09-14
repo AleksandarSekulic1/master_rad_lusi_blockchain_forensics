@@ -28,21 +28,18 @@ up with its target if it keeps the exact same spelling.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.shared.time_utils import utc_now_iso
 
 ADDRESS_MAX_LENGTH = 256
 TX_ID_MAX_LENGTH = 256
 NOTE_TEXT_MAX_LENGTH = 10_000
 
 NoteTargetType = Literal['address', 'transaction']
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def new_note_id() -> str:

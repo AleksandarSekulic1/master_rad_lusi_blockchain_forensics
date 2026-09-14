@@ -7,6 +7,10 @@ the transaction graph.
 
 Nested under the investigation container: ``/investigations/{investigation_id}/pins``.
 Any authenticated user, same as the rest of the investigator layer.
+
+This module, together with ``models.py``, ``repository.py`` and ``service.py`` in this
+same package, is the complete "pinned nodes" feature slice - everything needed to add,
+change or remove this capability lives here, in one place.
 """
 
 from __future__ import annotations
@@ -15,11 +19,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_current_user
 from app.evidence.audit_log import write_audit_log
-from app.investigations import pins_service
-from app.investigations.pins_models import PinNodeRequest, PinnedNode
-from app.investigations.pins_service import PinnedNodeNotFoundError
+from app.features.investigation_pins import service
+from app.features.investigation_pins.models import PinNodeRequest, PinnedNode
+from app.features.investigation_pins.service import PinnedNodeNotFoundError
 from app.investigations.service import InvestigationCaseNotFoundError
-
 
 router = APIRouter(prefix='/investigations/{investigation_id}/pins', tags=['investigator-pins'])
 
@@ -29,7 +32,7 @@ _NOT_FOUND = (InvestigationCaseNotFoundError, PinnedNodeNotFoundError)
 @router.get('')
 def get_pins(investigation_id: str) -> dict[str, object]:
     try:
-        pins = pins_service.list_pins(investigation_id)
+        pins = service.list_pins(investigation_id)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {'investigation_id': investigation_id, 'pins': pins}
@@ -43,7 +46,7 @@ def put_pin(
 ) -> PinnedNode:
     """Pin an address, or update the stored position of one that is already pinned."""
     try:
-        pin = pins_service.set_pin(investigation_id, request, pinned_by=str(current_user['username']))
+        pin = service.set_pin(investigation_id, request, pinned_by=str(current_user['username']))
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
@@ -61,7 +64,7 @@ def delete_pin(
     current_user: dict[str, object] = Depends(get_current_user),
 ) -> None:
     try:
-        pins_service.clear_pin(investigation_id, address)
+        service.clear_pin(investigation_id, address)
     except _NOT_FOUND as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     write_audit_log(
