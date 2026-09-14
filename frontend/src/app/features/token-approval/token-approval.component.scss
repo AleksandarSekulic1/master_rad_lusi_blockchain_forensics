@@ -584,10 +584,104 @@
   font-size: 0.72rem;
 }
 
-.suggestion-panel .primary-button {
-  justify-self: start;
+.suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+}
+
+.suggestion-actions .primary-button {
   padding: 0.6rem 1.2rem;
   font-size: 0.8rem;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--ta-dim);
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+  cursor: pointer;
+}
+
+.link-button:hover:not(:disabled) {
+  color: var(--ta-accent);
+}
+
+.link-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- "Proveri kroz Taint analizu" - kompaktan inline rezultat ---------- */
+
+.taint-check-panel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--ta-border);
+  background: var(--ta-surface);
+}
+
+.taint-check-seeds,
+.taint-check-lead {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ta-muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.4rem;
+}
+
+.taint-check-seeds .mono-clip,
+.taint-check-list .mono-clip {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.76rem;
+  color: var(--ta-text);
+  background: var(--ta-mono-bg);
+  border: 1px solid var(--ta-mono-border);
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.45rem;
+}
+
+.taint-check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.taint-check-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--ta-card-bg);
+  border: 1px solid var(--ta-border-soft);
+}
+
+.taint-pct {
+  flex: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ta-heading);
+}
+
+.taint-check-caveat {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--ta-status-unknown-text);
 }
 
 /* ---------- tabela odobrenja ---------- */

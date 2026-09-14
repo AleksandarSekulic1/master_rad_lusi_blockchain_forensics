@@ -4,8 +4,8 @@ import { Component, DestroyRef, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-import { distinctUntilChanged, map } from 'rxjs/operators';
+import { firstValueFrom, forkJoin, of } from 'rxjs';
+import { catchError, distinctUntilChanged, map } from 'rxjs/operators';
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -19,6 +19,7 @@ import {
   CaseSummary,
   EvidenceEntry,
   NodeLinkGraphResponse,
+  TaintAnalysisResult,
   TokenApprovalCorrelationEntry,
   TokenApprovalCorrelationResult,
   TokenApprovalGroup,
@@ -75,6 +76,14 @@ export class TokenApprovalComponent implements OnInit {
   protected isAnalyzing = false;
   protected analysisError: string | null = null;
   protected result: TokenApprovalCorrelationResult | null = null;
+
+  /** Multi-address analiza (§7.4-ish "run on several addresses divided into sections"):
+   * populated INSTEAD of `result` whenever `addressList` (below) has more than one entry.
+   * One entry per address in the order it was typed - `result: null` + `error` set means
+   * that specific address failed (e.g. never appears in the evidence at all), which never
+   * blocks the other addresses' results from rendering. Single-address mode leaves this
+   * empty and behaves exactly as before - see confirmCustodyAndAnalyze. */
+  protected multiResults: Array<{ address: string; result: TokenApprovalCorrelationResult | null; error: string | null }> = [];
 
   // --- Case address autocomplete (see dex-swap-analysis.component.ts's own
   // loadCaseAddresses) - a plain <datalist>, not a visible extra dropdown, so the address
@@ -198,6 +207,7 @@ export class TokenApprovalComponent implements OnInit {
 
   private clearResult(): void {
     this.result = null;
+    this.multiResults = [];
     this.groupByKey = new Map();
     this.analysisError = null;
     this.selectedEntry = null;
@@ -211,10 +221,38 @@ export class TokenApprovalComponent implements OnInit {
     this.caseSuggestions = null;
     this.caseSuggestionError = null;
     this.selectedCaseSuggestions = new Set();
+    this.taintCheckResult = null;
+    this.taintCheckError = null;
+    this.isTaintCustodyDialogOpen = false;
+    this.taintCustodyError = null;
+  }
+
+  /** The Address field accepts more than one address at once, separated by a comma,
+   * semicolon, or newline (e.g. pasted from a spreadsheet, or built up by clicking several
+   * "Predloži adrese" rows) - trimmed, emptied entries dropped, exact duplicates removed
+   * (case-insensitive, first-seen casing kept). One address behaves exactly as before
+   * (single-result view); more than one switches to the sectioned multi-address view (see
+   * confirmCustodyAndAnalyze). */
+  protected get addressList(): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of this.address.split(/[,;\n]/)) {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(trimmed);
+    }
+    return result;
   }
 
   protected get canAnalyze(): boolean {
-    return !!this.activeCase && this.address.trim().length > 0 && !this.isAnalyzing;
+    return !!this.activeCase && this.addressList.length > 0 && !this.isAnalyzing;
   }
 
   /** Opens the access-reason dialog before actually running the analysis - see
@@ -231,34 +269,84 @@ export class TokenApprovalComponent implements OnInit {
     this.isCustodyDialogOpen = false;
   }
 
+  private groupsToMap(groups: TokenApprovalGroup[]): Map<string, TokenApprovalGroup> {
+    return new Map(groups.map((group) => [this.groupKey(group.owner, group.spender, group.token_address), group]));
+  }
+
+  private tokenApprovalErrorMessage(error: HttpErrorResponse): string {
+    return error.status === 404
+      ? this.t('Adresa nije pronađena u evidenciji ovog slučaja.', 'The address was not found in this case’s evidence.')
+      : this.t('Neuspešna Token Approval analiza.', 'The Token Approval analysis failed.');
+  }
+
   protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
     if (!this.canAnalyze) {
       return;
     }
     const caseId = this.activeCase!.id;
-    const address = this.address.trim();
+    const addresses = this.addressList;
 
     this.isAnalyzing = true;
     this.analysisError = null;
     this.custodyDialogError = null;
     this.selectedEntry = null;
 
-    this.api.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).subscribe({
-      next: (result) => {
-        this.result = result;
-        this.groupByKey = new Map(result.groups.map((group) => [this.groupKey(group.owner, group.spender, group.token_address), group]));
+    if (addresses.length === 1) {
+      // Single address - unchanged from before multi-address support existed.
+      this.api.runTokenApprovalAnalysis(caseId, addresses[0], this.selectedEvidence, custody).subscribe({
+        next: (result) => {
+          this.result = result;
+          this.multiResults = [];
+          this.groupByKey = this.groupsToMap(result.groups);
+          this.isAnalyzing = false;
+          this.isCustodyDialogOpen = false;
+          this.loadDexSwapCrossReference(caseId);
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isAnalyzing = false;
+          const message = this.tokenApprovalErrorMessage(error);
+          // Failure stays INSIDE the dialog (nothing typed is lost), same pattern as every
+          // other custody-gated analysis page - the dialog is dismissed only on success.
+          this.custodyDialogError = message;
+          this.analysisError = message;
+        },
+      });
+      return;
+    }
+
+    // Multiple addresses - one call per address (same endpoint, same custody reason/
+    // signature reused for every one of them - one deliberate access, several addresses),
+    // so a single 404 (typo, address never in this evidence) doesn't lose the addresses
+    // that DID resolve. Every call still writes its own custody-log entry server-side.
+    forkJoin(
+      addresses.map((address) =>
+        this.api.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+          map((result) => ({ address, result, error: null as string | null })),
+          catchError((error: HttpErrorResponse) => of({ address, result: null as TokenApprovalCorrelationResult | null, error: this.tokenApprovalErrorMessage(error) })),
+        ),
+      ),
+    ).subscribe({
+      next: (entries) => {
         this.isAnalyzing = false;
+        const allFailed = entries.every((entry) => entry.error);
+        if (allFailed) {
+          // Every single address failed (e.g. a whole comma-separated batch mistyped) -
+          // stays INSIDE the dialog, same as the single-address failure path, instead of
+          // showing N empty-looking sections.
+          const message = this.t('Nijedna od unetih adresa nije pronađena u evidenciji ovog slučaja.', 'None of the entered addresses were found in this case’s evidence.');
+          this.custodyDialogError = message;
+          this.analysisError = message;
+          return;
+        }
+        this.result = null;
+        this.multiResults = entries;
+        this.groupByKey = this.groupsToMap(entries.flatMap((entry) => entry.result?.groups ?? []));
         this.isCustodyDialogOpen = false;
         this.loadDexSwapCrossReference(caseId);
       },
-      error: (error: HttpErrorResponse) => {
+      error: () => {
         this.isAnalyzing = false;
-        const message =
-          error.status === 404
-            ? this.t('Adresa nije pronađena u evidenciji ovog slučaja.', 'The address was not found in this case’s evidence.')
-            : this.t('Neuspešna Token Approval analiza.', 'The Token Approval analysis failed.');
-        // Failure stays INSIDE the dialog (nothing typed is lost), same pattern as every
-        // other custody-gated analysis page - the dialog is dismissed only on success.
+        const message = this.t('Neuspešna Token Approval analiza.', 'The Token Approval analysis failed.');
         this.custodyDialogError = message;
         this.analysisError = message;
       },
@@ -337,7 +425,7 @@ export class TokenApprovalComponent implements OnInit {
   protected selectedSuggestions = new Set<string>();
 
   protected get suggestedTaintAddresses(): SuggestedRiskyAddress[] {
-    return this.result ? this.rankRiskySpenders(this.result.groups) : [];
+    return this.rankRiskySpenders(this.activeGroups);
   }
 
   protected isSuggestionSelected(address: string): boolean {
@@ -362,15 +450,21 @@ export class TokenApprovalComponent implements OnInit {
     this.selectedSuggestions = this.allSuggestionsSelected ? new Set() : new Set(list.map((item) => item.address));
   }
 
-  /** Hands the selected spender(s) to Taint Analysis as ready-made seeds - Taint Analysis
-   * decides for itself whether/how to run (this page never runs a taint analysis itself),
-   * same division of responsibility as openInPathfinding below. */
-  protected sendSelectedToTaintAnalysis(): void {
+  /** Secondary escape hatch: hands the selected spender(s) to the FULL Taint Analysis
+   * page (its own graph, timeline, cash-out detection) as ready-made seeds - for when the
+   * compact inline check below (checkSelectedInTaint) isn't enough. Taint Analysis decides
+   * for itself whether/how to run - same division of responsibility as openInPathfinding
+   * below. */
+  protected openSelectedInFullTaintAnalysis(): void {
     if (this.selectedSuggestions.size === 0) {
       return;
     }
     this.state.setPendingTaintSeeds([...this.selectedSuggestions]);
     this.router.navigateByUrl('/taint-analysis');
+  }
+
+  protected checkSelectedInTaint(): void {
+    this.openTaintCheckDialog([...this.selectedSuggestions]);
   }
 
   // --- "Predloži adrese" - CASE-WIDE, no address typed in first (see rankRiskySpenders
@@ -439,12 +533,17 @@ export class TokenApprovalComponent implements OnInit {
     this.selectedCaseSuggestions = this.allCaseSuggestionsSelected ? new Set() : new Set(list.map((item) => item.address));
   }
 
-  protected sendSelectedCaseSuggestionsToTaintAnalysis(): void {
+  /** Secondary escape hatch - see openSelectedInFullTaintAnalysis above. */
+  protected openSelectedCaseSuggestionsInFullTaintAnalysis(): void {
     if (this.selectedCaseSuggestions.size === 0) {
       return;
     }
     this.state.setPendingTaintSeeds([...this.selectedCaseSuggestions]);
     this.router.navigateByUrl('/taint-analysis');
+  }
+
+  protected checkSelectedCaseSuggestionsInTaint(): void {
+    this.openTaintCheckDialog([...this.selectedCaseSuggestions]);
   }
 
   /** Fills the Address field with a suggested address so the analyst can run the normal,
@@ -456,43 +555,138 @@ export class TokenApprovalComponent implements OnInit {
     this.dismissCaseSuggestions();
   }
 
+  // --- Inline Taint check (compact, no navigation) ------------------------------------
+  // "Pošalji izabrane u Taint analizu" from EITHER suggestion panel above runs a REAL
+  // taint propagation (the same POST .../analytics/run the full Taint Analysis page's own
+  // "Pokreni taint analizu" button calls, seeded with exactly the selected addresses) but
+  // renders only a compact summary right here - no navigation, no graph/timeline UI. Same
+  // custody-gated pattern as every other deliberate access on this page (its own dialog,
+  // separate from the one "ANALIZIRAJ" uses, since it is a genuinely separate access to
+  // the evidence with its own reason/signature - see LANAC-DOKAZA.md). The result is kept
+  // on this page (taintCheckResult) so it can also be folded into the PDF export below.
+  protected isTaintCustodyDialogOpen = false;
+  protected taintCustodyError: string | null = null;
+  protected isRunningTaintCheck = false;
+  protected taintCheckError: string | null = null;
+  protected taintCheckResult: TaintAnalysisResult | null = null;
+  private pendingTaintCheckAddresses: string[] = [];
+
+  private openTaintCheckDialog(addresses: string[]): void {
+    if (addresses.length === 0 || !this.activeCase) {
+      return;
+    }
+    this.pendingTaintCheckAddresses = addresses;
+    this.taintCustodyError = null;
+    this.isTaintCustodyDialogOpen = true;
+  }
+
+  protected closeTaintCustodyDialog(): void {
+    this.isTaintCustodyDialogOpen = false;
+  }
+
+  protected confirmTaintCustodyAndCheck(custody: TransactionCustodyEntry): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || this.pendingTaintCheckAddresses.length === 0) {
+      return;
+    }
+    this.isRunningTaintCheck = true;
+    this.taintCustodyError = null;
+
+    this.api.runCaseAnalytics(caseId, this.selectedEvidence, this.pendingTaintCheckAddresses, custody).subscribe({
+      next: (response) => {
+        this.isRunningTaintCheck = false;
+        this.isTaintCustodyDialogOpen = false;
+        this.taintCheckError = null;
+        this.taintCheckResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+      },
+      error: () => {
+        this.isRunningTaintCheck = false;
+        const message = this.t('Neuspešna taint provera.', 'The taint check failed.');
+        this.taintCustodyError = message;
+        this.taintCheckError = message;
+      },
+    });
+  }
+
+  protected dismissTaintCheck(): void {
+    this.taintCheckResult = null;
+    this.taintCheckError = null;
+  }
+
+  /** Every OTHER address the taint model reached from the checked seeds, ranked highest
+   * first (the backend already sorts `results` this way) - the seeds themselves always
+   * sit at/near 100% and are excluded here since "the seed is tainted" is not a finding.
+   * Capped to keep the summary compact - the full picture (every hop, timeline, cash-out
+   * detection) is still one click away via "Otvori pun graf u Taint analizi". */
+  protected get taintCheckDownstream(): Array<{ address: string; percentage: number }> {
+    const result = this.taintCheckResult;
+    if (!result) {
+      return [];
+    }
+    return result.results
+      .filter((node) => !node.is_taint_seed && node.taint_percentage > 0)
+      .slice(0, 6)
+      .map((node) => ({ address: node.address, percentage: node.taint_percentage }));
+  }
+
   // --- Summary counters (shown only once a result exists - see the template) ---------
+  // Multi-address aware: when multiResults is populated (§multi-address analiza below),
+  // every counter/lookup here reads across ALL analyzed addresses combined - groupByKey
+  // itself is the UNION of every fetched result's groups (see confirmCustodyAndAnalyze),
+  // so groupFor/riskLevelFor/etc. above need no change at all to already be correct for
+  // either mode; only the correlation LIST these counters iterate needs to switch source.
+
+  /** Every correlation entry currently on screen - one address' worth in single-address
+   * mode, all analyzed addresses' combined in multi-address mode. */
+  protected get activeCorrelations(): TokenApprovalCorrelationEntry[] {
+    if (this.multiResults.length > 0) {
+      return this.multiResults.flatMap((entry) => entry.result?.correlations ?? []);
+    }
+    return this.result?.correlations ?? [];
+  }
+
+  /** Every (owner, spender, token) group currently on screen - same combining rule as
+   * activeCorrelations above. Powers the "Predlog za dalju analizu" ranking (§suggested
+   * addresses) across however many addresses were just analyzed. */
+  protected get activeGroups(): TokenApprovalGroup[] {
+    if (this.multiResults.length > 0) {
+      return this.multiResults.flatMap((entry) => entry.result?.groups ?? []);
+    }
+    return this.result?.groups ?? [];
+  }
 
   protected get totalApprovals(): number {
-    return this.result?.correlations.length ?? 0;
+    return this.activeCorrelations.length;
   }
 
   protected get unlimitedApprovalsCount(): number {
-    return this.result?.correlations.filter((entry) => entry.unlimited_basis !== null).length ?? 0;
+    return this.activeCorrelations.filter((entry) => entry.unlimited_basis !== null).length;
   }
 
   protected get activeApprovalsCount(): number {
-    return this.result?.correlations.filter((entry) => !entry.revoked).length ?? 0;
+    return this.activeCorrelations.filter((entry) => !entry.revoked).length;
   }
 
   protected get revokedApprovalsCount(): number {
-    return this.result?.correlations.filter((entry) => entry.revoked).length ?? 0;
+    return this.activeCorrelations.filter((entry) => entry.revoked).length;
   }
 
   protected get usedApprovalsCount(): number {
-    return this.result?.correlations.filter((entry) => entry.used === true).length ?? 0;
+    return this.activeCorrelations.filter((entry) => entry.used === true).length;
   }
 
   /** `used === false` specifically - NOT the same as "total minus used", since `used` is
    * tri-state (§13.3/§14.3: `null` means "cannot be ruled out", never counted as either
    * used or unused). */
   protected get unusedApprovalsCount(): number {
-    return this.result?.correlations.filter((entry) => entry.used === false).length ?? 0;
+    return this.activeCorrelations.filter((entry) => entry.used === false).length;
   }
 
   /** "Potentially risky" = the owning group's risk_level is MEDIUM or HIGH - i.e. NOT the
    * absence of risk (LOW). Matches the table's own Risk column/badge exactly, so this
    * count and what the analyst sees highlighted in the table never disagree. */
   protected get riskyApprovalsCount(): number {
-    if (!this.result) {
-      return 0;
-    }
-    return this.result.correlations.filter((entry) => this.riskLevelFor(entry) !== 'LOW').length;
+    return this.activeCorrelations.filter((entry) => this.riskLevelFor(entry) !== 'LOW').length;
   }
 
   // --- Table/detail display helpers ---------------------------------------------------
@@ -742,7 +936,18 @@ export class TokenApprovalComponent implements OnInit {
   }
 
   protected get canExportPdf(): boolean {
-    return !!this.result && this.result.correlations.length > 0 && !this.isAnalyzing && !this.isExportingPdf;
+    return this.activeCorrelations.length > 0 && !this.isAnalyzing && !this.isExportingPdf;
+  }
+
+  /** Human-readable "which address(es) is this about" for the PDF header/summary/report
+   * registry - the single address in single-address mode (unchanged), a comma-joined list
+   * of every address that actually resolved in multi-address mode. */
+  protected get analyzedAddressLabel(): string {
+    if (this.multiResults.length > 0) {
+      const resolved = this.multiResults.filter((entry) => entry.result).map((entry) => entry.address);
+      return resolved.length > 0 ? resolved.join(', ') : this.t('(nijedna adresa nije pronađena)', '(no address found)');
+    }
+    return this.result?.address ?? this.t('(sve adrese)', '(all addresses)');
   }
 
   openSignatureDialog(): void {
@@ -777,14 +982,17 @@ export class TokenApprovalComponent implements OnInit {
    * field order never affects the hash - same discipline as every other report on this
    * page's reportContentPayload(). */
   private reportContentPayload(): Record<string, unknown> {
-    const result = this.result!;
+    // unlimited_threshold/rapid_use_seconds are the same run-time parameters for every
+    // address analyzed together (the page has no per-address threshold override), so
+    // whichever result actually exists carries the right figures for all of them.
+    const thresholdSource = this.result ?? this.multiResults.find((entry) => entry.result)?.result;
     return {
       case_id: this.activeCase!.id,
       evidence: this.selectedEvidence ?? 'combined',
-      address: result.address,
-      unlimited_threshold: result.unlimited_threshold,
-      rapid_use_seconds: result.rapid_use_seconds,
-      correlations: [...result.correlations]
+      address: this.analyzedAddressLabel,
+      unlimited_threshold: thresholdSource?.unlimited_threshold ?? null,
+      rapid_use_seconds: thresholdSource?.rapid_use_seconds ?? null,
+      correlations: [...this.activeCorrelations]
         .map((entry) => ({
           owner: entry.owner,
           spender: entry.spender,
@@ -805,7 +1013,7 @@ export class TokenApprovalComponent implements OnInit {
   }
 
   async confirmSignatureAndExport(): Promise<void> {
-    if (!this.canSubmitSignature || !this.canExportPdf || !this.activeCase || !this.result) {
+    if (!this.canSubmitSignature || !this.canExportPdf || !this.activeCase) {
       return;
     }
 
@@ -814,7 +1022,6 @@ export class TokenApprovalComponent implements OnInit {
     try {
       const signatureImage = this.signaturePad!.getDataUrl();
       const declaration = this.signatureDeclaration();
-      const result = this.result;
 
       const registration = await firstValueFrom(
         this.api.registerReport({
@@ -823,7 +1030,7 @@ export class TokenApprovalComponent implements OnInit {
           declaration,
           content: this.reportContentPayload(),
           summary: {
-            address: result.address,
+            address: this.analyzedAddressLabel,
             total_approvals: this.totalApprovals,
             unlimited_approvals: this.unlimitedApprovalsCount,
             active_approvals: this.activeApprovalsCount,
@@ -850,11 +1057,15 @@ export class TokenApprovalComponent implements OnInit {
   /** Groups correlations by (owner, spender, token) - the same grant relationship §12/§14
    * already group by - so the APPROVAL HISTORY section can render each relationship's own
    * chronological chain (APPROVE -> [change] -> [transferFrom] -> [REVOKED]) instead of one
-   * flat, unordered list. Reuses `result.correlations` exactly as already fetched - no new
-   * data, no re-derivation of what §14 already computed. */
-  private historyGroups(): Array<{ owner: string; spender: string; token: string | null; entries: TokenApprovalCorrelationEntry[] }> {
+   * flat, unordered list. `correlations` defaults to activeCorrelations (whatever is on
+   * screen right now) but the PDF builder passes ONE address' own list explicitly when
+   * looping the multi-address report, so each address's history stays its own section
+   * instead of one merged, unlabeled chain. */
+  private historyGroups(
+    correlations: TokenApprovalCorrelationEntry[] = this.activeCorrelations,
+  ): Array<{ owner: string; spender: string; token: string | null; entries: TokenApprovalCorrelationEntry[] }> {
     const byKey = new Map<string, { owner: string; spender: string; token: string | null; entries: TokenApprovalCorrelationEntry[] }>();
-    for (const entry of this.result?.correlations ?? []) {
+    for (const entry of correlations) {
       const key = this.groupKey(entry.owner, entry.spender, entry.token_address);
       const bucket = byKey.get(key) ?? { owner: entry.owner, spender: entry.spender, token: entry.token_address, entries: [] };
       bucket.entries.push(entry);
@@ -879,7 +1090,22 @@ export class TokenApprovalComponent implements OnInit {
   ): void {
     const L = (sr: string, en: string): string => this.lx(sr, en);
     const caseSummary = this.activeCase!;
-    const result = this.result!;
+    // Single-address mode: one entry, IDENTICAL to how this function worked before
+    // multi-address support existed. Multi-address mode: one entry per address that
+    // actually resolved (failed ones were already reported inline, see confirmCustody
+    // AndAnalyze) - the loop below adds an "ADRESA: X" sub-heading per entry only when
+    // there is more than one, so a single-address export's layout never changes.
+    const addressEntries: Array<{ address: string; result: TokenApprovalCorrelationResult; groupByKey: Map<string, TokenApprovalGroup> }> =
+      this.multiResults.length > 0
+        ? this.multiResults
+            .filter((entry): entry is { address: string; result: TokenApprovalCorrelationResult; error: string | null } => !!entry.result)
+            .map((entry) => ({ address: entry.address, result: entry.result, groupByKey: this.groupsToMap(entry.result.groups) }))
+        : [{ address: this.result!.address ?? this.analyzedAddressLabel, result: this.result!, groupByKey: this.groupByKey }];
+    const isMultiAddressReport = addressEntries.length > 1;
+    // riskLevelFor/riskIndicatorsFor below always read `this.groupByKey`, which
+    // confirmCustodyAndAnalyze already sets to the UNION of every analyzed address's
+    // groups (single or multi) - so they resolve correctly for whichever entry's row is
+    // currently being rendered, with zero extra plumbing.
     const NAVY = TokenApprovalComponent.PDF_NAVY;
     const ACCENT = TokenApprovalComponent.PDF_ACCENT;
     const TEXT_GRAY = TokenApprovalComponent.PDF_TEXT_GRAY;
@@ -926,7 +1152,7 @@ export class TokenApprovalComponent implements OnInit {
     };
 
     kv('CASE ID', caseSummary.id);
-    kv(L('ANALIZIRANA ADRESA', 'ANALYZED ADDRESS'), this.asciiSafe(result.address ?? L('(sve adrese)', '(all addresses)')));
+    kv(L('ANALIZIRANA ADRESA', 'ANALYZED ADDRESS'), this.asciiSafe(this.analyzedAddressLabel));
     kv(L('IZVEZAO', 'EXPORTED BY'), this.asciiSafe(this.auth.currentUser?.username ?? caseSummary.analyst));
     kv(
       L('EVIDENCIJA', 'EVIDENCE'),

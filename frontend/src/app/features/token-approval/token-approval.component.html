@@ -120,16 +120,87 @@
         </li>
       </ul>
 
-      <button
-        type="button"
-        class="primary-button"
-        (click)="sendSelectedCaseSuggestionsToTaintAnalysis()"
-        [disabled]="selectedCaseSuggestions.size === 0"
-      >
-        {{ t('Pošalji izabrane u Taint analizu', 'Send selected to Taint Analysis') }}
-        <ng-container *ngIf="selectedCaseSuggestions.size > 0">({{ selectedCaseSuggestions.size }})</ng-container>
-      </button>
+      <div class="suggestion-actions">
+        <button
+          type="button"
+          class="primary-button"
+          (click)="checkSelectedCaseSuggestionsInTaint()"
+          [disabled]="selectedCaseSuggestions.size === 0"
+        >
+          {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+          <ng-container *ngIf="selectedCaseSuggestions.size > 0">({{ selectedCaseSuggestions.size }})</ng-container>
+        </button>
+        <button
+          type="button"
+          class="link-button"
+          (click)="openSelectedCaseSuggestionsInFullTaintAnalysis()"
+          [disabled]="selectedCaseSuggestions.size === 0"
+        >
+          {{ t('ili otvori pun graf →', 'or open full graph →') }}
+        </button>
+      </div>
     </ng-container>
+  </div>
+
+  <p class="error-inline" *ngIf="taintCheckError">{{ taintCheckError }}</p>
+
+  <!-- Kompaktan rezultat "Proveri kroz Taint analizu" - bez napuštanja stranice, ulazi i
+       u PDF izveštaj (vidi buildTokenApprovalPdf). -->
+  <div class="taint-check-panel" *ngIf="taintCheckResult as taint">
+    <div class="suggestion-head">
+      <p class="panel-kicker">{{ t('Taint provera', 'Taint check') }}</p>
+      <button type="button" class="ta-modal-close" (click)="dismissTaintCheck()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <p class="taint-check-seeds">
+      {{ t('Seed adrese', 'Seed addresses') }}:
+      <span class="mono-clip" *ngFor="let seed of taint.seed_addresses">{{ seed }}</span>
+    </p>
+
+    <ng-container *ngIf="taintCheckDownstream.length > 0; else noTaintSpread">
+      <p class="taint-check-lead">
+        {{
+          t(
+            'Sredstva sa ovih adresa stižu do sledećih adresa u ovoj evidenciji (rangirano po % zaprljanosti):',
+            'Funds from these addresses reach the following addresses in this evidence (ranked by taint %):'
+          )
+        }}
+      </p>
+      <ul class="taint-check-list">
+        <li *ngFor="let item of taintCheckDownstream">
+          <span class="mono-clip">{{ item.address }}</span>
+          <span class="taint-pct">{{ item.percentage | number : '1.0-2' }}%</span>
+        </li>
+      </ul>
+    </ng-container>
+    <ng-template #noTaintSpread>
+      <p class="empty-hint">
+        {{
+          t(
+            'U ovoj evidenciji nema daljeg kretanja sredstava sa ovih adresa (ili je van opsega uvezene evidencije).',
+            'No further movement of funds from these addresses appears in this evidence (or it is outside the imported evidence).'
+          )
+        }}
+      </p>
+    </ng-template>
+
+    <p class="taint-check-caveat" *ngIf="taint.single_hop_evidence">
+      ⚠ {{
+        t(
+          'Evidencija prati novac samo jedan skok dalje - procenti iznad su ivica prikupljenih podataka, ne konačan nalaz.',
+          'The evidence traces money for one hop only - the percentages above are the edge of the collected data, not a final finding.'
+        )
+      }}
+    </p>
+
+    <p class="disclaimer-note">
+      {{
+        t(
+          'Heuristička procena (isti taint model kao Taint analiza) - ne dokaz da su sredstva stigla do konkretnog lica.',
+          'A heuristic estimate (same taint model as Taint Analysis) - not proof that funds reached a specific person.'
+        )
+      }}
+    </p>
   </div>
 
   <ng-container *ngIf="result">
@@ -203,15 +274,15 @@
         </li>
       </ul>
 
-      <button
-        type="button"
-        class="primary-button"
-        (click)="sendSelectedToTaintAnalysis()"
-        [disabled]="selectedSuggestions.size === 0"
-      >
-        {{ t('Pošalji izabrane u Taint analizu', 'Send selected to Taint Analysis') }}
-        <ng-container *ngIf="selectedSuggestions.size > 0">({{ selectedSuggestions.size }})</ng-container>
-      </button>
+      <div class="suggestion-actions">
+        <button type="button" class="primary-button" (click)="checkSelectedInTaint()" [disabled]="selectedSuggestions.size === 0">
+          {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+          <ng-container *ngIf="selectedSuggestions.size > 0">({{ selectedSuggestions.size }})</ng-container>
+        </button>
+        <button type="button" class="link-button" (click)="openSelectedInFullTaintAnalysis()" [disabled]="selectedSuggestions.size === 0">
+          {{ t('ili otvori pun graf →', 'or open full graph →') }}
+        </button>
+      </div>
     </div>
 
     <div class="ta-toolbar" *ngIf="result.correlations.length > 0">
@@ -442,6 +513,20 @@
   [submitError]="custodyDialogError"
   (confirmed)="confirmCustodyAndAnalyze($event)"
   (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>
+
+<!-- Lanac dokaza za "Proveri kroz Taint analizu" - odvojen dijalog od gornjeg jer je ovo
+     zasebna, deliberatna analiza (isti taint model kao Taint analizina "Pokreni taint
+     analizu") - vidi checkSelectedInTaint/checkSelectedCaseSuggestionsInTaint gore. -->
+<app-custody-access-dialog
+  *ngIf="isTaintCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isRunningTaintCheck"
+  [submitError]="taintCustodyError"
+  (confirmed)="confirmTaintCustodyAndCheck($event)"
+  (cancelled)="closeTaintCustodyDialog()"
 ></app-custody-access-dialog>
 
 <!-- Potpisivanje pre izvoza PDF izveštaja - isti obrazac kao DEX Swap/Taint/Pathfinding
