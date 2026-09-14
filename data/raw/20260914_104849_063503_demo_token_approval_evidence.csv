@@ -1,0 +1,9 @@
+sender_address,recipient_address,amount,timestamp,event_type,token_address,owner_address,spender_address,is_unlimited
+0xVictimWallet,0xDrainerContract,500000,2026-07-05T09:00:00Z,approve,0xUSDCContract,0xVictimWallet,0xDrainerContract,true
+0xVictimWallet,0xDrainerWallet,480000,2026-07-05T09:12:00Z,transferFrom,0xUSDCContract,0xVictimWallet,0xDrainerContract,
+0xVictimWallet2,0xDrainerContract,5000000000000000,2026-07-06T10:00:00Z,approve,0xUSDCContract,0xVictimWallet2,0xDrainerContract,
+0xCarefulTrader,0xUniswapRouter,2000,2026-07-07T08:00:00Z,approve,0xDAIContract,0xCarefulTrader,0xUniswapRouter,false
+0xCarefulTrader,0xUniswapRouter,2000,2026-07-07T10:30:00Z,transferFrom,0xDAIContract,0xCarefulTrader,0xUniswapRouter,
+0xCarefulTrader,0xUniswapRouter,0,2026-07-07T11:00:00Z,approve,0xDAIContract,0xCarefulTrader,0xUniswapRouter,false
+0xVictimWallet,0xSweepContract,10000,2026-07-08T09:00:00Z,approve,0xUSDCContract,0xVictimWallet,0xSweepContract,false
+0xVictimWallet,0xSweepContract,8000,2026-07-08T09:05:00Z,approve,0xDAIContract,0xVictimWallet,0xSweepContract,false

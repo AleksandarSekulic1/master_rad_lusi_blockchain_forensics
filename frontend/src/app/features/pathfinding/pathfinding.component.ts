@@ -155,6 +155,18 @@ export class PathfindingComponent implements OnInit, OnDestroy {
           this.renderGraph();
         }
       });
+
+    // Picked up a one-shot "Otvori u Pathfinding" handoff (e.g. from
+    // token-approval.component.ts) - pre-fills From/To exactly as if the analyst had
+    // typed them, does not run the search itself.
+    const pendingSeed = this.state.consumePendingPathfindingSeed();
+    if (pendingSeed) {
+      this.fromAddress = pendingSeed.from;
+      if (pendingSeed.to) {
+        this.toAddress = pendingSeed.to;
+        this.destinationMode = 'specific_address';
+      }
+    }
   }
 
   ngOnDestroy(): void {

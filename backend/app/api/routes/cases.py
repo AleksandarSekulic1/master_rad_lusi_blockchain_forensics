@@ -11,6 +11,27 @@ from app.analytics.behavioral_analysis import analyze_time_of_day
 from app.analytics.case_graph import build_case_graph, clean_evidence_frames, combine_frames, graph_summary
 from app.analytics.dex_swap_analysis import DEFAULT_MAX_GAP_SECONDS, MAX_MAX_GAP_SECONDS, MIN_MAX_GAP_SECONDS, detect_dex_swaps
 from app.analytics.timezone_heuristics import estimate_timezone_compatibility
+from app.analytics.token_approval_analysis import (
+    DEFAULT_LARGE_AMOUNT_THRESHOLD,
+    DEFAULT_LONG_ACTIVE_PERIOD_SECONDS,
+    DEFAULT_MULTIPLE_TRANSFER_THRESHOLD,
+    DEFAULT_RAPID_USE_SECONDS,
+    DEFAULT_UNLIMITED_THRESHOLD,
+    EVIDENCE_STORED_NAME_COLUMN,
+    MAX_LARGE_AMOUNT_THRESHOLD,
+    MAX_LONG_ACTIVE_PERIOD_SECONDS,
+    MAX_MULTIPLE_TRANSFER_THRESHOLD,
+    MAX_RAPID_USE_SECONDS,
+    MAX_UNLIMITED_THRESHOLD,
+    MIN_LARGE_AMOUNT_THRESHOLD,
+    MIN_LONG_ACTIVE_PERIOD_SECONDS,
+    MIN_MULTIPLE_TRANSFER_THRESHOLD,
+    MIN_RAPID_USE_SECONDS,
+    MIN_UNLIMITED_THRESHOLD,
+    analyze_token_approvals,
+    build_token_approval_history,
+    correlate_approval_usage,
+)
 from app.analytics.graph_building import build_transaction_graph, transaction_graph_to_node_link_json
 from app.analytics.path_finding import bfs_shortest_path, find_path_to_nearest_of
 from app.analytics.plugins.manager import run_plugin_pipeline
@@ -464,6 +485,300 @@ def run_case_dex_swap_analysis(
     return result
 
 
+@router.get('/{case_id}/token-approval-analysis')
+def get_case_token_approval_analysis(
+    case_id: str,
+    address: str | None = Query(default=None),
+    evidence: str | None = None,
+    unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
+    rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+    large_amount_threshold: float = Query(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD),
+    multiple_transfer_threshold: int = Query(default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD),
+    long_active_period_seconds: int = Query(default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS),
+) -> dict[str, object]:
+    """Token Approval / Ice Phishing Analysis: extracts and classifies ERC-20
+    approve()/EIP-2612 permit() grants and their transferFrom() usage from the case's
+    combined, cleaned evidence (see analytics/token_approval_analysis.py and
+    TOKEN-APPROVAL-IMPLEMENTATION.md for exactly which fields are read vs. derived vs.
+    reported as unavailable). `address` is optional - omitted, every approval group found
+    in the evidence is returned; given, the result is scoped to groups where that address
+    is the owner OR the spender (404 if it never appears in the evidence at all).
+
+    Reads the case's cleaned per-transaction DataFrame directly (NOT the shared
+    transaction graph), same reason as get_case_dex_swap_analysis above - the shared graph
+    deliberately does not carry the extra fields (event_type, token_address,
+    spender_address...) this analysis needs.
+
+    Read-only, same treatment as get_case_dex_swap_analysis/get_case_behavioral_analysis:
+    only re-reads already-cleaned evidence, no custody dialog, no audit log entry. This is
+    the backend collection/extraction phase only - the deliberate custody-gated variant,
+    PDF report, activity log entry and frontend page are a later phase (see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #9/#11).
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip() if address else None
+
+    try:
+        result = analyze_token_approvals(
+            combined_frame,
+            target_address=normalized_address,
+            unlimited_threshold=unlimited_threshold,
+            rapid_use_seconds=rapid_use_seconds,
+            large_amount_threshold=large_amount_threshold,
+            multiple_transfer_threshold=multiple_transfer_threshold,
+            long_active_period_seconds=long_active_period_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+@router.get('/{case_id}/token-approval-history')
+def get_case_token_approval_history(
+    case_id: str,
+    address: str = Query(min_length=1),
+    evidence: str | None = None,
+    unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
+    rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+    large_amount_threshold: float = Query(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD),
+    multiple_transfer_threshold: int = Query(default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD),
+    long_active_period_seconds: int = Query(default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS),
+) -> dict[str, object]:
+    """Token Approval history for ONE address: reconstructs APPROVE -> allowance change ->
+    eventual REVOCATION -> current status per grant (see
+    analytics/token_approval_analysis.build_token_approval_history and
+    TOKEN-APPROVAL-IMPLEMENTATION.md #13). Unlike get_case_token_approval_analysis above,
+    `address` is REQUIRED - a "history" only makes sense for a specific address.
+
+    Same read-only treatment as get_case_token_approval_analysis: no custody dialog, no
+    audit log entry - backend collection/extraction phase only (see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #12.6/#13 for what is deliberately out of scope).
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip()
+
+    try:
+        result = build_token_approval_history(
+            combined_frame,
+            address=normalized_address,
+            unlimited_threshold=unlimited_threshold,
+            rapid_use_seconds=rapid_use_seconds,
+            large_amount_threshold=large_amount_threshold,
+            multiple_transfer_threshold=multiple_transfer_threshold,
+            long_active_period_seconds=long_active_period_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+@router.get('/{case_id}/token-approval-correlation')
+def get_case_token_approval_correlation(
+    case_id: str,
+    address: str | None = Query(default=None),
+    evidence: str | None = None,
+    unlimited_threshold: float = Query(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD),
+    rapid_use_seconds: int = Query(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS),
+    large_amount_threshold: float = Query(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD),
+    multiple_transfer_threshold: int = Query(default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD),
+    long_active_period_seconds: int = Query(default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS),
+) -> dict[str, object]:
+    """Correlates each individual approve()/permit() grant with its later transferFrom()
+    usage: OWNER -> APPROVAL -> SPENDER -> transferFrom -> token transfer (see
+    analytics/token_approval_analysis.correlate_approval_usage and
+    TOKEN-APPROVAL-IMPLEMENTATION.md #14). `address` is optional - omitted, every grant in
+    the evidence is correlated; given, scoped to grants where that address is the owner or
+    spender (404 if it never appears in the evidence at all).
+
+    Same read-only treatment as get_case_token_approval_analysis/-history: no custody
+    dialog, no audit log entry - backend collection/extraction phase only.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    combined_frame = combine_frames(clean_evidence_frames(evidence_paths))
+
+    normalized_address = address.strip() if address else None
+
+    try:
+        result = correlate_approval_usage(
+            combined_frame,
+            target_address=normalized_address,
+            unlimited_threshold=unlimited_threshold,
+            rapid_use_seconds=rapid_use_seconds,
+            large_amount_threshold=large_amount_threshold,
+            multiple_transfer_threshold=multiple_transfer_threshold,
+            long_active_period_seconds=long_active_period_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+class TokenApprovalAnalysisRunRequest(BaseModel):
+    address: str | None = None
+    unlimited_threshold: float = Field(default=DEFAULT_UNLIMITED_THRESHOLD, ge=MIN_UNLIMITED_THRESHOLD, le=MAX_UNLIMITED_THRESHOLD)
+    rapid_use_seconds: int = Field(default=DEFAULT_RAPID_USE_SECONDS, ge=MIN_RAPID_USE_SECONDS, le=MAX_RAPID_USE_SECONDS)
+    large_amount_threshold: float = Field(default=DEFAULT_LARGE_AMOUNT_THRESHOLD, ge=MIN_LARGE_AMOUNT_THRESHOLD, le=MAX_LARGE_AMOUNT_THRESHOLD)
+    multiple_transfer_threshold: int = Field(
+        default=DEFAULT_MULTIPLE_TRANSFER_THRESHOLD, ge=MIN_MULTIPLE_TRANSFER_THRESHOLD, le=MAX_MULTIPLE_TRANSFER_THRESHOLD
+    )
+    long_active_period_seconds: int = Field(
+        default=DEFAULT_LONG_ACTIVE_PERIOD_SECONDS, ge=MIN_LONG_ACTIVE_PERIOD_SECONDS, le=MAX_LONG_ACTIVE_PERIOD_SECONDS
+    )
+    # Same "all fields or none" custody gate as RunAnalyticsRequest.custody /
+    # DexSwapAnalysisRunRequest.custody - optional at the API level, but the Token
+    # Approval Analysis page's own ANALYZE button always supplies one now, since
+    # correlating the case's evidence for approval/transferFrom pairs is the same kind of
+    # deliberate access to it as "Pokreni taint analizu"/"FIND PATH"/"ANALYZE" on DEX Swaps
+    # (see LANAC-DOKAZA.md, and TOKEN-APPROVAL-IMPLEMENTATION.md #18 for what this run
+    # additionally writes into the chain of evidence).
+    custody: TransactionCustodyEntry | None = None
+
+
+@router.post('/{case_id}/token-approval-analysis/run')
+def run_case_token_approval_analysis(
+    case_id: str,
+    request: TokenApprovalAnalysisRunRequest,
+    evidence: str | None = None,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    """Deliberate variant of get_case_token_approval_correlation above: identical
+    correlation, but treated as a deliberate access to every transaction in the evidence
+    scope (like "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf"/DEX Swaps' ANALYZE -
+    see LANAC-DOKAZA.md), so it accepts an optional `custody` entry and, when present,
+    records it in both chains of custody via the same, unmodified-in-shape
+    `_record_custody_access()` every other analysis already uses.
+
+    Beyond that shared per-transaction/per-evidence-file record, EACH individual approve()/
+    permit() row's own custody entry additionally carries a structured `token_approval_
+    evidence` item (see _token_approval_custody_enrichment) - Owner/Spender/Token/
+    Allowance/Approval timestamp/Transaction hash/Status/First transferFrom/Total
+    transferred/Risk/Reasons, explicitly split into `blockchain_facts` (read directly from
+    the evidence), `computed_indicators` (deterministically derived - counts, matching,
+    status) and `heuristic_conclusions` (the risk assessment, always disclaimed) - see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #18 for the full field-by-field rationale. This makes
+    Token Approval Analysis a full peer of Taint/Graph/Pathfinding/Behavioral/DEX Swap in
+    the chain of evidence, not a passive-only analysis - using the SAME custody_log.jsonl/
+    custody_evidence_log.jsonl files and the SAME "Lanac dokaza" page/PDF export, never a
+    parallel log.
+    """
+    case = _get_case_or_404(case_id)
+    evidence_paths = _filter_evidence_paths(_case_evidence_paths_or_404(case), evidence)
+    # Built from the per-evidence-file frames (like run_case_analytics/run_case_pathfinding/
+    # run_case_dex_swap_analysis) rather than via combine_frames(clean_evidence_frames(...))
+    # alone, so each row can be tagged with the specific evidence file it came from, both
+    # for the custody log (existing behaviour) and for the tx_id-keyed enrichment below.
+    per_evidence_frames = clean_evidence_frames(evidence_paths)
+    combined_frame = combine_frames(per_evidence_frames)
+
+    normalized_address = request.address.strip() if request.address else None
+
+    try:
+        result = correlate_approval_usage(
+            combined_frame,
+            target_address=normalized_address,
+            unlimited_threshold=request.unlimited_threshold,
+            rapid_use_seconds=request.rapid_use_seconds,
+            large_amount_threshold=request.large_amount_threshold,
+            multiple_transfer_threshold=request.multiple_transfer_threshold,
+            long_active_period_seconds=request.long_active_period_seconds,
+        )
+    except ValueError as exc:
+        # FAILED - written even though nothing was found/analysed, so an investigator can
+        # later see that a Token Approval run was ATTEMPTED for this address and why it
+        # did not complete (see TOKEN-APPROVAL-IMPLEMENTATION.md #19.2) - same "log the
+        # attempt, not just the success" discipline the rest of this section documents.
+        write_audit_log(
+            action='token_approval_analysis_run',
+            user=str(current_user['username']),
+            case_id=case_id,
+            case_name=str(case.get('name') or ''),
+            details={
+                'status': 'FAILED',
+                'address': normalized_address,
+                'evidence_scope': evidence or 'combined',
+                'error': str(exc),
+            },
+        )
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    has_custody = bool(request.custody)
+    findings_recorded = 0
+
+    if request.custody:
+        # Unfiltered (target_address=None) and tagged with evidence-file identity, so
+        # EVERY approval row genuinely touched by this run gets its own chain-of-evidence
+        # entry - not only the ones matching `request.address` - same "the whole scanned
+        # evidence was accessed" principle LANAC-DOKAZA.md §2 already applies to every
+        # other analysis (see TOKEN-APPROVAL-IMPLEMENTATION.md #18.3 for why this is a
+        # second, separate computation from `result` above rather than reusing it).
+        tagged_frame = _combine_frames_with_evidence_tag(per_evidence_frames)
+        try:
+            full_result = correlate_approval_usage(
+                tagged_frame,
+                target_address=None,
+                unlimited_threshold=request.unlimited_threshold,
+                rapid_use_seconds=request.rapid_use_seconds,
+                large_amount_threshold=request.large_amount_threshold,
+                multiple_transfer_threshold=request.multiple_transfer_threshold,
+                long_active_period_seconds=request.long_active_period_seconds,
+            )
+        except ValueError:
+            full_result = {'correlations': [], 'groups': []}
+        extra_transaction_fields = _token_approval_custody_enrichment(full_result)
+        findings_recorded = len(extra_transaction_fields)
+
+    write_audit_log(
+        action='token_approval_analysis_run',
+        user=str(current_user['username']),
+        case_id=case_id,
+        case_name=str(case.get('name') or ''),
+        details={
+            'status': 'SUCCESS',
+            'address': normalized_address,
+            'evidence_scope': evidence or 'combined',
+            'correlation_count': result['correlation_count'],
+            **_token_approval_summary_counts(result),
+            'custody_recorded': has_custody,
+            'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
+            'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,
+            'token_approval_findings_recorded': findings_recorded,
+        },
+    )
+
+    if request.custody:
+        _record_custody_access(
+            case=case,
+            per_evidence_frames=per_evidence_frames,
+            custody=request.custody,
+            user=str(current_user['username']),
+            extra_transaction_fields=extra_transaction_fields,
+        )
+
+    result['case_id'] = case_id
+    result['evidence'] = evidence
+    result['generated_at'] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
 @router.get('/{case_id}/seed-suggestions')
 def get_seed_suggestions(case_id: str, evidence: str | None = None) -> dict[str, object]:
     """Rule-based, explained suggestions for taint analysis (see analytics/seed_suggestion.py).
@@ -501,6 +816,7 @@ def _record_custody_access(
     per_evidence_frames: list[tuple[dict[str, object], pd.DataFrame]],
     custody: TransactionCustodyEntry,
     user: str,
+    extra_transaction_fields: dict[str, dict[str, object]] | None = None,
 ) -> None:
     """One deliberate access is recorded at TWO granularities at once, both useful for a
     different question a reader might have:
@@ -513,6 +829,14 @@ def _record_custody_access(
 
     Both share the same run/date/analyst/reason/signature - they were genuinely accessed
     together, by the same act of running the analysis (see LANAC-DOKAZA.md).
+
+    `extra_transaction_fields` (optional, keyed by `tx_id`) merges additional fields into
+    ONE SPECIFIC transaction's custody row, on top of the generic fields every row already
+    gets below - used by run_case_token_approval_analysis to attach a structured
+    TOKEN_APPROVAL evidence item (owner/spender/token/status/risk/...) to its own approval
+    transaction's row, without changing this shared helper's existing behaviour for any
+    other caller (Taint/Graph/Pathfinding/DEX Swap/Behavioral never pass this - it stays
+    None for them, exactly as before - see TOKEN-APPROVAL-IMPLEMENTATION.md #18).
     """
     run_id = uuid4().hex
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -554,19 +878,154 @@ def _record_custody_access(
         for row in frame.to_dict('records'):
             amount = row.get('amount')
             tx_timestamp = row.get('timestamp')
+            tx_id = transaction_id(row, stored_name)
+            extra = (extra_transaction_fields or {}).get(tx_id)
             transaction_batch.append({
                 **shared_fields,
-                'tx_id': transaction_id(row, stored_name),
+                'tx_id': tx_id,
                 'tx_hash': _clean_scalar(row.get('metadata')),
                 'sender_address': _clean_scalar(row.get('sender_address')),
                 'recipient_address': _clean_scalar(row.get('recipient_address')),
                 'amount': float(amount) if pd.notna(amount) else None,
                 'currency': _clean_scalar(row.get('currency')),
                 'tx_timestamp': tx_timestamp.isoformat() if pd.notna(tx_timestamp) else None,
+                **(extra or {}),
             })
 
     append_custody_batch(transaction_batch)
     append_evidence_custody_batch(evidence_batch)
+
+
+def _combine_frames_with_evidence_tag(per_evidence_frames: list[tuple[dict[str, object], pd.DataFrame]]) -> pd.DataFrame:
+    """Same concatenation as app.analytics.case_graph.combine_frames, plus one extra
+    internal column (token_approval_analysis.EVIDENCE_STORED_NAME_COLUMN) so
+    correlate_approval_usage can compute a stable `tx_id` per approval row even after its
+    own chronological re-sort (pandas keeps every column aligned with its row through a
+    sort - see TOKEN-APPROVAL-IMPLEMENTATION.md #18.2).
+
+    Deliberately duplicated rather than calling combine_frames() and adding the column
+    after the fact: combine_frames() is shared by Graph/Taint/Pathfinding/Behavioral/DEX
+    Swap, and its output shape must stay exactly what it is today for all of them - this
+    tagged variant is used ONLY when writing to the chain of evidence (see
+    run_case_token_approval_analysis), never by any other analysis or by Token Approval's
+    own read-only GET routes.
+    """
+    if not per_evidence_frames:
+        return pd.DataFrame(columns=['sender_address', 'recipient_address', 'amount', 'timestamp', 'metadata', EVIDENCE_STORED_NAME_COLUMN])
+
+    tagged_frames = []
+    for entry, frame in per_evidence_frames:
+        tagged = frame.copy()
+        tagged[EVIDENCE_STORED_NAME_COLUMN] = str(entry.get('stored_name') or '')
+        tagged_frames.append(tagged)
+    return pd.concat(tagged_frames, ignore_index=True)
+
+
+def _token_approval_group_key(owner: str, spender: str, token: str | None) -> tuple[str, str, str]:
+    return (owner.lower(), spender.lower(), (token or '').lower())
+
+
+def _token_approval_summary_counts(result: dict[str, object]) -> dict[str, int]:
+    """The six SUMMARY counters (§16.5/§19) computed once, from the SAME
+    correlate_approval_usage() result already returned to the caller - shared by the
+    audit log entry (this section) and available to the frontend directly on `result`
+    itself, so the log and the on-screen summary can never disagree about what a run found.
+    """
+    correlations = list(result.get('correlations', []))  # type: ignore[arg-type]
+    groups_by_key = {
+        _token_approval_group_key(str(group['owner']), str(group['spender']), group.get('token_address')): group
+        for group in result.get('groups', [])  # type: ignore[union-attr]
+    }
+
+    def risk_level_for(entry: dict[str, object]) -> str:
+        group = groups_by_key.get(_token_approval_group_key(str(entry['owner']), str(entry['spender']), entry.get('token_address')))
+        return str(group['risk_level']) if group else 'LOW'
+
+    return {
+        'total_approvals': len(correlations),
+        'unlimited_approvals': sum(1 for entry in correlations if entry.get('unlimited_basis')),
+        'active_approvals': sum(1 for entry in correlations if not entry.get('revoked')),
+        'revoked_approvals': sum(1 for entry in correlations if entry.get('revoked')),
+        'used_approvals': sum(1 for entry in correlations if entry.get('used') is True),
+        'unused_approvals': sum(1 for entry in correlations if entry.get('used') is False),
+        'potentially_risky_approvals': sum(1 for entry in correlations if risk_level_for(entry) != 'LOW'),
+    }
+
+
+def _token_approval_custody_enrichment(full_result: dict[str, object]) -> dict[str, dict[str, object]]:
+    """Builds the `extra_transaction_fields` map `_record_custody_access` merges into one
+    specific transaction's custody row - keyed by `tx_id` (see
+    _combine_frames_with_evidence_tag above), one entry per approve()/permit() grant that
+    `correlate_approval_usage` (called with a TAGGED, unfiltered frame) could actually
+    identify a transaction for. A grant without a `tx_id` (should not happen once the frame
+    is tagged, since every approval row has sender/recipient/amount/timestamp) is skipped
+    rather than guessed at - same "don't invent an identity" discipline as
+    app.evidence.tx_identity itself.
+
+    Each entry is `TOKEN_APPROVAL` evidence, explicitly split into three groups so a reader
+    of the chain of evidence can never mistake one kind of claim for another (see
+    TOKEN-APPROVAL-IMPLEMENTATION.md #18.1):
+      - `blockchain_facts` - read directly from the evidence, no interpretation.
+      - `computed_indicators` - deterministically derived by matching/counting/summing
+        (status, usage, revocation, transferFrom totals) - not guessed, but not present in
+        the raw data either.
+      - `heuristic_conclusions` - the risk assessment (TOKEN-APPROVAL-IMPLEMENTATION.md
+        #15) - always the most speculative layer, always carries its own disclaimer.
+    """
+    groups_by_key = {
+        _token_approval_group_key(str(group['owner']), str(group['spender']), group.get('token_address')): group
+        for group in full_result.get('groups', [])  # type: ignore[union-attr]
+    }
+
+    enrichment: dict[str, dict[str, object]] = {}
+    for entry in full_result.get('correlations', []):  # type: ignore[union-attr]
+        tx_id = entry.get('tx_id')
+        if not tx_id:
+            continue
+
+        group = groups_by_key.get(_token_approval_group_key(str(entry['owner']), str(entry['spender']), entry.get('token_address')))
+        risk_level = group['risk_level'] if group else 'LOW'
+        risk_score = group['risk_score'] if group else 0
+        risk_indicators = group['risk_indicators'] if group else []
+
+        enrichment[str(tx_id)] = {
+            'token_approval_evidence': {
+                'type': 'TOKEN_APPROVAL',
+                'blockchain_facts': {
+                    'owner': entry.get('owner'),
+                    'spender': entry.get('spender'),
+                    'token_contract': entry.get('token_address'),
+                    'event_type': entry.get('approval_event_type'),
+                    'allowance_amount': entry.get('approval_amount'),
+                    'approval_timestamp': entry.get('approval_timestamp'),
+                    'approval_transaction_hash': entry.get('approval_transaction_hash'),
+                    'approval_block_number': entry.get('approval_block_number'),
+                },
+                'computed_indicators': {
+                    'status': entry.get('status'),
+                    'used': entry.get('used'),
+                    'revoked': entry.get('revoked'),
+                    'revocation_timestamp': entry.get('revocation_timestamp'),
+                    'revocation_transaction_hash': entry.get('revocation_transaction_hash'),
+                    'seconds_to_revocation': entry.get('seconds_to_revocation'),
+                    'transfer_from_count': entry.get('transfer_from_count'),
+                    'total_amount_transferred': entry.get('total_amount_transferred'),
+                    'first_transfer_from': entry.get('first_transfer_from'),
+                    'last_transfer_from': entry.get('last_transfer_from'),
+                    'receiving_destinations': entry.get('receiving_destinations'),
+                },
+                'heuristic_conclusions': {
+                    'allowance_label': 'UNLIMITED' if entry.get('unlimited_basis') else 'FINITE',
+                    'unlimited_basis': entry.get('unlimited_basis'),
+                    'risk_level': risk_level,
+                    'risk_score': risk_score,
+                    'risk_indicators': risk_indicators,
+                },
+                'disclaimer': full_result.get('disclaimer'),
+            },
+        }
+
+    return enrichment
 
 
 @router.post('/{case_id}/analytics/run')

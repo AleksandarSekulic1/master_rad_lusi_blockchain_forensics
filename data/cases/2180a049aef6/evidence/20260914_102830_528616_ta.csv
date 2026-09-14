@@ -1,0 +1,4 @@
+sender_address,recipient_address,amount,timestamp,metadata,event_type,token_address,spender_address,is_unlimited
+0xOwner,0xSpender,1000000000000000000,2026-01-01T00:00:00Z,0xapprove1,approve,0xTokenA,0xSpender,true
+0xOwner,0xDest,500000000000000000,2026-01-01T00:05:00Z,0xtx1,transferFrom,0xTokenA,0xSpender,
+0xOwner,0xSpender,0,2026-02-01T00:00:00Z,0xrevoke1,approve,0xTokenA,0xSpender,

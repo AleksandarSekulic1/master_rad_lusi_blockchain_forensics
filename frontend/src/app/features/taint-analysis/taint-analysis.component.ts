@@ -197,6 +197,14 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
           this.loadCaseGraph();
+          // Picked up a one-shot "Pošalji u Taint analizu" handoff (e.g. from
+          // token-approval.component.ts's suggested-addresses panel) - pre-fills the
+          // seed list exactly as if each address had been typed/added by hand, does not
+          // run the analysis itself. Read AFTER resetAnalysisState() above, which would
+          // otherwise wipe it straight back out.
+          for (const address of this.state.consumePendingTaintSeeds() ?? []) {
+            this.addSeedAddress(address);
+          }
         }
       });
   }

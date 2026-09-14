@@ -948,3 +948,135 @@ export interface GraphReportData {
     links: GraphReportInvestigatorLink[];
   } | null;
 }
+
+// --- Token Approval / Ice Phishing Analysis (see TOKEN-APPROVAL-IMPLEMENTATION.md) -----
+// Backend-Phase-1 shapes only (extraction/correlation/risk indicators) - there is no
+// custody-gated "run" variant yet, so no request-body types are needed here, only the
+// GET responses. Mirrors backend/app/analytics/token_approval_analysis.py field-for-field;
+// see that module's docstrings for what each field means and why it can be null.
+
+/** 'declared' = the evidence's own `is_unlimited` column said so directly (strongest);
+ * 'potential_by_magnitude' = only a configurable size heuristic, never confirmed (see
+ * TOKEN-APPROVAL-IMPLEMENTATION.md #7.4/#8.3); null = not unlimited by either signal. */
+export type TokenApprovalUnlimitedBasis = 'declared' | 'potential_by_magnitude' | null;
+
+export type TokenApprovalRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+/** APPROVED / APPROVED + USED / APPROVED + REVOKED / APPROVED + USED + REVOKED / UNKNOWN -
+ * a combinable label (see TOKEN-APPROVAL-IMPLEMENTATION.md #14.2), not a single enum -
+ * typed as `string` rather than a union so an unrecognised future combination still
+ * renders instead of failing to compile. */
+export type TokenApprovalCorrelationStatus = string;
+
+export interface TokenApprovalRiskIndicator {
+  code: string;
+  label: string;
+  reasons: string[];
+}
+
+export interface TokenApprovalTransferSummary {
+  amount: number;
+  timestamp: string;
+  transaction_hash: string | null;
+  block_number: number | null;
+  recipient: string | null;
+}
+
+export interface TokenApprovalTransactionHashes {
+  approval: string | null;
+  revocation: string | null;
+  transfer_from: string[];
+}
+
+/** One row of GET .../token-approval-correlation's `correlations[]` - one NONZERO
+ * approve()/permit() grant plus everything known about its later usage. A pure
+ * approve(spender, 0) revocation call never gets its own entry here - it only shows up as
+ * this field set on the grant it ended (revoked/revocation_timestamp/
+ * revocation_transaction_hash/seconds_to_revocation). */
+export interface TokenApprovalCorrelationEntry {
+  owner: string;
+  spender: string;
+  token_address: string | null;
+  token_identified: boolean;
+  approval_event_type: 'approve' | 'permit';
+  approval_amount: number;
+  unlimited_basis: TokenApprovalUnlimitedBasis;
+  approval_timestamp: string;
+  approval_transaction_hash: string | null;
+  approval_block_number: number | null;
+  status: TokenApprovalCorrelationStatus;
+  /** true = confirmed by a matched transferFrom; false = confirmed absent; null = cannot
+   * be ruled out (an unattributed transferFrom exists for this owner) - never guessed. */
+  used: boolean | null;
+  revoked: boolean;
+  revocation_timestamp: string | null;
+  revocation_transaction_hash: string | null;
+  seconds_to_revocation: number | null;
+  transfer_from_count: number;
+  total_amount_transferred: number;
+  first_use_timestamp: string | null;
+  time_to_first_use_seconds: number | null;
+  first_transfer_from: TokenApprovalTransferSummary | null;
+  last_transfer_from: TokenApprovalTransferSummary | null;
+  receiving_destinations: string[];
+  transaction_hashes: TokenApprovalTransactionHashes;
+}
+
+export interface TokenApprovalUnattributedTransfer {
+  owner: string;
+  spender: string | null;
+  recipient: string | null;
+  token_address: string | null;
+  amount: number;
+  timestamp: string;
+  transaction_hash: string | null;
+  block_number: number | null;
+  reason: string;
+}
+
+export interface TokenApprovalDataCompleteness {
+  event_type_declared: boolean;
+  token_address_declared: boolean;
+  owner_address_declared: boolean;
+  spender_address_declared: boolean;
+  is_unlimited_declared: boolean;
+  block_number_declared: boolean;
+  permit_fields_declared: boolean;
+  notes: string[];
+}
+
+/** One entry of GET .../token-approval-correlation's `groups[]` - the (owner, spender,
+ * token) grant relationship, carrying the forensic risk indicators (see
+ * TOKEN-APPROVAL-IMPLEMENTATION.md #15). Only the fields this page actually reads are
+ * typed here - the backend's group object carries more (approvals[], linked_transfers[],
+ * ...), already covered by TokenApprovalCorrelationEntry for this page's purposes. */
+export interface TokenApprovalGroup {
+  owner: string;
+  spender: string;
+  token_address: string | null;
+  token_identified: boolean;
+  current_status: 'active' | 'revoked';
+  spender_known: boolean;
+  spender_multi_owner: { distinct_owner_count: number } | null;
+  risk_indicators: TokenApprovalRiskIndicator[];
+  risk_score: number;
+  risk_level: TokenApprovalRiskLevel;
+}
+
+export interface TokenApprovalCorrelationResult {
+  case_id: string;
+  evidence: string | null;
+  address: string | null;
+  generated_at: string;
+  correlation_count: number;
+  correlations: TokenApprovalCorrelationEntry[];
+  groups: TokenApprovalGroup[];
+  unattributed_transfers: TokenApprovalUnattributedTransfer[];
+  data_completeness: TokenApprovalDataCompleteness;
+  unlimited_threshold: number;
+  rapid_use_seconds: number;
+  large_amount_threshold: number;
+  multiple_transfer_threshold: number;
+  long_active_period_seconds: number;
+  disclaimer: string;
+}

@@ -97,6 +97,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     path_finding: { label: ['Pretraga putanja', 'Pathfinding search'], group: 'analysis', icon: '↝' },
     dex_swap_analysis_run: { label: ['Pokrenuta DEX swap analiza', 'Ran DEX swap analysis'], group: 'analysis', icon: '⇌' },
     behavioral_analysis_run: { label: ['Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'], group: 'analysis', icon: '◔' },
+    token_approval_analysis_run: { label: ['Pokrenuta Token Approval analiza', 'Ran Token Approval analysis'], group: 'analysis', icon: '🔑' },
     case_created: { label: ['Kreiran slučaj', 'Case created'], group: 'case', icon: '＋' },
     case_status_changed: { label: ['Promenjen status slučaja', 'Case status changed'], group: 'case', icon: '⇄' },
     case_deleted: { label: ['Obrisan slučaj', 'Case deleted'], group: 'case', icon: '✕' },
@@ -125,6 +126,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     'path_finding',
     'dex_swap_analysis_run',
     'behavioral_analysis_run',
+    'token_approval_analysis_run',
     'case_created',
     'case_status_changed',
     'case_deleted',
@@ -157,6 +159,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     pathfinding: ['Pathfinding izveštaj', 'Pathfinding report'],
     dex_swap: ['DEX Swap izveštaj', 'DEX Swap report'],
     behavioral: ['Bihevioralni izveštaj', 'Behavioral report'],
+    token_approval: ['Token Approval izveštaj', 'Token Approval report'],
   };
 
   constructor(
@@ -406,6 +409,25 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         }
         return summary;
       }
+      case 'token_approval_analysis_run': {
+        const address = String(details['address'] ?? '') || this.t('sve adrese', 'all addresses');
+        const scope = String(details['evidence_scope'] ?? 'combined');
+        const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        if (details['status'] === 'FAILED') {
+          const error = String(details['error'] ?? this.t('nepoznata greška', 'unknown error'));
+          return `${this.t('NEUSPEŠNO', 'FAILED')} · ${address} · ${scopeText} · ${error}`;
+        }
+        let summary = `${address} · ${scopeText} · ${Number(details['correlation_count'] ?? 0)} ${this.t('odobrenja', 'grants')}`;
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          const findings = Number(details['token_approval_findings_recorded'] ?? 0);
+          summary +=
+            ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ` +
+            `${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}, ${findings} ${this.t('TOKEN_APPROVAL nalaza', 'TOKEN_APPROVAL findings')}`;
+        }
+        return summary;
+      }
       case 'custody_pdf_exported': {
         const scope = details['scope'] === 'transaction' ? this.t('transakcija', 'transaction') : this.t('dokazni fajl', 'evidence file');
         const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
@@ -426,6 +448,8 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
           extra = ` · ${this.t(`${Number(details['hops'] ?? 0)} skokova`, `${Number(details['hops'] ?? 0)} hops`)}`;
         } else if (reportType === 'dex_swap') {
           extra = ` · ${Number(details['total_events'] ?? 0)} ${this.t('događaja', 'events')}`;
+        } else if (reportType === 'token_approval') {
+          extra = ` · ${Number(details['total_approvals'] ?? 0)} ${this.t('odobrenja', 'approvals')}, ${Number(details['potentially_risky_approvals'] ?? 0)} ${this.t('rizičnih', 'risky')}`;
         }
         return `${typeLabel} · ${code}${extra}`;
       }

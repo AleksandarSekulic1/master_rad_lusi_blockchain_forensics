@@ -1,6 +1,90 @@
 {
   "cases": [
     {
+      "id": "46ae7f91db9b",
+      "name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+      "description": "Demonstracioni slucaj koji pokriva sve heuristike: crna lista, visok rizik, anomalija, peel lanac, skok lanca, i obogacivanje adrese realnom on-chain adresom (poslednja adresa u lancu je stvarna Ethereum adresa).",
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-07-16T16:48:06.761081+00:00",
+      "updated_at": "2026-09-14T10:48:49.073750+00:00",
+      "evidence_count": 9,
+      "total_size_bytes": 5128,
+      "last_imported_at": "2026-09-14T10:48:49.073750+00:00"
+    },
+    {
+      "id": "2180a049aef6",
+      "name": "Final Smoke TA",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-14T10:28:30.514886+00:00",
+      "updated_at": "2026-09-14T10:28:30.532662+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 388,
+      "last_imported_at": "2026-09-14T10:28:30.532662+00:00"
+    },
+    {
+      "id": "c6f7997aced1",
+      "name": "Smoke Custody TA",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-14T10:01:54.064596+00:00",
+      "updated_at": "2026-09-14T10:01:54.098732+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 309,
+      "last_imported_at": "2026-09-14T10:01:54.098732+00:00"
+    },
+    {
+      "id": "2284c6d9001e",
+      "name": "Smoke Risk",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-13T11:25:55.077028+00:00",
+      "updated_at": "2026-09-13T11:25:55.117029+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 435,
+      "last_imported_at": "2026-09-13T11:25:55.117029+00:00"
+    },
+    {
+      "id": "43de1fe7bc48",
+      "name": "Smoke Correlation",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-13T11:13:59.071246+00:00",
+      "updated_at": "2026-09-13T11:13:59.114596+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 484,
+      "last_imported_at": "2026-09-13T11:13:59.114596+00:00"
+    },
+    {
+      "id": "196f67f95d12",
+      "name": "Smoke History",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-13T11:06:53.557147+00:00",
+      "updated_at": "2026-09-13T11:06:53.595734+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 400,
+      "last_imported_at": "2026-09-13T11:06:53.595734+00:00"
+    },
+    {
+      "id": "18df3dbc2c7e",
+      "name": "Smoke Token Approval",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-13T10:55:22.617083+00:00",
+      "updated_at": "2026-09-13T10:55:22.681911+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 329,
+      "last_imported_at": "2026-09-13T10:55:22.681911+00:00"
+    },
+    {
       "id": "263ca11d0331",
       "name": "Test2",
       "description": "nesto...",
@@ -23,18 +107,6 @@
       "evidence_count": 2,
       "total_size_bytes": 389809,
       "last_imported_at": "2026-07-15T19:09:35.824530+00:00"
-    },
-    {
-      "id": "46ae7f91db9b",
-      "name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
-      "description": "Demonstracioni slucaj koji pokriva sve heuristike: crna lista, visok rizik, anomalija, peel lanac, skok lanca, i obogacivanje adrese realnom on-chain adresom (poslednja adresa u lancu je stvarna Ethereum adresa).",
-      "analyst": "admin",
-      "status": "open",
-      "created_at": "2026-07-16T16:48:06.761081+00:00",
-      "updated_at": "2026-09-08T12:46:28.721301+00:00",
-      "evidence_count": 8,
-      "total_size_bytes": 4043,
-      "last_imported_at": "2026-09-08T12:46:28.721301+00:00"
     },
     {
       "id": "c23db4afd0f3",

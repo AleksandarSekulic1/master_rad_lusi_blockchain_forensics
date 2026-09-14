@@ -1,0 +1,23 @@
+{
+  "id": "43de1fe7bc48",
+  "name": "Smoke Correlation",
+  "description": null,
+  "analyst": "admin",
+  "status": "open",
+  "created_at": "2026-09-13T11:13:59.071246+00:00",
+  "updated_at": "2026-09-13T11:13:59.114596+00:00",
+  "evidence": [
+    {
+      "file_name": "corr.csv",
+      "stored_name": "20260913_111359_094252_corr.csv",
+      "imported_at": "2026-09-13T11:13:59.114596+00:00",
+      "size_bytes": 484,
+      "sha256": "1299f4d19a202c93c99b677802ff234a4f0d5e112931b676e8eca2f2b4003d34",
+      "analyst": "admin",
+      "currency": null
+    }
+  ],
+  "evidence_count": 1,
+  "total_size_bytes": 484,
+  "last_imported_at": "2026-09-13T11:13:59.114596+00:00"
+}

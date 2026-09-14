@@ -1,0 +1,716 @@
+<div class="ta-shell">
+  <div class="ta-controls">
+    <div class="ta-bar">
+      <div class="ta-case" *ngIf="activeCase; else noCase">
+        <span class="ta-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="ta-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
+
+      <label class="ta-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="ta-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="ta-header">
+    <p class="panel-kicker">{{ t('Token Approval analiza', 'Token Approval Analysis') }}</p>
+    <h2>{{ t('ANALIZA ODOBRENJA TOKENA', 'TOKEN APPROVAL ANALYSIS') }}</h2>
+  </div>
+
+  <div class="address-panel">
+    <div class="address-form">
+      <label class="address-field" [title]="t('Može i više adresa odjednom, razdvojenih zarezom.', 'Several addresses at once are fine, separated by commas.')">
+        {{ t('Adresa', 'Address') }}
+        <input
+          type="text"
+          list="ta-case-addresses"
+          [(ngModel)]="address"
+          placeholder="0x... (ili 0x..., 0x..., ...)"
+          (keydown.enter)="openCustodyDialog()"
+          [disabled]="!activeCase"
+        />
+        <datalist id="ta-case-addresses">
+          <option *ngFor="let addr of caseAddresses" [value]="addr"></option>
+        </datalist>
+      </label>
+
+      <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
+        {{ isAnalyzing ? t('Analiza...', 'Analyzing...') : t('ANALIZIRAJ', 'ANALYZE') }}
+      </button>
+    </div>
+
+    <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+
+    <!-- Predloži adrese - CASE-WIDE, radi bez upisane adrese (isti duh kao "Predloži seed
+         adrese" kod Taint analize) - vidi TOKEN-APPROVAL-IMPLEMENTATION.md §5/§7.2. -->
+    <div class="suggest-case-row" *ngIf="activeCase">
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="suggestCaseAddresses()"
+        [disabled]="!canSuggestCaseAddresses"
+        [title]="t('Skenira celu izabranu evidenciju bez upisane adrese.', 'Scans the whole selected evidence without typing an address.')"
+      >
+        {{ isSuggestingCaseAddresses ? t('Predlaganje...', 'Suggesting...') : t('Predloži adrese', 'Suggest addresses') }}
+      </button>
+    </div>
+
+    <p class="error-inline" *ngIf="caseSuggestionError">{{ caseSuggestionError }}</p>
+  </div>
+
+  <!-- Rezultat "Predloži adrese" - odvojen od rezultata analize jedne adrese ispod. -->
+  <div class="suggestion-panel" *ngIf="caseSuggestions">
+    <div class="suggestion-head">
+      <p class="panel-kicker">
+        {{ t('Predložene adrese', 'Suggested addresses') }}
+        <span class="suggestion-count" *ngIf="caseSuggestions.length > 0">{{ caseSuggestions.length }}</span>
+      </p>
+      <button type="button" class="ta-modal-close" (click)="dismissCaseSuggestions()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <p class="empty-hint" *ngIf="caseSuggestions.length === 0">
+      {{
+        t(
+          'Nijedna grupa u ovoj evidenciji nije ocenjena kao MEDIUM ili HIGH rizik - nema šta da se predloži.',
+          'No group in this evidence is rated MEDIUM or HIGH risk - nothing to suggest.'
+        )
+      }}
+    </p>
+
+    <ng-container *ngIf="caseSuggestions.length > 0">
+      <label class="suggestion-select-all">
+        <input type="checkbox" [checked]="allCaseSuggestionsSelected" (change)="toggleAllCaseSuggestions()" />
+        {{ t('Izaberi sve', 'Select all') }}
+      </label>
+
+      <ul class="suggestion-list">
+        <li *ngFor="let item of caseSuggestions">
+          <label>
+            <input type="checkbox" [checked]="isCaseSuggestionSelected(item.address)" (change)="toggleCaseSuggestion(item.address)" />
+            <span class="suggestion-body">
+              <span class="suggestion-main">
+                <button
+                  type="button"
+                  class="suggestion-address suggestion-address-btn mono-clip"
+                  [title]="t('Klikni da upišeš u polje Adresa', 'Click to fill into the Address field') + ': ' + item.address"
+                  (click)="analyzeSuggestedCaseAddress(item.address)"
+                >
+                  {{ item.address }}
+                </button>
+                <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ riskLevelLabel(item.riskLevel) }}</span>
+              </span>
+              <span class="suggestion-sub">
+                <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
+                <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+              </span>
+            </span>
+          </label>
+        </li>
+      </ul>
+
+      <div class="suggestion-actions">
+        <button
+          type="button"
+          class="primary-button"
+          (click)="checkSelectedCaseSuggestionsInTaint()"
+          [disabled]="selectedCaseSuggestions.size === 0"
+        >
+          {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+          <ng-container *ngIf="selectedCaseSuggestions.size > 0">({{ selectedCaseSuggestions.size }})</ng-container>
+        </button>
+        <button
+          type="button"
+          class="link-button"
+          (click)="openSelectedCaseSuggestionsInFullTaintAnalysis()"
+          [disabled]="selectedCaseSuggestions.size === 0"
+        >
+          {{ t('ili otvori pun graf →', 'or open full graph →') }}
+        </button>
+      </div>
+    </ng-container>
+  </div>
+
+  <p class="error-inline" *ngIf="taintCheckError">{{ taintCheckError }}</p>
+
+  <!-- Kompaktan rezultat "Proveri kroz Taint analizu" - bez napuštanja stranice, ulazi i
+       u PDF izveštaj (vidi buildTokenApprovalPdf). -->
+  <div class="taint-check-panel" *ngIf="taintCheckResult as taint">
+    <div class="suggestion-head">
+      <p class="panel-kicker">{{ t('Taint provera', 'Taint check') }}</p>
+      <button type="button" class="ta-modal-close" (click)="dismissTaintCheck()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <p class="taint-check-seeds">
+      {{ t('Seed adrese', 'Seed addresses') }}:
+      <span class="mono-clip" *ngFor="let seed of taint.seed_addresses">{{ seed }}</span>
+    </p>
+
+    <ng-container *ngIf="taintCheckDownstream.length > 0; else noTaintSpread">
+      <p class="taint-check-lead">
+        {{
+          t(
+            'Sredstva sa ovih adresa stižu do sledećih adresa u ovoj evidenciji (rangirano po % zaprljanosti):',
+            'Funds from these addresses reach the following addresses in this evidence (ranked by taint %):'
+          )
+        }}
+      </p>
+      <ul class="taint-check-list">
+        <li *ngFor="let item of taintCheckDownstream">
+          <span class="mono-clip">{{ item.address }}</span>
+          <span class="taint-pct">{{ item.percentage | number : '1.0-2' }}%</span>
+        </li>
+      </ul>
+    </ng-container>
+    <ng-template #noTaintSpread>
+      <p class="empty-hint">
+        {{
+          t(
+            'U ovoj evidenciji nema daljeg kretanja sredstava sa ovih adresa (ili je van opsega uvezene evidencije).',
+            'No further movement of funds from these addresses appears in this evidence (or it is outside the imported evidence).'
+          )
+        }}
+      </p>
+    </ng-template>
+
+    <p class="taint-check-caveat" *ngIf="taint.single_hop_evidence">
+      ⚠ {{
+        t(
+          'Evidencija prati novac samo jedan skok dalje - procenti iznad su ivica prikupljenih podataka, ne konačan nalaz.',
+          'The evidence traces money for one hop only - the percentages above are the edge of the collected data, not a final finding.'
+        )
+      }}
+    </p>
+
+    <p class="disclaimer-note">
+      {{
+        t(
+          'Heuristička procena (isti taint model kao Taint analiza) - ne dokaz da su sredstva stigla do konkretnog lica.',
+          'A heuristic estimate (same taint model as Taint Analysis) - not proof that funds reached a specific person.'
+        )
+      }}
+    </p>
+  </div>
+
+  <!-- Token Approval nalazi ZA PROVERENE adrese - pokrenuto ZAJEDNO sa taint proverom
+       iznad, kad je provera krenula iz predloga (§checkSelectedInTaint) - vidi
+       taintCheckTokenApprovalResults. Isti obrazac tabele kao sekcije po adresi ispod. -->
+  <ng-container *ngIf="taintCheckTokenApprovalResults.length > 0">
+    <div class="suggestion-panel">
+      <p class="panel-kicker">{{ t('Token Approval nalazi za proverene adrese', 'Token Approval findings for the checked addresses') }}</p>
+      <div class="address-section" *ngFor="let entry of taintCheckTokenApprovalResults">
+        <div class="address-section-head">
+          <h3 class="mono-clip">{{ entry.address }}</h3>
+          <span class="address-section-count" *ngIf="entry.result">
+            {{ entry.result.correlations.length }} {{ t('odobrenja', 'approvals') }}
+          </span>
+        </div>
+        <p class="error-inline" *ngIf="entry.error">{{ entry.error }}</p>
+        <ng-container *ngIf="entry.result as sectionResult">
+          <div class="ta-table-wrap" *ngIf="sectionResult.correlations.length > 0; else noApprovalsForChecked">
+            <table class="ta-table">
+              <thead>
+                <tr>
+                  <th>{{ t('Token', 'Token') }}</th>
+                  <th>{{ t('Spender', 'Spender') }}</th>
+                  <th>{{ t('Allowance', 'Allowance') }}</th>
+                  <th>{{ t('Status', 'Status') }}</th>
+                  <th>{{ t('Rizik', 'Risk') }}</th>
+                  <th>{{ t('Datum', 'Date') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of sectionResult.correlations" (click)="openDetail(row)" tabindex="0" (keydown.enter)="openDetail(row)">
+                  <td class="mono-clip" [title]="row.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+                    {{ row.token_address ?? '?' }}
+                  </td>
+                  <td class="mono-clip" [title]="row.spender">{{ row.spender }}</td>
+                  <td [title]="row.unlimited_basis ? formatAmount(row.approval_amount) : null">{{ allowanceLabel(row) }}</td>
+                  <td><span class="status-pill" [ngClass]="statusClass(row.status)">{{ statusLabel(row.status) }}</span></td>
+                  <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(row))">{{ riskLevelLabel(riskLevelFor(row)) }}</span></td>
+                  <td class="ta-date">{{ row.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noApprovalsForChecked>
+            <p class="empty-hint">
+              {{ t('Nijedno approve/permit odobrenje nije pronađeno za ovu adresu.', 'No approve/permit grant was found for this address.') }}
+            </p>
+          </ng-template>
+        </ng-container>
+      </div>
+    </div>
+  </ng-container>
+
+  <!-- Van gornjeg *ngIf="result || multiResults..." namerno - PDF/Taint provera moraju
+       raditi i kad je "Proveri kroz Taint analizu" pokrenuto direktno iz predloga, bez
+       ijednog prethodnog ANALIZIRAJ (result i multiResults su tada oba prazna, ali
+       taintCheckTokenApprovalResults/taintCheckResult nisu - vidi activeCorrelations). -->
+  <div class="ta-toolbar" *ngIf="activeCorrelations.length > 0 || taintCheckResult">
+    <button
+      type="button"
+      class="ghost-button close-analysis-button"
+      (click)="closeAnalysis()"
+      [title]="t('Očisti prikaz i pripremi stranicu za sledeću analizu - ne dira sam slučaj niti evidenciju', 'Clear the view and reset the page for the next analysis - does not touch the case or its evidence')"
+    >
+      {{ t('Zatvori analizu', 'Close analysis') }}
+    </button>
+    <div class="ta-toolbar-actions">
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="result || multiResults.length > 0"
+        (click)="checkAnalyzedAddressInTaint()"
+        [disabled]="isRunningTaintCheck"
+        [title]="t('Proveri taint (kretanje sredstava) za baš ovu analiziranu adresu', 'Check taint (fund movement) for this exact analyzed address')"
+      >
+        {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button export-pdf-button"
+        *ngIf="canExportPdf"
+        (click)="openSignatureDialog()"
+        [disabled]="isExportingPdf"
+        [title]="t('Izvezi potpisan PDF forenzički izveštaj sa svim nalazima', 'Export a signed PDF forensic report with all findings')"
+      >
+        {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+      </button>
+    </div>
+  </div>
+
+  <ng-container *ngIf="result || multiResults.length > 0">
+    <!-- Sažetak - tek POSLE analize, ne na početnom ekranu. Multi-address aware (§addressList
+         iznad): brojevi su ZBIR preko svih analiziranih adresa kad ih ima više. -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-value">{{ totalApprovals }}</span>
+        <span class="summary-label">{{ t('Ukupno odobrenja', 'Total approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ unlimitedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Neograničenih', 'Unlimited approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ activeApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Aktivnih', 'Active approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ revokedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Opozvanih', 'Revoked approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ usedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Korišćenih', 'Used approvals') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ unusedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Nekorišćenih', 'Unused approvals') }}</span>
+      </div>
+      <div class="summary-card" [class.summary-card-risk]="riskyApprovalsCount > 0">
+        <span class="summary-value">{{ riskyApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Potencijalno rizičnih', 'Potentially risky') }}</span>
+      </div>
+    </div>
+
+    <p class="data-note" *ngIf="activeDataCompletenessNotes.length > 0">
+      <span *ngFor="let note of activeDataCompletenessNotes">{{ note }}</span>
+    </p>
+
+    <!-- Predlog adresa za dalju analizu - ne novi algoritam, samo risk_score/risk_level
+         koje je §15 već izračunao, pročitano i rangirano, sa mogućnošću da se izabrane
+         (ili sve) pošalju kao seed adrese u Taint analizu. -->
+    <div class="suggestion-panel" *ngIf="suggestedTaintAddresses.length > 0">
+      <div class="suggestion-head">
+        <p class="panel-kicker">
+          {{ t('Predlog za dalju analizu', 'Suggested for further analysis') }}
+          <span class="suggestion-count">{{ suggestedTaintAddresses.length }}</span>
+        </p>
+      </div>
+
+      <label class="suggestion-select-all">
+        <input type="checkbox" [checked]="allSuggestionsSelected" (change)="toggleAllSuggestions()" />
+        {{ t('Izaberi sve', 'Select all') }}
+      </label>
+
+      <ul class="suggestion-list">
+        <li *ngFor="let item of suggestedTaintAddresses">
+          <label>
+            <input type="checkbox" [checked]="isSuggestionSelected(item.address)" (change)="toggleSuggestion(item.address)" />
+            <span class="suggestion-body">
+              <span class="suggestion-main">
+                <span class="suggestion-address mono-clip" [title]="item.address">{{ item.address }}</span>
+                <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ riskLevelLabel(item.riskLevel) }}</span>
+              </span>
+              <span class="suggestion-sub">
+                <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
+                <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+              </span>
+            </span>
+          </label>
+        </li>
+      </ul>
+
+      <div class="suggestion-actions">
+        <button type="button" class="primary-button" (click)="checkSelectedInTaint()" [disabled]="selectedSuggestions.size === 0">
+          {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+          <ng-container *ngIf="selectedSuggestions.size > 0">({{ selectedSuggestions.size }})</ng-container>
+        </button>
+        <button type="button" class="link-button" (click)="openSelectedInFullTaintAnalysis()" [disabled]="selectedSuggestions.size === 0">
+          {{ t('ili otvori pun graf →', 'or open full graph →') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Jedna adresa - jedna, ravna tabela (nepromenjeno ponašanje). -->
+    <ng-container *ngIf="result && multiResults.length === 0">
+      <div class="ta-table-wrap" *ngIf="result.correlations.length > 0; else noApprovals">
+        <table class="ta-table">
+          <thead>
+            <tr>
+              <th>{{ t('Token', 'Token') }}</th>
+              <th>{{ t('Spender', 'Spender') }}</th>
+              <th>{{ t('Allowance', 'Allowance') }}</th>
+              <th>{{ t('Status', 'Status') }}</th>
+              <th>{{ t('Rizik', 'Risk') }}</th>
+              <th>{{ t('Datum', 'Date') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let entry of result.correlations" (click)="openDetail(entry)" tabindex="0" (keydown.enter)="openDetail(entry)">
+              <td class="mono-clip" [title]="entry.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+                {{ entry.token_address ?? '?' }}
+              </td>
+              <td class="mono-clip" [title]="entry.spender">{{ entry.spender }}</td>
+              <td [title]="entry.unlimited_basis ? formatAmount(entry.approval_amount) : null">{{ allowanceLabel(entry) }}</td>
+              <td><span class="status-pill" [ngClass]="statusClass(entry.status)">{{ statusLabel(entry.status) }}</span></td>
+              <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(entry))">{{ riskLevelLabel(riskLevelFor(entry)) }}</span></td>
+              <td class="ta-date">{{ entry.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ng-template #noApprovals>
+        <p class="empty-hint">
+          {{
+            t(
+              'Nijedno approve/permit odobrenje nije pronađeno za ovu adresu u izabranoj evidenciji.',
+              'No approve/permit grant was found for this address in the selected evidence.'
+            )
+          }}
+        </p>
+      </ng-template>
+    </ng-container>
+
+    <!-- Više adresa - jedna sekcija po adresi (§addressList) - ista tabela, ponovljena po
+         sekciji, isti obrazac kao ostali dupliran "shell" blok u ovoj aplikaciji. -->
+    <ng-container *ngIf="multiResults.length > 0">
+      <div class="address-section" *ngFor="let entry of multiResults">
+        <div class="address-section-head">
+          <h3 class="mono-clip">{{ entry.address }}</h3>
+          <span class="address-section-count" *ngIf="entry.result">
+            {{ entry.result.correlations.length }} {{ t('odobrenja', 'approvals') }}
+          </span>
+        </div>
+
+        <p class="error-inline" *ngIf="entry.error">{{ entry.error }}</p>
+
+        <ng-container *ngIf="entry.result as sectionResult">
+          <div class="ta-table-wrap" *ngIf="sectionResult.correlations.length > 0; else noApprovalsForAddress">
+            <table class="ta-table">
+              <thead>
+                <tr>
+                  <th>{{ t('Token', 'Token') }}</th>
+                  <th>{{ t('Spender', 'Spender') }}</th>
+                  <th>{{ t('Allowance', 'Allowance') }}</th>
+                  <th>{{ t('Status', 'Status') }}</th>
+                  <th>{{ t('Rizik', 'Risk') }}</th>
+                  <th>{{ t('Datum', 'Date') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of sectionResult.correlations" (click)="openDetail(row)" tabindex="0" (keydown.enter)="openDetail(row)">
+                  <td class="mono-clip" [title]="row.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+                    {{ row.token_address ?? '?' }}
+                  </td>
+                  <td class="mono-clip" [title]="row.spender">{{ row.spender }}</td>
+                  <td [title]="row.unlimited_basis ? formatAmount(row.approval_amount) : null">{{ allowanceLabel(row) }}</td>
+                  <td><span class="status-pill" [ngClass]="statusClass(row.status)">{{ statusLabel(row.status) }}</span></td>
+                  <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(row))">{{ riskLevelLabel(riskLevelFor(row)) }}</span></td>
+                  <td class="ta-date">{{ row.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noApprovalsForAddress>
+            <p class="empty-hint">
+              {{ t('Nijedno approve/permit odobrenje nije pronađeno za ovu adresu.', 'No approve/permit grant was found for this address.') }}
+            </p>
+          </ng-template>
+        </ng-container>
+      </div>
+    </ng-container>
+
+    <p class="disclaimer-note">{{ activeDisclaimer }}</p>
+  </ng-container>
+
+  <p class="empty-hint" *ngIf="!result && multiResults.length === 0 && !analysisError">
+    {{
+      t(
+        'Unesi adresu (ili više adresa, razdvojenih zarezom) i klikni "ANALIZIRAJ" da vidiš Token Approval događaje.',
+        'Enter an address (or several, separated by commas) and click "ANALYZE" to see its Token Approval events.'
+      )
+    }}
+  </p>
+</div>
+
+<!-- Detalji jednog odobrenja - modal, otvara se klikom na red tabele. -->
+<div class="ta-modal-overlay" *ngIf="selectedEntry as entry" (click)="closeDetail()">
+  <div class="ta-modal" (click)="$event.stopPropagation()">
+    <div class="ta-modal-head">
+      <div>
+        <p class="panel-kicker">{{ t('Detalji odobrenja', 'Approval details') }}</p>
+        <span class="status-pill" [ngClass]="statusClass(entry.status)">{{ statusLabel(entry.status) }}</span>
+        <span class="risk-pill" [ngClass]="riskClass(riskLevelFor(entry))">{{ t('Rizik', 'Risk') }}: {{ riskLevelLabel(riskLevelFor(entry)) }}</span>
+      </div>
+      <button type="button" class="ta-modal-close" (click)="closeDetail()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <dl class="ta-detail-grid">
+      <div>
+        <dt>{{ t('Vlasnik', 'Owner') }}</dt>
+        <dd class="mono-address">{{ entry.owner }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Odobreni trošilac', 'Approved spender') }}</dt>
+        <dd class="mono-address">
+          {{ entry.spender }}
+          <span class="unknown-badge" *ngIf="!spenderKnownFor(entry)" [title]="t('Nije prepoznat ni u jednom lokalnom registru (DEX/exchange) - ne znači da je zloćudan', 'Not recognised in any local registry (DEX/exchange) - does not mean malicious')">?</span>
+        </dd>
+      </div>
+      <div>
+        <dt>{{ t('Token', 'Token') }}</dt>
+        <dd class="mono-address">{{ entry.token_address ?? t('nije deklarisano', 'not declared') }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Dozvoljeni iznos', 'Allowance') }}</dt>
+        <dd>{{ formatAmount(entry.approval_amount) }} <span class="detail-hint" *ngIf="unlimitedBasisLabel(entry) as basis">· {{ basis }}</span></dd>
+      </div>
+      <div>
+        <dt>{{ t('Datum odobrenja', 'Approval date') }}</dt>
+        <dd>
+          {{ entry.approval_timestamp | date : 'yyyy-MM-dd HH:mm:ss' : 'UTC' }} UTC
+          <span class="detail-hint" *ngIf="entry.approval_block_number != null">· {{ t('blok', 'block') }} {{ entry.approval_block_number }}</span>
+        </dd>
+      </div>
+      <div *ngIf="entry.approval_transaction_hash">
+        <dt>{{ t('Heš transakcije', 'Transaction hash') }}</dt>
+        <dd class="mono-address">{{ entry.approval_transaction_hash }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('Korišćeno', 'Used') }}</dt>
+        <dd>
+          {{ formatUsed(entry.used) }}
+          <span class="detail-hint" *ngIf="entry.transfer_from_count > 0">· {{ entry.transfer_from_count }}× transferFrom · {{ t('ukupno povučeno', 'total withdrawn') }} {{ formatAmount(entry.total_amount_transferred) }}</span>
+        </dd>
+      </div>
+      <div *ngIf="entry.transfer_from_count > 0">
+        <dt>{{ t('Prvo korišćenje', 'First use') }}</dt>
+        <dd>
+          {{ entry.first_use_timestamp ? (entry.first_use_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC') + ' UTC' : t('nikad', 'never') }}
+          <span class="detail-hint" *ngIf="entry.time_to_first_use_seconds !== null">· {{ formatDuration(entry.time_to_first_use_seconds) }} {{ t('posle odobrenja', 'after approval') }}</span>
+        </dd>
+      </div>
+      <div *ngIf="entry.receiving_destinations.length > 0">
+        <dt>{{ t('Odredišta', 'Destinations') }}</dt>
+        <dd>
+          <span class="mono-address" *ngFor="let dest of entry.receiving_destinations">{{ dest }}</span>
+        </dd>
+      </div>
+      <div *ngIf="entry.revoked">
+        <dt>{{ t('Opozvano', 'Revoked') }}</dt>
+        <dd>
+          {{ entry.revocation_timestamp ? (entry.revocation_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC') + ' UTC' : t('n/d', 'n/a') }}
+          <span class="detail-hint" *ngIf="entry.seconds_to_revocation !== null">· {{ formatDuration(entry.seconds_to_revocation) }} {{ t('posle odobrenja', 'after approval') }}</span>
+        </dd>
+      </div>
+      <div *ngIf="entry.revocation_transaction_hash">
+        <dt>{{ t('Heš transakcije opoziva', 'Revocation transaction hash') }}</dt>
+        <dd class="mono-address">{{ entry.revocation_transaction_hash }}</dd>
+      </div>
+      <div *ngIf="entry.transaction_hashes.transfer_from.length > 0">
+        <dt>{{ t('Heševi transferFrom transakcija', 'transferFrom transaction hashes') }}</dt>
+        <dd>
+          <span class="mono-address" *ngFor="let hash of entry.transaction_hashes.transfer_from">{{ hash }}</span>
+        </dd>
+      </div>
+      <div *ngIf="spenderMultiOwnerFor(entry) as ownerCount">
+        <dt>{{ t('Trošilac odobren od', 'Spender approved by') }}</dt>
+        <dd>{{ ownerCount }} {{ t('različitih vlasnika u ovoj evidenciji', 'different owners in this evidence') }}</dd>
+      </div>
+      <div *ngIf="hasDexSwapCrossReference(entry)">
+        <dt>{{ t('Povezana aktivnost', 'Related activity') }}</dt>
+        <dd>{{ t('Ova adresa se takođe pojavljuje u detektovanim DEX Swap događajima ovog slučaja (vidi stranicu DEX razmene).', 'This address also appears in this case’s detected DEX Swap events (see the DEX Swaps page).') }}</dd>
+      </div>
+    </dl>
+
+    <div class="risk-indicators-block" *ngIf="riskIndicatorsFor(entry).length > 0">
+      <p class="ta-block-title">{{ t('Indikatori rizika', 'Risk indicators') }}</p>
+      <ul class="risk-indicator-list">
+        <li *ngFor="let indicator of riskIndicatorsFor(entry)">
+          <p class="risk-indicator-label">{{ riskIndicatorLabel(indicator) }}</p>
+          <ul>
+            <li *ngFor="let reason of riskIndicatorReasons(indicator)" class="risk-indicator-reason">{{ reason }}</li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+
+    <p class="disclaimer-note">{{ activeDisclaimer }}</p>
+
+    <div class="ta-modal-actions">
+      <button type="button" class="ghost-button" (click)="showOnGraph(entry.spender)">
+        {{ t('Prikaži na grafu', 'Show on Graph') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="openInPathfinding(entry)"
+        [title]="t('Otvori Pathfinding sa owner/spender adresama već upisanim', 'Open Pathfinding with the owner/spender addresses already filled in')"
+      >
+        {{ t('Otvori u Pathfinding', 'Open in Pathfinding') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="openNoteDialog(entry.spender)"
+        [disabled]="!storedInvestigationId"
+        [title]="
+          storedInvestigationId
+            ? t('Dodaj istražiteljsku belešku za spender adresu', 'Add an investigator note for the spender address')
+            : t('Izaberi istragu na Graf stranici da bi mogao da dodaješ beleške', 'Select an investigation on the Graph page to add notes')
+        "
+      >
+        {{ t('Dodaj istražiteljsku belešku', 'Add Investigator Note') }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<app-investigator-node-dialog
+  *ngIf="isNoteDialogOpen && storedInvestigationId && noteDialogAddress"
+  [investigationId]="storedInvestigationId"
+  [address]="noteDialogAddress"
+  mode="notes"
+  (closed)="closeNoteDialog()"
+></app-investigator-node-dialog>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre same Token Approval korelacije (isti
+     deljeni dijalog kao Taint/Pathfinding/Graf/DEX Swaps/Behavioral - vidi LANAC-DOKAZA.md
+     i TOKEN-APPROVAL-IMPLEMENTATION.md #18) -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isAnalyzing"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndAnalyze($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>
+
+<!-- Lanac dokaza za "Proveri kroz Taint analizu" - odvojen dijalog od gornjeg jer je ovo
+     zasebna, deliberatna analiza (isti taint model kao Taint analizina "Pokreni taint
+     analizu") - vidi checkSelectedInTaint/checkSelectedCaseSuggestionsInTaint gore. -->
+<app-custody-access-dialog
+  *ngIf="isTaintCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isRunningTaintCheck"
+  [submitError]="taintCustodyError"
+  (confirmed)="confirmTaintCustodyAndCheck($event)"
+  (cancelled)="closeTaintCustodyDialog()"
+></app-custody-access-dialog>
+
+<!-- Potpisivanje pre izvoza PDF izveštaja - isti obrazac kao DEX Swap/Taint/Pathfinding
+     (vidi TOKEN-APPROVAL-IMPLEMENTATION.md #19) - odvojen overlay, position: fixed. -->
+<div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
+  <div class="signature-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">{{ t('Overa izveštaja', 'Report certification') }}</p>
+    <h3>{{ t('Potpis analitičara', 'Analyst signature') }}</h3>
+
+    <p class="signature-intro">
+      {{ t('Potpišite se mišem u polju ispod. Uz potpis se generiše', 'Sign with the mouse in the field below. Together with the signature, a') }}
+      <strong>{{ t('pečat aplikacije Lusi', 'Lusi application seal') }}</strong>
+      {{
+        t(
+          'sa kontrolnim brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.',
+          'is generated with a verification code and a content hash, which can later be used to check whether the report was altered.'
+        )
+      }}
+    </p>
+
+    <fieldset class="signature-lang" [disabled]="isExportingPdf">
+      <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+      <label>
+        <input type="radio" name="tokenApprovalPdfLang" value="sr" [(ngModel)]="tokenApprovalPdfLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="tokenApprovalPdfLang" value="en" [(ngModel)]="tokenApprovalPdfLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+      <p class="signature-lang-hint">
+        {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+        <strong>{{ tokenApprovalPdfLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+      </p>
+    </fieldset>
+
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signature-declaration">
+      <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
+      <span>
+        {{
+          t(
+            'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički, gde je naznačeno) nad navedenom evidencijom.',
+            'I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (heuristically, where indicated) over the stated evidence.'
+          )
+        }}
+      </span>
+    </label>
+
+    <p class="signature-limit">
+      {{ t('Napomena: potpis je', 'Note: the signature is a') }} <strong>{{ t('izjava', 'declaration') }}</strong>
+      {{
+        t(
+          ', a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.',
+          ', not a cryptographic proof — it stays intact even if someone edits the document. An alteration is detected only by comparing the content hash against the verification code.'
+        )
+      }}
+    </p>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signature-actions">
+      <button type="button" class="ghost-button" (click)="closeSignatureDialog()">{{ t('Odustani', 'Cancel') }}</button>
+      <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
+        {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign and export PDF') }}
+      </button>
+    </div>
+  </div>
+</div>

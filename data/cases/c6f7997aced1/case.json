@@ -1,0 +1,23 @@
+{
+  "id": "c6f7997aced1",
+  "name": "Smoke Custody TA",
+  "description": null,
+  "analyst": "admin",
+  "status": "open",
+  "created_at": "2026-09-14T10:01:54.064596+00:00",
+  "updated_at": "2026-09-14T10:01:54.098732+00:00",
+  "evidence": [
+    {
+      "file_name": "ta.csv",
+      "stored_name": "20260914_100154_085167_ta.csv",
+      "imported_at": "2026-09-14T10:01:54.098732+00:00",
+      "size_bytes": 309,
+      "sha256": "0b58c7548a0a8657a021de455cf49c889b5a84ec0a8acbeae955c1dda18f91a2",
+      "analyst": "admin",
+      "currency": null
+    }
+  ],
+  "evidence_count": 1,
+  "total_size_bytes": 309,
+  "last_imported_at": "2026-09-14T10:01:54.098732+00:00"
+}

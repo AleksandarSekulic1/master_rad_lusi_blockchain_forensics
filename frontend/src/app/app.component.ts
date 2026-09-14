@@ -29,6 +29,7 @@ export class AppComponent {
     { path: '/pathfinding', sr: 'Putanje', en: 'Pathfinding' },
     { path: '/behavioral', sr: 'Ponašanje', en: 'Behavioral analysis' },
     { path: '/dex-swaps', sr: 'DEX razmene', en: 'DEX swaps' },
+    { path: '/token-approval', sr: 'Token Approval', en: 'Token Approval' },
     { path: '/verify-report', sr: 'Provera izveštaja', en: 'Verify report' },
     { path: '/activity-log', sr: 'Dnevnik', en: 'Activity log' },
     { path: '/lanac-dokaza', sr: 'Lanac dokaza', en: 'Chain of custody' },

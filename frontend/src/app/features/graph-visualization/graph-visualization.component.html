@@ -185,6 +185,16 @@
       >
         {{ dexSwapOverlayEnabled ? t('Sakrij DEX swap veze', 'Hide DEX swap edges') : t('Prikaži DEX swap veze', 'Show DEX swap edges') }} ({{ dexSwapEvents.length }})
       </button>
+      <button
+        type="button"
+        class="ghost-button"
+        [class.active]="tokenApprovalOverlayEnabled"
+        (click)="toggleTokenApprovalOverlay()"
+        [disabled]="!hasLoadedGraph"
+        [title]="t('ERC-20 approve/permit dozvole (Token Approval Analysis), iscrtane kao isprekidane OWNER → SPENDER veze preko postojećeg grafa', 'ERC-20 approve/permit grants (Token Approval Analysis), drawn as dashed OWNER → SPENDER edges over the existing graph')"
+      >
+        {{ tokenApprovalOverlayEnabled ? t('Sakrij Approval veze', 'Hide Approval edges') : t('Prikaži Approval veze', 'Show Approval edges') }} ({{ tokenApprovalEntries.length }})
+      </button>
       <app-report-export *ngIf="mode === 'full'" variant="button" [graphReport]="graphReportData"></app-report-export>
     </div>
   </div>
@@ -303,7 +313,7 @@
     </ng-container>
 
     <ng-template #swapNodeOrEmpty>
-    <ng-container *ngIf="selectedSwapEvent as swap; else nodeOrEmpty">
+    <ng-container *ngIf="selectedSwapEvent as swap; else approvalNodeOrEmpty">
     <aside class="node-inspector swap-inspector">
       <p class="panel-kicker">{{ t('SWAP događaj (heuristika)', 'SWAP event (heuristic)') }}</p>
       <h3>{{ swap.user_address }} → {{ swap.dex_name }}</h3>
@@ -365,6 +375,129 @@
       <p class="swap-disclaimer">
         {{ t('Heuristička detekcija zasnovana na adresnom obrascu i vremenskoj bliskosti — nije kriptografski dokaz swap transakcije. Preneti taint procenat je vezan za ulazni krak (pre swap-a).',
               'Heuristic detection based on address pattern and time proximity — not a cryptographic proof of a swap transaction. The carried taint percentage is tied to the input leg (before the swap).') }}
+      </p>
+    </aside>
+    </ng-container>
+
+    <ng-template #approvalNodeOrEmpty>
+    <ng-container *ngIf="selectedApprovalEntry as approval; else nodeOrEmpty">
+    <aside class="node-inspector approval-inspector">
+      <p class="panel-kicker">{{ t('APPROVAL događaj (Token Approval Analysis)', 'APPROVAL event (Token Approval Analysis)') }}</p>
+      <h3>{{ approval.owner }} → {{ approval.spender }}</h3>
+      <span class="swap-confidence-badge" [class]="'level-' + approvalRiskLevel(approval).toLowerCase()">
+        {{ t('Rizik', 'Risk') }}: {{ approvalRiskLevel(approval) }}
+      </span>
+      <dl>
+        <div>
+          <dt>{{ t('Token', 'Token') }}</dt>
+          <dd><span class="mono-address">{{ approval.token_address ?? t('nije deklarisano', 'not declared') }}</span></dd>
+        </div>
+        <div>
+          <dt>{{ t('Allowance', 'Allowance') }}</dt>
+          <dd>
+            {{ approvalAllowanceLabel(approval) }}
+            <span class="muted-inline" *ngIf="approval.unlimited_basis">
+              ({{ approval.unlimited_basis === 'declared' ? t('deklarisano', 'declared') : t('heuristika po veličini', 'heuristic by size') }})
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>{{ t('Vlasnik (owner)', 'Owner') }}</dt>
+          <dd><span class="mono-address">{{ approval.owner }}</span></dd>
+        </div>
+        <div>
+          <dt>{{ t('Odobreni trošilac (spender)', 'Spender') }}</dt>
+          <dd>
+            <span class="mono-address">{{ approval.spender }}</span>
+            <span class="muted-inline" *ngIf="!approvalSpenderKnown(approval)">{{ t('nepoznat u lokalnim registrima', 'not recognised in local registries') }}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>{{ t('Vreme odobrenja', 'Approval timestamp') }}</dt>
+          <dd>{{ approval.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</dd>
+        </div>
+        <div>
+          <dt>{{ t('Heš transakcije', 'Transaction hash') }}</dt>
+          <dd><span class="mono-address">{{ approval.approval_transaction_hash ?? 'n/a' }}</span></dd>
+        </div>
+        <div>
+          <dt>{{ t('Status', 'Status') }}</dt>
+          <dd>{{ approval.status }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('Rizik', 'Risk') }}</dt>
+          <dd>{{ approvalRiskLevel(approval) }}</dd>
+        </div>
+      </dl>
+
+      <div class="approval-transfers-block" *ngIf="approval.transfer_from_count > 0; else noApprovalTransfers">
+        <p class="panel-kicker">{{ t('Povezane transferFrom aktivnosti', 'Linked transferFrom activity') }}</p>
+        <dl>
+          <div>
+            <dt>{{ t('Broj transakcija', 'Transaction count') }}</dt>
+            <dd>{{ approval.transfer_from_count }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('Ukupno povučeno', 'Total withdrawn') }}</dt>
+            <dd>{{ approval.total_amount_transferred | number : '1.0-6' }}</dd>
+          </div>
+          <div *ngIf="approval.first_transfer_from as first">
+            <dt>{{ t('Prva transferFrom', 'First transferFrom') }}</dt>
+            <dd
+              >{{ first.amount | number : '1.0-6' }} · {{ first.timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC
+              <span class="mono-address" *ngIf="first.transaction_hash">{{ first.transaction_hash }}</span></dd
+            >
+          </div>
+          <div *ngIf="approval.last_transfer_from as last">
+            <dt>{{ t('Poslednja transferFrom', 'Last transferFrom') }}</dt>
+            <dd
+              >{{ last.amount | number : '1.0-6' }} · {{ last.timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC
+              <span class="mono-address" *ngIf="last.transaction_hash">{{ last.transaction_hash }}</span></dd
+            >
+          </div>
+          <div *ngIf="approval.receiving_destinations.length > 0">
+            <dt>{{ t('Odredište(a)', 'Destination(s)') }}</dt>
+            <dd><span class="mono-address" *ngFor="let dest of approval.receiving_destinations">{{ dest }}</span></dd>
+          </div>
+        </dl>
+      </div>
+      <ng-template #noApprovalTransfers>
+        <p class="muted-inline">
+          {{ t('Nijedna transferFrom transakcija još nije pouzdano povezana sa ovom dozvolom.', 'No transferFrom transaction is yet reliably linked to this grant.') }}
+        </p>
+      </ng-template>
+
+      <div class="risk-indicators-block" *ngIf="approvalRiskIndicators(approval).length > 0">
+        <p class="panel-kicker">{{ t('Risk indikatori', 'Risk indicators') }}</p>
+        <ul class="approval-risk-list">
+          <li *ngFor="let indicator of approvalRiskIndicators(approval)">
+            <strong>{{ indicator.label }}</strong>
+            <ul>
+              <li *ngFor="let reason of indicator.reasons">{{ reason }}</li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+
+      <div class="approval-related-block" *ngIf="approval.transfer_from_count > 0">
+        <p class="panel-kicker">{{ t('Povezanost sa drugim analizama', 'Connections to other analyses') }}</p>
+        <ng-container *ngIf="approvalDestinationTaint(approval) as taints">
+          <p class="ta-cross-ref" *ngIf="taints.length > 0">
+            {{ t('Taint (odredišna adresa, već izračunato — nije preneto sa ove APPROVAL grane):', 'Taint (destination address, already computed — NOT carried over from this APPROVAL edge):') }}
+            <span *ngFor="let item of taints" class="mono-address">{{ item.address }}: {{ item.percentage | number : '1.0-2' }}%</span>
+          </p>
+        </ng-container>
+        <p class="ta-cross-ref" *ngIf="!hasAnalytics">
+          {{ t('Taint analiza nije pokrenuta — klikni „Analiziraj graf" da vidiš da li su odredišne adrese deo zaprljanog toka.', 'Taint analysis has not been run — click “Analyze graph” to see whether the destination addresses are part of a tainted flow.') }}
+        </p>
+        <p class="ta-cross-ref" *ngIf="approvalHasDexSwapCrossReference(approval)">
+          {{ t('Spender/odredišna adresa se takođe pojavljuje u detektovanim DEX Swap događajima ovog slučaja (isprekidana ljubičasta veza).', 'The spender/destination address also appears in this case’s detected DEX Swap events (dashed purple edge).') }}
+        </p>
+      </div>
+
+      <p class="swap-disclaimer">
+        {{ t('Token Approval Analysis čita isključivo polja koja evidencija deklariše — approve/permit ne pomera sredstva; ovo NIJE transakciona veza i nije prošla kroz Taint model. Risk nivo je heuristički indikator za prioritizaciju pregleda, ne dokaz zloupotrebe.',
+              'Token Approval Analysis reads only fields the evidence declares — approve/permit does not move funds; this is NOT a transaction edge and was not passed through the Taint model. The risk level is a heuristic indicator for prioritizing review, not proof of misuse.') }}
       </p>
     </aside>
     </ng-container>
@@ -612,10 +745,11 @@
       <aside class="node-inspector empty">
         <p class="panel-kicker">{{ t('Detalji čvora', 'Node details') }}</p>
         <p>
-          {{ t('Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake — isprekidanu SWAP vezu za detalje detektovane DEX razmene — ili isprekidanu narandžastu istražiteljsku vezu za pretpostavljenu off-chain relaciju.',
-                'Select a node to inspect its heuristics, cluster and flags — a dashed SWAP edge for the details of a detected DEX swap — or a dashed orange investigator link for a suspected off-chain relation.') }}
+          {{ t('Izaberite čvor da biste pregledali njegove heuristike, klaster i oznake — isprekidanu SWAP vezu za detalje detektovane DEX razmene — isprekidanu magenta APPROVAL vezu za detalje Token Approval dozvole — ili isprekidanu narandžastu istražiteljsku vezu za pretpostavljenu off-chain relaciju.',
+                'Select a node to inspect its heuristics, cluster and flags — a dashed SWAP edge for the details of a detected DEX swap — a dashed magenta APPROVAL edge for the details of a Token Approval grant — or a dashed orange investigator link for a suspected off-chain relation.') }}
         </p>
       </aside>
+    </ng-template>
     </ng-template>
     </ng-template>
     </ng-template>
@@ -715,6 +849,13 @@
           <div class="legend-text">
             <strong>{{ t('DEX SWAP', 'DEX SWAP') }}</strong>
             <span>{{ t('isprekidana ljubičasta · klik za DEX, iznose, hash, pouzdanost', 'dashed purple · click for DEX, amounts, hash, confidence') }}</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-line approval-edge"></span>
+          <div class="legend-text">
+            <strong>{{ t('TOKEN APPROVAL', 'TOKEN APPROVAL') }}</strong>
+            <span>{{ t('isprekidana magenta, OWNER → SPENDER · klik za token, allowance, status, rizik', 'dashed magenta, OWNER → SPENDER · click for token, allowance, status, risk') }}</span>
           </div>
         </div>
         <div class="legend-item">

@@ -26,6 +26,9 @@ import {
   GraphReportData,
   NodeLinkGraphResponse,
   TaintAnalysisResult,
+  TokenApprovalCorrelationEntry,
+  TokenApprovalGroup,
+  TokenApprovalRiskLevel,
   TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
 import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
@@ -99,6 +102,25 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected dexSwapEvents: DexSwapEvent[] = [];
   protected dexSwapOverlayEnabled = true;
   protected selectedSwapEvent: DexSwapEvent | null = null;
+
+  // --- Token Approval overlay (see TOKEN-APPROVAL-IMPLEMENTATION.md #17) - same idea as
+  // the DEX Swap overlay above, for ERC-20 approve()/permit() grants: OWNER - -> SPENDER
+  // (dashed, magenta, labelled APPROVAL), deliberately distinct from a real transfer edge
+  // (solid blue, unchanged). A transferFrom linked to an approval is NOT drawn specially
+  // here - it already renders as an ordinary blue TRANSFER edge, since approve/permit/
+  // transferFrom rows all reuse the same sender_address/recipient_address base columns as
+  // any other transaction row (TOKEN-APPROVAL-IMPLEMENTATION.md #8.1) - nothing new is
+  // needed for that half of the request, and nothing about a real transfer edge is
+  // touched by any of this. Fetched from its own read-only endpoint (no `address` filter -
+  // every grant in the case's scoped evidence), independent of the plain/analytics graph;
+  // a failure here only means no dashed APPROVAL edges are drawn. ---
+  protected tokenApprovalEntries: TokenApprovalCorrelationEntry[] = [];
+  protected tokenApprovalOverlayEnabled = true;
+  protected selectedApprovalEntry: TokenApprovalCorrelationEntry | null = null;
+  /** (owner, spender, token) -> its group's risk fields - same lookup idea as
+   * token-approval.component.ts's own groupByKey, duplicated rather than shared (small
+   * per-component helpers are copied in this app, not centralized). */
+  private approvalGroupByKey = new Map<string, TokenApprovalGroup>();
 
   // --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15). Investigator
   // links belong to an INVESTIGATION - a separate entity from the evidence case this
@@ -210,6 +232,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.state.selectedNode$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((node) => {
       this.selectedNode = node;
       this.selectedSwapEvent = null;
+      this.selectedApprovalEntry = null;
       this.selectedInvestigatorLink = null;
       this.showAllSenders = false;
       this.showAllRecipients = false;
@@ -280,6 +303,9 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.caseGraphError = null;
       this.dexSwapEvents = [];
       this.selectedSwapEvent = null;
+      this.tokenApprovalEntries = [];
+      this.approvalGroupByKey = new Map();
+      this.selectedApprovalEntry = null;
       this.selectedInvestigatorLink = null;
       return;
     }
@@ -287,6 +313,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.isLoadingCaseGraph = true;
     this.caseGraphError = null;
     this.selectedSwapEvent = null;
+    this.selectedApprovalEntry = null;
     this.selectedInvestigatorLink = null;
 
     this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
@@ -303,6 +330,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     });
 
     this.loadDexSwapOverlay(caseId);
+    this.loadTokenApprovalOverlay(caseId);
   }
 
   /** Fetches every candidate DEX swap for the case's currently scoped evidence (no
@@ -347,6 +375,136 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   protected toggleDexSwapOverlay(): void {
     this.dexSwapOverlayEnabled = !this.dexSwapOverlayEnabled;
     this.renderSwapOverlay();
+  }
+
+  // --- Token Approval overlay (see class-level comment above and
+  // TOKEN-APPROVAL-IMPLEMENTATION.md #17) - identical plumbing to the DEX Swap overlay
+  // immediately above, just for approve()/permit() grants instead of swap events. ---
+
+  /** Fetches every approve()/permit() grant for the case's currently scoped evidence (no
+   * `address` filter - see ApiService.getTokenApprovalCorrelation) and draws them as
+   * dashed magenta APPROVAL edges on the already-rendered graph, same pattern as
+   * loadDexSwapOverlay above. Runs independently of, and in parallel with, both the plain
+   * graph fetch and the DEX swap overlay fetch. */
+  private loadTokenApprovalOverlay(caseId: string): void {
+    this.api.getTokenApprovalCorrelation(caseId, null, this.selectedEvidence).subscribe({
+      next: (result) => {
+        this.tokenApprovalEntries = result.correlations;
+        this.approvalGroupByKey = new Map(
+          result.groups.map((group) => [this.approvalGroupKey(group.owner, group.spender, group.token_address), group]),
+        );
+        this.renderApprovalOverlay();
+      },
+      error: () => {
+        this.tokenApprovalEntries = [];
+        this.approvalGroupByKey = new Map();
+        this.renderApprovalOverlay();
+      },
+    });
+  }
+
+  /** Adds/removes just the dashed APPROVAL overlay edges, without touching real
+   * nodes/edges or re-running the layout - same discipline as renderSwapOverlay above. */
+  private renderApprovalOverlay(): void {
+    if (!this.cy || !this.graph) {
+      return;
+    }
+    this.cy.remove('edge.approval-edge');
+    if (this.tokenApprovalOverlayEnabled) {
+      const nodeIds = new Set(this.graph.nodes.map((node) => String(node.id)));
+      this.cy.add(this.buildApprovalEdgeElements(nodeIds));
+    }
+    this.applyVisibilityFilters();
+  }
+
+  protected toggleTokenApprovalOverlay(): void {
+    this.tokenApprovalOverlayEnabled = !this.tokenApprovalOverlayEnabled;
+    this.renderApprovalOverlay();
+  }
+
+  private approvalGroupKey(owner: string, spender: string, token: string | null): string {
+    return `${owner.toLowerCase()}|${spender.toLowerCase()}|${(token ?? '').toLowerCase()}`;
+  }
+
+  protected approvalRiskLevel(entry: TokenApprovalCorrelationEntry): TokenApprovalRiskLevel {
+    return this.approvalGroupByKey.get(this.approvalGroupKey(entry.owner, entry.spender, entry.token_address))?.risk_level ?? 'LOW';
+  }
+
+  protected approvalRiskIndicators(entry: TokenApprovalCorrelationEntry) {
+    return this.approvalGroupByKey.get(this.approvalGroupKey(entry.owner, entry.spender, entry.token_address))?.risk_indicators ?? [];
+  }
+
+  protected approvalSpenderKnown(entry: TokenApprovalCorrelationEntry): boolean {
+    return this.approvalGroupByKey.get(this.approvalGroupKey(entry.owner, entry.spender, entry.token_address))?.spender_known ?? false;
+  }
+
+  /** TOKEN APPROVAL -> TAINT bridge (TOKEN-APPROVAL-IMPLEMENTATION.md #20.2). Unlike DEX
+   * Swap's swapCarriedTaint() (which has to "carry" a value ACROSS an edge the taint
+   * algorithm never itself walks, because a swap is a currency conversion the model can't
+   * represent), a transferFrom destination is an ORDINARY real edge in the same shared
+   * graph - the UNCHANGED taint_analysis.py plugin already computes its taint_percentage
+   * correctly on its own, with zero bridging logic needed here. This only READS that
+   * already-computed number off the matching graph node, once "Analiziraj graf" has
+   * actually been run (hasAnalytics) - never triggers a run, never touches the algorithm.
+   * Returns [] before hasAnalytics or when no destination is even a node in this graph. */
+  protected approvalDestinationTaint(entry: TokenApprovalCorrelationEntry): Array<{ address: string; percentage: number }> {
+    if (!this.hasAnalytics || !this.graph) {
+      return [];
+    }
+    const byId = new Map(this.graph.nodes.map((node) => [String(node.id), node]));
+    return entry.receiving_destinations
+      .map((address) => ({ address, node: byId.get(address) }))
+      .filter((item): item is { address: string; node: GraphNodeData } => item.node?.taint_percentage != null)
+      .map((item) => ({ address: item.address, percentage: item.node.taint_percentage! }));
+  }
+
+  /** TOKEN APPROVAL -> DEX SWAP cross-reference (TOKEN-APPROVAL-IMPLEMENTATION.md #20.3) -
+   * true when the spender or a receiving destination also appears as the wallet side of a
+   * DEX swap detected in this SAME evidence (dexSwapEvents, already loaded by this page's
+   * own overlay above) - reused directly, no second fetch. Only ever states that both
+   * facts are true of the same address, never that the SAME funds moved between them. */
+  protected approvalHasDexSwapCrossReference(entry: TokenApprovalCorrelationEntry): boolean {
+    const swapAddresses = new Set(this.dexSwapEvents.map((event) => event.user_address));
+    if (swapAddresses.has(entry.spender)) {
+      return true;
+    }
+    return entry.receiving_destinations.some((address) => swapAddresses.has(address));
+  }
+
+  /** Table cell / edge label: an astronomically large raw number is never useful to read
+   * at a glance - an unlimited grant shows as a word instead (same choice as
+   * token-approval.component.ts's own allowanceLabel). */
+  protected approvalAllowanceLabel(entry: TokenApprovalCorrelationEntry): string {
+    if (entry.unlimited_basis) {
+      return this.t('NEOGRANIČENO', 'UNLIMITED');
+    }
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(entry.approval_amount);
+  }
+
+  private buildApprovalEdgeElements(nodeIds: Set<string>): ElementDefinition[] {
+    const elements: ElementDefinition[] = [];
+    this.tokenApprovalEntries.forEach((entry, index) => {
+      // Defensive, same reasoning as buildSwapEdgeElements above: should never actually
+      // trigger since the overlay fetch shares the same evidence scope as the graph, but
+      // an edge pointing at a node cytoscape doesn't have would silently fail to render.
+      if (!nodeIds.has(entry.owner) || !nodeIds.has(entry.spender)) {
+        return;
+      }
+      const level = this.approvalRiskLevel(entry);
+      const classes = ['approval-edge', `approval-risk-${level.toLowerCase()}`];
+      elements.push({
+        data: {
+          id: `approval__${index}__${entry.owner}__${entry.spender}`,
+          source: entry.owner,
+          target: entry.spender,
+          label: `APPROVAL · ${this.approvalAllowanceLabel(entry)} ${entry.token_address ?? '?'}`,
+          isApprovalEdge: true,
+          approvalEntry: entry,
+        },
+        classes: classes.join(' '),
+      } as ElementDefinition);
+    });
+    return elements;
   }
 
   // --- Investigator link overlay (CASE-MANAGEMENT-IMPLEMENTATION.md §15) --------------
@@ -561,6 +719,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.selectedInvestigatorLink = link;
     this.selectedNode = null;
     this.selectedSwapEvent = null;
+    this.selectedApprovalEntry = null;
   }
 
   /** Fetches the chosen investigation's links and (re)draws the overlay. A failure only
@@ -1143,11 +1302,11 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       node.style('display', timelineVisible && !hiddenAsDeadEnd && !hiddenAsFundingSource ? 'element' : 'none');
     });
     this.cy.edges().forEach((edge) => {
-      if (edge.hasClass('swap-edge') || edge.hasClass('investigator-link')) {
-        // Overlay annotations (DEX swap / investigator link) - not part of the graph's
-        // own chronology (no chronoRank), shown/hidden purely by their own toggle, never
-        // by timeline position. A hidden endpoint node still hides them via cytoscape's
-        // own node->edge display cascade, same as any other edge.
+      if (edge.hasClass('swap-edge') || edge.hasClass('approval-edge') || edge.hasClass('investigator-link')) {
+        // Overlay annotations (DEX swap / Token Approval / investigator link) - not part
+        // of the graph's own chronology (no chronoRank), shown/hidden purely by their own
+        // toggle, never by timeline position. A hidden endpoint node still hides them via
+        // cytoscape's own node->edge display cascade, same as any other edge.
         edge.style('display', 'element');
         return;
       }
@@ -1890,6 +2049,56 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
           width: 5,
         },
       },
+      // Token Approval overlay (see TOKEN-APPROVAL-IMPLEMENTATION.md #17) - OWNER -> SPENDER,
+      // a permission, NEVER a movement of funds, so it must not be mistaken for either an
+      // ordinary transaction edge (solid blue) or a DEX swap (dashed purple, immediately
+      // above): dashed with a longer/sparser dash and a distinct magenta hue, WITH an
+      // arrow (a real transferFrom that used this grant is drawn as an ordinary blue
+      // TRANSFER edge automatically, not specially here - see the field-level comment on
+      // tokenApprovalEntries above). Opacity/width step with the grant's forensic
+      // risk_level (LOW/MEDIUM/HIGH, TOKEN-APPROVAL-IMPLEMENTATION.md #15) - same
+      // "severity affects prominence" idiom as edge.swap-* above, just driven by risk
+      // instead of match confidence.
+      {
+        selector: 'edge.approval-edge',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [8, 5],
+          'line-color': '#f472b6',
+          'target-arrow-color': '#f472b6',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          width: 3,
+          opacity: 0.8,
+          label: 'data(label)',
+          'font-size': 9,
+          'min-zoomed-font-size': 7,
+          color: '#fbcfe8',
+          'text-background-color': '#07111f',
+          'text-background-opacity': 0.85,
+          'text-background-padding': '3px',
+        },
+      },
+      {
+        selector: 'edge.approval-risk-low',
+        style: { opacity: 0.55 },
+      },
+      {
+        selector: 'edge.approval-risk-medium',
+        style: { opacity: 0.82 },
+      },
+      {
+        selector: 'edge.approval-risk-high',
+        style: { opacity: 1, width: 4 },
+      },
+      {
+        selector: 'edge.approval-edge:selected',
+        style: {
+          'overlay-opacity': 0.22,
+          'overlay-color': '#fbcfe8',
+          width: 5,
+        },
+      },
       // Taint bridged across the swap (see DEX-SWAP-ANALIZA.md §10) - a red halo BEHIND
       // the purple dashed line (underlay, not overlay, so it doesn't fight :selected's
       // own overlay above), visible at a glance without clicking. Only appears once
@@ -1991,6 +2200,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       const nodeData = event.target.data() as GraphNodeData;
       this.selectedNode = nodeData;
       this.selectedSwapEvent = null;
+      this.selectedApprovalEntry = null;
       this.selectedInvestigatorLink = null;
       this.state.setSelectedNode(nodeData);
     });
@@ -2000,6 +2210,15 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.cy.on('tap', 'edge.swap-edge', (event) => {
       this.selectedSwapEvent = (event.target.data('swapEvent') as DexSwapEvent) ?? null;
       this.selectedNode = null;
+      this.selectedApprovalEntry = null;
+      this.selectedInvestigatorLink = null;
+    });
+
+    // Same delegated pattern for APPROVAL edges added by renderApprovalOverlay()'s cy.add().
+    this.cy.on('tap', 'edge.approval-edge', (event) => {
+      this.selectedApprovalEntry = (event.target.data('approvalEntry') as TokenApprovalCorrelationEntry) ?? null;
+      this.selectedNode = null;
+      this.selectedSwapEvent = null;
       this.selectedInvestigatorLink = null;
     });
 
@@ -2008,6 +2227,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.selectedInvestigatorLink = (event.target.data('investigatorLink') as InvestigatorLink) ?? null;
       this.selectedNode = null;
       this.selectedSwapEvent = null;
+      this.selectedApprovalEntry = null;
     });
 
     this.reapplyPinnedNodes();
@@ -2119,13 +2339,17 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     // common "swap data lands after the graph already rendered" case is handled by
     // renderSwapOverlay() adding these same elements directly, without a full rebuild.
     const swapEdges = this.dexSwapOverlayEnabled ? this.buildSwapEdgeElements(new Set(nodeById.keys())) : [];
+    // Same "already-known at build time" case for Token Approval grants (e.g.
+    // re-rendering after an evidence switch, once loadTokenApprovalOverlay's response has
+    // already arrived).
+    const approvalEdges = this.tokenApprovalOverlayEnabled ? this.buildApprovalEdgeElements(new Set(nodeById.keys())) : [];
     // Same "already-known at build time" case for investigator links (e.g. re-rendering
     // after an evidence switch while an investigation is selected).
     const investigatorLinkEdges = this.investigatorLinkOverlayEnabled
       ? this.buildInvestigatorLinkEdgeElements(new Set(nodeById.keys()))
       : [];
 
-    return [...nodes, ...links, ...swapEdges, ...investigatorLinkEdges];
+    return [...nodes, ...links, ...swapEdges, ...approvalEdges, ...investigatorLinkEdges];
   }
 
   /** Chronological rank (1 = earliest) of each link by its first-seen timestamp, so the
