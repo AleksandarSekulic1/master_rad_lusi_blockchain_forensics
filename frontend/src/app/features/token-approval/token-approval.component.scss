@@ -421,11 +421,6 @@
   padding-top: 0.2rem;
 }
 
-.suggest-case-hint {
-  font-size: 0.76rem;
-  color: var(--ta-muted);
-}
-
 .suggestion-address-btn {
   border: none;
   background: none;
@@ -439,12 +434,15 @@
   color: var(--ta-accent);
 }
 
-/* ---------- predlog adresa za dalju analizu (Taint Analysis handoff) ---------- */
+/* ---------- predlog adresa (case-wide i po nalazu) - Taint Analysis handoff ---------- */
+/* Namerno kompaktan prikaz: naslov + broj, bez opisnog pasusa (objašnjenje je u title
+   tooltip-u dugmeta koje otvara panel) - dva kratka reda po adresi umesto jednog
+   pretrpanog. */
 
 .suggestion-panel {
   display: grid;
-  gap: 0.7rem;
-  padding: 1rem;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
   border-radius: 1rem;
   border: 1px solid var(--ta-border);
   background: var(--ta-surface);
@@ -452,17 +450,31 @@
 
 .suggestion-head {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
 }
 
-.suggestion-hint {
-  margin: 0.2rem 0 0;
-  max-width: 44rem;
-  font-size: 0.78rem;
-  line-height: 1.5;
-  color: var(--ta-muted);
+.suggestion-head .panel-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.suggestion-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--ta-mono-bg);
+  color: var(--ta-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .suggestion-select-all {
@@ -470,7 +482,7 @@
   align-items: center;
   gap: 0.5rem;
   width: fit-content;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--ta-dim);
   cursor: pointer;
@@ -485,50 +497,85 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .suggestion-list > li {
-  border-radius: 0.75rem;
+  border-radius: 0.7rem;
   background: var(--ta-card-bg);
   border: 1px solid var(--ta-border-soft);
+  transition: border-color 0.12s ease;
+}
+
+.suggestion-list > li:has(input:checked) {
+  border-color: color-mix(in srgb, var(--ta-accent) 55%, transparent);
 }
 
 .suggestion-list label {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.6rem 0.8rem;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
   cursor: pointer;
 }
 
 .suggestion-list input[type='checkbox'] {
   flex: none;
+  margin-top: 0.2rem;
   width: 1rem;
   height: 1rem;
   accent-color: var(--ta-accent);
+}
+
+.suggestion-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.suggestion-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.suggestion-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+  font-size: 0.74rem;
+  color: var(--ta-muted);
 }
 
 .suggestion-address {
   font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
   font-size: 0.82rem;
   color: var(--ta-text);
-  max-width: 16rem;
+  max-width: 18rem;
 }
 
 .suggestion-reason {
-  font-size: 0.76rem;
   color: var(--ta-muted);
 }
 
 .suggestion-owner {
-  margin-left: auto;
-  font-size: 0.72rem;
   color: var(--ta-dim);
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+}
+
+.suggestion-owner::before {
+  content: '·';
+  color: var(--ta-border);
+}
+
+.suggestion-reason:empty + .suggestion-owner::before {
+  content: none;
 }
 
 .suggestion-owner .mono-clip {
@@ -539,6 +586,8 @@
 
 .suggestion-panel .primary-button {
   justify-self: start;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.8rem;
 }
 
 /* ---------- tabela odobrenja ---------- */

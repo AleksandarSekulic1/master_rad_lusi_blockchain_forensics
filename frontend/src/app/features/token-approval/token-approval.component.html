@@ -56,12 +56,15 @@
     <!-- Predloži adrese - CASE-WIDE, radi bez upisane adrese (isti duh kao "Predloži seed
          adrese" kod Taint analize) - vidi TOKEN-APPROVAL-IMPLEMENTATION.md §5/§7.2. -->
     <div class="suggest-case-row" *ngIf="activeCase">
-      <button type="button" class="ghost-button" (click)="suggestCaseAddresses()" [disabled]="!canSuggestCaseAddresses">
-        {{ isSuggestingCaseAddresses ? t('Predlaganje...', 'Suggesting...') : t('Predloži adrese', 'Suggest addresses') }}
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="suggestCaseAddresses()"
+        [disabled]="!canSuggestCaseAddresses"
+        [title]="t('Skenira celu izabranu evidenciju bez upisane adrese.', 'Scans the whole selected evidence without typing an address.')"
+      >
+        {{ isSuggestingCaseAddresses ? t('Predlaganje...', 'Suggesting...') : t('🔎 Predloži adrese', '🔎 Suggest addresses') }}
       </button>
-      <span class="suggest-case-hint">
-        {{ t('Skenira celu izabranu evidenciju bez upisane adrese.', 'Scans the whole selected evidence without typing an address.') }}
-      </span>
     </div>
 
     <p class="error-inline" *ngIf="caseSuggestionError">{{ caseSuggestionError }}</p>
@@ -70,17 +73,10 @@
   <!-- Rezultat "Predloži adrese" - odvojen od rezultata analize jedne adrese ispod. -->
   <div class="suggestion-panel" *ngIf="caseSuggestions">
     <div class="suggestion-head">
-      <div>
-        <p class="panel-kicker">{{ t('Predložene adrese (ceo slučaj)', 'Suggested addresses (whole case)') }}</p>
-        <p class="suggestion-hint">
-          {{
-            t(
-              'Spender adrese sa MEDIUM/HIGH rizikom u celoj izabranoj evidenciji, rangirane po risk skoru - klikni adresu da je upišeš u polje iznad, ili izaberi jednu/više/sve i pošalji ih kao seed adrese u Taint analizu.',
-              'Spender addresses with MEDIUM/HIGH risk across the whole selected evidence, ranked by risk score - click an address to fill it into the field above, or pick one/several/all and send them as seed addresses to Taint Analysis.'
-            )
-          }}
-        </p>
-      </div>
+      <p class="panel-kicker">
+        {{ t('Predložene adrese', 'Suggested addresses') }}
+        <span class="suggestion-count" *ngIf="caseSuggestions.length > 0">{{ caseSuggestions.length }}</span>
+      </p>
       <button type="button" class="ta-modal-close" (click)="dismissCaseSuggestions()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
     </div>
 
@@ -103,12 +99,23 @@
         <li *ngFor="let item of caseSuggestions">
           <label>
             <input type="checkbox" [checked]="isCaseSuggestionSelected(item.address)" (change)="toggleCaseSuggestion(item.address)" />
-            <button type="button" class="suggestion-address suggestion-address-btn mono-clip" [title]="item.address" (click)="analyzeSuggestedCaseAddress(item.address)">
-              {{ item.address }}
-            </button>
-            <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ item.riskLevel }}</span>
-            <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
-            <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+            <span class="suggestion-body">
+              <span class="suggestion-main">
+                <button
+                  type="button"
+                  class="suggestion-address suggestion-address-btn mono-clip"
+                  [title]="t('Klikni da upišeš u polje Adresa', 'Click to fill into the Address field') + ': ' + item.address"
+                  (click)="analyzeSuggestedCaseAddress(item.address)"
+                >
+                  {{ item.address }}
+                </button>
+                <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ item.riskLevel }}</span>
+              </span>
+              <span class="suggestion-sub">
+                <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
+                <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+              </span>
+            </span>
           </label>
         </li>
       </ul>
@@ -167,17 +174,10 @@
          (ili sve) pošalju kao seed adrese u Taint analizu. -->
     <div class="suggestion-panel" *ngIf="suggestedTaintAddresses.length > 0">
       <div class="suggestion-head">
-        <div>
-          <p class="panel-kicker">{{ t('Predlog za dalju analizu', 'Suggested for further analysis') }}</p>
-          <p class="suggestion-hint">
-            {{
-              t(
-                'Spender adrese sa MEDIUM/HIGH rizikom u ovom nalazu, rangirane po risk skoru - izaberi jednu, više ili sve i pošalji ih kao seed adrese u Taint analizu.',
-                'Spender addresses with MEDIUM/HIGH risk in this finding, ranked by risk score - pick one, several, or all and send them as seed addresses to Taint Analysis.'
-              )
-            }}
-          </p>
-        </div>
+        <p class="panel-kicker">
+          {{ t('Predlog za dalju analizu', 'Suggested for further analysis') }}
+          <span class="suggestion-count">{{ suggestedTaintAddresses.length }}</span>
+        </p>
       </div>
 
       <label class="suggestion-select-all">
@@ -189,10 +189,16 @@
         <li *ngFor="let item of suggestedTaintAddresses">
           <label>
             <input type="checkbox" [checked]="isSuggestionSelected(item.address)" (change)="toggleSuggestion(item.address)" />
-            <span class="suggestion-address mono-clip" [title]="item.address">{{ item.address }}</span>
-            <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ item.riskLevel }}</span>
-            <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
-            <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+            <span class="suggestion-body">
+              <span class="suggestion-main">
+                <span class="suggestion-address mono-clip" [title]="item.address">{{ item.address }}</span>
+                <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ item.riskLevel }}</span>
+              </span>
+              <span class="suggestion-sub">
+                <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
+                <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+              </span>
+            </span>
           </label>
         </li>
       </ul>
