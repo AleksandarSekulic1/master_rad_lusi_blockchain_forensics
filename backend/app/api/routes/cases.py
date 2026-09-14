@@ -702,6 +702,22 @@ def run_case_token_approval_analysis(
             long_active_period_seconds=request.long_active_period_seconds,
         )
     except ValueError as exc:
+        # FAILED - written even though nothing was found/analysed, so an investigator can
+        # later see that a Token Approval run was ATTEMPTED for this address and why it
+        # did not complete (see TOKEN-APPROVAL-IMPLEMENTATION.md #19.2) - same "log the
+        # attempt, not just the success" discipline the rest of this section documents.
+        write_audit_log(
+            action='token_approval_analysis_run',
+            user=str(current_user['username']),
+            case_id=case_id,
+            case_name=str(case.get('name') or ''),
+            details={
+                'status': 'FAILED',
+                'address': normalized_address,
+                'evidence_scope': evidence or 'combined',
+                'error': str(exc),
+            },
+        )
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     has_custody = bool(request.custody)
@@ -736,9 +752,11 @@ def run_case_token_approval_analysis(
         case_id=case_id,
         case_name=str(case.get('name') or ''),
         details={
+            'status': 'SUCCESS',
             'address': normalized_address,
             'evidence_scope': evidence or 'combined',
             'correlation_count': result['correlation_count'],
+            **_token_approval_summary_counts(result),
             'custody_recorded': has_custody,
             'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
             'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,
@@ -905,6 +923,33 @@ def _combine_frames_with_evidence_tag(per_evidence_frames: list[tuple[dict[str, 
 
 def _token_approval_group_key(owner: str, spender: str, token: str | None) -> tuple[str, str, str]:
     return (owner.lower(), spender.lower(), (token or '').lower())
+
+
+def _token_approval_summary_counts(result: dict[str, object]) -> dict[str, int]:
+    """The six SUMMARY counters (§16.5/§19) computed once, from the SAME
+    correlate_approval_usage() result already returned to the caller - shared by the
+    audit log entry (this section) and available to the frontend directly on `result`
+    itself, so the log and the on-screen summary can never disagree about what a run found.
+    """
+    correlations = list(result.get('correlations', []))  # type: ignore[arg-type]
+    groups_by_key = {
+        _token_approval_group_key(str(group['owner']), str(group['spender']), group.get('token_address')): group
+        for group in result.get('groups', [])  # type: ignore[union-attr]
+    }
+
+    def risk_level_for(entry: dict[str, object]) -> str:
+        group = groups_by_key.get(_token_approval_group_key(str(entry['owner']), str(entry['spender']), entry.get('token_address')))
+        return str(group['risk_level']) if group else 'LOW'
+
+    return {
+        'total_approvals': len(correlations),
+        'unlimited_approvals': sum(1 for entry in correlations if entry.get('unlimited_basis')),
+        'active_approvals': sum(1 for entry in correlations if not entry.get('revoked')),
+        'revoked_approvals': sum(1 for entry in correlations if entry.get('revoked')),
+        'used_approvals': sum(1 for entry in correlations if entry.get('used') is True),
+        'unused_approvals': sum(1 for entry in correlations if entry.get('used') is False),
+        'potentially_risky_approvals': sum(1 for entry in correlations if risk_level_for(entry) != 'LOW'),
+    }
 
 
 def _token_approval_custody_enrichment(full_result: dict[str, object]) -> dict[str, dict[str, object]]:

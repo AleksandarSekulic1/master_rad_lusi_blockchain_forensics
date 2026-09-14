@@ -479,6 +479,22 @@
         </ul>
       </div>
 
+      <div class="approval-related-block" *ngIf="approval.transfer_from_count > 0">
+        <p class="panel-kicker">{{ t('Povezanost sa drugim analizama', 'Connections to other analyses') }}</p>
+        <ng-container *ngIf="approvalDestinationTaint(approval) as taints">
+          <p class="ta-cross-ref" *ngIf="taints.length > 0">
+            {{ t('Taint (odredišna adresa, već izračunato — nije preneto sa ove APPROVAL grane):', 'Taint (destination address, already computed — NOT carried over from this APPROVAL edge):') }}
+            <span *ngFor="let item of taints" class="mono-address">{{ item.address }}: {{ item.percentage | number : '1.0-2' }}%</span>
+          </p>
+        </ng-container>
+        <p class="ta-cross-ref" *ngIf="!hasAnalytics">
+          {{ t('Taint analiza nije pokrenuta — klikni „Analiziraj graf" da vidiš da li su odredišne adrese deo zaprljanog toka.', 'Taint analysis has not been run — click “Analyze graph” to see whether the destination addresses are part of a tainted flow.') }}
+        </p>
+        <p class="ta-cross-ref" *ngIf="approvalHasDexSwapCrossReference(approval)">
+          {{ t('Spender/odredišna adresa se takođe pojavljuje u detektovanim DEX Swap događajima ovog slučaja (isprekidana ljubičasta veza).', 'The spender/destination address also appears in this case’s detected DEX Swap events (dashed purple edge).') }}
+        </p>
+      </div>
+
       <p class="swap-disclaimer">
         {{ t('Token Approval Analysis čita isključivo polja koja evidencija deklariše — approve/permit ne pomera sredstva; ovo NIJE transakciona veza i nije prošla kroz Taint model. Risk nivo je heuristički indikator za prioritizaciju pregleda, ne dokaz zloupotrebe.',
               'Token Approval Analysis reads only fields the evidence declares — approve/permit does not move funds; this is NOT a transaction edge and was not passed through the Taint model. The risk level is a heuristic indicator for prioritizing review, not proof of misuse.') }}

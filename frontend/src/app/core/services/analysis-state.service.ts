@@ -19,6 +19,12 @@ export class AnalysisStateService {
   private readonly graphSubject = new BehaviorSubject<NodeLinkGraphResponse | null>(null);
   private readonly analyticsSubject = new BehaviorSubject<AnalyticsResponse | null>(null);
   private readonly selectedNodeSubject = new BehaviorSubject<GraphNodeData | null>(null);
+  /** One-shot handoff for "open this address in Pathfinding" links (e.g.
+   * token-approval.component.ts's "Otvori u Pathfinding") - same idea as selectedNode
+   * above, but consumed once by pathfinding.component.ts's ngOnInit rather than observed
+   * continuously, since Pathfinding only needs to pick it up on load, not react to it
+   * live while already open. */
+  private pendingPathfindingSeed: { from: string; to?: string } | null = null;
   // Restored from localStorage so the active case survives a page refresh - it stays
   // active until the user clicks it again or picks another one.
   private readonly selectedCaseSubject = new BehaviorSubject<CaseSummary | null>(this.readStoredCase());
@@ -43,6 +49,18 @@ export class AnalysisStateService {
 
   setSelectedNode(node: GraphNodeData | null): void {
     this.selectedNodeSubject.next(node);
+  }
+
+  setPendingPathfindingSeed(seed: { from: string; to?: string }): void {
+    this.pendingPathfindingSeed = seed;
+  }
+
+  /** Returns the pending seed (if any) and clears it - a second visit to Pathfinding
+   * without a fresh "Otvori u Pathfinding" click never replays a stale address. */
+  consumePendingPathfindingSeed(): { from: string; to?: string } | null {
+    const seed = this.pendingPathfindingSeed;
+    this.pendingPathfindingSeed = null;
+    return seed;
   }
 
   /** Keeps the current selection if it still exists in the new node set, otherwise

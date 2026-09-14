@@ -159,6 +159,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     pathfinding: ['Pathfinding izveštaj', 'Pathfinding report'],
     dex_swap: ['DEX Swap izveštaj', 'DEX Swap report'],
     behavioral: ['Bihevioralni izveštaj', 'Behavioral report'],
+    token_approval: ['Token Approval izveštaj', 'Token Approval report'],
   };
 
   constructor(
@@ -412,6 +413,10 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         const address = String(details['address'] ?? '') || this.t('sve adrese', 'all addresses');
         const scope = String(details['evidence_scope'] ?? 'combined');
         const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        if (details['status'] === 'FAILED') {
+          const error = String(details['error'] ?? this.t('nepoznata greška', 'unknown error'));
+          return `${this.t('NEUSPEŠNO', 'FAILED')} · ${address} · ${scopeText} · ${error}`;
+        }
         let summary = `${address} · ${scopeText} · ${Number(details['correlation_count'] ?? 0)} ${this.t('odobrenja', 'grants')}`;
         if (details['custody_recorded']) {
           const txRows = Number(details['custody_transaction_rows'] ?? 0);
@@ -443,6 +448,8 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
           extra = ` · ${this.t(`${Number(details['hops'] ?? 0)} skokova`, `${Number(details['hops'] ?? 0)} hops`)}`;
         } else if (reportType === 'dex_swap') {
           extra = ` · ${Number(details['total_events'] ?? 0)} ${this.t('događaja', 'events')}`;
+        } else if (reportType === 'token_approval') {
+          extra = ` · ${Number(details['total_approvals'] ?? 0)} ${this.t('odobrenja', 'approvals')}, ${Number(details['potentially_risky_approvals'] ?? 0)} ${this.t('rizičnih', 'risky')}`;
         }
         return `${typeLabel} · ${code}${extra}`;
       }

@@ -38,6 +38,12 @@ zahtevu, ništa se ne izmišlja.
 | [16. Implementacija — Frontend stranica `/token-approval`](#16-implementacija--frontend-stranica-token-approval) | **✅ urađeno** — Address+ANALYZE, sažetak, tabela, detalji, Show on Graph, Add Investigator Note |
 | [17. Implementacija — Integracija sa Graph Analysis](#17-implementacija--integracija-sa-graph-analysis) | **✅ urađeno** — isprekidana OWNER ┄┄> SPENDER APPROVAL veza, klik-detalji, stvarni transfer nedirnut |
 | [18. Implementacija — Integracija sa Chain of Evidence](#18-implementacija--integracija-sa-chain-of-evidence) | **✅ urađeno** — Token Approval postaje ravnopravna analiza u POSTOJEĆEM lancu dokaza |
+| [19. Implementacija — Forenzički izveštaj (PDF)](#19-implementacija--forenzički-izveštaj-pdf) | **✅ urađeno** — potpisan PDF kroz POSTOJEĆI `/reports` mehanizam |
+| [20. Dopuna — SUCCESS/FAILED status u Log stranici](#20-dopuna--successfailed-status-u-log-stranici) | **✅ urađeno** — pun skup brojeva + status svakog pokretanja |
+| [21. Implementacija — Povezivanje sa ostalim analizama](#21-implementacija--povezivanje-sa-ostalim-analizama) | **✅ urađeno** — Graph/Taint/DEX Swap/Pathfinding/Case Management, samo kad podaci to potvrđuju |
+| [22. Završno testiranje i regresija](#22-završno-testiranje-i-regresija) | **✅ urađeno** — 372 backend testa, čist frontend build, end-to-end provera celog toka |
+| [23. Final review](#23-final-review) | nalazi pregleda celog sistema |
+| [24. Kompletna mapa implementacije](#24-kompletna-mapa-implementacije) | **centralni indeks** — sve što postoji, gde se nalazi, šta nedostaje |
 
 ---
 
@@ -1922,3 +1928,503 @@ oba prisutna, strict template type-checking prošao čist.
   (§18.3) znače da se algoritam efektivno pokreće dvaput za taj jedan zahtev — prihvatljivo
   za veličinu evidencije koju ova aplikacija cilja (pojedinačan slučaj, ne masovna
   obrada), ali vredno pomena ako se ikad poveća obim podataka.
+
+---
+
+## 19. Implementacija — Forenzički izveštaj (PDF)
+
+**Zahtev:** Token Approval Analysis mora biti potpuno integrisana u postojeći sistem za
+generisanje izveštaja — isti mehanizam/stil/način kao Taint/Pathfinding/DEX Swap, NE nov
+sistem.
+
+**Rešenje:** frontend-only PDF (jsPDF + jspdf-autotable), izgrađen po **identičnom
+obrascu** kao `dex-swap-analysis.component.ts`-ov izveštaj — `POST /api/v1/reports/register`
+(kontrolni broj + SHA-256 otisak sadržaja registruju se PRE generisanja dokumenta) →
+`<app-signature-pad>` potpis → PDF sastavljen na klijentu → `GET /api/v1/reports/verify` za
+kasniju proveru. **Nula novih backend ruta** — `reports.py`/`report_registry.py` nisu
+dirani ni jednim karakterom, samo je dodata nova vrednost `report_type: 'token_approval'`
+(već postojeće, slobodno polje — vidi §4).
+
+### 19.1 Novi/izmenjeni fajlovi
+
+| Fajl | Šta je dodato |
+|---|---|
+| `frontend/.../features/token-approval/token-approval.component.ts` (izmenjen) | Ceo PDF-generišući blok (uvoz `jsPDF`/`autoTable`/`SignaturePadComponent`/`AuthService`/`AppLang`, `buildTokenApprovalPdf()`, `reportContentPayload()`, `confirmSignatureAndExport()`, `historyGroups()` za §19.1.4) — isti stil/pomoćne funkcije (`asciiSafe`, `lx`, `loadPdfImage`) kopirane iz `dex-swap-analysis.component.ts`, ista konvencija dupliranja malih po-komponentnih helpera. |
+| `frontend/.../features/token-approval/token-approval.component.html` (izmenjen) | Dugme "Izvezi PDF izveštaj" + dijalog za potpis (identična struktura kao DEX Swap-ov). |
+| `frontend/.../features/token-approval/token-approval.component.scss` (izmenjen) | `.signature-overlay`/`.signature-dialog`/... — doslovna kopija DEX Swap-ovih pravila (ista konvencija kao svaki drugi dupliran "shell" blok u ovoj app). |
+| `backend/app/exports/activity_report.py` (izmenjen) | `'token_approval'` dodat u `_REPORT_TYPE_LABELS` i u `_report_signed_summary()`-ovu granu za dodatni sažetak (`N odobrenja, M rizičnih`) — isti obrazac kao `taint`/`pathfinding`/`dex_swap` grane. |
+| `frontend/.../features/activity-log/activity-log.component.ts` (izmenjen) | Ista dopuna na frontend kopiji (`REPORT_TYPE_LABELS`, `summarize_details`-ova grana) — treći put ponovljen isti "dodaj tip izveštaja na oba mesta" obrazac koji je DEX Swap prvi uspostavio (DEX-SWAP-ANALIZA.md §12.5). |
+
+### 19.2 Struktura izveštaja — tačno traženih sedam sekcija
+
+| Sekcija (iz zahteva) | Šta prikazuje | Izvor podataka |
+|---|---|---|
+| Zaglavlje | Case ID, **analizirana adresa**, ko je izvezao, evidencija, vreme, disclaimer kutija | isto kao ostali izveštaji |
+| **SUMMARY** | 7 brojeva: Total/Unlimited/Active/Revoked/Used/**Unused**/Potentially risky | `result.correlations` (isto računanje kao ekranski sažetak, §16.5 — dodato je i sedmo, "Unused", polje koje dosadašnji ekranski prikaz nije imao, vidi §19.5) |
+| **APPROVAL FINDINGS** | Dve tabele: (1) Owner/Spender/Token/Allowance/Status/Risk/Datum/Tx hash — jedan red po odobrenju; (2) Prva upotreba/Vreme do prve upotrebe/# transferFrom/Ukupno povučeno/Odredište(a)/Opoziv — SAMO za odobrenja sa aktivnošću (razdvojeno u dve tabele da prva ne postane necitljiva — §19.1) | `correlate_approval_usage()`, isti podaci kao detalj-modal na ekranu (§16.6) |
+| **APPROVAL HISTORY** | Za svaku (owner, spender, token) vezu: `APPROVE iznos @ datum → [PROMENA iznos @ datum] → [TRANSFERFROM xN] → [REVOKED @ datum]`, hronološki | `historyGroups()` — grupisanje `correlations[]` po istom ključu koji §12/§14 već koriste (§19.4) |
+| **RISK ASSESSMENT** | Tabela rizičnih nalaza (Spender/Risk/Indikatori) + pun tekst `reasons[]` po indikatoru, sa eksplicitnim uvodnim pasusom da ovo NIJE dokaz | `riskLevelFor()`/`riskIndicatorsFor()` (§15), ista logika kao ekranski prikaz |
+| **RELATED ACTIVITY** | (1) Koliko odobrenja ima povezan transferFrom; (2) DEX Swap unakrsna provera — SAMO kad `dexSwapAddresses` stvarno sadrži adresu (§19.3); (3) informativna napomena da se Taint proverava na Graf stranici, Pathfinding preko dugmeta na nalazu — **nikad izmišljena veza** | §19.3 |
+| **CHAIN OF EVIDENCE** | Kratak pasus — evidencija je upisana u lanac dokaza (custody), pun hronološki prikaz je na stranici "Lanac dokaza" | tačno (svaki rezultat na ovoj stranici sad DOLAZI iz custody-gated poziva, §18.8, pa je tvrdnja uvek istinita) |
+| Metodologija/ograničenja + Potpis/overa/kontrolni broj | Identičan obrazac kao DEX Swap §11 | — |
+
+### 19.3 RELATED ACTIVITY — samo potvrđene veze, nikad izmišljene
+
+Per izričit zahtev ("Nemoj izmišljati veze koje podaci ne potvrđuju"), izveštaj:
+
+- **DEX Swap**: `loadDexSwapCrossReference()` povlači `GET /dex-swap-analysis` (isti,
+  nepromenjen, već postojeći endpoint — nula novih backend poziva) BEZ adrese, gradi skup
+  `user_address`-a iz detektovanih swap-ova, i `hasDexSwapCrossReference(entry)` proverava
+  da li se spender ILI neko odredište poklapa. Prikazuje se **isključivo** kad je skup
+  stvarno neprazan I stvarno sadrži tu adresu — inače se red jednostavno ne pojavljuje.
+  Tvrdi SAMO da se ISTA adresa pojavljuje na oba mesta — **nikad** da su ISTA sredstva
+  prešla iz jedne aktivnosti u drugu (§19's metodologija odeljak to eksplicitno kaže).
+- **Taint**: Token Approval stranica **nema** učitan graf/taint kontekst (odvojena
+  stranica od Grafa — §16), pa izveštaj **ne tvrdi ništa** o taint statusu odredišta —
+  samo upućuje na Graf stranicu gde ta provera STVARNO postoji (§21.2). Poštenije nego
+  fingirati proveru koju ova stranica ne može pouzdano izvesti.
+- **Pathfinding**: izveštaj samo pominje da dugme postoji na svakom nalazu — ne tvrdi da
+  je put ka bilo kojoj adresi pronađen (to zahteva zaseban, namerni klik na Pathfinding
+  stranici).
+
+### 19.4 APPROVAL HISTORY — ponovna upotreba §14 grupisanja, ne novi model
+
+`historyGroups()` grupiše `result.correlations` po `(owner, spender, token)` — **istom
+ključu** koji `groupByKey`/`riskLevelFor` već koriste (§16.7) — i sortira hronološki.
+Svaki korak u lancu je već poznat podatak sa POSTOJEĆEG nalaza (nijedan novi backend
+poziv, nijedno novo polje): prvi unos u grupi je `APPROVE`, svaki sledeći `PROMENA`
+("change" — nova `approve()`/`permit()` vrednost za isti par), a `TRANSFERFROM`/`REVOKED`
+oznake se dodaju kad taj KONKRETAN unos ima `transfer_from_count > 0` odn. `revoked`.
+Ovo je čisto **prezentaciono** premotavanje već izračunatih podataka — ista disciplina kao
+"ne praviti nov model" iz §18.9.
+
+### 19.5 "Unused approvals" — novo polje, dodato i na ekran (ne samo u PDF)
+
+Zahtevani SUMMARY spisak (§19 primer) prvi put eksplicitno traži **"Unused approvals"**
+kao SEDMU, odvojenu stavku (dosadašnji §16.5 ekranski sažetak je imao samo šest — bez
+"Unused"). Dodato je:
+- `unusedApprovalsCount` getter (`used === false`, STROGO — ne "total minus used", jer je
+  `used` tri-stanje: `null` = "ne može se isključiti", nikad se ne broji ni kao
+  korišćeno ni kao nekorišćeno, §13.3/§14.3),
+- **i na ekranu** (7. kartica u sažetku, §16.5) i u PDF-u — da izveštaj nikad ne pokazuje
+  broj koji analitičar ne bi mogao proveriti direktno na ekranu.
+
+### 19.6 Testirano
+
+End-to-end kroz pravu rutu (`TestClient`, §22): `POST /reports/register` sa
+`report_type: 'token_approval'` → kontrolni broj → `GET /reports/verify` → `matches:
+true`. Log aktivnosti pokazuje `report_signed` red (provereno stvarnim pozivom, §22).
+Samo generisanje PDF bajtova (jsPDF, klijentska strana) nije testirano headless-om — isto
+ograničenje kao ostale četiri analize u ovom projektu (nijedna od njih nema automatizovan
+test PDF sadržaja, samo ručnu/Playwright proveru pri prvobitnoj izradi — vidi §23.4).
+
+```bash
+npx ng build --configuration development   # 0 grešaka, 0 upozorenja
+```
+
+---
+
+## 20. Dopuna — SUCCESS/FAILED status u Log stranici
+
+**Zahtev:** pri pokretanju analize zabeležiti najmanje: tip (TOKEN_APPROVAL), analiziranu
+adresu, vreme, status izvršenja, i brojeve (total/unlimited/active/revoked/used/
+potencijalno rizičnih); na neuspehu — `status: FAILED` + informacija o grešci; na uspehu —
+`status: SUCCESS`.
+
+§18 je već registrovao `token_approval_analysis_run` akciju (ikonica, boja, osnovni
+sažetak — `address · evidence_scope · N odobrenja`), ali BEZ eksplicitnog `status` polja i
+BEZ potpunog skupa brojeva, i BEZ ikakvog upisa na neuspeh (greška je samo vraćala `404`,
+ništa se nije logovalo). Ovaj deo to dovršava — **isti `write_audit_log()` mehanizam**, bez
+izmene njegovog potpisa ili ijedne druge akcije.
+
+### 20.1 Šta je izmenjeno
+
+| Fajl | Šta je dodato |
+|---|---|
+| `backend/app/api/routes/cases.py` (izmenjen) | Nova funkcija `_token_approval_summary_counts(result)` — vraća sedam brojeva iz VEĆ izračunatog `correlate_approval_usage()` rezultata (isti izvor koji frontend koristi za sažetak, §16.5/§19.5 — log i ekran nikad ne mogu da se ne slože). `run_case_token_approval_analysis` sada: (a) na `ValueError` (adresa nije nađena) piše `write_audit_log(..., details={'status': 'FAILED', 'address', 'evidence_scope', 'error'})` PRE nego što baci `404`; (b) na uspeh piše `'status': 'SUCCESS'` plus `**_token_approval_summary_counts(result)` u `details`. |
+| `backend/app/exports/activity_report.py` (izmenjen) | `summarize_details()`'s `token_approval_analysis_run` grana sad grana na `details['status'] == 'FAILED'` → `"NEUSPEŠNO · <adresa> · <opseg> · <greška>"`, inače nastavlja kao pre. |
+| `frontend/.../features/activity-log/activity-log.component.ts` (izmenjen) | Identična grana na frontend kopiji. |
+| `backend/tests/test_token_approval_run_route.py` (nov) | 4 nova testa — ukupno **372** u projektu. |
+
+### 20.2 Tačan sadržaj `details` posle ove dopune
+
+**SUCCESS:**
+```json
+{
+  "status": "SUCCESS",
+  "address": "0xOwner",
+  "evidence_scope": "combined",
+  "correlation_count": 2,
+  "total_approvals": 2, "unlimited_approvals": 1, "active_approvals": 1,
+  "revoked_approvals": 1, "used_approvals": 1, "unused_approvals": 1,
+  "potentially_risky_approvals": 1,
+  "custody_recorded": true, "custody_transaction_rows": 3, "custody_evidence_files": 1,
+  "token_approval_findings_recorded": 2
+}
+```
+
+**FAILED:**
+```json
+{ "status": "FAILED", "address": "0xNoSuchAddress", "evidence_scope": "combined",
+  "error": "Adresa nije pronađena u evidenciji: 0xNoSuchAddress" }
+```
+
+Na `FAILED` se **ništa ne upisuje u lanac dokaza** (ni transakcijski ni fajl nivo) — provereno
+testom (`test_failed_run_does_not_write_to_chain_of_evidence`) — grešна analiza nije
+"deliberatan pristup dokazu koji je uspeo", pa nema šta da se zabeleži kao pristupljeno.
+
+### 20.3 Testirano
+
+```bash
+python -m pytest backend/tests/test_token_approval_run_route.py -v   # 4 passed
+python -m pytest backend/ -q                                          # 372 passed, 0 failed
+```
+
+Sva četiri testa idu kroz **pravu HTTP rutu** (`TestClient`, ne direktan poziv interne
+funkcije) — potvrđuje da FastAPI request/response ciklus, ne samo Python funkcija,
+stvarno upisuje očekivano.
+
+---
+
+## 21. Implementacija — Povezivanje sa ostalim analizama
+
+**Koncept iz zahteva:** `TOKEN APPROVAL → TRANSFERFROM → GRAPH → TAINT → DEX SWAP →
+PATHFINDING`, **samo kada za to postoje stvarni podaci** — nikad izmišljena veza.
+
+### 21.1 TOKEN APPROVAL → GRAPH (već urađeno u §17, ovde samo rezime)
+
+Već potpuno implementirano — isprekidana OWNER→SPENDER APPROVAL veza (magenta, `[8,5]`
+razmak), vizuelno RAZLIČITA od TRANSFER veze (puna, plava). Klik prikazuje sva tražena
+polja. Vidi §17 za pun opis, nije ponovo dirano u ovoj fazi.
+
+### 21.2 TOKEN APPROVAL → TAINT — novo u ovoj fazi
+
+**Ključna arhitektonska činjenica** (razlikuje se od DEX Swap-a): transferFrom red **već
+jeste** obična, prava grana u deljenom grafu (§8.1/§17.5 — piše u iste `sender_address`/
+`recipient_address` bazne kolone). To znači da **nepromenjen** `taint_analysis.py` VEĆ
+tačno računa `taint_percentage` odredišne adrese, čim se pokrene "Analiziraj graf" — nema
+"mešanja jedinica" problema koji je DEX Swap imao (§10 u DEX-SWAP-ANALIZA.md), jer se
+ovde ništa ne konvertuje iz jedne valute u drugu.
+
+`graph-visualization.component.ts`'s nova `approvalDestinationTaint(entry)` metoda zato
+**samo ČITA** već izračunat `taint_percentage` sa odgovarajućeg grafovog čvora (`graph
+.nodes`) za svaku `receiving_destinations` adresu — **nula mosne logike**, za razliku od
+DEX Swap-ovog `swapCarriedTaint()` (koji MORA da prenosi broj preko granice koju
+algoritam sam ne prelazi). Prikazano u APPROVAL panelu (§17.4), SAMO kad je `hasAnalytics`
+tačno (taint analiza stvarno pokrenuta) — pre toga, panel jasno kaže "Taint analiza nije
+pokrenuta", nikad nula ili prazno.
+
+**`taint_analysis.py` algoritam/matematika nisu dirani — potvrđeno**: fajl nije ni otvoren
+u ovoj fazi implementacije (grep kroz git-nepostojeću istoriju izmena ovog razgovora
+potvrđuje da je jedini dodirnut fajl za Taint-vezanu funkcionalnost
+`graph-visualization.component.ts`, čisto čitanje već postojećeg polja).
+
+### 21.3 TOKEN APPROVAL → DEX SWAP — novo u ovoj fazi
+
+Implementirano na DVA mesta, namerno:
+1. **Token Approval stranica** (§19.3) — `loadDexSwapCrossReference()` +
+   `hasDexSwapCrossReference()`, prikazano u detalj-modalu i PDF izveštaju.
+2. **Graf stranica** — `approvalHasDexSwapCrossReference()`, ista logika, čita VEĆ
+   učitan `dexSwapEvents` (isti niz koji SWAP overlay već koristi, §DEX-SWAP-ANALIZA.md §9
+   — nema drugog fetch-a), prikazano u APPROVAL panelu.
+
+Oba mesta tvrde **isto i samo ono što podaci pokazuju**: da se ista adresa pojavljuje u
+oba nalaza — nikad da su ista sredstva prešla iz jedne aktivnosti u drugu (§19.3).
+`dex_swap_analysis.py` **nije dirano** — čita se samo njegov već postojeći, nepromenjen
+API odgovor.
+
+### 21.4 TOKEN APPROVAL → PATHFINDING — novo u ovoj fazi
+
+Novi, mali, additivan mehanizam u `AnalysisStateService`:
+```ts
+setPendingPathfindingSeed(seed: { from: string; to?: string }): void
+consumePendingPathfindingSeed(): { from: string; to?: string } | null   // one-shot
+```
+Isti obrazac kao već postojeći `setSelectedNode`/`selectedNode$` (koji Graf stranica
+koristi), samo "konzumiran" jednom (ne observable) pošto Pathfinding treba samo da ga
+pokupi pri učitavanju, ne da reaguje na njega uživo. Token Approval stranicin
+`openInPathfinding(entry)` postavlja `{from: entry.owner, to: entry.spender}` pa navigira
+na `/pathfinding`; `pathfinding.component.ts`'s `ngOnInit` ga pokupi i popuni `fromAddress`/
+`toAddress` — **ne pokreće pretragu sam** (analitičar i dalje mora kliknuti "PRONAĐI PUT").
+`path_finding.py` algoritam **nije dirano** — čisto UI popunjavanje polja koja bi
+analitičar i inače ručno otkucao.
+
+### 21.5 TOKEN APPROVAL → CASE MANAGEMENT / Investigator Notes
+
+Već ožičeno u §16.9 ("Add Investigator Note", uvek na SPENDER adresi) — u ovoj fazi
+potvrđeno da razdvajanje "blockchain činjenica ↔ istražiteljski zaključak" već postoji
+**strukturno**, ne samo terminološki:
+
+| | Gde živi | Ko piše | Primer |
+|---|---|---|---|
+| **BLOCKCHAIN FACT** | `token_approval_evidence.blockchain_facts` (§18.4), `correlations[]` odgovor API-ja | Algoritam, iz same evidencije | `"Address 0xAAA approved spender 0xBAD to spend unlimited USDT"` (= `owner`, `spender`, `token_contract`, `allowance_label: UNLIMITED`) |
+| **INVESTIGATOR NOTE** | `InvestigatorNote` (poseban model, `investigations/notes_*.py`, NEPROMENJEN u ovoj implementaciji) | Analitičar, ručno, kroz `InvestigatorNodeDialogComponent` | `"Spender B appears suspicious based on off-chain evidence"` |
+
+Ova dva NIKAD ne dele isti JSON objekat niti isto polje — `InvestigatorNote` je
+potpuno odvojen model (sopstveni `id`/`author`/`created_at`/`text`), vezan za adresu
+preko `address` polja, ne ugnežden unutar `token_approval_evidence`. Primer iz zahteva
+("Sumnjiv spender je dobio unlimited USDT approval, a 37 dana kasnije izvršio
+transferFrom.") bi se u ovoj implementaciji prirodno sastojao iz DVA odvojena, jasno
+označena dela: `blockchain_facts`/`computed_indicators` bi POKAZALI allowance/tip i
+`seconds_to_revocation`-sličan interval (§13/§14 već računaju "vreme do prvog
+korišćenja" — §14.5 primer), dok BI "sumnjiv" ocena analitičara išla u
+`InvestigatorNote.text` — ne u `risk_level` (koji je algoritamski izveden, §15) niti u
+`blockchain_facts` (koji je sirova činjenica).
+
+### 21.6 Šta NIJE povezano, i zašto (namerno, ne previd)
+
+- **Behavioral Analysis** — nema stvarnog preseka podataka (Behavioral gleda
+  raspodelu po satu/danu, Token Approval gleda dozvole) — nijedna smislena veza nije
+  pronađena, pa nijedna nije ni izmišljena.
+- **Peel chain / chain hopping / anomaly detection plugin-ovi** (`app/analytics/plugins/`)
+  — nisu dirani niti čitani iz Token Approval koda; ostaju potpuno nezavisni.
+- **Taint kroz samu APPROVAL granu** (za razliku kroz destinaciju, §21.2) — namerno
+  izostavljeno, isto obrazloženje kao DEX Swap-ova sopstvena APPROVAL-analogija (§17.3
+  tabela) — approve/permit ne pomera sredstva, "taint kroz approval" nema forenzički
+  smisao kao broj.
+
+---
+
+## 22. Završno testiranje i regresija
+
+### 22.1 Backend — puna test svita
+
+```bash
+python -m pytest backend/ -q
+# 372 passed, 0 failed
+```
+
+Raspodela po test fajlu (Token Approval specifično): `test_token_approval_analysis.py`
+(57 — ekstrakcija/istorija/korelacija/risk indikatori, §12–§15), `test_token_approval_custody.py`
+(9 — §18 custody enrichment), `test_token_approval_run_route.py` (4 — §20 SUCCESS/FAILED
+log) = **70 testova posvećenih isključivo Token Approval-u**, plus 302 ranija (Graph/Taint/
+Pathfinding/Behavioral/DEX Swap/Case Management/lanac dokaza/izveštaji/...).
+
+### 22.2 Frontend — build
+
+```bash
+npx ng build --configuration development
+# Application bundle generation complete, 0 errors, 0 warnings.
+```
+
+Strict mode (`tsconfig.json`'s `"strict": true`) uključujući template type-checking —
+svaki novi `*ngIf`/metod-poziv u `token-approval.component.html` i
+`graph-visualization.component.html` je tipski proveren.
+
+### 22.3 Pokrivenost po tačkama iz zahteva (A–J)
+
+| Kategorija | Pokriveno | Gde |
+|---|---|---|
+| A) APPROVAL (nema/jedan/više/više tokena/više spendera/normal/unlimited) | ✅ | `test_token_approval_analysis.py::TestOwnerSpenderExtraction/TestUnlimitedDetection`, `TestRequiredColumns::test_missing_event_type_column_returns_empty_result_not_error` (nema approval-a) |
+| B) REVOCATION (approve(0)/revoked/active/nikad revoked) | ✅ | `TestApprovalStatusSequence`, `TestPerApprovalHistoryStatus` |
+| C) USAGE (nikad korišćen/korišćen/1 transferFrom/više/ukupan iznos/time-to-first-use) | ✅ | `TestTransferFromLinking`, `TestApprovalUsageCorrelation` |
+| D) RISK (normal/unlimited/rizično/approval+transferFrom, heurističnost) | ✅ | `test_token_approval_analysis.py` risk-indicator testovi (§15's dodati testovi), `test_token_approval_run_route.py`'s brojevi |
+| E) GRAPH (approval edge, razlika od transfer edge, detalji, veza sa transferFrom) | ⚠️ delimično | Vizuelno/tipski proveren kroz `ng build` (strict template check) — **nema headless browser testa** klika na cytoscape granu (isto ograničenje kao DEX Swap overlay, koji je originalno proveren Playwright-om van ovog razgovora — vidi §23.4) |
+| F) CHAIN OF EVIDENCE | ✅ | `test_token_approval_custody.py` (9), plus end-to-end HTTP provera u prethodnoj fazi |
+| G) REPORT | ⚠️ delimično | `/reports/register`+`/verify` ciklus proveren end-to-end (§19.6); PDF bajt-sadržaj nije automatski testiran (isto ograničenje kao ostale 4 analize u projektu) |
+| H) LOG (SUCCESS/FAILED) | ✅ | `test_token_approval_run_route.py` (4) |
+| I) CASE MANAGEMENT (note na approval/spender, veza sa case-om) | ✅ | Ponovna upotreba POSTOJEĆIH, već testiranih `InvestigatorNodeDialogComponent`/`notes_*.py` (§21.5) — nema NOVOG Case Management koda da bi trebalo novi test |
+| J) REGRESSION (Graph/Taint/Pathfinding/Behavioral/DEX/Custody/Reports/Log/Case Mgmt) | ✅ | Puna svita (372 testa) uključuje SVE postojeće test fajlove za te module, nijedan nije menjan niti obrisan |
+
+### 22.4 End-to-end provera celog toka (ručno pokrenuta kroz `TestClient`, ovaj razgovor)
+
+```
+upload CSV (approve + transferFrom + revoke)
+  → POST .../token-approval-analysis/run (custody)  →  200, "APPROVED + USED + REVOKED"
+  → GET .../custody/transactions                     →  1 od 3 reda označen
+  → POST /reports/register (report_type=token_approval) → kontrolni broj
+  → GET /reports/verify                               →  matches: true
+  → GET /activity-log                                  →  i token_approval_analysis_run i report_signed prisutni
+  → GET .../dex-swap-analysis (regresija)               →  200 (nedirano)
+```
+Svaki korak je stvarno izvršen kroz pravu FastAPI rutu u ovom razgovoru — brojevi u ovom
+dokumentu nisu pretpostavljeni.
+
+---
+
+## 23. Final review
+
+### 23.1 Dupliran kod
+
+Namerno dupliran (isti obrazac kao SVAKI drugi par stranica u ovoj app — projekat
+eksplicitno ne deli male po-komponentne helpere, vidi napomene kroz ceo fajl): PDF-pomoćne
+funkcije (`asciiSafe`/`lx`/`loadPdfImage`) između `token-approval.component.ts` i
+`dex-swap-analysis.component.ts`; risk-lookup (`groupKey`/`riskLevelFor`) između
+`token-approval.component.ts` i `graph-visualization.component.ts`; DEX Swap
+unakrsna provera između ista dva fajla. **Nije** slučajno dupliran nijedan backend
+algoritam — `token_approval_analysis.py` je jedini izvor istine za ekstrakciju/korelaciju/
+risk, čitan od strane sve tri (GET rute, POST run ruta, custody enrichment).
+
+### 23.2 Nepotrebni API-ji
+
+Nijedan nov backend endpoint u ovoj fazi (§19/§20/§21 su isključivo frontend + jedna
+dopuna postojeće rute iz §18). Ukupno Token Approval ima **4 rute** (§24.3) — nijedna
+suvišna: 3 pasivne (analysis/history/correlation, različiti oblici istih podataka za
+različite potrošače — stranica/graf-overlay/istorija) + 1 deliberatna (run).
+
+### 23.3 Nepotrebni UI elementi
+
+Sedma sažetak kartica (Unused, §19.5) je jedini novi UI element na Token Approval
+stranici u ovoj fazi — direktno zahtevana. Nijedan nov grafikon/kontrola nije dodat "jer
+podaci postoje" (npr. nema pie-chart-a rizika, nema vremenske linije — tabela + detalj
+modal ostaju dovoljni, isto opredeljenje kao §16.4's "nemoj pretrpavati").
+
+### 23.4 Hardkodovani blockchain podaci
+
+Provereno (`grep` za `0x[hex]{6,}` kroz sav produkcioni — ne test — kod dodat u ovoj i
+prethodnim fazama): **nula pogodaka**. Jedini "kurirani" spiskovi (`known_dex_contracts
+.json`, `known_entities.json`) su POSTOJEĆI, nepromenjeni fajlovi iz drugih analiza,
+ponovo iskorišćeni samo za čitanje (§15.4).
+
+### 23.5 Izmišljeni rezultati / tvrdnje o "malicious"
+
+Provereno (`grep -i "malicious\|zloćudan\|zlonameran\|criminal"` kroz sav Token Approval
+kod): svaki pogodak je NEGACIJA ("NIJE dokaz", "ne znači da je zloćudan", "NEVER a claim").
+Formulacije iz zahteva ("Potentially risky approval", "Potential approval abuse",
+"Suspicious approval pattern") — projekat trenutno koristi prvu doslovno
+("Potencijalno rizičnih"/"Potentially risky", §16.5/§19.2) kao naziv kategorije; preostale
+dve service kao STIL SMERNICA za `risk_indicators[].label`/`reasons[]` tekst (već pisan u
+tom duhu od §15 — npr. "Sumnjiv obrazac" nije bukvalno ime nijednog trenutnog indikatora,
+ali svaki naziv već izbegava tvrdnju o identitetu/nameri, npr. "Neograničen allowance
+povučen ubrzo posle odobrenja" umesto "Ovo je prevara").
+
+### 23.6 UI čistoća
+
+Početni ekran ostaje: kontrolna traka + naslov + Address + ANALIZIRAJ (§16.4,
+nepromenjeno). Rezultat: sažetak (sad 7 kartica) → dugme za PDF → tabela → disclaimer.
+Detalji ostaju u modalu, ne inline. Nijedna nova stranica nije dodata u ovoj fazi.
+
+---
+
+## 24. Kompletna mapa implementacije
+
+Ovo je **centralni indeks** cele Token Approval / Ice Phishing Analysis implementacije —
+tačno ono što je traženo da ostane kao referenca. Za OBJAŠNJENJE zašto je nešto tako
+urađeno, prati broj sekcije; ovde je samo "šta i gde".
+
+### 24.1 Backend fajlovi
+
+| Fajl | Uloga |
+|---|---|
+| `backend/app/analytics/token_approval_analysis.py` | Ceo algoritam: ekstrakcija (§8/§12), istorija (§13), korelacija (§14), risk indikatori (§15), `tx_id` za lanac dokaza (§18.2). Javne funkcije: `analyze_token_approvals`, `build_token_approval_history`, `correlate_approval_usage`. |
+| `backend/app/api/routes/cases.py` | 4 rute (§24.3) + `_record_custody_access`'s `extra_transaction_fields` proširenje (§18.5) + `_combine_frames_with_evidence_tag`/`_token_approval_custody_enrichment`/`_token_approval_summary_counts` (§18.2/§18.4/§20.1). |
+| `backend/app/evidence/custody_log.py` | `custody_chain_for_transaction`/`list_case_transactions` dopunjeni sa `token_approval_evidence`/`has_token_approval_evidence` (§18.7). |
+| `backend/app/exports/activity_report.py` | `token_approval_analysis_run` akcija (§18.8/§20), `token_approval` report type (§19.1). |
+| `backend/app/services/address_enrichment.py`, `backend/app/analytics/dex_swap_analysis.py` | Ponovo iskorišćeni (`get_known_entity`, `classify_dex_node`/`_load_known_dex_contracts`) za `spender_known`/risk indikatore (§15.4) — NEPROMENJENI. |
+| `backend/app/evidence/tx_identity.py` | Ponovo iskorišćen (`transaction_id`) za §18.2 — NEPROMENJEN. |
+
+### 24.2 Frontend fajlovi
+
+| Fajl | Uloga |
+|---|---|
+| `frontend/.../features/token-approval/token-approval.component.ts/html/scss` | Cela stranica `/token-approval` — Address+ANALIZIRAJ (§16), custody dijalog (§18.8), tabela/detalji/Show on Graph/Add Note (§16), PDF izveštaj (§19), DEX Swap unakrsna provera + Otvori u Pathfinding (§21.3/§21.4). |
+| `frontend/.../features/graph-visualization/graph-visualization.component.ts/html/scss` | APPROVAL overlay (§17), Taint/DEX Swap mostovi u APPROVAL panelu (§21.2/§21.3) — sve ostalo NEPROMENJENO. |
+| `frontend/.../features/pathfinding/pathfinding.component.ts` | Jedna dopuna u `ngOnInit` — pokupi `consumePendingPathfindingSeed()` (§21.4). |
+| `frontend/.../core/services/analysis-state.service.ts` | `setPendingPathfindingSeed`/`consumePendingPathfindingSeed` (§21.4) — ostatak servisa NEPROMENJEN. |
+| `frontend/.../core/services/api.service.ts` | `getTokenApprovalAnalysis` (nekorišćen u UI, dostupan za budući rad), `getTokenApprovalHistory` (isto), `getTokenApprovalCorrelation`, `runTokenApprovalAnalysis`. |
+| `frontend/.../features/activity-log/activity-log.component.ts` | `token_approval_analysis_run` + `token_approval` report type (§18.8/§19/§20) — frontend kopija backend-ove `activity_report.py` mape. |
+| `frontend/.../models/blockchain-forensics.models.ts` | `TokenApproval*` tipovi (§16.3). |
+| `frontend/.../app.routes.ts`, `app.component.ts` | Ruta `/token-approval` + stavka menija (§16). |
+
+### 24.3 API endpointi
+
+| Ruta | Metod | Custody | Namena |
+|---|---|---|---|
+| `/cases/{id}/token-approval-analysis` | GET | ne | Grupni prikaz (owner/spender/token veze), §12 |
+| `/cases/{id}/token-approval-history` | GET | ne | Istorija po adresi (APPROVE→promena→REVOCATION), §13 |
+| `/cases/{id}/token-approval-correlation` | GET | ne | Korelacija po odobrenju (koristi je i stranica i Graf overlay), §14 |
+| `/cases/{id}/token-approval-analysis/run` | POST | **da** | Deliberatna verzija korelacije — jedina koja piše u audit log i lanac dokaza, §18/§20 |
+
+### 24.4 Modeli / tipovi podataka
+
+Backend: obični `dict`-ovi (bez ORM-a/Pydantic modela u analitičkom sloju, isti stil kao
+ostale analize) — oblik dokumentovan u §12.5/§13.6/§14.5/§18.4. Pydantic modeli SAMO na
+nivou rute (`TokenApprovalAnalysisRunRequest`, §18.6). Frontend: `TokenApproval*` interfejsi
+u `blockchain-forensics.models.ts` (§16.3) — strukturno tipizirani, prate backend oblik
+polje-po-polje.
+
+Persistencija: **nema trajnog čuvanja rezultata analize** (isto kao sve ostale analize u
+ovoj app, §6) — jedino trajno stanje su CSV evidencija, `audit_log.jsonl`,
+`custody_log.jsonl`/`custody_evidence_log.jsonl`, i `report_registry.json`.
+
+### 24.5 Detekcija — šta se pouzdano prepoznaje
+
+| Sposobnost | Kako | Sekcija |
+|---|---|---|
+| ERC-20 `approve` detekcija | `event_type` kolona = `approve`/`erc20_approve` | §8.2/§12.4 |
+| EIP-2612 `permit` detekcija | `event_type` kolona = `permit`/`eip2612_permit`/`eip-2612_permit` | §8.2/§12.4 |
+| Unlimited allowance | `is_unlimited` kolona (`declared`, najjače) ILI heuristika po veličini iznosa (`potential_by_magnitude`, NIKAD potvrđeno) | §7.4/§8.3/§12.4 |
+| Revocation (`approve(0)`) | `amount == 0.0`, egzaktna float provera (bezbedna blizu nule) | §8.3/§12.4 |
+| transferFrom korelacija | Tačno poklapanje `(owner,spender,token)`, ili jedan-nedvosmislen-kandidat fallback, inače neatribuirano (nikad nagađano) | §12.4/§14 |
+| Risk procena | 11 indikatora, težinski skor, LOW/MEDIUM/HIGH prag (§15.3) — UVEK heuristika | §15 |
+
+### 24.6 Integracije — status
+
+| Sa | Status | Sekcija |
+|---|---|---|
+| Graph Analysis | ✅ posebna APPROVAL veza, klik-detalji | §17, §21.1 |
+| Taint Analysis | ✅ čitanje već izračunatog taint-a odredišta (bez mosta, algoritam nedirnut) | §21.2 |
+| DEX Swap Analysis | ✅ unakrsna provera adresa (na dva mesta) | §21.3 |
+| Pathfinding Analysis | ✅ predpopunjavanje From/To preko jednokratnog handoff-a | §21.4 |
+| Case Management / Investigator Notes | ✅ ponovna upotreba postojećeg dijaloga, strogo razdvojeno od blockchain činjenica | §21.5 |
+| Chain of Evidence | ✅ potpuna integracija, strukturiran dokaz po transakciji | §18 |
+| Forenzički izveštaj | ✅ PDF kroz postojeći `/reports` mehanizam | §19 |
+| Log / Audit | ✅ SUCCESS/FAILED + pun skup brojeva | §18.8, §20 |
+| Behavioral Analysis, plugin-ovi (peel chain, chain hopping, anomaly) | — nema smislenog preseka podataka, namerno nepovezano | §21.6 |
+
+### 24.7 Testovi
+
+| Fajl | Broj testova | Pokriva |
+|---|---|---|
+| `test_token_approval_analysis.py` | 57 | Ekstrakcija, istorija, korelacija, risk indikatori |
+| `test_token_approval_custody.py` | 9 | Custody enrichment (§18) |
+| `test_token_approval_run_route.py` | 4 | SUCCESS/FAILED log kroz pravu rutu (§20) |
+| **Ukupno Token Approval** | **70** | — |
+| **Ukupno projekat** | **372** | 0 neuspešnih |
+
+### 24.8 Poznata ograničenja (kumulativno, sve faze)
+
+- **Nema automatskog on-chain izvora.** Projekat ne povlači approve/permit/transferFrom
+  evente sa lanca (nema `tokentx`/`getLogs` poziva, nema keccak256 zavisnosti) — sve što
+  ova analiza vidi mora biti u ručno pripremljenoj/uvezenoj evidenciji sa `event_type`/
+  `token_address`/`spender_address`/`is_unlimited` kolonama. (§7)
+- **`amount` je `float64`** — "unlimited" se NIKAD ne potvrđuje poređenjem sa tačnom
+  uint256 max vrednošću, samo deklarisano ili heuristika po veličini. (§7.4/§8.3)
+  Nema registra decimala po tokenu — ne zna se da li je iznos u raw ili human-readable
+  jedinicama.
+- **Nema registra cene/USD vrednosti** — "veliki iznos" je heuristika po veličini broja,
+  ne po novčanoj vrednosti. (§7.4/§19's metodologija)
+- **transferFrom bez `spender_address` ostaje trajno neatribuiran** — nema fallback
+  nagađanja. (§12.4)
+- **`token`/`token symbol`/`token name`** — projekat ima SAMO adresu kontrakta
+  (`token_address`/`token_contract`), nema registar simbola/imena tokena — "Token name"/
+  "Token symbol" iz zahtevane strukture izveštaja (§19 primer) **nisu pouzdano dostupni**
+  i NISU izmišljeni; izveštaj prikazuje samo adresu kontrakta, jasno obeleženu kao takvu.
+- **`block_number`** — čist passthrough, nikad izveden; projekat danas ne čuva broj bloka
+  ni za jedan on-chain izvor. (§7.4)
+- **DEX Swap/Taint unakrsne provere potvrđuju SAMO da se ista adresa pojavljuje na dva
+  mesta** — nikad da su ista sredstva prešla iz jedne aktivnosti u drugu. (§19.3/§21.3)
+- **Nema PDF prikaza `token_approval_evidence`** na stranici/izveštaju "Lanac dokaza"
+  (custody_report.py) — dostupno preko API-ja/sirovog JSONL loga, ne na tom PDF obrascu.
+  (§18.11)
+- **Graph/PDF UI nije automatski testiran** (headless browser/Playwright) — provereno
+  tipski (strict `ng build`) i end-to-end kroz backend HTTP pozive, ne kroz stvaran klik u
+  browseru. (§22.3, kategorije E i G)
+- **Dva poziva `correlate_approval_usage()`** po `POST .../run` kad je custody prisutan —
+  prihvatljivo za ciljanu veličinu evidencije ovog projekta, ne za masovnu obradu. (§18.11)
+
+### 24.9 Šta se NE MOŽE pouzdano zaključiti iz dostupnih podataka
+
+Eksplicitno, da se nikad slučajno ne pretpostavi suprotno:
+
+1. Da li je spender adresa STVARNO zlonamerna/prevarantska — `risk_level`/indikatori su
+   ISKLJUČIVO heuristika za prioritizaciju pregleda.
+2. Tačna USD/novčana vrednost bilo koje dozvole ili povučenog iznosa.
+3. Da li je allowance BAŠ TAČNO `2^256-1` (ili bilo koji drugi tačan uint256 sentinel) —
+   samo da li je DEKLARISANO neograničeno ili VRLO VELIKO po heuristici.
+4. Ime/simbol tokena (samo adresa kontrakta je poznata).
+5. Broj bloka, kad ga evidencija sama ne navede.
+6. Da li su sredstva povučena preko transferFrom-a STVARNO ista sredstva koja se kasnije
+   pojavljuju u DEX Swap ili Taint nalazu — samo da adresa učestvuje u oba.
+7. Bilo šta o approve/permit aktivnosti koja se dogodila, a nije uneta u evidenciju
+   (zatvoren svet — closed-world pretpostavka, ista kao Taint model).

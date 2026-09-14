@@ -85,6 +85,10 @@
         <span class="summary-value">{{ usedApprovalsCount }}</span>
         <span class="summary-label">{{ t('Korišćenih', 'Used approvals') }}</span>
       </div>
+      <div class="summary-card">
+        <span class="summary-value">{{ unusedApprovalsCount }}</span>
+        <span class="summary-label">{{ t('Nekorišćenih', 'Unused approvals') }}</span>
+      </div>
       <div class="summary-card" [class.summary-card-risk]="riskyApprovalsCount > 0">
         <span class="summary-value">{{ riskyApprovalsCount }}</span>
         <span class="summary-label">{{ t('Potencijalno rizičnih', 'Potentially risky') }}</span>
@@ -94,6 +98,19 @@
     <p class="data-note" *ngIf="result.data_completeness.notes.length > 0">
       <span *ngFor="let note of result.data_completeness.notes">{{ note }}</span>
     </p>
+
+    <div class="ta-toolbar" *ngIf="result.correlations.length > 0">
+      <button
+        type="button"
+        class="ghost-button export-pdf-button"
+        *ngIf="canExportPdf"
+        (click)="openSignatureDialog()"
+        [disabled]="isExportingPdf"
+        [title]="t('Izvezi potpisan PDF forenzički izveštaj sa svim nalazima', 'Export a signed PDF forensic report with all findings')"
+      >
+        {{ isExportingPdf ? t('Generisanje PDF-a...', 'Generating PDF...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+      </button>
+    </div>
 
     <div class="ta-table-wrap" *ngIf="result.correlations.length > 0; else noApprovals">
       <table class="ta-table">
@@ -241,6 +258,10 @@
         <dt>{{ t('Spender odobren od', 'Spender approved by') }}</dt>
         <dd>{{ ownerCount }} {{ t('različitih vlasnika u ovoj evidenciji', 'different owners in this evidence') }}</dd>
       </div>
+      <div *ngIf="hasDexSwapCrossReference(entry)">
+        <dt>{{ t('Povezana aktivnost', 'Related activity') }}</dt>
+        <dd>{{ t('Ova adresa se takođe pojavljuje u detektovanim DEX Swap događajima ovog slučaja (vidi stranicu DEX razmene).', 'This address also appears in this case’s detected DEX Swap events (see the DEX Swaps page).') }}</dd>
+      </div>
     </dl>
 
     <div class="risk-indicators-block" *ngIf="riskIndicatorsFor(entry).length > 0">
@@ -260,6 +281,14 @@
     <div class="ta-modal-actions">
       <button type="button" class="ghost-button" (click)="showOnGraph(entry.spender)">
         {{ t('Prikaži na grafu', 'Show on Graph') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="openInPathfinding(entry)"
+        [title]="t('Otvori Pathfinding sa owner/spender adresama već upisanim', 'Open Pathfinding with the owner/spender addresses already filled in')"
+      >
+        {{ t('Otvori u Pathfinding', 'Open in Pathfinding') }}
       </button>
       <button
         type="button"
@@ -299,3 +328,72 @@
   (confirmed)="confirmCustodyAndAnalyze($event)"
   (cancelled)="closeCustodyDialog()"
 ></app-custody-access-dialog>
+
+<!-- Potpisivanje pre izvoza PDF izveštaja - isti obrazac kao DEX Swap/Taint/Pathfinding
+     (vidi TOKEN-APPROVAL-IMPLEMENTATION.md #19) - odvojen overlay, position: fixed. -->
+<div class="signature-overlay" *ngIf="isSignatureDialogOpen" (click)="closeSignatureDialog()">
+  <div class="signature-dialog" (click)="$event.stopPropagation()">
+    <p class="panel-kicker">{{ t('Overa izveštaja', 'Report certification') }}</p>
+    <h3>{{ t('Potpis analitičara', 'Analyst signature') }}</h3>
+
+    <p class="signature-intro">
+      {{ t('Potpišite se mišem u polju ispod. Uz potpis se generiše', 'Sign with the mouse in the field below. Together with the signature, a') }}
+      <strong>{{ t('pečat aplikacije Lusi', 'Lusi application seal') }}</strong>
+      {{
+        t(
+          'sa kontrolnim brojem i otiskom sadržaja, kojim se kasnije može proveriti da li je izveštaj menjan.',
+          'is generated with a verification code and a content hash, which can later be used to check whether the report was altered.'
+        )
+      }}
+    </p>
+
+    <fieldset class="signature-lang" [disabled]="isExportingPdf">
+      <legend>{{ t('Jezik izveštaja', 'Report language') }}</legend>
+      <label>
+        <input type="radio" name="tokenApprovalPdfLang" value="sr" [(ngModel)]="tokenApprovalPdfLang" />
+        {{ t('Srpski', 'Serbian') }}
+      </label>
+      <label>
+        <input type="radio" name="tokenApprovalPdfLang" value="en" [(ngModel)]="tokenApprovalPdfLang" />
+        {{ t('Engleski', 'English') }}
+      </label>
+      <p class="signature-lang-hint">
+        {{ t('Izveštaj će biti izrađen na:', 'The report will be produced in:') }}
+        <strong>{{ tokenApprovalPdfLang === 'sr' ? t('srpskom', 'Serbian') : t('engleskom', 'English') }}</strong>
+      </p>
+    </fieldset>
+
+    <app-signature-pad></app-signature-pad>
+
+    <label class="signature-declaration">
+      <input type="checkbox" [(ngModel)]="signatureDeclarationAccepted" />
+      <span>
+        {{
+          t(
+            'Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički, gde je naznačeno) nad navedenom evidencijom.',
+            'I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (heuristically, where indicated) over the stated evidence.'
+          )
+        }}
+      </span>
+    </label>
+
+    <p class="signature-limit">
+      {{ t('Napomena: potpis je', 'Note: the signature is a') }} <strong>{{ t('izjava', 'declaration') }}</strong>
+      {{
+        t(
+          ', a ne kriptografski dokaz — on ostaje netaknut i ako neko izmeni dokument. Izmena se otkriva isključivo poređenjem otiska sadržaja uz kontrolni broj.',
+          ', not a cryptographic proof — it stays intact even if someone edits the document. An alteration is detected only by comparing the content hash against the verification code.'
+        )
+      }}
+    </p>
+
+    <p class="error-inline" *ngIf="signatureError">{{ signatureError }}</p>
+
+    <div class="signature-actions">
+      <button type="button" class="ghost-button" (click)="closeSignatureDialog()">{{ t('Odustani', 'Cancel') }}</button>
+      <button type="button" class="primary-button" (click)="confirmSignatureAndExport()" [disabled]="!canSubmitSignature">
+        {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Potpiši i izvezi PDF', 'Sign and export PDF') }}
+      </button>
+    </div>
+  </div>
+</div>

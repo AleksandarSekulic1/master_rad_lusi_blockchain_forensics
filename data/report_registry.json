@@ -663,5 +663,18 @@
       ]
     },
     "registered_at": "2026-09-11T12:15:29.985417+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-Y4G8-SHMK",
+    "content_hash": "8afae215813b7a6fb19c8d57b3629075efa18716e3ac947cf032f72e9797cc16",
+    "case_id": "2180a049aef6",
+    "case_name": "Final Smoke TA",
+    "analyst": "admin",
+    "declaration": "test declaration",
+    "summary": {
+      "total_approvals": 2,
+      "potentially_risky_approvals": 1
+    },
+    "registered_at": "2026-09-14T10:28:32.831850+00:00"
   }
 ]

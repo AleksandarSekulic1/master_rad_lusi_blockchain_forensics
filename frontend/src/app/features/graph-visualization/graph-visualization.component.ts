@@ -438,6 +438,39 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     return this.approvalGroupByKey.get(this.approvalGroupKey(entry.owner, entry.spender, entry.token_address))?.spender_known ?? false;
   }
 
+  /** TOKEN APPROVAL -> TAINT bridge (TOKEN-APPROVAL-IMPLEMENTATION.md #20.2). Unlike DEX
+   * Swap's swapCarriedTaint() (which has to "carry" a value ACROSS an edge the taint
+   * algorithm never itself walks, because a swap is a currency conversion the model can't
+   * represent), a transferFrom destination is an ORDINARY real edge in the same shared
+   * graph - the UNCHANGED taint_analysis.py plugin already computes its taint_percentage
+   * correctly on its own, with zero bridging logic needed here. This only READS that
+   * already-computed number off the matching graph node, once "Analiziraj graf" has
+   * actually been run (hasAnalytics) - never triggers a run, never touches the algorithm.
+   * Returns [] before hasAnalytics or when no destination is even a node in this graph. */
+  protected approvalDestinationTaint(entry: TokenApprovalCorrelationEntry): Array<{ address: string; percentage: number }> {
+    if (!this.hasAnalytics || !this.graph) {
+      return [];
+    }
+    const byId = new Map(this.graph.nodes.map((node) => [String(node.id), node]));
+    return entry.receiving_destinations
+      .map((address) => ({ address, node: byId.get(address) }))
+      .filter((item): item is { address: string; node: GraphNodeData } => item.node?.taint_percentage != null)
+      .map((item) => ({ address: item.address, percentage: item.node.taint_percentage! }));
+  }
+
+  /** TOKEN APPROVAL -> DEX SWAP cross-reference (TOKEN-APPROVAL-IMPLEMENTATION.md #20.3) -
+   * true when the spender or a receiving destination also appears as the wallet side of a
+   * DEX swap detected in this SAME evidence (dexSwapEvents, already loaded by this page's
+   * own overlay above) - reused directly, no second fetch. Only ever states that both
+   * facts are true of the same address, never that the SAME funds moved between them. */
+  protected approvalHasDexSwapCrossReference(entry: TokenApprovalCorrelationEntry): boolean {
+    const swapAddresses = new Set(this.dexSwapEvents.map((event) => event.user_address));
+    if (swapAddresses.has(entry.spender)) {
+      return true;
+    }
+    return entry.receiving_destinations.some((address) => swapAddresses.has(address));
+  }
+
   /** Table cell / edge label: an astronomically large raw number is never useful to read
    * at a glance - an unlimited grant shows as a word instead (same choice as
    * token-approval.component.ts's own allowanceLabel). */

@@ -574,10 +574,18 @@ h3 {
 }
 
 .approval-transfers-block,
-.risk-indicators-block {
+.risk-indicators-block,
+.approval-related-block {
   margin-top: 0.9rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--gv-border);
+}
+
+.ta-cross-ref {
+  margin: 0.3rem 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--gv-text-dim);
 }
 
 .approval-risk-list {
