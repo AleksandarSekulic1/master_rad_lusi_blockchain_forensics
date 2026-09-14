@@ -223,6 +223,7 @@ export class TokenApprovalComponent implements OnInit {
     this.selectedCaseSuggestions = new Set();
     this.taintCheckResult = null;
     this.taintCheckError = null;
+    this.taintCheckTokenApprovalResults = [];
     this.isTaintCustodyDialogOpen = false;
     this.taintCustodyError = null;
   }
@@ -464,7 +465,7 @@ export class TokenApprovalComponent implements OnInit {
   }
 
   protected checkSelectedInTaint(): void {
-    this.openTaintCheckDialog([...this.selectedSuggestions]);
+    this.openTaintCheckDialog([...this.selectedSuggestions], true);
   }
 
   // --- "Predloži adrese" - CASE-WIDE, no address typed in first (see rankRiskySpenders
@@ -543,7 +544,7 @@ export class TokenApprovalComponent implements OnInit {
   }
 
   protected checkSelectedCaseSuggestionsInTaint(): void {
-    this.openTaintCheckDialog([...this.selectedCaseSuggestions]);
+    this.openTaintCheckDialog([...this.selectedCaseSuggestions], true);
   }
 
   /** Fills the Address field with a suggested address so the analyst can run the normal,
@@ -569,15 +570,38 @@ export class TokenApprovalComponent implements OnInit {
   protected isRunningTaintCheck = false;
   protected taintCheckError: string | null = null;
   protected taintCheckResult: TaintAnalysisResult | null = null;
+  /** Token Approval findings for the SAME addresses the taint check just seeded - only
+   * populated when the check started from a suggestion (a spender never analyzed on its
+   * own yet, see checkSelectedInTaint/checkSelectedCaseSuggestionsInTaint): both requests
+   * fire together (one signed access, two facts about the same addresses), so the analyst
+   * sees "what approvals does this contract have" and "where does taint from it lead" at
+   * once, without a second ANALIZIRAJ. Left empty when the check instead started from
+   * checkAnalyzedAddressInTaint (the address already has its own Token Approval section on
+   * screen - re-fetching it would just repeat what's already visible). */
+  protected taintCheckTokenApprovalResults: Array<{ address: string; result: TokenApprovalCorrelationResult | null; error: string | null }> = [];
   private pendingTaintCheckAddresses: string[] = [];
+  private pendingTaintCheckAlsoFetchApprovals = false;
 
-  private openTaintCheckDialog(addresses: string[]): void {
+  private openTaintCheckDialog(addresses: string[], alsoFetchApprovals: boolean): void {
     if (addresses.length === 0 || !this.activeCase) {
       return;
     }
     this.pendingTaintCheckAddresses = addresses;
+    this.pendingTaintCheckAlsoFetchApprovals = alsoFetchApprovals;
     this.taintCustodyError = null;
     this.isTaintCustodyDialogOpen = true;
+  }
+
+  /** "Proveri kroz Taint analizu" on the just-run analysis' OWN address(es) - offered right
+   * next to "Izvezi PDF izveštaj" once a result exists, so checking taint for the address
+   * you just investigated never requires re-typing it into the suggestion flow. Their
+   * Token Approval findings are already on screen (see the sections above), so this only
+   * fetches the taint side. */
+  protected checkAnalyzedAddressInTaint(): void {
+    const addresses = this.multiResults.length > 0
+      ? this.multiResults.filter((entry) => entry.result).map((entry) => entry.address)
+      : (this.result?.address ? [this.result.address] : []);
+    this.openTaintCheckDialog(addresses, false);
   }
 
   protected closeTaintCustodyDialog(): void {
@@ -586,22 +610,61 @@ export class TokenApprovalComponent implements OnInit {
 
   protected confirmTaintCustodyAndCheck(custody: TransactionCustodyEntry): void {
     const caseId = this.activeCase?.id;
-    if (!caseId || this.pendingTaintCheckAddresses.length === 0) {
+    const addresses = this.pendingTaintCheckAddresses;
+    if (!caseId || addresses.length === 0) {
       return;
     }
     this.isRunningTaintCheck = true;
     this.taintCustodyError = null;
 
-    this.api.runCaseAnalytics(caseId, this.selectedEvidence, this.pendingTaintCheckAddresses, custody).subscribe({
-      next: (response) => {
+    const taint$ = this.api.runCaseAnalytics(caseId, this.selectedEvidence, addresses, custody);
+
+    if (!this.pendingTaintCheckAlsoFetchApprovals) {
+      taint$.subscribe({
+        next: (response) => {
+          this.isRunningTaintCheck = false;
+          this.isTaintCustodyDialogOpen = false;
+          this.taintCheckError = null;
+          this.taintCheckResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+          this.taintCheckTokenApprovalResults = [];
+        },
+        error: () => {
+          this.isRunningTaintCheck = false;
+          const message = this.t('Neuspešna taint provera.', 'The taint check failed.');
+          this.taintCustodyError = message;
+          this.taintCheckError = message;
+        },
+      });
+      return;
+    }
+
+    // Run the Token Approval side too, in parallel - one signed access reason covers both
+    // (same reasoning as running several addresses under one ANALIZIRAJ, see
+    // confirmCustodyAndAnalyze), so a suggested spender's own approval history and its
+    // downstream taint spread arrive together.
+    const approvals$ = forkJoin(
+      addresses.map((address) =>
+        this.api.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+          map((result) => ({ address, result, error: null as string | null })),
+          catchError((error: HttpErrorResponse) => of({ address, result: null as TokenApprovalCorrelationResult | null, error: this.tokenApprovalErrorMessage(error) })),
+        ),
+      ),
+    );
+
+    forkJoin([taint$, approvals$]).subscribe({
+      next: ([taintResponse, approvalEntries]) => {
         this.isRunningTaintCheck = false;
         this.isTaintCustodyDialogOpen = false;
         this.taintCheckError = null;
-        this.taintCheckResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+        this.taintCheckResult = (taintResponse.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
+        this.taintCheckTokenApprovalResults = approvalEntries;
+        // Folded into the SAME shared groupByKey (§summary counters comment) so a click on
+        // any of these new rows opens the detail modal with correct risk lookups too.
+        this.groupByKey = this.groupsToMap([...this.groupByKey.values(), ...approvalEntries.flatMap((entry) => entry.result?.groups ?? [])]);
       },
       error: () => {
         this.isRunningTaintCheck = false;
-        const message = this.t('Neuspešna taint provera.', 'The taint check failed.');
+        const message = this.t('Neuspešna provera.', 'The check failed.');
         this.taintCustodyError = message;
         this.taintCheckError = message;
       },
@@ -611,6 +674,7 @@ export class TokenApprovalComponent implements OnInit {
   protected dismissTaintCheck(): void {
     this.taintCheckResult = null;
     this.taintCheckError = null;
+    this.taintCheckTokenApprovalResults = [];
   }
 
   /** Every OTHER address the taint model reached from the checked seeds, ranked highest

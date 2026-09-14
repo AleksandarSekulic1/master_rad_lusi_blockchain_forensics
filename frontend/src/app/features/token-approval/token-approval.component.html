@@ -203,6 +203,57 @@
     </p>
   </div>
 
+  <!-- Token Approval nalazi ZA PROVERENE adrese - pokrenuto ZAJEDNO sa taint proverom
+       iznad, kad je provera krenula iz predloga (§checkSelectedInTaint) - vidi
+       taintCheckTokenApprovalResults. Isti obrazac tabele kao sekcije po adresi ispod. -->
+  <ng-container *ngIf="taintCheckTokenApprovalResults.length > 0">
+    <div class="suggestion-panel">
+      <p class="panel-kicker">{{ t('Token Approval nalazi za proverene adrese', 'Token Approval findings for the checked addresses') }}</p>
+      <div class="address-section" *ngFor="let entry of taintCheckTokenApprovalResults">
+        <div class="address-section-head">
+          <h3 class="mono-clip">{{ entry.address }}</h3>
+          <span class="address-section-count" *ngIf="entry.result">
+            {{ entry.result.correlations.length }} {{ t('odobrenja', 'approvals') }}
+          </span>
+        </div>
+        <p class="error-inline" *ngIf="entry.error">{{ entry.error }}</p>
+        <ng-container *ngIf="entry.result as sectionResult">
+          <div class="ta-table-wrap" *ngIf="sectionResult.correlations.length > 0; else noApprovalsForChecked">
+            <table class="ta-table">
+              <thead>
+                <tr>
+                  <th>{{ t('Token', 'Token') }}</th>
+                  <th>{{ t('Spender', 'Spender') }}</th>
+                  <th>{{ t('Allowance', 'Allowance') }}</th>
+                  <th>{{ t('Status', 'Status') }}</th>
+                  <th>{{ t('Rizik', 'Risk') }}</th>
+                  <th>{{ t('Datum', 'Date') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of sectionResult.correlations" (click)="openDetail(row)" tabindex="0" (keydown.enter)="openDetail(row)">
+                  <td class="mono-clip" [title]="row.token_address ?? t('Token nije deklarisan u evidenciji', 'Token not declared in the evidence')">
+                    {{ row.token_address ?? '?' }}
+                  </td>
+                  <td class="mono-clip" [title]="row.spender">{{ row.spender }}</td>
+                  <td [title]="row.unlimited_basis ? formatAmount(row.approval_amount) : null">{{ allowanceLabel(row) }}</td>
+                  <td><span class="status-pill" [ngClass]="statusClass(row.status)">{{ row.status }}</span></td>
+                  <td><span class="risk-pill" [ngClass]="riskClass(riskLevelFor(row))">{{ riskLevelFor(row) }}</span></td>
+                  <td class="ta-date">{{ row.approval_timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noApprovalsForChecked>
+            <p class="empty-hint">
+              {{ t('Nijedno approve/permit odobrenje nije pronađeno za ovu adresu.', 'No approve/permit grant was found for this address.') }}
+            </p>
+          </ng-template>
+        </ng-container>
+      </div>
+    </div>
+  </ng-container>
+
   <ng-container *ngIf="result || multiResults.length > 0">
     <!-- Sažetak - tek POSLE analize, ne na početnom ekranu. Multi-address aware (§addressList
          iznad): brojevi su ZBIR preko svih analiziranih adresa kad ih ima više. -->
@@ -287,6 +338,15 @@
     </div>
 
     <div class="ta-toolbar" *ngIf="activeCorrelations.length > 0">
+      <button
+        type="button"
+        class="ghost-button"
+        (click)="checkAnalyzedAddressInTaint()"
+        [disabled]="isRunningTaintCheck"
+        [title]="t('Proveri taint (kretanje sredstava) za baš ovu analiziranu adresu', 'Check taint (fund movement) for this exact analyzed address')"
+      >
+        {{ t('Proveri kroz Taint analizu', 'Check via Taint Analysis') }}
+      </button>
       <button
         type="button"
         class="ghost-button export-pdf-button"
