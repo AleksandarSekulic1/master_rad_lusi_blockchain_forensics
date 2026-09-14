@@ -1,6 +1,18 @@
 {
   "cases": [
     {
+      "id": "c6f7997aced1",
+      "name": "Smoke Custody TA",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-14T10:01:54.064596+00:00",
+      "updated_at": "2026-09-14T10:01:54.098732+00:00",
+      "evidence_count": 1,
+      "total_size_bytes": 309,
+      "last_imported_at": "2026-09-14T10:01:54.098732+00:00"
+    },
+    {
       "id": "2284c6d9001e",
       "name": "Smoke Risk",
       "description": null,

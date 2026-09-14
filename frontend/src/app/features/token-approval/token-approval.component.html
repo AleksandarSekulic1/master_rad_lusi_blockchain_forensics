@@ -46,7 +46,7 @@
           list="ta-case-addresses"
           [(ngModel)]="address"
           placeholder="0x..."
-          (keydown.enter)="analyze()"
+          (keydown.enter)="openCustodyDialog()"
           [disabled]="!activeCase"
         />
         <datalist id="ta-case-addresses">
@@ -54,7 +54,7 @@
         </datalist>
       </label>
 
-      <button type="button" class="primary-button analyze-button" (click)="analyze()" [disabled]="!canAnalyze">
+      <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
         {{ isAnalyzing ? t('Analiza...', 'Analyzing...') : t('ANALIZIRAJ', 'ANALYZE') }}
       </button>
     </div>
@@ -285,3 +285,17 @@
   mode="notes"
   (closed)="closeNoteDialog()"
 ></app-investigator-node-dialog>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre same Token Approval korelacije (isti
+     deljeni dijalog kao Taint/Pathfinding/Graf/DEX Swaps/Behavioral - vidi LANAC-DOKAZA.md
+     i TOKEN-APPROVAL-IMPLEMENTATION.md #18) -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isAnalyzing"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndAnalyze($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>

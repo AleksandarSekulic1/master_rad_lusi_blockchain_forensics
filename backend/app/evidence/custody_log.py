@@ -92,6 +92,13 @@ def custody_chain_for_transaction(case_id: str, tx_id: str) -> dict[str, Any] | 
     first, last = entries[0], entries[-1]
     numbered = [{**entry, 'redni_broj': index} for index, entry in enumerate(entries, start=1)]
 
+    # A TOKEN_APPROVAL finding (see app.api.routes.cases._token_approval_custody_enrichment)
+    # is the same, deterministic fact every time this transaction is re-analysed - taken
+    # from whichever access actually carried it (usually all of them, if any do), rather
+    # than assumed to be on `last` specifically, since an unrelated access to the SAME
+    # transaction (e.g. from a different analysis) never attaches one at all.
+    token_approval_evidence = next((entry.get('token_approval_evidence') for entry in reversed(entries) if entry.get('token_approval_evidence')), None)
+
     return {
         'case_id': case_id,
         'case_name': last.get('case_name'),
@@ -104,6 +111,7 @@ def custody_chain_for_transaction(case_id: str, tx_id: str) -> dict[str, Any] | 
         'tx_timestamp': first.get('tx_timestamp'),
         'evidence_stored_name': last.get('evidence_stored_name'),
         'evidence_file_name': last.get('evidence_file_name'),
+        'token_approval_evidence': token_approval_evidence,
         # Header fields reflect the MOST RECENT access - an analyst correcting a device
         # detail (e.g. "N/A" -> the real serial number once it is known) should have that
         # correction be what prints on the form, not the very first guess.
@@ -135,8 +143,14 @@ def list_case_transactions(case_id: str) -> list[dict[str, Any]]:
             'evidence_file_name': entry.get('evidence_file_name'),
             'access_count': 0,
             'last_accessed_at': None,
+            # True if ANY access to this transaction identified it as a TOKEN_APPROVAL
+            # finding - a quick "has forensic annotation" flag for the browsing list, the
+            # full structured item is only in custody_chain_for_transaction's detail view.
+            'has_token_approval_evidence': False,
         })
         bucket['access_count'] += 1
+        if entry.get('token_approval_evidence'):
+            bucket['has_token_approval_evidence'] = True
         timestamp = str(entry.get('timestamp') or '')
         if bucket['last_accessed_at'] is None or timestamp > str(bucket['last_accessed_at']):
             bucket['last_accessed_at'] = entry.get('timestamp')

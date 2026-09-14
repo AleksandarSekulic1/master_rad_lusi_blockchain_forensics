@@ -17,7 +17,9 @@ import {
   TokenApprovalCorrelationResult,
   TokenApprovalGroup,
   TokenApprovalRiskLevel,
+  TransactionCustodyEntry,
 } from '../../models/blockchain-forensics.models';
+import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
 
 /** Same localStorage key graph-visualization.component.ts persists the investigator layer's
@@ -46,7 +48,7 @@ const SELECTED_INVESTIGATION_KEY = 'lusi_selected_investigation';
 @Component({
   selector: 'app-token-approval',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, InvestigatorNodeDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, InvestigatorNodeDialogComponent, CustodyAccessDialogComponent],
   templateUrl: './token-approval.component.html',
   styleUrl: './token-approval.component.scss',
 })
@@ -82,6 +84,15 @@ export class TokenApprovalComponent implements OnInit {
   // is the address that was searched) - see TOKEN-APPROVAL-IMPLEMENTATION.md #16.5. ---
   protected isNoteDialogOpen = false;
   protected noteDialogAddress: string | null = null;
+
+  // --- Lanac dokaza (see TOKEN-APPROVAL-IMPLEMENTATION.md #18) - correlating the case's
+  // evidence for approve/permit <-> transferFrom pairs is a deliberate access to it, same
+  // as "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf"/DEX Swaps' ANALYZE, so ANALYZE
+  // here opens the same shared custody-access dialog BEFORE calling the backend - same
+  // pattern as dex-swap-analysis.component.ts's openCustodyDialog/confirmCustodyAndAnalyze,
+  // simplified since this page only ever analyses one address at a time (no queue). ---
+  protected isCustodyDialogOpen = false;
+  protected custodyDialogError: string | null = null;
 
   constructor(
     private readonly state: AnalysisStateService,
@@ -156,13 +167,29 @@ export class TokenApprovalComponent implements OnInit {
     this.groupByKey = new Map();
     this.analysisError = null;
     this.selectedEntry = null;
+    this.isCustodyDialogOpen = false;
+    this.custodyDialogError = null;
   }
 
   protected get canAnalyze(): boolean {
     return !!this.activeCase && this.address.trim().length > 0 && !this.isAnalyzing;
   }
 
-  protected analyze(): void {
+  /** Opens the access-reason dialog before actually running the analysis - see
+   * isCustodyDialogOpen's own comment for why ANALYZE needs this now. */
+  protected openCustodyDialog(): void {
+    if (!this.canAnalyze) {
+      return;
+    }
+    this.custodyDialogError = null;
+    this.isCustodyDialogOpen = true;
+  }
+
+  protected closeCustodyDialog(): void {
+    this.isCustodyDialogOpen = false;
+  }
+
+  protected confirmCustodyAndAnalyze(custody: TransactionCustodyEntry): void {
     if (!this.canAnalyze) {
       return;
     }
@@ -171,29 +198,32 @@ export class TokenApprovalComponent implements OnInit {
 
     this.isAnalyzing = true;
     this.analysisError = null;
+    this.custodyDialogError = null;
     this.selectedEntry = null;
 
-    this.api.getTokenApprovalCorrelation(caseId, address, this.selectedEvidence).subscribe({
+    this.api.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).subscribe({
       next: (result) => {
         this.result = result;
         this.groupByKey = new Map(result.groups.map((group) => [this.groupKey(group.owner, group.spender, group.token_address), group]));
         this.isAnalyzing = false;
+        this.isCustodyDialogOpen = false;
       },
       error: (error: HttpErrorResponse) => {
-        this.result = null;
-        this.groupByKey = new Map();
         this.isAnalyzing = false;
-        this.analysisError =
+        const message =
           error.status === 404
             ? this.t('Adresa nije pronađena u evidenciji ovog slučaja.', 'The address was not found in this case’s evidence.')
             : this.t('Neuspešna Token Approval analiza.', 'The Token Approval analysis failed.');
+        // Failure stays INSIDE the dialog (nothing typed is lost), same pattern as every
+        // other custody-gated analysis page - the dialog is dismissed only on success.
+        this.custodyDialogError = message;
+        this.analysisError = message;
       },
     });
   }
 
-  /** File name of the currently scoped evidence - same pattern as the sibling analysis
-   * pages, kept here only for the "Prikaz transakcija" label, since this page has no
-   * custody dialog to feed it into. */
+  /** File name of the currently scoped evidence - fed into the custody dialog's default
+   * "identifikator dokaznog materijala", same pattern as the sibling analysis pages. */
   protected get selectedEvidenceFileName(): string | null {
     if (!this.selectedEvidence) {
       return null;

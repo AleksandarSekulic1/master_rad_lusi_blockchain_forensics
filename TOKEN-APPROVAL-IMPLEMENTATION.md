@@ -37,6 +37,7 @@ zahtevu, ništa se ne izmišlja.
 | [15. Implementacija — Forenzički risk indikatori](#15-implementacija--forenzički-risk-indikatori) | **✅ urađeno** — LOW/MEDIUM/HIGH + lista razloga, nikad tvrdnja o zloupotrebi |
 | [16. Implementacija — Frontend stranica `/token-approval`](#16-implementacija--frontend-stranica-token-approval) | **✅ urađeno** — Address+ANALYZE, sažetak, tabela, detalji, Show on Graph, Add Investigator Note |
 | [17. Implementacija — Integracija sa Graph Analysis](#17-implementacija--integracija-sa-graph-analysis) | **✅ urađeno** — isprekidana OWNER ┄┄> SPENDER APPROVAL veza, klik-detalji, stvarni transfer nedirnut |
+| [18. Implementacija — Integracija sa Chain of Evidence](#18-implementacija--integracija-sa-chain-of-evidence) | **✅ urađeno** — Token Approval postaje ravnopravna analiza u POSTOJEĆEM lancu dokaza |
 
 ---
 
@@ -1679,3 +1680,245 @@ urađeno u ovom koraku — preporučeno pre puštanja u produkciju, isto upozore
   izmena).
 - Nema custody/PDF/audit log ni za ovaj overlay (nepromenjeno iz §16.12) — čisto vizuelni,
   pasivan prikaz, ista klasa read-only funkcionalnosti kao ostatak Faze 1.
+
+---
+
+## 18. Implementacija — Integracija sa Chain of Evidence
+
+**Zahtev:** Token Approval Analysis mora biti **ravnopravna** forenzička analiza kao
+Graph/Taint/Pathfinding/ostale — njeni rezultati moraju moći da se dodaju u lanac dokaza
+kroz POSTOJEĆI mehanizam (ne paralelan sistem), sa što više pouzdano pronađenih podataka,
+jasno razdvojenih na blockchain činjenice / automatski izračunate indikatore / heurističke
+zaključke.
+
+**Ovo zatvara Fazu 2** najavljivanu kao "van obima" kroz §9.6/§12.6/§13.8/§15.7/§16.12/
+§17.8 — Token Approval Analysis sada ima svoju custody-gated `POST .../run` rutu, tačno
+kao Taint/Graf/Pathfinding/Behavioral/DEX Swap.
+
+### 18.1 Novi/izmenjeni fajlovi
+
+| Fajl | Šta je urađeno |
+|---|---|
+| `backend/app/analytics/token_approval_analysis.py` (izmenjen — dodato) | Nova konstanta `EVIDENCE_STORED_NAME_COLUMN`; svaki `approval_events`/`approval_records` unos i svaki `correlate_approval_usage()`/`build_token_approval_history()` izlazni red sada nosi i `tx_id` (§18.2) — `None` osim kad pozivalac tagira ulazni frame. |
+| `backend/app/api/routes/cases.py` (izmenjen — dodato) | Nova `TokenApprovalAnalysisRunRequest` + ruta `POST /{case_id}/token-approval-analysis/run` (§18.6); `_record_custody_access()` dobija JEDAN nov, opcioni parametar (`extra_transaction_fields`, §18.5) — bez izmene postojećeg ponašanja za Taint/Graf/Pathfinding/Behavioral/DEX Swap; dve nove privatne funkcije, `_combine_frames_with_evidence_tag()` i `_token_approval_custody_enrichment()` (§18.2/§18.4). |
+| `backend/app/evidence/custody_log.py` (izmenjen — dodato) | `custody_chain_for_transaction()` i `list_case_transactions()` sada dodatno vraćaju `token_approval_evidence`/`has_token_approval_evidence` kad postoji — postojeća polja nepromenjena. |
+| `backend/app/exports/activity_report.py` (izmenjen — dodato) | `token_approval_analysis_run` dodat u `ACTION_LABELS`, `ACTION_HUE_ORDER`, i `summarize_details()` — isti obrazac kao DEX Swap/Behavioral (LANAC-DOKAZA.md §12.5's precedent). |
+| `backend/tests/test_token_approval_custody.py` (nov) | 9 novih testova. |
+| `frontend/.../core/services/api.service.ts` (izmenjen — dodato) | Nova `runTokenApprovalAnalysis()` metoda (POST, custody-gated) — `getTokenApprovalCorrelation()` nepromenjen. |
+| `frontend/.../features/token-approval/token-approval.component.{ts,html}` (izmenjen) | ANALIZIRAJ sada otvara `CustodyAccessDialogComponent` (isti deljeni dijalog kao DEX Swap/Behavioral) PRE poziva backend-a, umesto direktnog GET poziva (§18.8). |
+| `frontend/.../features/activity-log/activity-log.component.ts` (izmenjen — dodato) | `token_approval_analysis_run` dodat u `ACTION_PRESENTATION`, `ACTION_HUE_ORDER`, sažetak u proširenom prikazu — isti obrazac kao backend-ova kopija (§12.5's precedent iz DEX Swap-a, sad primenjen treći put). |
+
+### 18.2 Arhitektonski problem: kako povezati JEDAN nalaz sa JEDNOM tačno određenom transakcijom
+
+Lanac dokaza već ima stabilan identitet transakcije (`tx_identity.transaction_id(row,
+evidence_stored_name)`, §3) — ali `analyze_token_approvals`/`correlate_approval_usage`
+rade nad `combined_frame` (spojena evidencija SVIH fajlova, bez traga o tome iz kog je
+fajla svaki red potekao) i same interno **hronološki presortiraju** redove
+(`_prepare_frame`). Trebalo je omogućiti da svaki `correlate_approval_usage()` nalaz zna
+tačan `tx_id` svog approve/permit reda, a da se pritom:
+- **ne menja `combine_frames()`** (deljena funkcija za Graph/Taint/Pathfinding/Behavioral/
+  DEX Swap — njen izlazni oblik mora ostati tačno isti za njih),
+- **ne izmišlja** identitet kad nije poznat.
+
+**Rešenje** — dva mala, aditivna koraka:
+1. `_combine_frames_with_evidence_tag()` (cases.py) — ista `pd.concat` logika kao
+   `combine_frames()`, ali duplirana (ne deljena) i sa JEDNOM dodatnom internom kolonom,
+   `_evidence_stored_name` (`token_approval_analysis.EVIDENCE_STORED_NAME_COLUMN`) —
+   ime počinje donjom crtom, nikad naziv koji bi prava CSV evidencija koristila.
+2. `token_approval_analysis.py`'s `_extract_approval_rows()` čita tu kolonu (kad
+   postoji) i računa `tx_id = transaction_id(row, evidence_stored_name)` **za svaki red
+   pojedinačno, pre bilo kakvog sortiranja** — pandas kolone se uvek kreću ZAJEDNO sa
+   svojim redom kroz `sort_values`, pa `tx_id` ostaje tačno uparen i posle internog
+   hronološkog sortiranja (testirano — `test_tag_survives_chronological_resort`, §18.10).
+
+Kad kolona nije prisutna (svaki POSTOJEĆI `GET` poziv — analiza/istorija/korelacija) —
+`tx_id` je prosto `None` svuda, **nula promene ponašanja** za te rute.
+
+### 18.3 Zašto DVA poziva `correlate_approval_usage()` u `run_case_token_approval_analysis`
+
+Ruta računa `result` (ono što se vraća pozivaocu) **isto kao GET ruta** — filtrirano po
+`request.address` kad je dato. Ali LANAC-DOKAZA.md §2 kaže: opseg upisa u lanac dokaza je
+**cela evidencija u kojoj je algoritam tražio**, ne samo ono što se pojavi u konačnom
+(možda adresno-filtriranom) rezultatu — isti princip kao Pathfinding-ova BFS pretraga ili
+DEX Swap-ovo skeniranje. Zato se, SAMO kad je `custody` prisutan, radi **drugi, neovisan**
+poziv — `correlate_approval_usage(tagged_frame, target_address=None, ...)` — nad
+TAGOVANOM, potpuno NEFILTRIRANOM evidencijom, isključivo da bi se izgradio
+`extra_transaction_fields` za §18.5. Ova druga računica se dešava SAMO kad je custody
+prisutan (dodatni trošak nula za pasivne/no-custody pozive), i nikad ne utiče na ono što
+API vraća pozivaocu (`result` ostaje netaknut).
+
+### 18.4 Struktura `TOKEN_APPROVAL` dokaza — tačno traženo razdvajanje
+
+`_token_approval_custody_enrichment()` pretvara svaki `correlate_approval_usage()` nalaz
+(sa poznatim `tx_id`) u strukturiran dokaz, eksplicitno podeljen na tri grupe — svaka
+JASNO imenovana, da čitalac lanca dokaza nikad ne pomeša jednu vrstu tvrdnje sa drugom:
+
+| Grupa | Šta sadrži | Primer polja | Poreklo |
+|---|---|---|---|
+| `blockchain_facts` | Pročitano DIREKTNO iz evidencije, bez tumačenja | `owner`, `spender`, `token_contract`, `event_type`, `allowance_amount`, `approval_timestamp`, `approval_transaction_hash`, `approval_block_number` | §8 (ekstrakcija) |
+| `computed_indicators` | Determinstički IZRAČUNATO (uparivanje/brojanje/sabiranje) — nije u sirovim podacima, ali NIJE ni nagađano | `status`, `used`, `revoked`, `revocation_timestamp`/`_transaction_hash`, `seconds_to_revocation`, `transfer_from_count`, `total_amount_transferred`, `first_transfer_from`, `last_transfer_from`, `receiving_destinations` | §13/§14 |
+| `heuristic_conclusions` | Procena rizika — najspekulativniji sloj, uvek uz disclaimer | `allowance_label` (UNLIMITED/FINITE), `unlimited_basis`, `risk_level`, `risk_score`, `risk_indicators` (svaki sa `reasons[]`) | §15 |
+
+Plus `type: 'TOKEN_APPROVAL'` (na vrhu, za čitljivost sirovog JSONL reda) i `disclaimer`
+(isti tekst API odgovora — ponovljen ovde jer se ovaj dokaz može čitati NEZAVISNO od
+glavnog API odgovora, direktno iz `custody_log.jsonl` ili preko `GET .../custody/
+transactions/{tx_id}`).
+
+**Mapiranje na "Primer dokaza" iz zahteva** — provereno stvarnim pozivom (§18.10):
+
+| Traženo polje | Gde se nalazi | Stvaran primer iz testa |
+|---|---|---|
+| Type: TOKEN_APPROVAL | `token_approval_evidence.type` | `"TOKEN_APPROVAL"` |
+| Owner | `blockchain_facts.owner` | `"0xOwner"` |
+| Spender | `blockchain_facts.spender` | `"0xSpender"` |
+| Token | `blockchain_facts.token_contract` | `"0xTokenA"` |
+| Allowance: UNLIMITED | `heuristic_conclusions.allowance_label` | `"UNLIMITED"` |
+| Approval timestamp | `blockchain_facts.approval_timestamp` | `"2026-01-01T00:00:00+00:00"` |
+| Transaction hash | `blockchain_facts.approval_transaction_hash` | `"0xapprove1"` |
+| Status: USED | `computed_indicators.status` | `"APPROVED + USED"` (kombinovan status, §14 — precizniji od golog "USED") |
+| First transferFrom | `computed_indicators.first_transfer_from` | `{amount, timestamp, transaction_hash, recipient}` |
+| Total transferred | `computed_indicators.total_amount_transferred` | `5e17` |
+| Risk: HIGH | `heuristic_conclusions.risk_level` | `"HIGH"` |
+| Reasons | `heuristic_conclusions.risk_indicators[].reasons` | lista objašnjenja, po indikatoru |
+
+### 18.5 Kako se dokaz upisuje — `_record_custody_access()` prošireno, ne zamenjeno
+
+Jedan nov, **opcioni** parametar: `extra_transaction_fields: dict[str, dict] | None =
+None`, ključan po `tx_id`. Unutar postojeće petlje (koja već računa `tx_id =
+transaction_id(row, stored_name)` za SVAKI red, za SVAKU analizu), jedina izmena je:
+
+```python
+extra = (extra_transaction_fields or {}).get(tx_id)
+transaction_batch.append({**shared_fields, 'tx_id': tx_id, ..., **(extra or {})})
+```
+
+Kad `extra_transaction_fields` nije prosleđen (Taint/Graf/Pathfinding/Behavioral/DEX
+Swap — **ni jedan od njihovih poziva nije izmenjen**), `extra` je uvek `None`,
+`**(extra or {})` ne dodaje ništa — **identično ponašanje kao pre ove izmene**, provereno
+testom (`test_existing_analyses_are_unaffected_when_extra_fields_omitted`) i punom
+regresijom (368/368 testova, uključujući SVE postojeće custody testove za druge analize).
+
+`custody_evidence_log.jsonl` (nivo dokaznog fajla) **nije dirano uopšte** — obogaćivanje
+je namerno samo na nivou pojedinačne transakcije (isti nivo preciznosti kao "Primer
+dokaza" iz zahteva, koji opisuje JEDNO konkretno odobrenje, ne ceo fajl).
+
+### 18.6 API endpoint
+
+```
+POST /api/v1/cases/{case_id}/token-approval-analysis/run?evidence=<opciono>
+Body: { address?, unlimited_threshold?, rapid_use_seconds?, large_amount_threshold?,
+        multiple_transfer_threshold?, long_active_period_seconds?, custody? }
+```
+
+Isti obrazac kao `POST .../dex-swap-analysis/run` (§12.5's originalni predlog, sad
+realizovan): `custody` opciono na API nivou (svi njeni pod-atributi obavezni zajedno kad
+je prisutan — ista `TransactionCustodyEntry` validacija kao ostale četiri rute), vraća
+IDENTIČAN oblik odgovora kao `GET .../token-approval-correlation` (§14.5) plus upis u
+lanac dokaza i audit log (`token_approval_analysis_run`, sa `token_approval_findings_
+recorded` brojem u `details`) kad je `custody` dat. Read-only `GET` varijante (§12/§13/
+§14) ostaju NEPROMENJENE — i dalje bez custody upisa, i dalje koriste ih pasivni prikazi
+(npr. Graf stranicin APPROVAL overlay, §17).
+
+### 18.7 Kako se dokaz čita — postojeće rute, bez izmene njihovog API oblika
+
+`GET /api/v1/cases/{id}/custody/transactions/{tx_id}` (postojeća ruta, `custody.py`,
+nepromenjena) sad u odgovoru dodatno vraća `token_approval_evidence` (`null` kad ne
+postoji — stari klijenti/testovi koji ne znaju za ovo polje rade dalje nepromenjeno).
+`GET /api/v1/cases/{id}/custody/transactions` (browsing lista) dodatno vraća
+`has_token_approval_evidence: boolean` po redu, za brz vizuelni signal bez otvaranja
+svakog reda pojedinačno.
+
+**PDF izvoz lanca dokaza** (`custody_report.py`, §4 ovog dokumenta) **nije menjan u ovoj
+fazi** — i dalje štampa obrazac po ustaljenom formatu (Бр./Датум/Име и презиме/Опис
+radnje/Потпис); strukturiran `token_approval_evidence` je danas dostupan preko API-ja i
+sirovog `custody_log.jsonl`, ali se NE štampa posebno u PDF-u — ostavljeno kao mala,
+jasno omeđena stavka za sledeći korak (§18.11).
+
+### 18.8 Frontend — Token Approval stranica postaje custody-gated, kao i ostale četiri
+
+`token-approval.component.ts`'s ANALIZIRAJ dugme **više ne zove `GET` direktno** — otvara
+isti deljeni `CustodyAccessDialogComponent` (razlog pristupa, potpis, checkbox izjave) koji
+Taint/Graf/Pathfinding/Behavioral/DEX Swap već koriste, i tek na potvrdu zove novu
+`ApiService.runTokenApprovalAnalysis()` (POST, uvek sa `custody`). Neuspeh ostaje prikazan
+UNUTAR dijaloga (ništa uneto se ne gubi) — identičan obrazac kao DEX Swap
+(DEX-SWAP-ANALIZA.md §12.3). `GET`-only `getTokenApprovalCorrelation()` ostaje
+nepromenjen — i dalje ga koristi Graf stranicin pasivni APPROVAL overlay (§17), koji
+namerno NE sme da otvara custody dijalog (isti princip kao DEX swap overlay, §12.1: pasivan
+pregled nikad ne piše u lanac dokaza).
+
+Log aktivnosti (i backend `activity_report.py` i frontend `activity-log.component.ts`)
+dobijaju treću kopiju istog "dodaj novu akciju" obrasca koji je DEX Swap prvi uspostavio
+(§12.5) — `token_approval_analysis_run` sad ima sopstvenu ikonicu (🔑), boju i
+jednorekli sažetak (`0xOwner · demo.csv · 3 odobrenja · lanac dokaza: 12 transakcija, 1
+fajl(ova), 2 TOKEN_APPROVAL nalaza`).
+
+### 18.9 Zašto ovo NIJE paralelan sistem — provereno, ne samo tvrđeno
+
+- **Isti fajlovi**: `logs/custody_log.jsonl` i `logs/custody_evidence_log.jsonl` — nijedan
+  nov log fajl nije uveden.
+- **Ista funkcija piše**: `_record_custody_access()` — jedina izmena je JEDAN opcioni
+  parametar sa `None` podrazumevanom vrednošću.
+- **Ista funkcija za upis niskog nivoa**: `append_custody_batch()`/
+  `append_evidence_custody_batch()` (`custody_log.py`/`custody_evidence_log.py`) — nula
+  izmena, pozivaju se identično kao i pre.
+- **Ista stranica "Lanac dokaza"** (`/lanac-dokaza`, `custody-log.component.ts`) — čita
+  isti API, prikazuje TOKEN_APPROVAL zapise pomešane sa Taint/DEX Swap/... zapisima u
+  ISTOJ hronološkoj listi po transakciji (nema odvojenog "Token Approval lanac dokaza"
+  taba).
+- **Isti identitet transakcije** (`tx_identity.transaction_id`) — Token Approval ne
+  izvodi svoj identitet, koristi tačno isti mehanizam kao svaka druga analiza.
+- **Ista `TransactionCustodyEntry` validacija, ista `CustodyAccessDialogComponent`,
+  isti `SignaturePadComponent`** — frontend ne uvodi nijednu novu formu/komponentu za
+  potpisivanje.
+
+### 18.10 Testirano
+
+**Backend, jedinični testovi** (`test_token_approval_custody.py`, 9 novih — ukupno
+**368** u projektu):
+- `_combine_frames_with_evidence_tag` — svaki red tačno označen svojim fajlom, oznaka
+  preživljava hronološko sortiranje unutar `correlate_approval_usage`.
+- `_token_approval_custody_enrichment` — nalaz bez `tx_id` se preskače (ne nagađa mu se
+  identitet); dokaz ispravno podeljen na tri grupe; ključan tačnim `tx_id`-jem.
+- `_record_custody_access(extra_transaction_fields=...)` — SAMO tačan red dobija
+  `token_approval_evidence`, ostali ostaju nepromenjeni; **postojeće analize bez ovog
+  parametra rade identično kao pre**; `custody_chain_for_transaction`/
+  `list_case_transactions` ispravno surfacuju novo polje.
+
+```bash
+python -m pytest backend/tests/test_token_approval_custody.py -v   # 9 passed
+python -m pytest backend/ -q                                       # 368 passed, 0 failed
+```
+
+**End-to-end kroz prave HTTP rute** (`TestClient`): upload CSV-a (approve + transferFrom)
+→ `POST .../token-approval-analysis/run` sa `custody` → `200`, `status: "APPROVED +
+USED"` → `GET .../custody/transactions` pokazuje `has_token_approval_evidence: true` na
+approval redu, `false` na nepovezanom redu → `GET .../custody/transactions/{tx_id}`
+vraća pun `token_approval_evidence` sa tačnim `blockchain_facts`/`computed_indicators`/
+`heuristic_conclusions` (uključujući `risk_level: "HIGH"` i pet `risk_indicators`, svaki
+sa `reasons[]`) → Log aktivnosti pokazuje `token_approval_analysis_run` sa
+`token_approval_findings_recorded: 1`.
+
+**Frontend**: `npx ng build --configuration development` — 0 grešaka, posle SVIH izmena
+(§16, §17, §18 zajedno) — `token-approval-component` i `activity-log-component` chunk-ovi
+oba prisutna, strict template type-checking prošao čist.
+
+### 18.11 Ograničenja / van obima
+
+- PDF izvoz lanca dokaza (`custody_report.py`) ne štampa `token_approval_evidence`
+  posebno u ovoj fazi (§18.7) — dostupno preko API-ja/sirovog loga, ne na odštampanom
+  obrascu. Dodavanje bi bilo aditivna izmena istog fajla (nov opcioni odeljak na strani),
+  ne novi mehanizam.
+- Frontend "Lanac dokaza" stranica (`custody-log.component.ts`) ne prikazuje POSEBNO
+  formatiran `token_approval_evidence` blok (npr. obojen po `risk_level`-u) — polje
+  STIŽE do frontend-a (isti generički prikaz kao bilo koje drugo dodatno polje u
+  detaljima reda), ali nema namenski UI za njega još.
+  Vidljivo je posredno kroz `has_token_approval_evidence` u browsing listi, ali pun
+  strukturiran prikaz zahteva ili čitanje sirovog JSON-a ili budući mali UI dodatak.
+- `unattributed_transfers` (§14 — transferFrom redovi koji se ne mogu pouzdano povezati
+  ni sa jednim odobrenjem) ne dobijaju sopstveni custody zapis - to su redovi bez
+  `event_type=approve/permit`, pa ionako prolaze kroz standardni, generički custody red
+  (bez `token_approval_evidence`), kao i pre ove izmene.
+- Dva poziva `correlate_approval_usage()` u `POST .../run` kad je custody prisutan
+  (§18.3) znače da se algoritam efektivno pokreće dvaput za taj jedan zahtev — prihvatljivo
+  za veličinu evidencije koju ova aplikacija cilja (pojedinačan slučaj, ne masovna
+  obrada), ali vredno pomena ako se ikad poveća obim podataka.

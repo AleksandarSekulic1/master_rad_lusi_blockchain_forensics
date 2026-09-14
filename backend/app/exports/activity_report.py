@@ -58,6 +58,7 @@ ACTION_LABELS: dict[str, tuple[str, str]] = {
     'path_finding': ('Pretraga putanja', 'Pathfinding search'),
     'dex_swap_analysis_run': ('Pokrenuta DEX swap analiza', 'Ran DEX swap analysis'),
     'behavioral_analysis_run': ('Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'),
+    'token_approval_analysis_run': ('Pokrenuta Token Approval analiza', 'Ran Token Approval analysis'),
     'case_created': ('Kreiran slučaj', 'Case created'),
     'case_status_changed': ('Promenjen status slučaja', 'Case status changed'),
     'case_deleted': ('Obrisan slučaj', 'Case deleted'),
@@ -112,6 +113,7 @@ ACTION_HUE_ORDER: tuple[str, ...] = (
     'path_finding',
     'dex_swap_analysis_run',
     'behavioral_analysis_run',
+    'token_approval_analysis_run',
     'case_created',
     'case_status_changed',
     'case_deleted',
@@ -235,6 +237,20 @@ def summarize_details(entry: dict[str, Any], lang: Lang = 'sr') -> str:
             tx_rows = details.get('custody_transaction_rows', 0)
             evidence_files = details.get('custody_evidence_files', 0)
             summary += f' · {L("lanac dokaza", "chain of custody")}: {tx_rows} {L("transakcija", "transactions")}, {evidence_files} {L("fajl(ova)", "file(s)")}'
+        return summary
+    if action == 'token_approval_analysis_run':
+        address = details.get('address') or L('sve adrese', 'all addresses')
+        scope = details.get('evidence_scope', 'combined')
+        scope_text = L('sva evidencija (kombinovano)', 'all evidence (combined)') if scope == 'combined' else str(scope)
+        summary = f'{address} · {scope_text} · {details.get("correlation_count", 0)} {L("odobrenja", "grants")}'
+        if details.get('custody_recorded'):
+            tx_rows = details.get('custody_transaction_rows', 0)
+            evidence_files = details.get('custody_evidence_files', 0)
+            findings = details.get('token_approval_findings_recorded', 0)
+            summary += (
+                f' · {L("lanac dokaza", "chain of custody")}: {tx_rows} {L("transakcija", "transactions")}, '
+                f'{evidence_files} {L("fajl(ova)", "file(s)")}, {findings} {L("TOKEN_APPROVAL nalaza", "TOKEN_APPROVAL findings")}'
+            )
         return summary
     if action == 'test_suite_run':
         return f'{details.get("passed", 0)}/{details.get("total", 0)} {L("testova prošlo", "tests passed")}'

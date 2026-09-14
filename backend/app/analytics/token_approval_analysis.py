@@ -6,7 +6,18 @@ import pandas as pd
 
 from app.analytics.dex_swap_analysis import _load_known_dex_contracts, classify_dex_node
 from app.analytics.plugins.blacklist_check import _normalize_address
+from app.evidence.tx_identity import transaction_id
 from app.services.address_enrichment import get_known_entity
+
+# Optional internal column (leading underscore - never a real evidence column a CSV would
+# use): when the caller tags each row with the evidence file it came from BEFORE calling
+# analyze_token_approvals (see app.api.routes.cases._combine_frames_with_evidence_tag,
+# used only when writing to the chain of evidence - never by the plain read-only routes),
+# each approval gets a stable `tx_id` (app.evidence.tx_identity.transaction_id - the SAME
+# identifier the existing custody_log already keys on), so a Token Approval finding can be
+# attached to its own specific transaction's custody row. Absent this column (the normal
+# case), `tx_id` is simply None throughout - no behavior change for any existing caller.
+EVIDENCE_STORED_NAME_COLUMN = '_evidence_stored_name'
 
 # Token Approval / Ice Phishing Analysis - a new, standalone module (see
 # TOKEN-APPROVAL-IMPLEMENTATION.md), built the same way as DEX Swap Analysis
@@ -272,6 +283,13 @@ def _extract_approval_rows(frame: pd.DataFrame) -> tuple[list[dict[str, Any]], l
         token_address = _clean_text(row.get(TOKEN_ADDRESS_COLUMN))
         block_number = _parse_int(row.get(BLOCK_NUMBER_COLUMN))
         amount = float(row['amount'])
+        evidence_stored_name = _clean_text(row.get(EVIDENCE_STORED_NAME_COLUMN))
+        # transaction_id() needs the row's OWN sender/recipient/amount/timestamp/metadata
+        # (all already present in `row` exactly as ingestion.py normalizes them) plus the
+        # evidence file it came from - the same identity custody_log.py already uses, so a
+        # later chain-of-evidence write can address this exact row. None when the caller
+        # never tagged the frame (see EVIDENCE_STORED_NAME_COLUMN above).
+        tx_id = transaction_id(row, evidence_stored_name) if evidence_stored_name else None
 
         if event_type in APPROVAL_EVENT_TYPES:
             owner = _row_owner(row)
@@ -300,6 +318,7 @@ def _extract_approval_rows(frame: pd.DataFrame) -> tuple[list[dict[str, Any]], l
                 'block_number': block_number,
                 'permit_deadline': _clean_text(row.get(PERMIT_DEADLINE_COLUMN)) if event_type == PERMIT_EVENT else None,
                 'permit_nonce': _parse_int(row.get(PERMIT_NONCE_COLUMN)) if event_type == PERMIT_EVENT else None,
+                'tx_id': tx_id,
             })
         else:  # TRANSFER_FROM_EVENT
             owner = _row_owner(row)
@@ -595,6 +614,9 @@ def _build_group_result(
             # usage_by_approval_index above) - used by correlate_approval_usage to build
             # first/last/count/total/destinations/hashes without re-deriving the matching.
             'linked_transfers': confirmed_usage,
+            # None unless the caller tagged the input frame with evidence file identity -
+            # see EVIDENCE_STORED_NAME_COLUMN above and TOKEN-APPROVAL-IMPLEMENTATION.md #18.
+            'tx_id': event['tx_id'],
         })
 
     latest_event = approvals_sorted[-1]
@@ -1105,6 +1127,7 @@ def build_token_approval_history(
                 'active_duration_ongoing': approval['active_duration_ongoing'],
                 'seconds_to_explicit_revocation': approval['seconds_to_explicit_revocation'],
                 'used_before_end': approval['used_before_end'],
+                'tx_id': approval['tx_id'],
             })
 
     history.sort(key=lambda entry: entry['approval_timestamp'])
@@ -1247,6 +1270,13 @@ def correlate_approval_usage(
                     'revocation': approval['revocation_transaction_hash'],
                     'transfer_from': [record['transaction_hash'] for record in linked if record['transaction_hash']],
                 },
+                # None unless the caller tagged the input frame with evidence file identity
+                # (see EVIDENCE_STORED_NAME_COLUMN) - used by
+                # app.api.routes.cases._token_approval_custody_enrichment to attach this
+                # finding to its own specific transaction's chain-of-custody row
+                # (TOKEN-APPROVAL-IMPLEMENTATION.md #18). Always None for the plain
+                # read-only GET routes, which never tag the frame.
+                'tx_id': approval['tx_id'],
             })
 
     correlations.sort(key=lambda entry: entry['approval_timestamp'])
