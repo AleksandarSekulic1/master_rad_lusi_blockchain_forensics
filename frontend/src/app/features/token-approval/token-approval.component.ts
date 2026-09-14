@@ -36,6 +36,17 @@ import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/inv
  * duplicating a whole investigation picker on every analysis page. */
 const SELECTED_INVESTIGATION_KEY = 'lusi_selected_investigation';
 
+/** One row of the "Predlog za dalju analizu"/"Predloži adrese" panels (see
+ * rankRiskySpenders in the component below) - a spender address ranked by the highest
+ * risk_score any of its (owner, spender, token) groups reached. */
+interface SuggestedRiskyAddress {
+  address: string;
+  owner: string;
+  riskLevel: TokenApprovalRiskLevel;
+  riskScore: number;
+  topReasonLabel: string | null;
+}
+
 /** Token Approval / Ice Phishing Analysis - "for this address, what ERC-20 allowances did
  * it grant (or receive), and what happened to each one" (see
  * TOKEN-APPROVAL-IMPLEMENTATION.md #16-19). A full peer of Graph/Taint/Pathfinding/
@@ -194,6 +205,12 @@ export class TokenApprovalComponent implements OnInit {
     this.custodyDialogError = null;
     this.dexSwapAddresses = new Set();
     this.selectedSuggestions = new Set();
+    // Case-wide suggestions (§7.2) are scoped to a case+evidence combination too - a
+    // stale list from before a case/evidence switch would suggest addresses that don't
+    // even exist in the newly scoped evidence.
+    this.caseSuggestions = null;
+    this.caseSuggestionError = null;
+    this.selectedCaseSuggestions = new Set();
   }
 
   protected get canAnalyze(): boolean {
@@ -289,17 +306,16 @@ export class TokenApprovalComponent implements OnInit {
   // distinct SPENDER that owns at least one MEDIUM/HIGH group (the side that actually
   // received/could use an allowance - the more useful seed for tracing where funds moved
   // to), keeping whichever of its groups scored highest when a spender shows up more than
-  // once (e.g. approved by several owners - see spender_multi_owner). The analyst picks
-  // some or all and hands them to Taint Analysis via the same one-shot
-  // AnalysisStateService mechanism "Otvori u Pathfinding" already uses above.
-  protected selectedSuggestions = new Set<string>();
-
-  protected get suggestedTaintAddresses(): Array<{ address: string; owner: string; riskLevel: TokenApprovalRiskLevel; riskScore: number; topReasonLabel: string | null }> {
-    if (!this.result) {
-      return [];
-    }
-    const bySpender = new Map<string, { address: string; owner: string; riskLevel: TokenApprovalRiskLevel; riskScore: number; topReasonLabel: string | null }>();
-    for (const group of this.result.groups) {
+  // once (e.g. approved by several owners - see spender_multi_owner). Two independent
+  // sources feed the SAME ranking logic (rankRiskySpenders below):
+  //  (a) suggestedTaintAddresses - from the ONE address just analyzed (this.result), and
+  //  (b) caseSuggestions - from a CASE-WIDE scan (§7.2's own "Predloži adrese" button,
+  //      same idea as Taint Analysis's "Predloži seed adrese": no address typed in first).
+  // The analyst picks some or all from either list and hands them to Taint Analysis via
+  // the same one-shot AnalysisStateService mechanism "Otvori u Pathfinding" already uses.
+  private rankRiskySpenders(groups: TokenApprovalGroup[]): SuggestedRiskyAddress[] {
+    const bySpender = new Map<string, SuggestedRiskyAddress>();
+    for (const group of groups) {
       if (group.risk_level === 'LOW') {
         continue;
       }
@@ -316,6 +332,12 @@ export class TokenApprovalComponent implements OnInit {
       });
     }
     return [...bySpender.values()].sort((a, b) => b.riskScore - a.riskScore);
+  }
+
+  protected selectedSuggestions = new Set<string>();
+
+  protected get suggestedTaintAddresses(): SuggestedRiskyAddress[] {
+    return this.result ? this.rankRiskySpenders(this.result.groups) : [];
   }
 
   protected isSuggestionSelected(address: string): boolean {
@@ -349,6 +371,89 @@ export class TokenApprovalComponent implements OnInit {
     }
     this.state.setPendingTaintSeeds([...this.selectedSuggestions]);
     this.router.navigateByUrl('/taint-analysis');
+  }
+
+  // --- "Predloži adrese" - CASE-WIDE, no address typed in first (see rankRiskySpenders
+  // comment above). Reuses the existing PASSIVE `getTokenApprovalCorrelation` call
+  // (address omitted -> every approval group in the scoped evidence, same endpoint the
+  // Graph page's own Token Approval overlay already calls) - no new backend route, no
+  // custody dialog (this only re-reads already-cleaned evidence, exactly like Taint
+  // Analysis's own "Predloži seed adrese" never gates itself behind custody either; the
+  // custody-gated moment stays "ANALIZIRAJ"/"Pošalji izabrane..." below, which touch a
+  // SPECIFIC address's findings). ---
+  protected isSuggestingCaseAddresses = false;
+  protected caseSuggestionError: string | null = null;
+  protected caseSuggestions: SuggestedRiskyAddress[] | null = null;
+  protected selectedCaseSuggestions = new Set<string>();
+
+  protected get canSuggestCaseAddresses(): boolean {
+    return !!this.activeCase && !this.isSuggestingCaseAddresses;
+  }
+
+  protected suggestCaseAddresses(): void {
+    if (!this.canSuggestCaseAddresses) {
+      return;
+    }
+    const caseId = this.activeCase!.id;
+    this.isSuggestingCaseAddresses = true;
+    this.caseSuggestionError = null;
+    this.caseSuggestions = null;
+    this.selectedCaseSuggestions = new Set();
+
+    this.api.getTokenApprovalCorrelation(caseId, null, this.selectedEvidence).subscribe({
+      next: (result) => {
+        this.isSuggestingCaseAddresses = false;
+        this.caseSuggestions = this.rankRiskySpenders(result.groups);
+      },
+      error: () => {
+        this.isSuggestingCaseAddresses = false;
+        this.caseSuggestionError = this.t('Neuspešno predlaganje adresa.', 'Failed to suggest addresses.');
+      },
+    });
+  }
+
+  protected dismissCaseSuggestions(): void {
+    this.caseSuggestions = null;
+    this.selectedCaseSuggestions = new Set();
+  }
+
+  protected isCaseSuggestionSelected(address: string): boolean {
+    return this.selectedCaseSuggestions.has(address);
+  }
+
+  protected toggleCaseSuggestion(address: string): void {
+    if (this.selectedCaseSuggestions.has(address)) {
+      this.selectedCaseSuggestions.delete(address);
+    } else {
+      this.selectedCaseSuggestions.add(address);
+    }
+  }
+
+  protected get allCaseSuggestionsSelected(): boolean {
+    const list = this.caseSuggestions ?? [];
+    return list.length > 0 && list.every((item) => this.selectedCaseSuggestions.has(item.address));
+  }
+
+  protected toggleAllCaseSuggestions(): void {
+    const list = this.caseSuggestions ?? [];
+    this.selectedCaseSuggestions = this.allCaseSuggestionsSelected ? new Set() : new Set(list.map((item) => item.address));
+  }
+
+  protected sendSelectedCaseSuggestionsToTaintAnalysis(): void {
+    if (this.selectedCaseSuggestions.size === 0) {
+      return;
+    }
+    this.state.setPendingTaintSeeds([...this.selectedCaseSuggestions]);
+    this.router.navigateByUrl('/taint-analysis');
+  }
+
+  /** Fills the Address field with a suggested address so the analyst can run the normal,
+   * custody-gated single-address Token Approval analysis on it - never skips the custody
+   * dialog itself, same division of responsibility as every other custody-gated action on
+   * this page. */
+  protected analyzeSuggestedCaseAddress(address: string): void {
+    this.address = address;
+    this.dismissCaseSuggestions();
   }
 
   // --- Summary counters (shown only once a result exists - see the template) ---------

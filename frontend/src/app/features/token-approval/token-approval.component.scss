@@ -411,6 +411,34 @@
   color: var(--ta-muted);
 }
 
+/* ---------- "Predloži adrese" - CASE-WIDE dugme unutar address-panel ---------- */
+
+.suggest-case-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.2rem;
+}
+
+.suggest-case-hint {
+  font-size: 0.76rem;
+  color: var(--ta-muted);
+}
+
+.suggestion-address-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2rem;
+}
+
+.suggestion-address-btn:hover {
+  color: var(--ta-accent);
+}
+
 /* ---------- predlog adresa za dalju analizu (Taint Analysis handoff) ---------- */
 
 .suggestion-panel {

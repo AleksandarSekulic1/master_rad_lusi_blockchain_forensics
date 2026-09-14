@@ -52,6 +52,77 @@
     </div>
 
     <p class="error-inline" *ngIf="analysisError">{{ analysisError }}</p>
+
+    <!-- Predloži adrese - CASE-WIDE, radi bez upisane adrese (isti duh kao "Predloži seed
+         adrese" kod Taint analize) - vidi TOKEN-APPROVAL-IMPLEMENTATION.md §5/§7.2. -->
+    <div class="suggest-case-row" *ngIf="activeCase">
+      <button type="button" class="ghost-button" (click)="suggestCaseAddresses()" [disabled]="!canSuggestCaseAddresses">
+        {{ isSuggestingCaseAddresses ? t('Predlaganje...', 'Suggesting...') : t('Predloži adrese', 'Suggest addresses') }}
+      </button>
+      <span class="suggest-case-hint">
+        {{ t('Skenira celu izabranu evidenciju bez upisane adrese.', 'Scans the whole selected evidence without typing an address.') }}
+      </span>
+    </div>
+
+    <p class="error-inline" *ngIf="caseSuggestionError">{{ caseSuggestionError }}</p>
+  </div>
+
+  <!-- Rezultat "Predloži adrese" - odvojen od rezultata analize jedne adrese ispod. -->
+  <div class="suggestion-panel" *ngIf="caseSuggestions">
+    <div class="suggestion-head">
+      <div>
+        <p class="panel-kicker">{{ t('Predložene adrese (ceo slučaj)', 'Suggested addresses (whole case)') }}</p>
+        <p class="suggestion-hint">
+          {{
+            t(
+              'Spender adrese sa MEDIUM/HIGH rizikom u celoj izabranoj evidenciji, rangirane po risk skoru - klikni adresu da je upišeš u polje iznad, ili izaberi jednu/više/sve i pošalji ih kao seed adrese u Taint analizu.',
+              'Spender addresses with MEDIUM/HIGH risk across the whole selected evidence, ranked by risk score - click an address to fill it into the field above, or pick one/several/all and send them as seed addresses to Taint Analysis.'
+            )
+          }}
+        </p>
+      </div>
+      <button type="button" class="ta-modal-close" (click)="dismissCaseSuggestions()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <p class="empty-hint" *ngIf="caseSuggestions.length === 0">
+      {{
+        t(
+          'Nijedna grupa u ovoj evidenciji nije ocenjena kao MEDIUM ili HIGH rizik - nema šta da se predloži.',
+          'No group in this evidence is rated MEDIUM or HIGH risk - nothing to suggest.'
+        )
+      }}
+    </p>
+
+    <ng-container *ngIf="caseSuggestions.length > 0">
+      <label class="suggestion-select-all">
+        <input type="checkbox" [checked]="allCaseSuggestionsSelected" (change)="toggleAllCaseSuggestions()" />
+        {{ t('Izaberi sve', 'Select all') }}
+      </label>
+
+      <ul class="suggestion-list">
+        <li *ngFor="let item of caseSuggestions">
+          <label>
+            <input type="checkbox" [checked]="isCaseSuggestionSelected(item.address)" (change)="toggleCaseSuggestion(item.address)" />
+            <button type="button" class="suggestion-address suggestion-address-btn mono-clip" [title]="item.address" (click)="analyzeSuggestedCaseAddress(item.address)">
+              {{ item.address }}
+            </button>
+            <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ item.riskLevel }}</span>
+            <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
+            <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+          </label>
+        </li>
+      </ul>
+
+      <button
+        type="button"
+        class="primary-button"
+        (click)="sendSelectedCaseSuggestionsToTaintAnalysis()"
+        [disabled]="selectedCaseSuggestions.size === 0"
+      >
+        {{ t('Pošalji izabrane u Taint analizu', 'Send selected to Taint Analysis') }}
+        <ng-container *ngIf="selectedCaseSuggestions.size > 0">({{ selectedCaseSuggestions.size }})</ng-container>
+      </button>
+    </ng-container>
   </div>
 
   <ng-container *ngIf="result">

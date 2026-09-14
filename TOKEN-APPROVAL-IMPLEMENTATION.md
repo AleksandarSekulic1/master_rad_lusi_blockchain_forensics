@@ -137,17 +137,50 @@ posebno napravljeno samo za ovu analizu:
 
 ## 5. Predlog adresa za dalju analizu (Taint Analysis)
 
-Posle uspešne analize, stranica pokazuje panel **"Predlog za dalju analizu"** — ovo **nije
-nov, poseban algoritam**, nego samo `risk_score`/`risk_level` iz §3.3, pročitan i rangiran:
-jedan red po **spender** adresi koja ima bar jednu grupu ocenjenu MEDIUM ili HIGH (kad se
-ista spender adresa pojavi u više grupa, zadržava se ona sa najvišim skorom), sortirano
-opadajuće po skoru, sa najkraćim razlogom (labela prvog upaljenog indikatora).
+Ista rang-lista (§5.2 ispod) hrani **dva** panela na stranici — jedan zahteva da prvo
+analiziraš jednu adresu, drugi ne zahteva ništa unapred:
+
+### 5.1 "Predlog za dalju analizu" — posle analize jedne adrese
+
+Posle uspešne analize, stranica pokazuje panel **"Predlog za dalju analizu"**, izveden iz
+rezultata koji upravo gledaš.
+
+### 5.2 "Predloži adrese" — CASE-WIDE, bez upisane adrese (analogno Taint analizi)
+
+Dugme **"Predloži adrese"** stoji odmah pored polja za adresu, dostupno čim je slučaj
+izabran — **ne zahteva da prvo upišeš ijednu adresu**, isti duh kao dugme "Predloži seed
+adrese" na Taint analizi. Klikom se poziva postojeća **pasivna** ruta
+`GET .../token-approval-correlation` **bez** `address` parametra (bez lanca dokaza, bez
+dijaloga — ista ruta koju Graf stranica već koristi za svoj Token Approval overlay), koja
+vrati **svaku** (owner, spender, token) grupu u izabranoj evidenciji, ne samo za jednu
+adresu.
+
+Nijedno od ovoga **nije nov, poseban algoritam**: oba panela samo čitaju `risk_score`/
+`risk_level` koje §3.3 već računa i rangiraju ih — jedan red po **spender** adresi koja ima
+bar jednu grupu ocenjenu MEDIUM ili HIGH (kad se ista spender adresa pojavi u više grupa,
+zadržava se ona sa najvišim skorom), sortirano opadajuće po skoru, sa najkraćim razlogom
+(labela prvog upaljenog indikatora).
 
 Analitičar čekira jednu, više, ili sve (**"Izaberi sve"**) i klikne **"Pošalji izabrane u
 Taint analizu"** — stranica Taint analiza se otvara sa tim adresama već dodatim u listu
 seed adresa (identičan mehanizam kao postojeće dugme "Otvori u Pathfinding": jednokratna
 predaja preko `AnalysisStateService`, Taint analiza sama odlučuje da li/kako da pokrene
-analizu — ova stranica ne pokreće taint analizu umesto nje).
+analizu — ova stranica ne pokreće taint analizu umesto nje). U panelu §5.2, klik na samu
+adresu (umesto na čekboks) je umesto toga upisuje u polje **Adresa** iznad, spreman za
+običan, custody-gated "ANALIZIRAJ" nad tom jednom adresom.
+
+**Provereno stvarnim pozivom** rute nad demo evidencijom (§6) bez ijedne upisane adrese:
+
+```
+0xVictimWallet  -> 0xDrainerContract  HIGH  (score 8)
+0xVictimWallet2 -> 0xDrainerContract  HIGH  (score 6)
+0xCarefulTrader -> 0xUniswapRouter    LOW   (score 1)
+```
+
+Posle rangiranja/dedup-a po spender adresi, panel §5.2 pokazuje tačno **2** predloga:
+`0xDrainerContract` (HIGH, 8) i `0xSweepContract` (MEDIUM, 3) — pravi drainer ugovor i pravi
+"potpiši ovde za dva tokena" ugovor iz demo scenarija, pronađeni bez da si prethodno znao
+ijednu adresu za pretragu (vidi §7.1a za tačan korak-po-korak).
 
 ## 6. Demo podaci za ručno testiranje
 
@@ -187,6 +220,25 @@ Svi brojevi ispod su **stvarno pokrenuti i provereni** (`analyze_token_approvals
 3. Prijavi se u aplikaciju.
 4. **Slučajevi** → izaberi **"Demo: Sumnjiva laundering sema (hakovan novcanik)"** kao
    aktivan slučaj.
+
+### 7.1a Korak 0 — "Predloži adrese" PRE nego što bilo šta upišeš
+
+*Vidi §5.2 za pozadinu.*
+
+1. Klikni **"Token Approval"** u meniju. Polje **Adresa** ostavi prazno.
+2. "Prikaz transakcija" → izaberi `demo_token_approval_evidence.csv`.
+3. Klikni **"Predloži adrese"** (pored polja Adresa) — **bez lanca dokaza, bez dijaloga**
+   (pasivno čitanje, isto kao "Predloži seed adrese" na Taint analizi).
+4. **Očekivano:** panel **"Predložene adrese (ceo slučaj)"** sa tačno **2** reda:
+   `0xDrainerContract` (**HIGH**) i `0xSweepContract` (**MEDIUM**), `0xDrainerContract`
+   prvi (viši skor) — `0xUniswapRouter` se NE pojavljuje (LOW rizik, namerno izostavljen).
+5. Klikni na tekst adrese `0xDrainerContract` (ne na čekboks). **Očekivano:** polje
+   **Adresa** iznad se popunjava sa `0xDrainerContract`, panel se zatvara — spreman za
+   običan "ANALIZIRAJ" (nastavlja se u koraku 7.5 ispod, koji upravo tu adresu i traži).
+6. **Zašto baš ovako:** ovo je pravi test da algoritam SAM predloži koje adrese vredi
+   proveriti, bez da analitičar prethodno zna da su baš `0xDrainerContract`/
+   `0xSweepContract` sumnjivi — isti obrazac kao Taint analizino "Predloži seed adrese",
+   samo primenjen na Token Approval rizik umesto na graf-strukturne heuristike.
 
 ### 7.1 Korak 1 — Glavni primer: hakovan novčanik (`0xVictimWallet`)
 
