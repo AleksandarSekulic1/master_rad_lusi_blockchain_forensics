@@ -676,5 +676,24 @@
       "potentially_risky_approvals": 1
     },
     "registered_at": "2026-09-14T10:28:32.831850+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-PAMT-459Z",
+    "content_hash": "1618c0858eac79104685cc9d2e7ea14e7274bd1b914fd485d215b6a1cca6ce16",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (heuristically, where indicated) over the stated evidence.",
+    "summary": {
+      "address": "0xDrainerContract",
+      "total_approvals": 2,
+      "unlimited_approvals": 2,
+      "active_approvals": 2,
+      "revoked_approvals": 0,
+      "used_approvals": 1,
+      "unused_approvals": 1,
+      "potentially_risky_approvals": 2
+    },
+    "registered_at": "2026-09-14T11:20:24.237583+00:00"
   }
 ]
