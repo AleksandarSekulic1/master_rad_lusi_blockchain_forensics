@@ -26,15 +26,7 @@
 
   <div class="ta-header">
     <p class="panel-kicker">{{ t('Token Approval analiza', 'Token Approval Analysis') }}</p>
-    <h2>TOKEN APPROVAL ANALYSIS</h2>
-    <p class="ta-subhead">
-      {{
-        t(
-          'Za jednu adresu (vlasnik ili odobreni trošilac): koje je ERC-20 approve/permit dozvole dala ili primila, i šta se dogodilo sa svakom.',
-          'For one address (owner or approved spender): which ERC-20 approve/permit grants it gave or received, and what happened to each one.'
-        )
-      }}
-    </p>
+    <h2>{{ t('ANALIZA ODOBRENJA TOKENA', 'TOKEN APPROVAL ANALYSIS') }}</h2>
   </div>
 
   <div class="address-panel">
@@ -98,6 +90,52 @@
     <p class="data-note" *ngIf="result.data_completeness.notes.length > 0">
       <span *ngFor="let note of result.data_completeness.notes">{{ note }}</span>
     </p>
+
+    <!-- Predlog adresa za dalju analizu - ne novi algoritam, samo risk_score/risk_level
+         koje je §15 već izračunao, pročitano i rangirano, sa mogućnošću da se izabrane
+         (ili sve) pošalju kao seed adrese u Taint analizu. -->
+    <div class="suggestion-panel" *ngIf="suggestedTaintAddresses.length > 0">
+      <div class="suggestion-head">
+        <div>
+          <p class="panel-kicker">{{ t('Predlog za dalju analizu', 'Suggested for further analysis') }}</p>
+          <p class="suggestion-hint">
+            {{
+              t(
+                'Spender adrese sa MEDIUM/HIGH rizikom u ovom nalazu, rangirane po risk skoru - izaberi jednu, više ili sve i pošalji ih kao seed adrese u Taint analizu.',
+                'Spender addresses with MEDIUM/HIGH risk in this finding, ranked by risk score - pick one, several, or all and send them as seed addresses to Taint Analysis.'
+              )
+            }}
+          </p>
+        </div>
+      </div>
+
+      <label class="suggestion-select-all">
+        <input type="checkbox" [checked]="allSuggestionsSelected" (change)="toggleAllSuggestions()" />
+        {{ t('Izaberi sve', 'Select all') }}
+      </label>
+
+      <ul class="suggestion-list">
+        <li *ngFor="let item of suggestedTaintAddresses">
+          <label>
+            <input type="checkbox" [checked]="isSuggestionSelected(item.address)" (change)="toggleSuggestion(item.address)" />
+            <span class="suggestion-address mono-clip" [title]="item.address">{{ item.address }}</span>
+            <span class="risk-pill" [ngClass]="riskClass(item.riskLevel)">{{ item.riskLevel }}</span>
+            <span class="suggestion-reason" *ngIf="item.topReasonLabel">{{ item.topReasonLabel }}</span>
+            <span class="suggestion-owner">{{ t('odobrio', 'approved by') }} <span class="mono-clip">{{ item.owner }}</span></span>
+          </label>
+        </li>
+      </ul>
+
+      <button
+        type="button"
+        class="primary-button"
+        (click)="sendSelectedToTaintAnalysis()"
+        [disabled]="selectedSuggestions.size === 0"
+      >
+        {{ t('Pošalji izabrane u Taint analizu', 'Send selected to Taint Analysis') }}
+        <ng-container *ngIf="selectedSuggestions.size > 0">({{ selectedSuggestions.size }})</ng-container>
+      </button>
+    </div>
 
     <div class="ta-toolbar" *ngIf="result.correlations.length > 0">
       <button

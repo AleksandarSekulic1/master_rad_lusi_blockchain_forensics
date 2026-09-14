@@ -219,14 +219,6 @@
   background: linear-gradient(90deg, var(--ta-accent), transparent);
 }
 
-.ta-subhead {
-  margin: 0.1rem 0 0;
-  max-width: 52rem;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  color: var(--ta-muted);
-}
-
 /* ---------- adresa + ANALIZIRAJ - tačno mockup: jedno polje, jedno dugme ---------- */
 
 .address-panel {
@@ -417,6 +409,108 @@
 .summary-label {
   font-size: 0.72rem;
   color: var(--ta-muted);
+}
+
+/* ---------- predlog adresa za dalju analizu (Taint Analysis handoff) ---------- */
+
+.suggestion-panel {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--ta-border);
+  background: var(--ta-surface);
+}
+
+.suggestion-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.suggestion-hint {
+  margin: 0.2rem 0 0;
+  max-width: 44rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ta-muted);
+}
+
+.suggestion-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ta-dim);
+  cursor: pointer;
+}
+
+.suggestion-select-all input {
+  accent-color: var(--ta-accent);
+}
+
+.suggestion-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.suggestion-list > li {
+  border-radius: 0.75rem;
+  background: var(--ta-card-bg);
+  border: 1px solid var(--ta-border-soft);
+}
+
+.suggestion-list label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+}
+
+.suggestion-list input[type='checkbox'] {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--ta-accent);
+}
+
+.suggestion-address {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--ta-text);
+  max-width: 16rem;
+}
+
+.suggestion-reason {
+  font-size: 0.76rem;
+  color: var(--ta-muted);
+}
+
+.suggestion-owner {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--ta-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.suggestion-owner .mono-clip {
+  max-width: 10rem;
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.suggestion-panel .primary-button {
+  justify-self: start;
 }
 
 /* ---------- tabela odobrenja ---------- */

@@ -25,6 +25,12 @@ export class AnalysisStateService {
    * continuously, since Pathfinding only needs to pick it up on load, not react to it
    * live while already open. */
   private pendingPathfindingSeed: { from: string; to?: string } | null = null;
+  /** One-shot handoff for "send these addresses to Taint Analysis" (e.g.
+   * token-approval.component.ts's "Pošalji u Taint analizu" panel, built from the
+   * risky spenders/owners its own risk scoring already ranked) - same one-shot idea as
+   * pendingPathfindingSeed above, consumed once by taint-analysis.component.ts's
+   * ngOnInit rather than observed continuously. */
+  private pendingTaintSeeds: string[] | null = null;
   // Restored from localStorage so the active case survives a page refresh - it stays
   // active until the user clicks it again or picks another one.
   private readonly selectedCaseSubject = new BehaviorSubject<CaseSummary | null>(this.readStoredCase());
@@ -61,6 +67,18 @@ export class AnalysisStateService {
     const seed = this.pendingPathfindingSeed;
     this.pendingPathfindingSeed = null;
     return seed;
+  }
+
+  setPendingTaintSeeds(addresses: string[]): void {
+    this.pendingTaintSeeds = addresses;
+  }
+
+  /** Returns the pending taint seed list (if any) and clears it - a second, unrelated
+   * visit to Taint Analysis never replays a stale batch from an earlier session. */
+  consumePendingTaintSeeds(): string[] | null {
+    const addresses = this.pendingTaintSeeds;
+    this.pendingTaintSeeds = null;
+    return addresses;
   }
 
   /** Keeps the current selection if it still exists in the new node set, otherwise

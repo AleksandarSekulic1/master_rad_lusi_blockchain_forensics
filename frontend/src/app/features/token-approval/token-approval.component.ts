@@ -193,6 +193,7 @@ export class TokenApprovalComponent implements OnInit {
     this.isCustodyDialogOpen = false;
     this.custodyDialogError = null;
     this.dexSwapAddresses = new Set();
+    this.selectedSuggestions = new Set();
   }
 
   protected get canAnalyze(): boolean {
@@ -280,6 +281,74 @@ export class TokenApprovalComponent implements OnInit {
 
   protected spenderMultiOwnerFor(entry: TokenApprovalCorrelationEntry): number | null {
     return this.groupFor(entry)?.spender_multi_owner?.distinct_owner_count ?? null;
+  }
+
+  // --- Suggested addresses for further analysis (Taint Analysis handoff) --------------
+  // "Which addresses are most worth investigating further" is never a NEW heuristic here -
+  // it's just the risk scoring §15 already computed, read back and ranked. One row per
+  // distinct SPENDER that owns at least one MEDIUM/HIGH group (the side that actually
+  // received/could use an allowance - the more useful seed for tracing where funds moved
+  // to), keeping whichever of its groups scored highest when a spender shows up more than
+  // once (e.g. approved by several owners - see spender_multi_owner). The analyst picks
+  // some or all and hands them to Taint Analysis via the same one-shot
+  // AnalysisStateService mechanism "Otvori u Pathfinding" already uses above.
+  protected selectedSuggestions = new Set<string>();
+
+  protected get suggestedTaintAddresses(): Array<{ address: string; owner: string; riskLevel: TokenApprovalRiskLevel; riskScore: number; topReasonLabel: string | null }> {
+    if (!this.result) {
+      return [];
+    }
+    const bySpender = new Map<string, { address: string; owner: string; riskLevel: TokenApprovalRiskLevel; riskScore: number; topReasonLabel: string | null }>();
+    for (const group of this.result.groups) {
+      if (group.risk_level === 'LOW') {
+        continue;
+      }
+      const existing = bySpender.get(group.spender);
+      if (existing && existing.riskScore >= group.risk_score) {
+        continue;
+      }
+      bySpender.set(group.spender, {
+        address: group.spender,
+        owner: group.owner,
+        riskLevel: group.risk_level,
+        riskScore: group.risk_score,
+        topReasonLabel: group.risk_indicators[0]?.label ?? null,
+      });
+    }
+    return [...bySpender.values()].sort((a, b) => b.riskScore - a.riskScore);
+  }
+
+  protected isSuggestionSelected(address: string): boolean {
+    return this.selectedSuggestions.has(address);
+  }
+
+  protected toggleSuggestion(address: string): void {
+    if (this.selectedSuggestions.has(address)) {
+      this.selectedSuggestions.delete(address);
+    } else {
+      this.selectedSuggestions.add(address);
+    }
+  }
+
+  protected get allSuggestionsSelected(): boolean {
+    const list = this.suggestedTaintAddresses;
+    return list.length > 0 && list.every((item) => this.selectedSuggestions.has(item.address));
+  }
+
+  protected toggleAllSuggestions(): void {
+    const list = this.suggestedTaintAddresses;
+    this.selectedSuggestions = this.allSuggestionsSelected ? new Set() : new Set(list.map((item) => item.address));
+  }
+
+  /** Hands the selected spender(s) to Taint Analysis as ready-made seeds - Taint Analysis
+   * decides for itself whether/how to run (this page never runs a taint analysis itself),
+   * same division of responsibility as openInPathfinding below. */
+  protected sendSelectedToTaintAnalysis(): void {
+    if (this.selectedSuggestions.size === 0) {
+      return;
+    }
+    this.state.setPendingTaintSeeds([...this.selectedSuggestions]);
+    this.router.navigateByUrl('/taint-analysis');
   }
 
   // --- Summary counters (shown only once a result exists - see the template) ---------
