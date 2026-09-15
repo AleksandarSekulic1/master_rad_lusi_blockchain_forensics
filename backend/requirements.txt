@@ -10,6 +10,7 @@ fpdf2
 bcrypt
 pyjwt
 requests
+neo4j
 pytest
 pytest-xdist
 httpx2

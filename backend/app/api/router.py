@@ -9,6 +9,7 @@ from app.features.case_analytics_run.router import router as case_analytics_run_
 from app.features.case_behavioral_analysis.router import router as case_behavioral_analysis_router
 from app.features.case_dex_swap_analysis.router import router as case_dex_swap_analysis_router
 from app.features.case_graph.router import router as case_graph_router
+from app.features.case_graph_search.router import router as case_graph_search_router
 from app.features.case_management.router import router as case_management_router
 from app.features.case_pathfinding.router import router as case_pathfinding_router
 from app.features.case_seed_suggestion.router import router as case_seed_suggestion_router
@@ -43,6 +44,9 @@ api_router.include_router(upload_router, dependencies=authenticated)
 # equivalent to the single router this used to be.
 api_router.include_router(case_management_router, dependencies=authenticated)
 api_router.include_router(case_graph_router, dependencies=authenticated)
+# Napredna pretraga preko Neo4j-a (pilot, opciono - vidi PREDLOG-GRAF-SUBP.md). Vraća 503
+# ako Neo4j nije pokrenut; ne utiče ni na jednu drugu rutu.
+api_router.include_router(case_graph_search_router, dependencies=authenticated)
 api_router.include_router(case_behavioral_analysis_router, dependencies=authenticated)
 api_router.include_router(case_dex_swap_analysis_router, dependencies=authenticated)
 api_router.include_router(case_token_approval_analysis_router, dependencies=authenticated)
