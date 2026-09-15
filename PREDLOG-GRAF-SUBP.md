@@ -207,3 +207,6 @@ stari podaci u Neo4j-u ne bi trebalo da smetaju.
 Ako se pilot pokaže korisnim za odbranu, sledeći prirodan kandidat je
 `analytics/plugins/wallet_clustering.py` (community detection je ugrađen algoritam u
 Neo4j-u) — kao potpuno odvojen dodatak, istim obrascem kao ovaj.
+
+MATCH p = (v:Address {case_id: '46ae7f91db9b', address: '0xVictimWallet'})-[:TRANSACTED*1..4]-(other)
+RETURN p
