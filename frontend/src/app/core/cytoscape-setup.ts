@@ -1,6 +1,7 @@
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import layoutUtilities from 'cytoscape-layout-utilities';
+import svg from 'cytoscape-svg';
 
 let registered = false;
 
@@ -15,5 +16,6 @@ export function ensureCytoscapeExtensionsRegistered(): void {
   }
   cytoscape.use(fcose);
   cytoscape.use(layoutUtilities);
+  cytoscape.use(svg);
   registered = true;
 }
