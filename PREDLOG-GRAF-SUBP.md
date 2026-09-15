@@ -1,8 +1,12 @@
 # Predlog: uvođenje graf-baziranog SUBP-a
 
 Odgovor na mentorovu napomenu ("Razmisli da koristiš neki graf-bazirani SUBP") na predlogu
-teme. Cilj ovog dokumenta je da posluži kao osnova za razgovor sa mentorom — **ništa od
-ovoga još nije implementirano niti menja postojeći kod.**
+teme. Prvi deo dokumenta (do "Odluka i implementacija") je analiza koja je poslužila kao
+osnova za razgovor; drugi deo opisuje šta je posle toga stvarno urađeno.
+
+**Odluka:** Neo4j, kao Opcija A — dodatni, opcioni sloj koji ništa postojeće ne menja niti
+od njega zavisi (videti "Odluka i implementacija" na dnu za detalje i uputstvo za ručno
+testiranje).
 
 ## Trenutno stanje
 
@@ -76,24 +80,89 @@ prioritet da alat ostane "pokreni i radi" bez dodatne infrastrukture — **Kuzu*
 objašnjenje u radu zašto je embedded baza izabrana svesno (ista logika kao "zašto JSON fajlovi
 umesto pune relacione baze" koja već postoji u projektu).
 
-## Predlog obima (ako se krene u implementaciju)
+## Odluka i implementacija
 
-Ne menjati sve odjednom. Zahvaljujući nedavnom VSA refaktoringu backend-a, svaka analiza je
-već izolovan slice (`app/features/case_pathfinding/`, `case_management/`, itd.), pa je
-migracija JEDNOG slice-a bez diranja ostalih realno mala i bezbedna promena:
+Dogovoreno: **Neo4j**, kao **Opcija A** — dodatni, opcioni sloj. Postojeći
+`case_pathfinding` (NetworkX/BFS) i svih 7 test datoteka koje su prolazile pre ovoga i
+dalje rade **potpuno nepromenjeno**. Umesto migracije postojeće rute, napravljen je nov,
+samostalan slice koji pokazuje baš ono što graf baza radi bolje od ručnog BFS-a:
+**susedstvo adrese do N koraka** (`(a)-[:TRANSACTED*1..N]-(b)` — jedan Cypher upit, umesto
+ograničenog BFS-a koji bi se za to ručno pisao u NetworkX-u).
 
-1. **Pilot: `case_pathfinding`.** BFS najkraći put je najprirodniji kandidat — u Cypher-u je
-   to `shortestPath()` u jednoj liniji. Graf baza se puni iz iste, već očišćene evidencije
-   (`clean_evidence_frames`) kad se dokaz uveze — dokazni CSV i heš ostaju netaknuti, izvor
-   istine.
-2. Ako pilot pokaže vrednost, sledeći kandidat je `analytics/plugins/wallet_clustering.py`
-   (community detection je ugrađen algoritam u većini graf baza).
-3. Taint analiza, peel chains, chain hopping ostaju na NetworkX-u dok se ne pokaže da graf
-   baza tu stvarno nešto dobija, umesto da se prepravlja "jer možemo".
+### Šta je dodato (ništa postojeće nije menjano)
 
-## Sledeći korak
+- **`docker-compose.yml`** — nov `neo4j` servis (Neo4j Browser na `:7474`, bolt na `:7687`,
+  perzistentan volumen `neo4j_data`). `backend` servis dobija `NEO4J_*` env promenljive i
+  `depends_on: neo4j`.
+- **`backend/requirements.txt`** — dodat `neo4j` (zvanični Python drajver).
+- **[app/shared/graph_db.py](master_rad_lusi_blockchain_forensics/backend/app/shared/graph_db.py)** — konekcija (lazy singleton) + `is_available()` provera.
+  Ako Neo4j nije pokrenut, sve što zavisi od njega vraća jasan `503`, ne pada.
+- **[app/features/case_graph_search/](master_rad_lusi_blockchain_forensics/backend/app/features/case_graph_search)** — nov slice:
+  `GET /cases/{case_id}/graph-search/neighborhood?address=...&max_hops=N`. Pri svakom
+  pozivu, graf tog slučaja se (ponovo) upiše u Neo4j iz iste očišćene evidencije koju čita
+  i NetworkX (`clean_evidence_frames`) — ništa se ne "duplira trajno", to je samo ogledalo,
+  isto kao što je NetworkX graf danas.
+- **`tests/test_case_graph_search.py`** — 7 testova, **stvarno pokrenuti protiv žive Neo4j
+  instance** (ne mock). Ceo modul se **preskače** (ne pada) ako Neo4j nije dostupan, pa
+  glavni test suite ostaje 372/372 zelen bez Docker-a.
+- **UI dugme** — "Napredna pretraga grafa" na stranici Slučajevi (`localhost:4200/cases`),
+  u zaglavlju Depoa dokaza kad je slučaj izabran. Otvara dijalog (adresa + broj koraka 1-5,
+  rezultati grupisani po udaljenosti). Namerno diskretno stilizovano (ljubičasti akcenat,
+  ne plavi kao ostatak aplikacije) — signalizira da je ovo dodatna, opciona mogućnost, ne
+  osnovna radnja nad slučajem.
 
-Ovo je materijal za razgovor sa mentorom — treba odlučiti (a) da li se ovo uopšte traži za
-"osnovnu verziju" (mentor je u drugoj napomeni rekao da obim modula dogovarate naknadno),
-i (b) koji kandidat iz tabele gore ima smisla za vaš rad. Kad se to razjasni, mogu da
-napravim konkretan plan migracije za pilot slice.
+### Provera koja je stvarno izvedena (ne samo napisana)
+
+- Neo4j pokrenut preko `docker compose up -d neo4j` i stvarno testiran
+- Sa Neo4j-om upaljenim: **379/379** testova prolazi (372 stara + 7 nova)
+- Sa Neo4j-om ugašenim: **372 prolazi, 7 se preskače** (ne pada), a HTTP ruta vraća čist
+  `503` — ostatak aplikacije potpuno neosetljiv na to da li je Neo4j pokrenut
+- Pravi HTTP poziv kroz `TestClient` (upload CSV-a → sinhronizacija u Neo4j → Cypher upit)
+  vratio tačan rezultat
+- `npm run build` na frontend-u prošao bez grešaka (uklj. Angular-ov strogi
+  template type-checking)
+
+## Ručno testiranje — korak po korak
+
+1. **Pokreni sve odjednom:**
+   ```
+   docker compose up -d --build
+   ```
+   (`--build` je potreban prvi put posle ove izmene, jer je `backend` slika napravljena
+   pre dodavanja `neo4j` paketa u `requirements.txt`. Posle toga dovoljno je samo
+   `docker compose up -d`.) Neo4j-u treba ~15-20s da se potpuno podigne; backend radi
+   odmah, samo `graph-search` ruta do tada vraća 503.
+
+2. **Uloguj se** na `http://localhost:4200` (`admin` / `admin123`), otvori neki slučaj sa
+   učitanom evidencijom (ili napravi novi + učitaj CSV sa Kontrolne table).
+
+3. **Otvori "Slučajevi"** → izaberi taj slučaj → u zaglavlju Depoa dokaza klikni
+   **"Napredna pretraga grafa"** (ljubičasto dugme).
+
+4. **Unesi adresu** koja se pojavljuje u učitanoj evidenciji (vidi je u Depou dokaza ili na
+   stranici Graf), izaberi broj koraka (1-5), klikni "Pretraži graf". Trebalo bi da se
+   pojavi lista povezanih adresa grupisana po udaljenosti, sa brojem indeksiranih
+   transakcija.
+
+5. **Da vidiš i samu graf bazu uživo:** otvori `http://localhost:7474` (Neo4j Browser),
+   uloguj se (**user:** `neo4j`, **password:** `dev-insecure-password` — iz
+   `NEO4J_AUTH` u `docker-compose.yml`, nema override u `.env`), pa pusti:
+   ```cypher
+   MATCH (a:Address {case_id: '<id_slucaja_iz_koraka_3>'})-[:TRANSACTED*1..2]-(b)
+   RETURN a, b
+   ```
+   Neo4j Browser ovo iscrtava kao graf — najjači deo za demonstraciju, jer se vidi da su
+   podaci stvarno u pravoj graf bazi, ne samo u tabeli.
+
+6. **Provera da ništa nije pokvareno kad Neo4j nije pokrenut:**
+   ```
+   docker compose stop neo4j
+   ```
+   Dugme i dalje otvara dijalog, ali pretraga vraća jasnu poruku (503) umesto da nešto
+   pukne — a sve ostale stranice (Graf, Taint analiza, Putanje...) rade nepromenjeno.
+
+## Sledeći korak (opciono)
+
+Ako se pilot pokaže korisnim za odbranu, sledeći prirodan kandidat je
+`analytics/plugins/wallet_clustering.py` (community detection je ugrađen algoritam u
+Neo4j-u) — kao potpuno odvojen dodatak, istim obrascem kao ovaj.

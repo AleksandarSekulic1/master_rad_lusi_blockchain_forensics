@@ -13,6 +13,7 @@ import {
   BehavioralAnalysisResult,
   Case,
   CasePathfindingResult,
+  CaseGraphNeighborhoodResult,
   CaseReportContext,
   CaseStatus,
   CaseSummary,
@@ -302,6 +303,26 @@ export class ApiService {
       body['to'] = to;
     }
     return this.http.post<CasePathfindingResult>(`${this.apiUrl}/api/v1/cases/${caseId}/pathfinding`, body, { params });
+  }
+
+  /** Graph-db pilot (Neo4j) - "every address connected to `address` within `maxHops`
+   * steps", answered by a Cypher query rather than a hand-rolled bounded BFS. Optional/
+   * additive: the backend returns HTTP 503 when Neo4j isn't running - see
+   * PREDLOG-GRAF-SUBP.md. Read-only, like getCaseGraph - no custody entry. */
+  getCaseGraphNeighborhood(
+    caseId: string,
+    address: string,
+    maxHops: number,
+    evidence?: string | null,
+  ): Observable<CaseGraphNeighborhoodResult> {
+    let params = new HttpParams().set('address', address).set('max_hops', String(maxHops));
+    if (evidence) {
+      params = params.set('evidence', evidence);
+    }
+    return this.http.get<CaseGraphNeighborhoodResult>(
+      `${this.apiUrl}/api/v1/cases/${caseId}/graph-search/neighborhood`,
+      { params },
+    );
   }
 
   /** Behavioral / Time-of-Day Analysis (case-scoped, first version - UTC only, no

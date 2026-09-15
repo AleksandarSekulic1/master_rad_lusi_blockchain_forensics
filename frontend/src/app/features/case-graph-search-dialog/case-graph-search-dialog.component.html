@@ -1,0 +1,87 @@
+<div class="graphsearch-overlay" (click)="close()">
+  <div class="graphsearch-dialog" (click)="$event.stopPropagation()">
+    <div class="graphsearch-header">
+      <span class="graphsearch-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="5" cy="12" r="2.6" />
+          <circle cx="18" cy="5.5" r="2.6" />
+          <circle cx="18" cy="18.5" r="2.6" />
+          <path d="M7.3 10.8 15.7 6.7M7.3 13.2 15.7 17.3" />
+        </svg>
+      </span>
+      <div class="graphsearch-title">
+        <p class="panel-kicker">{{ t('Napredna pretraga grafa', 'Advanced graph search') }} · Neo4j</p>
+        <h3>{{ t('Susedstvo adrese', 'Address neighborhood') }}</h3>
+      </div>
+      <button type="button" class="close-button" (click)="close()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+    </div>
+
+    <p class="graphsearch-intro">
+      {{ t('Pronalazi sve adrese povezane sa unetom adresom do zadatog broja koraka - upitom nad graf bazom (Cypher), umesto ručne pretrage kroz tabelu.',
+            'Finds every address connected to the given one within a set number of steps - via a graph database (Cypher) query, rather than a manual table search.') }}
+      <ng-container *ngIf="caseName"> — <strong>{{ caseName }}</strong></ng-container>
+    </p>
+
+    <div class="graphsearch-form">
+      <label class="field address-field">
+        <span class="field-label">{{ t('Adresa', 'Address') }}</span>
+        <input
+          type="text"
+          [(ngModel)]="address"
+          name="address"
+          placeholder="0x..."
+          autocomplete="off"
+          spellcheck="false"
+          (keyup.enter)="search()"
+        />
+      </label>
+
+      <div class="hop-picker">
+        <span class="field-label">{{ t('Broj koraka', 'Number of hops') }}</span>
+        <div class="hop-options">
+          <button
+            type="button"
+            *ngFor="let option of hopOptions"
+            class="hop-chip"
+            [class.active]="maxHops === option"
+            (click)="maxHops = option"
+          >{{ option }}</button>
+        </div>
+      </div>
+
+      <button type="button" class="primary-button search-button" (click)="search()" [disabled]="!address.trim() || isSearching">
+        <span class="spinner" *ngIf="isSearching" aria-hidden="true"></span>
+        {{ isSearching ? t('Pretraga...', 'Searching...') : t('Pretraži graf', 'Search graph') }}
+      </button>
+    </div>
+
+    <p class="notice-inline" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+    <div class="graphsearch-results" *ngIf="result">
+      <p class="results-meta">
+        {{ t('Indeksirano transakcija', 'Transactions indexed') }}: <strong>{{ result.transactions_indexed }}</strong>
+        <span class="meta-sep">·</span>
+        {{ t('Pronađeno adresa', 'Addresses found') }}: <strong>{{ result.neighbors.length }}</strong>
+      </p>
+
+      <ng-container *ngIf="result.neighbors.length > 0; else emptyNeighbors">
+        <div class="hop-group" *ngFor="let group of groupedByHop" [attr.data-hop]="group.hops">
+          <span class="hop-group-label">
+            <span class="hop-dot" aria-hidden="true"></span>
+            {{ t('Korak', 'Hop') }} {{ group.hops }}
+          </span>
+          <div class="hop-group-addresses">
+            <span class="address-chip" *ngFor="let neighbor of group.neighbors">{{ neighbor.address }}</span>
+          </div>
+        </div>
+      </ng-container>
+      <ng-template #emptyNeighbors>
+        <p class="empty-note">
+          {{ t('Nema povezanih adresa u zadatom broju koraka.', 'No connected addresses within the given number of hops.') }}
+        </p>
+      </ng-template>
+
+      <p class="graphsearch-disclaimer">{{ result.disclaimer }}</p>
+    </div>
+  </div>
+</div>
