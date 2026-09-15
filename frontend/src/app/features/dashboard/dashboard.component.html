@@ -161,38 +161,40 @@
           <option *ngFor="let known of knownSearchAddresses" [value]="known"></option>
         </datalist>
       </label>
-      <button type="button" class="primary-button" (click)="searchAddress()" [disabled]="!addressSearchQuery.trim()">
+      <button type="button" class="primary-button search-submit" (click)="searchAddress()" [disabled]="!addressSearchQuery.trim()">
         {{ t('Pretraži', 'Search') }}
       </button>
-      <button type="button" class="ghost-button" *ngIf="addressSearchQuery" (click)="clearAddressSearch()">
+      <button type="button" class="ghost-button search-submit" *ngIf="addressSearchQuery" (click)="clearAddressSearch()">
         {{ t('Obriši', 'Clear') }}
       </button>
     </div>
 
     <div class="search-result" *ngIf="addressSearchResult" [class]="'band-' + addressSearchRiskBand">
-      <div class="search-result-head">
-        <span class="search-result-address">{{ addressSearchResult.id }}</span>
+      <div class="search-result-identity">
         <span class="risk-pill" [class]="'band-' + addressSearchRiskBand">
-          {{ t('Rizik', 'Risk') }}: {{ addressSearchResult.risk_score ?? 0 }}
+          <strong>{{ addressSearchResult.risk_score ?? 0 }}</strong>
+          <small>{{ t('rizik', 'risk') }}</small>
         </span>
+        <div class="search-result-address-block">
+          <span class="search-result-address">{{ addressSearchResult.id }}</span>
+          <div class="search-result-flags" *ngIf="addressSearchFlags.length > 0">
+            <span class="search-flag" *ngFor="let flag of addressSearchFlags">⚠ {{ flag }}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="search-result-flags" *ngIf="addressSearchFlags.length > 0">
-        <span class="search-flag" *ngFor="let flag of addressSearchFlags">⚠ {{ flag }}</span>
+      <div class="search-result-stats">
+        <div class="search-stat">
+          <span>{{ t('Klaster', 'Cluster') }}</span>
+          <strong>{{ addressSearchResult.cluster_id ?? t('nema', 'none') }}</strong>
+        </div>
+        <div class="search-stat">
+          <span>{{ t('Transakcije', 'Transactions') }}</span>
+          <strong>{{ addressSearchTransactionCount | number }}</strong>
+        </div>
       </div>
 
-      <dl class="search-result-meta">
-        <div>
-          <dt>{{ t('Klaster', 'Cluster') }}</dt>
-          <dd>{{ addressSearchResult.cluster_id ?? t('nema', 'none') }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('Transakcije', 'Transactions') }}</dt>
-          <dd>{{ addressSearchTransactionCount | number }}</dd>
-        </div>
-      </dl>
-
-      <button type="button" class="ghost-button" routerLink="/graph" (click)="openAddressOnGraph()">
+      <button type="button" class="ghost-button search-open-graph" routerLink="/graph" (click)="openAddressOnGraph()">
         {{ t('Otvori na grafu →', 'Open on graph →') }}
       </button>
     </div>

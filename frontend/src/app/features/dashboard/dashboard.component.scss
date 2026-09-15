@@ -57,6 +57,7 @@
 }
 
 .upload-panel,
+.search-panel,
 .metrics-row,
 .graph-panel,
 .export-panel {
@@ -445,7 +446,7 @@ select option {
 
 .search-field {
   flex: 1;
-  min-width: 14rem;
+  min-width: 16rem;
 }
 
 .field-hint {
@@ -456,50 +457,71 @@ select option {
   opacity: 0.75;
 }
 
+/* .ghost-button/.primary-button already share the input's vertical padding (0.72rem), so
+   they line up on the same baseline as the field via .search-row's align-items: flex-end -
+   this only needs to stop the label wrapping onto two lines in a narrow flex item. */
+.search-submit {
+  white-space: nowrap;
+}
+
 .search-result {
-  margin-top: 1.1rem;
-  padding: 0.9rem 1rem;
-  border-radius: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+  margin-top: 1.2rem;
+  padding: 1.1rem 1.3rem;
+  border-radius: 1rem;
   border: 1px solid var(--field-border);
   background: var(--field-bg);
 }
 
 .search-result.band-high {
-  border-color: rgba(239, 68, 68, 0.45);
-  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.07);
 }
 .search-result.band-medium {
-  border-color: rgba(217, 119, 6, 0.45);
-  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.4);
+  background: rgba(217, 119, 6, 0.07);
 }
 .search-result.band-low {
-  border-color: rgba(163, 190, 60, 0.4);
-  background: rgba(163, 190, 60, 0.06);
+  border-color: rgba(163, 190, 60, 0.35);
+  background: rgba(163, 190, 60, 0.05);
 }
 
-.search-result-head {
+.search-result-identity {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-}
-
-.search-result-address {
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 0.85rem;
-  color: var(--heading);
-  word-break: break-all;
+  gap: 0.9rem;
+  flex: 1;
+  min-width: 16rem;
 }
 
 .risk-pill {
   flex: none;
-  padding: 0.3rem 0.65rem;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  background: rgba(148, 163, 184, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 0.9rem;
+  background: rgba(148, 163, 184, 0.16);
   color: var(--heading);
+}
+
+.risk-pill strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.risk-pill small {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
 }
 
 .risk-pill.band-high {
@@ -515,11 +537,24 @@ select option {
   color: #fff;
 }
 
+.search-result-address-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.search-result-address {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.88rem;
+  color: var(--heading);
+  word-break: break-all;
+}
+
 .search-result-flags {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-top: 0.6rem;
 }
 
 .search-flag {
@@ -532,14 +567,19 @@ select option {
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.search-result-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem 1rem;
-  margin: 0.8rem 0;
+.search-result-stats {
+  display: flex;
+  gap: 1.6rem;
+  flex: none;
 }
 
-.search-result-meta dt {
+.search-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.search-stat span {
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -547,14 +587,33 @@ select option {
   color: var(--text-dim);
 }
 
-.search-result-meta dd {
-  margin: 0.15rem 0 0;
-  font-size: 0.92rem;
+.search-stat strong {
+  font-size: 0.98rem;
   color: var(--heading);
+}
+
+.search-open-graph {
+  flex: none;
+  margin-left: auto;
 }
 
 .search-empty {
   margin: 1rem 0 0;
   font-size: 0.85rem;
   color: var(--text-dim);
+}
+
+@media (max-width: 720px) {
+  .search-result {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-result-stats {
+    justify-content: space-between;
+  }
+
+  .search-open-graph {
+    margin-left: 0;
+  }
 }
