@@ -24,16 +24,25 @@
 
     <div class="graphsearch-form">
       <label class="field address-field">
-        <span class="field-label">{{ t('Adresa', 'Address') }}</span>
+        <span class="field-label">
+          {{ t('Adresa', 'Address') }}
+          <span class="field-hint" *ngIf="knownAddresses.length > 0">
+            ({{ t('izaberi ili ukucaj', 'pick or type') }})
+          </span>
+        </span>
         <input
           type="text"
           [(ngModel)]="address"
           name="address"
+          [attr.list]="addressListId"
           placeholder="0x..."
           autocomplete="off"
           spellcheck="false"
           (keyup.enter)="search()"
         />
+        <datalist [id]="addressListId">
+          <option *ngFor="let known of knownAddresses" [value]="known"></option>
+        </datalist>
       </label>
 
       <div class="hop-picker">
@@ -81,7 +90,7 @@
         </p>
       </ng-template>
 
-      <p class="graphsearch-disclaimer">{{ result.disclaimer }}</p>
+      <p class="graphsearch-disclaimer">{{ disclaimerText }}</p>
     </div>
   </div>
 </div>

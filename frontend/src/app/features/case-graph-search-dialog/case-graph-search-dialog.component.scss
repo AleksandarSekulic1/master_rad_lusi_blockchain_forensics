@@ -154,6 +154,12 @@
   color: var(--gs-dim);
 }
 
+.field-hint {
+  font-weight: 400;
+  font-style: italic;
+  opacity: 0.75;
+}
+
 .hop-picker {
   display: flex;
   flex-direction: column;

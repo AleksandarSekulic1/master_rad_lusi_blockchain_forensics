@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../../core/services/api.service';
@@ -28,13 +28,17 @@ interface HopGroup {
   templateUrl: './case-graph-search-dialog.component.html',
   styleUrl: './case-graph-search-dialog.component.scss',
 })
-export class CaseGraphSearchDialogComponent {
+export class CaseGraphSearchDialogComponent implements OnInit {
   @Input({ required: true }) caseId!: string;
   @Input() caseName: string | null = null;
 
   @Output() readonly closed = new EventEmitter<void>();
 
   protected readonly hopOptions = [1, 2, 3, 4, 5];
+  /** Static since only one instance of this dialog is ever mounted at a time (see the
+   * `*ngIf` in cases.component.html) - no risk of two dialogs colliding on the same
+   * <datalist> id. */
+  protected readonly addressListId = 'graphsearch-address-options';
 
   protected address = '';
   protected maxHops = 2;
@@ -43,6 +47,12 @@ export class CaseGraphSearchDialogComponent {
   protected errorMessage: string | null = null;
   protected result: CaseGraphNeighborhoodResult | null = null;
 
+  /** Addresses already known to appear in this case's evidence (from the same node-link
+   * graph the Graf page renders - GET .../graph), offered as <datalist> suggestions so
+   * the analyst can pick one instead of retyping it by hand. Manual entry stays fully
+   * available either way - this only ever suggests, never restricts. */
+  protected knownAddresses: string[] = [];
+
   constructor(
     private readonly api: ApiService,
     public readonly settings: SettingsService,
@@ -50,6 +60,32 @@ export class CaseGraphSearchDialogComponent {
 
   protected t(sr: string, en: string): string {
     return this.settings.lang() === 'sr' ? sr : en;
+  }
+
+  ngOnInit(): void {
+    this.api.getCaseGraph(this.caseId).subscribe({
+      next: (graph) => {
+        const addresses = new Set(graph.nodes.map((node) => node.id));
+        this.knownAddresses = [...addresses].sort();
+      },
+      // Best-effort convenience only - if it fails (e.g. no evidence yet), the address
+      // field still works exactly like a plain text input, just without suggestions.
+      error: () => (this.knownAddresses = []),
+    });
+  }
+
+  /** Composed here (not read from the backend's `result.disclaimer`, which is
+   * Serbian-only) so it follows the UI language - same convention as every other
+   * analysis's disclaimer in this project (e.g. dex-swap-analysis's PDF export). */
+  protected get disclaimerText(): string {
+    return this.t(
+      'Rezultat je izveden iz iste dokazne evidencije kao i ostatak aplikacije (preko Neo4j grafa, '
+        + 'sinhronizovanog pri svakom pozivu) - nije zaseban ili trajniji izvor istine od dokaznog CSV-a '
+        + 'i njegovog SHA-256 heša.',
+      'The result is derived from the same evidence as the rest of the app (via a Neo4j graph, synchronized '
+        + 'on every call) - it is not a separate or more permanent source of truth than the evidence CSV and '
+        + 'its SHA-256 hash.',
+    );
   }
 
   protected get groupedByHop(): HopGroup[] {

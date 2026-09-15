@@ -133,22 +133,24 @@ ograničenog BFS-a koji bi se za to ručno pisao u NetworkX-u).
    `docker compose up -d`.) Neo4j-u treba ~15-20s da se potpuno podigne; backend radi
    odmah, samo `graph-search` ruta do tada vraća 503.
 
-2. **Uloguj se** na `http://localhost:4200` (`admin` / `admin123`), otvori neki slučaj sa
-   učitanom evidencijom (ili napravi novi + učitaj CSV sa Kontrolne table).
+2. **Uloguj se** na `http://localhost:4200` (`admin` / `admin123`).
 
-3. **Otvori "Slučajevi"** → izaberi taj slučaj → u zaglavlju Depoa dokaza klikni
+3. **Otvori "Slučajevi"** → izaberi **"Demo: Sumnjiva laundering sema (hakovan novčanik)"**
+   (već postojeći demo slučaj, `id 46ae7f91db9b`) → u zaglavlju Depoa dokaza klikni
    **"Napredna pretraga grafa"** (ljubičasto dugme).
 
-4. **Unesi adresu** koja se pojavljuje u učitanoj evidenciji (vidi je u Depou dokaza ili na
-   stranici Graf), izaberi broj koraka (1-5), klikni "Pretraži graf". Trebalo bi da se
-   pojavi lista povezanih adresa grupisana po udaljenosti, sa brojem indeksiranih
+4. **Unesi adresu** — polje sad nudi i padajuću listu adresa iz evidencije ovog slučaja
+   (klikni u polje, pojaviće se predlozi), ili je otkucaj ručno. Izaberi broj koraka
+   (1-5), klikni "Pretraži graf". Konkretan primer sa ovim slučajem — videti odeljak
+   "Konkretan primer" ispod za tačno šta uneti i šta očekivati. Trebalo bi da se pojavi
+   lista povezanih adresa grupisana po udaljenosti, sa brojem indeksiranih
    transakcija.
 
 5. **Da vidiš i samu graf bazu uživo:** otvori `http://localhost:7474` (Neo4j Browser),
    uloguj se (**user:** `neo4j`, **password:** `dev-insecure-password` — iz
    `NEO4J_AUTH` u `docker-compose.yml`, nema override u `.env`), pa pusti:
    ```cypher
-   MATCH (a:Address {case_id: '<id_slucaja_iz_koraka_3>'})-[:TRANSACTED*1..2]-(b)
+   MATCH (a:Address {case_id: '46ae7f91db9b'})-[:TRANSACTED*1..2]-(b)
    RETURN a, b
    ```
    Neo4j Browser ovo iscrtava kao graf — najjači deo za demonstraciju, jer se vidi da su
@@ -160,6 +162,45 @@ ograničenog BFS-a koji bi se za to ručno pisao u NetworkX-u).
    ```
    Dugme i dalje otvara dijalog, ali pretraga vraća jasnu poruku (503) umesto da nešto
    pukne — a sve ostale stranice (Graf, Taint analiza, Putanje...) rade nepromenjeno.
+
+## Konkretan primer (isti podaci koji su već u aplikaciji)
+
+Slučaj **"Demo: Sumnjiva laundering sema (hakovan novčanik)"** (`46ae7f91db9b`) ima 9
+dokaznih fajlova (66 transakcija ukupno, kombinovano) — namerno napravljenu peel-chain
+šemu iz hakovanog novčanika. Sledeći rezultati su **stvarno pokrenuti i potvrđeni** protiv
+prave rute i prave evidencije ovog slučaja (ne pretpostavljeni):
+
+**Šta uneti:**
+- Adresa: `0xVictimWallet` (izabrana iz padajuće liste — pojaviće se čim klikneš u polje)
+- Broj koraka: probaj redom **2**, pa **4**, pa **5**
+
+**Stvarno potvrđen rezultat za 2 koraka** (66 indeksiranih transakcija, 7 pronađenih adresa):
+```
+Korak 1: 0xDrainerContract, 0xDrainerWallet, 0xPeelSeed, 0xSweepContract
+Korak 2: 0xMuleWallet1, 0xPeelRelay1, 0xVictimWallet2
+```
+Već na 1 koraku se vidi da je novac žrtve otišao direktno na "drainer" ugovor/novčanik i
+"sweep" ugovor — tipičan obrazac wallet-drainer napada, tačno ono što naziv slučaja
+najavljuje.
+
+**Stvarno potvrđen rezultat za 4 koraka** (dodaje se na gornje):
+```
+Korak 3: 0xBridgeRouterHop, 0xMuleWallet2, 0xPeelRelay2
+Korak 4: 0xDeadDropWallet, 0xbad0000000000000000000000000000000000001
+```
+Ovde priča postaje forenzički zanimljiva: u tačno 4 koraka od žrtve stiže se do
+`0xbad000...001` — adrese sa crne liste. Dobar argument za odbranu: *"Jednim upitom nad
+graf bazom, umesto ručnog praćenja tabele red-po-red, pokazujem da se novac žrtve za 4
+koraka stiže do sankcionisane adrese."*
+
+**Stvarno potvrđen rezultat za 5 koraka** (dodaje se na gornje):
+```
+Korak 5: 0xInvestorWallet, 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+```
+
+**Ako rezultat ne odgovara ovome:** proveri da li je case zaista `46ae7f91db9b` (vidi ID
+ispod naziva slučaja na kartici) — pretraga sama upisuje svež graf pri svakom pozivu, pa
+stari podaci u Neo4j-u ne bi trebalo da smetaju.
 
 ## Sledeći korak (opciono)
 
