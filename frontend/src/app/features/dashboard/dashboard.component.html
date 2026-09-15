@@ -129,6 +129,80 @@
     </div>
   </article>
 
+  <article class="panel search-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="panel-kicker">{{ t('Brza pretraga', 'Quick search') }}</p>
+        <h2>{{ t('Pretraga adrese', 'Address search') }}</h2>
+      </div>
+    </div>
+
+    <p class="panel-lead" *ngIf="knownSearchAddresses.length === 0">
+      {{ t('Izaberite slučaj sa učitanom evidencijom gore da bi pretraga radila.',
+            'Select a case with loaded evidence above for the search to work.') }}
+    </p>
+
+    <div class="search-row" *ngIf="knownSearchAddresses.length > 0">
+      <label class="field search-field">
+        <span class="field-label">
+          {{ t('Adresa', 'Address') }}
+          <span class="field-hint">({{ t('izaberi ili ukucaj', 'pick or type') }})</span>
+        </span>
+        <input
+          type="text"
+          [(ngModel)]="addressSearchQuery"
+          list="dashboard-address-options"
+          placeholder="0x..."
+          autocomplete="off"
+          spellcheck="false"
+          (keyup.enter)="searchAddress()"
+        />
+        <datalist id="dashboard-address-options">
+          <option *ngFor="let known of knownSearchAddresses" [value]="known"></option>
+        </datalist>
+      </label>
+      <button type="button" class="primary-button" (click)="searchAddress()" [disabled]="!addressSearchQuery.trim()">
+        {{ t('Pretraži', 'Search') }}
+      </button>
+      <button type="button" class="ghost-button" *ngIf="addressSearchQuery" (click)="clearAddressSearch()">
+        {{ t('Obriši', 'Clear') }}
+      </button>
+    </div>
+
+    <div class="search-result" *ngIf="addressSearchResult" [class]="'band-' + addressSearchRiskBand">
+      <div class="search-result-head">
+        <span class="search-result-address">{{ addressSearchResult.id }}</span>
+        <span class="risk-pill" [class]="'band-' + addressSearchRiskBand">
+          {{ t('Rizik', 'Risk') }}: {{ addressSearchResult.risk_score ?? 0 }}
+        </span>
+      </div>
+
+      <div class="search-result-flags" *ngIf="addressSearchFlags.length > 0">
+        <span class="search-flag" *ngFor="let flag of addressSearchFlags">⚠ {{ flag }}</span>
+      </div>
+
+      <dl class="search-result-meta">
+        <div>
+          <dt>{{ t('Klaster', 'Cluster') }}</dt>
+          <dd>{{ addressSearchResult.cluster_id ?? t('nema', 'none') }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('Transakcije', 'Transactions') }}</dt>
+          <dd>{{ addressSearchTransactionCount | number }}</dd>
+        </div>
+      </dl>
+
+      <button type="button" class="ghost-button" routerLink="/graph" (click)="openAddressOnGraph()">
+        {{ t('Otvori na grafu →', 'Open on graph →') }}
+      </button>
+    </div>
+
+    <p class="search-empty" *ngIf="addressSearchResult === null">
+      {{ t('Ta adresa se ne pojavljuje u trenutno učitanom grafu slučaja.',
+            'That address does not appear in the currently loaded case graph.') }}
+    </p>
+  </article>
+
   <article class="metrics-row">
     <div class="metric-card">
       <span>{{ t('Ukupno transakcija', 'Total transactions') }}</span>

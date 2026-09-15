@@ -433,3 +433,128 @@ select option {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- brza pretraga adrese ---------- */
+
+.search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.search-field {
+  flex: 1;
+  min-width: 14rem;
+}
+
+.field-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.search-result {
+  margin-top: 1.1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+}
+
+.search-result.band-high {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+}
+.search-result.band-medium {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(217, 119, 6, 0.08);
+}
+.search-result.band-low {
+  border-color: rgba(163, 190, 60, 0.4);
+  background: rgba(163, 190, 60, 0.06);
+}
+
+.search-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.search-result-address {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--heading);
+  word-break: break-all;
+}
+
+.risk-pill {
+  flex: none;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--heading);
+}
+
+.risk-pill.band-high {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fff;
+}
+.risk-pill.band-medium {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+}
+.risk-pill.band-low {
+  background: linear-gradient(135deg, #a3be3c, #84a017);
+  color: #fff;
+}
+
+.search-result-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.search-flag {
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.search-result-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0.8rem 0;
+}
+
+.search-result-meta dt {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.search-result-meta dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+  color: var(--heading);
+}
+
+.search-empty {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}

@@ -39,6 +39,107 @@ export class DashboardComponent implements OnInit {
 
   protected openCases: CaseSummary[] = [];
 
+  // --- Brza pretraga adrese (Dashboard "search engine" iz predloga teme) ---------------
+  // Radi isključivo nad grafom koji je VEĆ učitan za dashboard summary iznad (nijedan nov
+  // HTTP poziv) - unos adrese samo pretraži postojeći nodes[] niz i odmah pokaže rizik/
+  // klaster/oznake. "Otvori na grafu" ide preko istog `state.setSelectedNode` mehanizma
+  // koji već koristi klik na čvor na Graf stranici, umesto da se ovde duplira ceo
+  // node-inspector panel.
+  protected addressSearchQuery = '';
+  /** undefined = još ništa pretraženo, null = pretraženo ali nije nađeno adresa, inače nađen čvor. */
+  protected addressSearchResult: GraphNodeData | null | undefined = undefined;
+
+  protected get knownSearchAddresses(): string[] {
+    const graph = this.graphResult ?? this.state.graphSnapshot;
+    if (!graph) {
+      return [];
+    }
+    return [...new Set(graph.nodes.map((node) => node.id))].sort();
+  }
+
+  searchAddress(): void {
+    const query = this.addressSearchQuery.trim();
+    if (!query) {
+      this.addressSearchResult = undefined;
+      return;
+    }
+    const graph = this.graphResult ?? this.state.graphSnapshot;
+    this.addressSearchResult = graph?.nodes.find((node) => node.id === query) ?? null;
+  }
+
+  clearAddressSearch(): void {
+    this.addressSearchQuery = '';
+    this.addressSearchResult = undefined;
+  }
+
+  /** Transaction count za pronađenu adresu (broj grana grafa gde se pojavljuje kao
+   * pošiljalac ili primalac) - ista definicija "transakcije" kao gornji `transactionCount`
+   * tile, samo skalirano na jedan čvor. */
+  protected get addressSearchTransactionCount(): number {
+    if (!this.addressSearchResult) {
+      return 0;
+    }
+    const graph = this.graphResult ?? this.state.graphSnapshot;
+    if (!graph) {
+      return 0;
+    }
+    const address = this.addressSearchResult.id;
+    return graph.links
+      .filter((link) => link.source === address || link.target === address)
+      .reduce((sum, link) => sum + Number(link.transaction_count ?? 1), 0);
+  }
+
+  /** Ista granica i redosled (crna lista uvek pobeđuje) kao selectedNodeRiskBand na Graf
+   * stranici - namerno ista logika, samo primenjena na rezultat pretrage umesto na klik na
+   * čvor. */
+  protected get addressSearchRiskBand(): 'high' | 'medium' | 'low' | 'none' {
+    const node = this.addressSearchResult;
+    if (!node) {
+      return 'none';
+    }
+    if (node.blacklist_flag) {
+      return 'high';
+    }
+    const score = Number(node.risk_score ?? 0);
+    if (score >= 70) {
+      return 'high';
+    }
+    if (score >= 40) {
+      return 'medium';
+    }
+    return score > 0 ? 'low' : 'none';
+  }
+
+  protected get addressSearchFlags(): string[] {
+    const node = this.addressSearchResult;
+    if (!node) {
+      return [];
+    }
+    const flags: string[] = [];
+    if (node.blacklist_flag) {
+      flags.push(this.t('Crna lista', 'Blacklisted'));
+    }
+    if (node.peel_chain_flag) {
+      flags.push(this.t('Peel lanac', 'Peel chain'));
+    }
+    if (node.chain_hop_flag) {
+      flags.push(this.t('Skok lanca', 'Chain hop'));
+    }
+    if (node.anomaly_flag) {
+      flags.push(this.t('Anomalija', 'Anomaly'));
+    }
+    return flags;
+  }
+
+  /** Prebacuje pronađeni čvor u isto "selektovano" stanje koje klik na grafu postavlja
+   * (AnalysisStateService.setSelectedNode), pa Graf stranica odmah otvara pun
+   * node-inspector panel za njega umesto da se ta logika duplira ovde. */
+  openAddressOnGraph(): void {
+    if (this.addressSearchResult) {
+      this.state.setSelectedNode(this.addressSearchResult);
+    }
+  }
+
   constructor(
     private readonly api: ApiService,
     public readonly state: AnalysisStateService,
