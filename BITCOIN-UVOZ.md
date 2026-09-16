@@ -1,131 +1,136 @@
 # Uvoz Bitcoin (UTXO) transakcija
 
-Pored Ethereum-a (account-based model), Lusi v1.0 sada ume da povuče i analizira **Bitcoin**
-transakcije (UTXO model) — kompletan plan i sve arhitektonske odluke su zapisane u
-[`BITCOIN-UTXO-PLAN.md`](BITCOIN-UTXO-PLAN.md); ovaj dokument je korisničko uputstvo posle
-što je implementacija završena i testirana.
+## Kako je urađen uvoz (ukratko)
 
-## Kako ovo radi (u kratkim crtama)
+Bitcoin nema "pošiljaoca" i "primaoca" kao Ethereum — svaka transakcija troši jedan ili
+više prethodnih izlaza (UTXO) kao ulaze i pravi jedan ili više novih izlaza. Da se ceo
+postojeći sistem ne bi menjao, svaka Bitcoin transakcija se pri uvozu **normalizuje** u isti
+oblik koji sistem već koristi za Ethereum (`sender_address, recipient_address, amount,
+timestamp`):
 
-Bitcoin nema "pošiljaoca" i "primaoca" u istom smislu kao Ethereum — svaka transakcija troši
-jedan ili više prethodnih izlaza (UTXO) kao ulaze i pravi jedan ili više novih izlaza. Da se
-ceo postojeći pipeline (graph building, svih 6 plugin-ova, taint analiza, custody log, Neo4j
-pretraga, dashboard search, svi izvozi) ne bi menjao, svaka Bitcoin transakcija se pri uvozu
-**normalizuje** u isti oblik koji sistem već koristi za Ethereum:
+> **Prva ulazna adresa** = "pošiljalac" (*common input ownership heuristic* — standardna
+> forenzička pretpostavka: ko god troši više ulaza u istoj transakciji, po pravilu je isti
+> novčanik). **Svaka izlazna adresa** = po jedan red primaoca.
 
-> **Prva ulazna adresa** (čiji je UTXO potrošen) = "pošiljalac" — standardna forenzička
-> pretpostavka poznata kao *common input ownership heuristic* (Meiklejohn i dr., 2013).
-> **Svaka izlazna adresa** = po jedan red primaoca (change izlazi nazad ka pošiljaocu se NE
-> filtriraju — ostaju u grafu kao normalna grana, jer to i jesu). OP_RETURN izlazi (bez
-> adrese) i nepotvrđene (mempool) transakcije se preskaču.
+Izvor podataka: **Blockstream API** (`blockstream.info/api`), besplatan, bez ključa. Uvoz
+živi u posebnom folderu `backend/app/features/bitcoin_ingestion/`, Ethereum deo koda nije
+dirat ni na jednom mestu.
 
-Posledica: **ništa postojeće nije menjano**. Ceo downstream gleda isti CSV/DataFrame oblik
-(`sender_address, recipient_address, amount, timestamp, metadata`) bez obzira da li je
-poreklo Ethereum ili Bitcoin.
+Test slučaj: **"BITCOIN"** — sadrži ručno napravljen demo scenario (dve peel-chain "šeme
+pranja novca") **i** pravu, uživo povučenu istoriju jedne stvarno sankcionisane adrese.
 
-Izvor podataka je **Blockstream Esplora API** (`https://blockstream.info/api`) — javan,
-besplatan, bez API ključa (za razliku od Etherscan-a).
+---
 
-## 1. Testiranje — povlačenje prave adrese sa mainnet-a
+## Testiranje korak po korak — šta otvoriti, šta vidiš, i zašto
 
-1. Uloguj se u aplikaciju.
-2. Otvori/napravi slučaj na strani **Slučajevi**.
-3. Na **Kontrolnoj tabli**, u sekciji "Sa blockchain-a", izaberi mrežu **Bitcoin mainnet**.
-4. Unesi Bitcoin adresu, npr. (OFAC-sankcionisana adresa Garantex Europe OU, designacija
-   2022-04-05 — vidi odeljak 3 ispod):
-   ```
-   3Lpoy53K625zVeE47ZasiG5jGkAxJ27kh1
-   ```
-5. Klikni **"Povuci transakcije"**. Sistem povlači potvrđenu istoriju te adrese preko
-   Blockstream API-ja, normalizuje je po pravilu iznad, pravi CSV evidence zapis, računa
-   SHA-256 i pokreće graph building + analitiku — isto kao posle ručnog CSV uploada.
+### 1. Graf
 
-Polje za adresu validira **Base58** (počinje sa `1` ili `3`, 25-34 znaka) ili **Bech32**
-(počinje sa `bc1`, 39-59 znakova) format; radio dugmići "cela istorija"/"samo transakcija"
-(tx-hash mod) se ne prikazuju za Bitcoin — prva verzija podržava samo "adresa → istorija".
+**Otvori:** slučaj **"BITCOIN"** → stranica **Graf**.
 
-## 2. Testiranje — ručni CSV (kontrolisan scenario za demonstraciju)
+**Vidiš:** 46 čvorova, 47 grana.
 
-Za scenario koji sigurno "upali" sve analize (peel chains, chain hopping, wallet clustering,
-taint, risk scoring, anomaly detection), učitaj ručno napravljen CSV kroz postojeći
-"Iz CSV fajla" tok — isti format kao gore, sa `currency=BTC` kolonom. Primer manjeg
-scenarija (peel-chain lanac + jedna clustering grupa):
+**Zašto:** to je zbir ručnog demo CSV-a (26 čvorova — dve odvojene "žrtve" čiji se novac
+pere kroz peel-chain, sa jednim zajedničkim reiskorišćenim mule-wallet-om) i prave on-chain
+istorije jedne adrese (21 transakcija), učitanih kao dve odvojene evidencije u isti slučaj.
+Graf ih prikazuje spojene, jer downstream ne pravi razliku između "ručno uneto" i "povučeno
+sa lanca" — obe evidencije su isti CSV oblik.
 
+Klikni na pojedine čvorove da vidiš detalje:
+
+| Klikni na čvor | Vidiš u panelu | Zašto |
+|---|---|---|
+| `3PeelSeed1xxxxxxxxxxxxxxxxxxxxxxxx` | **Peel uloga: seed**, povišen risk score | Prima veliki iznos (500) i odmah ga u istom "dahu" deli na dva izlaza — jedan veliki nastavak, jedan manji "peel" — klasičan peel-chain obrazac. Isti `peel_chains` plugin kao za Ethereum, samo čita normalizovane BTC redove. |
+| `3BridgeSwapHopxxxxxxxxxxxxxxxxxxxxx` | **Skok lanca: bridge** | `chain_hopping` plugin prepoznaje ključnu reč "bridge"/"hop" u imenu čvora — isti mehanizam kojim bi prepoznao npr. "Tornado.Cash" na Ethereum-u. |
+| `1CoConspiratorAxxxxxxxxxxxxxxxxxxxx` | **Klaster: 2 člana** | `wallet_clustering` plugin je video da ova adresa i `1CoConspiratorBxxx...` šalju **identičan iznos, istoj adresi, u istom trenutku** — forenzički obrazac zajedničkog vlasnika (isti duh kao common input ownership, samo primenjen na dve odvojene uplate umesto na ulaze jedne transakcije). |
+| `3lpoy53k625zvee47zasig5jgkaxj27kh1` | **Crne liste: OFAC · Garantex Europe OÜ (designated 2022-04-05)** | Ovo **nije** simulirana demo adresa — ovo je stvarna Bitcoin adresa navedena u pravoj OFAC SDN sankciji od 5.4.2022. godine (izvor: `ofac.treasury.gov/recent-actions/20220405`). Dokaz da blacklist provera radi identično za Bitcoin kao za Ethereum, kad podatak postoji u listi. |
+
+### 2. Taint analiza
+
+**Otvori:** stranica **Taint analiza** → slučaj "BITCOIN" → seed adresa:
 ```
-sender_address,recipient_address,amount,timestamp,currency
-bc1qvictim0000000000000000000000000000000,3PeelSeedxxxxxxxxxxxxxxxxxxxxxxxxxx,500.0,2026-02-01T10:00:00Z,BTC
-3PeelSeedxxxxxxxxxxxxxxxxxxxxxxxxxx,3PeelRelay1xxxxxxxxxxxxxxxxxxxxxxx,350.0,2026-02-01T10:15:00Z,BTC
-3PeelSeedxxxxxxxxxxxxxxxxxxxxxxxxxx,1MuleWalletxxxxxxxxxxxxxxxxxxxxxxx,150.0,2026-02-01T10:20:00Z,BTC
+bc1qvictim1000000000000000000000000000000
 ```
 
-Napomena: `amount` mora biti dovoljno veliki (≥100) da bi ga peel-chain plugin uopšte
-razmotrio kao "seed" iznos (`min_seed_amount` je generički prag, ne specifičan za valutu —
-ista stvar bi važila i za sitne ETH iznose).
+**Vidiš:** 100% zaraženosti na `3PeelSeed1...`, procenat opada niz peel-granu (deo ide na
+"mule" adresu kao gubitak), a ostatak stiže do sankcionisane adrese
+`bc1qsanctioned10000000000000000000000000`.
 
-Adrese ne moraju biti stvarne za ovaj tok (format se ne validira pri CSV uploadu, samo pri
-unosu u polje za live-fetch) — bitno je da CSV oblik odgovara pravilu iz odeljka "Kako ovo
-radi".
+**Zašto:** haircut model prati **proporciju** zaraženog iznosa kroz svaki hop hronološkim
+redom — potpuno mu je svejedno da li `amount` kolona potiče iz ETH ili iz satošija
+pretvorenih u BTC pri uvozu. Isti kod, ista matematika.
 
-## 3. Blacklist provera — stvarna OFAC adresa
+### 3. Path finding
 
-`blacklist_check` plugin (`backend/app/analytics/plugins/blacklist_check.py`) ima sopstvenu,
-malu, hardkodovanu listu adresa (ne čita `known_entities.json`, koji služi za drugu stvar —
-enrichment/lookup na Dashboard-u i Path finding-u). Dodata je jedna **stvarna** adresa u obe
-liste:
+**Otvori:** stranica **Path finding** → From: `bc1qvictim1000000000000000000000000000000`,
+To: `bc1qsanctioned10000000000000000000000000`.
 
-- **`3Lpoy53K625zVeE47ZasiG5jGkAxJ27kh1`** — navedena kao "Digital Currency Address - XBT"
-  identifikator u OFAC SDN designaciji **Garantex Europe OÜ** od **2022-04-05**
-  (izvor: `ofac.treasury.gov/recent-actions/20220405`).
+**Vidiš:** putanja `victim1 → PeelSeed1 → PeelRelay1 → PeelRelay2 → sanctioned1` (4 hop-a).
 
-Ova adresa ima samo 4 potvrđene transakcije na mainnet-u (proverено preko Blockstream API-ja)
-— dovoljno malo da bude praktična za demo, dovoljno da blacklist provera vrati **stvaran**
-pogodak umesto praznog rezultata. Testirano: povlačenjem njene istorije preko odeljka 1 i
-pokretanjem analize, `blacklist_check.matched_count` prelazi sa 0 na 1, sa
-`sources: ["OFAC"]`.
+**Zašto:** BFS pretraga radi nad grafom kao apstraktnom strukturom (čvorovi/grane) — nema
+pojma "ovo je Bitcoin adresa", samo prati grane.
 
-## 4. Šta se ne primenjuje na Bitcoin (i zašto to nije greška)
+### 4. Behavioral analiza
 
-| Analiza | Ponašanje |
-|---|---|
-| Taint, Path finding, Peel chains, Chain hopping, Wallet clustering, Anomaly detection, Risk scoring, Blacklist check | rade identično kao za Ethereum — generičke su, gledaju samo graf/brojeve |
-| Behavioral / Timezone analiza | radi identično — samo vremenski pečati |
-| Dashboard pretraga adrese, Neo4j napredna pretraga grafa | rade identično |
-| Svi izvozi (PDF/CSV/GraphML/GEXF/PNG/SVG) | rade identično |
-| **DEX Swap analiza** | vraća "0 detektovano" — DEX-ovi postoje samo na lancima sa pametnim ugovorima; ovo je ispravno ponašanje, ne greška |
-| **Token Approval analiza** | vraća prazno — `approve()`/`permit()` su ERC-20/EIP-2612 koncepti kojih nema na Bitcoin-u; isto, ispravno ponašanje |
-| ENS ime, tip "contract vs wallet" (enrichment) | vraćaju "nepoznato" za Bitcoin adrese — već dizajnirano da to gracioznо radi |
+**Otvori:** stranica **Behavioral analiza** → izaberi bilo koju BTC adresu iz slučaja
+(npr. Garantex adresu `3lpoy53k625zvee47zasig5jgkaxj27kh1`, koja ima 4 stvarne transakcije).
 
-## 5. Šta se dešava u pozadini (za tehnički deo rada)
+**Vidiš:** raspodelu po satu/danu u nedelji, na osnovu njenih stvarnih timestamp-ova.
 
-- Backend: `backend/app/features/bitcoin_ingestion/` — samostalan VSA slice, potpuno odvojen
-  od `backend/app/features/onchain/` (Ethereum), koji ostaje netaknut:
-  - `service.py` — `fetch_address_transactions()` poziva Blockstream Esplora
-    (`GET /address/{address}/txs`, pa `GET /address/{address}/txs/chain/{last_seen_txid}`
-    za paginaciju), `transaction_to_rows()` normalizuje svaku transakciju po common input
-    ownership heuristici, satošije deli sa 100.000.000 za BTC.
-  - `models.py` — `FetchBitcoinTransactionsRequest(address, case_id)`.
-  - `router.py` — `POST /api/v1/bitcoin/fetch`, isti obrazac kao `/onchain/fetch`
-    (`require_open_case`, `store_case_evidence`, `append_evidence` sa `currency='BTC'`,
-    `write_audit_log` sa akcijom `bitcoin_fetch_address`), plus regex validacija
-    Base58/Bech32 formata i `disclaimer` polje u odgovoru (heuristika, ne dokazana činjenica).
-- Testovi: `backend/tests/test_bitcoin_ingestion.py` — normalizacija (2 ulaza/2 izlaza),
-  coinbase transakcija (nema `prevout`), OP_RETURN izlaz, nepotvrđena transakcija,
-  paginacija preko `txs/chain/{last_seen_txid}`, mrežna greška — sve sa mock-ovanim HTTP
-  pozivom, bez zavisnosti od žive Blockstream instance.
-- Frontend: `OnchainNetwork` tip dobija `'bitcoin_mainnet'`; `ApiService.fetchBitcoinTransactions()`
-  poziva novu rutu; `dashboard.component.ts#fetchOnchainTransactions()` grana se na mrežu —
-  za Bitcoin validira Base58/Bech32 i poziva novi endpoint, inače ponašanje ostaje
-  identično kao pre.
+**Zašto:** ova analiza čita isključivo `timestamp` kolonu — potpuno joj je svejedno kog je
+lanca adresa.
 
-## 6. Poznata ograničenja (namerno, za prvu verziju)
+### 5. DEX Swap analiza
 
-- Nema podrške za pretragu po hešu pojedinačne Bitcoin transakcije — samo "adresa → cela
-  istorija" (isto obrazloženje kao kod Ethereum tx-hash moda: pojedinačna transakcija ima
-  malu forenzičku vrednost bez konteksta pošiljaoca).
-- Nepotvrđene (mempool) transakcije se ne uvoze — forenzički alat treba da radi nad
-  ustaljenim činjenicama.
-- "Prva ulazna adresa = pošiljalac" je heuristika, ne apsolutna istina (isto kao timezone
-  heuristika) — zato `disclaimer` polje u odgovoru API-ja.
-- DEX Swap i Token Approval stranice trenutno samo tiho vraćaju prazan rezultat za
-  Bitcoin-only slučaj, umesto da eksplicitno kažu "ne primenjuje se na ovaj lanac" — manje
-  UX poboljšanje za kasnije, nije blokirajuće.
+**Otvori:** stranica **DEX Swap analiza** → pokreni nad slučajem "BITCOIN".
+
+**Vidiš:** "0 detektovano", bez greške.
+
+**Zašto:** DEX (decentralizovane berze) postoje samo na lancima sa pametnim ugovorima.
+Bitcoin nema taj koncept — 0 je **ispravan** odgovor, ne kvar.
+
+### 6. Token Approval analiza
+
+**Otvori:** stranica **Token Approval analiza** → pokreni nad slučajem "BITCOIN".
+
+**Vidiš:** "0 korelacija", bez greške.
+
+**Zašto:** `approve()`/`permit()` su ERC-20/EIP-2612 koncepti (odobravanje trošenja tokena).
+Bitcoin nema tokene ni allowance mehanizam — isto, 0 je ispravno.
+
+### 7. Napredna pretraga grafa (Neo4j)
+
+**Otvori:** stranica **Slučajevi** → kartica "BITCOIN" → dugme za naprednu pretragu grafa
+→ unesi `bc1qvictim1000000000000000000000000000000`, 2 koraka.
+
+**Vidiš:** susede — `3PeelSeed1...` na 1 koraku, `1MuleWallet1...` i `3PeelRelay1...` na
+2 koraka.
+
+**Zašto:** Neo4j indeksira graf identično bez obzira na poreklo — upit je čist Cypher nad
+`sender_address`/`recipient_address` poljima, iste kolone za svaki lanac.
+
+### 8. Uživo povlačenje sa Bitcoin mreže (Dashboard)
+
+**Otvori:** **Kontrolna tabla** → sekcija "Sa blockchain-a" → mreža **Bitcoin mainnet** →
+adresa:
+```
+3Lpoy53K625zVeE47ZasiG5jGkAxJ27kh1
+```
+→ **"Povuci transakcije"**.
+
+**Vidiš:** 4 nove transakcije povučene i dodate u Depo dokaza slučaja, graf se osveži.
+
+**Zašto:** server poziva Blockstream API za tu adresu, dobija njene potvrđene transakcije,
+normalizuje ih po pravilu sa vrha dokumenta i snima kao BTC evidenciju — isti tok kao ručni
+CSV upload, samo automatizovan.
+
+---
+
+## Poznata ograničenja (namerno, za prvu verziju)
+
+- Nema pretrage po hešu pojedinačne Bitcoin transakcije — samo "adresa → cela istorija".
+- Nepotvrđene (mempool) transakcije se ne uvoze.
+- "Prva ulazna adresa = pošiljalac" je heuristika, ne dokazana činjenica — otuda
+  `disclaimer` polje u odgovoru API-ja kad se povlači uživo.
+- DEX Swap i Token Approval stranice trenutno tiho vraćaju prazan rezultat za Bitcoin,
+  umesto da eksplicitno kažu "ne primenjuje se na ovaj lanac" — manje UX poboljšanje za
+  kasnije.
