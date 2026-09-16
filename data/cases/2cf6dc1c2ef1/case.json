@@ -1,0 +1,23 @@
+{
+  "id": "2cf6dc1c2ef1",
+  "name": "BITCOIN",
+  "description": "Test slucaj za Bitcoin/UTXO podrsku (Faza 0 iz BITCOIN-UTXO-PLAN.md)",
+  "analyst": "admin",
+  "status": "open",
+  "created_at": "2026-09-16T10:29:00.044660+00:00",
+  "updated_at": "2026-09-16T10:29:10.867668+00:00",
+  "evidence": [
+    {
+      "file_name": ".bitcoin_test_demo.csv",
+      "stored_name": "20260916_102910_791326_.bitcoin_test_demo.csv",
+      "imported_at": "2026-09-16T10:29:10.867668+00:00",
+      "size_bytes": 473,
+      "sha256": "29594c5901e97c730ff61b69e5a1e785f800c2d66bc0dfa14955bc19a0e5843e",
+      "analyst": "admin",
+      "currency": "BTC"
+    }
+  ],
+  "evidence_count": 1,
+  "total_size_bytes": 473,
+  "last_imported_at": "2026-09-16T10:29:10.867668+00:00"
+}
