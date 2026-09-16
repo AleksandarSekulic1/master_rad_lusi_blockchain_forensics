@@ -4,14 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CustodyLogApiService } from './custody-log.api';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import {
-  CustodyChain,
-  CustodyEvidenceChain,
-  CustodyEvidenceSummary,
-  CustodyTransactionSummary,
-} from '../../models/blockchain-forensics.models';
+import { CustodyChain, CustodyEvidenceChain, CustodyEvidenceSummary, CustodyTransactionSummary } from './custody-log.models';
 
 type CustodyTab = 'transaction' | 'evidence';
 
@@ -77,7 +72,7 @@ export class CustodyLogComponent implements OnInit {
   protected caseMismatchNotice: string | null = null;
 
   constructor(
-    private readonly api: ApiService,
+    private readonly custodyLogApi: CustodyLogApiService,
     protected readonly state: AnalysisStateService,
     private readonly route: ActivatedRoute,
     protected readonly settings: SettingsService,
@@ -146,7 +141,7 @@ export class CustodyLogComponent implements OnInit {
     }
     this.isLoadingList = true;
     this.listError = null;
-    this.api.getCustodyTransactions(caseId).subscribe({
+    this.custodyLogApi.getCustodyTransactions(caseId).subscribe({
       next: (response) => {
         this.transactions = response.transactions;
         this.transactionsLoaded = true;
@@ -169,7 +164,7 @@ export class CustodyLogComponent implements OnInit {
     this.chainError = null;
     this.exportError = null;
     this.selectedChain = null;
-    this.api.getCustodyChain(caseId, txId).subscribe({
+    this.custodyLogApi.getCustodyChain(caseId, txId).subscribe({
       next: (chain) => {
         this.selectedChain = chain;
         this.isLoadingChain = false;
@@ -194,7 +189,7 @@ export class CustodyLogComponent implements OnInit {
     }
     this.isExportingPdf = true;
     this.exportError = null;
-    this.api.exportCustodyPdf(caseId, txId, this.exportPdfLang).subscribe({
+    this.custodyLogApi.exportCustodyPdf(caseId, txId, this.exportPdfLang).subscribe({
       next: (blob) => {
         this.isExportingPdf = false;
         this.saveBlob(blob, `lanac_dokaza_${txId}.pdf`);
@@ -259,7 +254,7 @@ export class CustodyLogComponent implements OnInit {
     }
     this.isLoadingEvidenceList = true;
     this.evidenceListError = null;
-    this.api.getCustodyEvidenceList(caseId).subscribe({
+    this.custodyLogApi.getCustodyEvidenceList(caseId).subscribe({
       next: (response) => {
         this.evidenceList = response.evidence;
         this.evidenceListLoaded = true;
@@ -281,7 +276,7 @@ export class CustodyLogComponent implements OnInit {
     this.evidenceChainError = null;
     this.evidenceExportError = null;
     this.selectedEvidenceChain = null;
-    this.api.getCustodyEvidenceChain(caseId, storedName).subscribe({
+    this.custodyLogApi.getCustodyEvidenceChain(caseId, storedName).subscribe({
       next: (chain) => {
         this.selectedEvidenceChain = chain;
         this.isLoadingEvidenceChain = false;
@@ -306,7 +301,7 @@ export class CustodyLogComponent implements OnInit {
     }
     this.isExportingEvidencePdf = true;
     this.evidenceExportError = null;
-    this.api.exportCustodyEvidencePdf(caseId, storedName, this.exportPdfLang).subscribe({
+    this.custodyLogApi.exportCustodyEvidencePdf(caseId, storedName, this.exportPdfLang).subscribe({
       next: (blob) => {
         this.isExportingEvidencePdf = false;
         this.saveBlob(blob, `lanac_dokaza_${storedName}.pdf`);

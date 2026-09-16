@@ -12,18 +12,12 @@ import autoTable from 'jspdf-autotable';
 
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { BehavioralAnalysisApiService } from './behavioral-analysis.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import {
-  BehavioralAnalysisPeakPeriod,
-  BehavioralAnalysisResult,
-  CaseSummary,
-  EvidenceEntry,
-  NodeLinkGraphResponse,
-  TimezoneEstimate,
-  TransactionCustodyEntry,
-} from '../../models/blockchain-forensics.models';
+import { CaseSummary, EvidenceEntry, NodeLinkGraphResponse, TransactionCustodyEntry } from '../../core/models/shared.models';
+import { BehavioralAnalysisPeakPeriod, BehavioralAnalysisResult, TimezoneEstimate } from './behavioral-analysis.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { estimateTimezoneCompatibility } from './timezone-heuristic';
 
@@ -41,7 +35,7 @@ interface AddressBehavioralRun {
  * timezone/continent inference - see backend/app/analytics/behavioral_analysis.py.
  *
  * Reuses the same case/evidence-picker shell as Pathfinding/Taint (AnalysisStateService,
- * ApiService.getCase for the evidence list) but renders no cytoscape graph at all - the
+ * CaseDataApiService.getCase for the evidence list) but renders no cytoscape graph at all - the
  * heatmap below is the only visualization this page needs.
  */
 @Component({
@@ -117,7 +111,8 @@ export class BehavioralAnalysisComponent implements OnInit {
 
   constructor(
     private readonly state: AnalysisStateService,
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly behavioralAnalysisApi: BehavioralAnalysisApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
     public readonly settings: SettingsService,
@@ -164,7 +159,7 @@ export class BehavioralAnalysisComponent implements OnInit {
       return;
     }
     this.isLoadingCaseAddresses = true;
-    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph: NodeLinkGraphResponse) => {
         this.caseAddresses = [...new Set(graph.nodes.map((node) => String(node.id)))].sort((a, b) =>
           a.localeCompare(b),
@@ -179,7 +174,7 @@ export class BehavioralAnalysisComponent implements OnInit {
   }
 
   private loadEvidenceOptions(caseId: string): void {
-    this.api.getCase(caseId).subscribe({
+    this.caseData.getCase(caseId).subscribe({
       next: (caseDetail) => {
         this.evidenceOptions = caseDetail.evidence;
       },
@@ -290,7 +285,7 @@ export class BehavioralAnalysisComponent implements OnInit {
 
     forkJoin(
       addresses.map((address) =>
-        this.api.runBehavioralAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+        this.behavioralAnalysisApi.runBehavioralAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
           map((result): AddressBehavioralRun => ({ address, result, error: null })),
           catchError((error: HttpErrorResponse) =>
             of<AddressBehavioralRun>({
@@ -720,7 +715,7 @@ export class BehavioralAnalysisComponent implements OnInit {
       const declaration = this.signatureDeclaration();
 
       const registration = await firstValueFrom(
-        this.api.registerReport({
+        this.caseData.registerReport({
           case_id: this.activeCase.id,
           case_name: this.activeCase.name ?? '',
           declaration,

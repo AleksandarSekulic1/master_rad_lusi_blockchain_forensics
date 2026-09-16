@@ -5,9 +5,11 @@ import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { DashboardApiService } from './dashboard.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainNetwork, UploadCsvResponse } from '../../core/models/shared.models';
+import { OnchainMode } from './dashboard.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -141,7 +143,8 @@ export class DashboardComponent implements OnInit {
   }
 
   constructor(
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly dashboardApi: DashboardApiService,
     public readonly state: AnalysisStateService,
     public readonly settings: SettingsService,
   ) {
@@ -163,7 +166,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadOpenCases(): void {
-    this.api.listCases().subscribe({
+    this.caseData.listCases().subscribe({
       next: (response) => {
         this.openCases = response.cases.filter((entry) => entry.status === 'open');
 
@@ -279,7 +282,7 @@ export class DashboardComponent implements OnInit {
     this.isUploading = true;
     this.statusMessage = () => this.t('Učitavanje i heš-ovanje dokaza...', 'Uploading and hashing evidence...');
 
-    this.api.uploadCsv(this.selectedFile, caseId).subscribe({
+    this.dashboardApi.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
         this.state.setUploadResult(uploadResult);
@@ -349,7 +352,7 @@ export class DashboardComponent implements OnInit {
     };
 
     const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
-    this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
+    this.dashboardApi.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
       next: (result) => this.handleOnchainFetchSuccess(result, query, caseId),
       error: (error: unknown) => this.handleOnchainFetchError(error),
     });
@@ -369,7 +372,7 @@ export class DashboardComponent implements OnInit {
     this.isFetchingOnchain = true;
     this.statusMessage = () => `${this.t('Povlačenje sa', 'Fetching from')} Blockstream (Bitcoin mainnet)...`;
 
-    this.api.fetchBitcoinTransactions(address, caseId).subscribe({
+    this.dashboardApi.fetchBitcoinTransactions(address, caseId).subscribe({
       next: (result) => this.handleOnchainFetchSuccess(result, address, caseId),
       error: (error: unknown) => this.handleOnchainFetchError(error),
     });
@@ -416,7 +419,7 @@ export class DashboardComponent implements OnInit {
 
   /** "Evidencija je sadržala 3 valute — automatski razdvojena u 3 fajla: ETH (2), USDC
    * (1), DAI (1)." - the per-currency split summary shown after an auto-split upload (see
-   * ApiService.uploadCsv / upload.py's _split_and_store_by_currency). A file with no
+   * DashboardApiService.uploadCsv / upload.py's _split_and_store_by_currency). A file with no
    * declared currency at all is labeled distinctly from a real currency code. */
   private splitSummaryLabel(result: UploadCsvResponse): string {
     const files = result.files ?? [];
@@ -459,8 +462,8 @@ export class DashboardComponent implements OnInit {
 
   private loadCaseViews(caseId: string): void {
     forkJoin({
-      graph: this.api.getCaseGraph(caseId),
-      analytics: this.api.runCaseAnalytics(caseId),
+      graph: this.caseData.getCaseGraph(caseId),
+      analytics: this.caseData.runCaseAnalytics(caseId),
     }).subscribe({
       next: ({ graph, analytics }) => {
         this.applyGraphAndAnalytics(graph, analytics);

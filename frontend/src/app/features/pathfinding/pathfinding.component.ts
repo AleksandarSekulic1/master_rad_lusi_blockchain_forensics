@@ -13,21 +13,12 @@ import autoTable from 'jspdf-autotable';
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { PathfindingApiService } from './pathfinding.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import {
-  CasePathfindingResult,
-  CaseSummary,
-  EvidenceEntry,
-  InvestigatorLink,
-  InvestigatorLinkConfidence,
-  InvestigatorNote,
-  NodeLinkGraphResponse,
-  PathfindingDestinationMode,
-  TaintAnalysisResult,
-  TransactionCustodyEntry,
-} from '../../models/blockchain-forensics.models';
+import { CaseSummary, EvidenceEntry, InvestigatorLink, InvestigatorLinkConfidence, InvestigatorNote, NodeLinkGraphResponse, TaintAnalysisResult, TransactionCustodyEntry } from '../../core/models/shared.models';
+import { CasePathfindingResult, PathfindingDestinationMode } from './pathfinding.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 /** One row of the "list of transactions along the path" panel - derived entirely from
@@ -116,7 +107,8 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
   constructor(
     private readonly state: AnalysisStateService,
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly pathfindingApi: PathfindingApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
     public readonly settings: SettingsService,
@@ -181,7 +173,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
   }
 
   loadEvidenceOptions(caseId: string): void {
-    this.api.getCase(caseId).subscribe({
+    this.caseData.getCase(caseId).subscribe({
       next: (caseDetail) => {
         this.evidenceOptions = caseDetail.evidence;
       },
@@ -333,7 +325,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     // Guard every callback against a newer selection landing first.
     const isStale = (): boolean => this.inspectedAddress !== nodeId;
 
-    this.api.getInvestigatorPins(investigationId).subscribe({
+    this.caseData.getInvestigatorPins(investigationId).subscribe({
       next: (response) => {
         if (!isStale()) {
           this.inspectedIsPinned = response.pins.some(
@@ -344,7 +336,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       },
       error: settle,
     });
-    this.api.getInvestigatorNotes(investigationId, nodeId).subscribe({
+    this.caseData.getInvestigatorNotes(investigationId, nodeId).subscribe({
       next: (response) => {
         if (!isStale()) {
           this.inspectedNotes = response.notes;
@@ -353,7 +345,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       },
       error: settle,
     });
-    this.api.getInvestigatorLinks(investigationId, nodeId).subscribe({
+    this.caseData.getInvestigatorLinks(investigationId, nodeId).subscribe({
       next: (response) => {
         if (!isStale()) {
           this.inspectedLinks = response.links;
@@ -409,7 +401,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.isLoadingGraph = true;
     this.graphError = null;
 
-    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph) => {
         this.graph = graph;
         this.isLoadingGraph = false;
@@ -463,7 +455,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
 
     const to = this.destinationMode === 'specific_address' ? this.toAddress.trim() : null;
 
-    this.api
+    this.pathfindingApi
       .findCasePath(caseId, this.fromAddress.trim(), this.destinationMode, to, this.selectedEvidence, custody)
       .subscribe({
         next: (result) => {
@@ -559,7 +551,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
     this.isRunningTaint = true;
     this.taintDialogError = null;
 
-    this.api.runCaseAnalytics(caseId, this.selectedEvidence, [seedAddress], custody).subscribe({
+    this.caseData.runCaseAnalytics(caseId, this.selectedEvidence, [seedAddress], custody).subscribe({
       next: (response) => {
         this.pathTaintResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
         this.isRunningTaint = false;
@@ -1039,7 +1031,7 @@ export class PathfindingComponent implements OnInit, OnDestroy {
       // Registered BEFORE the document is built: the verification code has to be printed
       // inside the very report it identifies.
       const registration = await firstValueFrom(
-        this.api.registerReport({
+        this.caseData.registerReport({
           case_id: this.activeCase.id,
           case_name: this.activeCase.name ?? '',
           declaration,

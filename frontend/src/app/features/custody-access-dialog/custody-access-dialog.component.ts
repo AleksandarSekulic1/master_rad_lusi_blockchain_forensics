@@ -3,10 +3,11 @@ import { Component, EventEmitter, Input, OnInit, Output, ViewChild } from '@angu
 import { FormsModule } from '@angular/forms';
 
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
-import { ApiService } from '../../core/services/api.service';
+import { CustodyAccessDialogApiService } from './custody-access-dialog.api';
 import { AuthService } from '../../core/services/auth.service';
 import { SettingsService } from '../../core/services/settings.service';
-import { CustodyFieldSuggestions, TransactionCustodyEntry } from '../../models/blockchain-forensics.models';
+import { TransactionCustodyEntry } from '../../core/models/shared.models';
+import { CustodyFieldSuggestions } from './custody-access-dialog.models';
 
 const EMPTY_SUGGESTIONS: CustodyFieldSuggestions = {
   identifikator_predmeta: [],
@@ -54,7 +55,7 @@ export class CustodyAccessDialogComponent implements OnInit {
   protected opisRadnje = '';
 
   constructor(
-    private readonly api: ApiService,
+    private readonly custodyAccessDialogApi: CustodyAccessDialogApiService,
     private readonly auth: AuthService,
     public readonly settings: SettingsService,
   ) {}
@@ -71,7 +72,7 @@ export class CustodyAccessDialogComponent implements OnInit {
     // confirmed by hand, a login handle is not necessarily their legal name.
     this.imePrezime = this.auth.currentUser?.username || '';
 
-    this.api.getCustodySuggestions(this.caseId).subscribe({
+    this.custodyAccessDialogApi.getCustodySuggestions(this.caseId).subscribe({
       next: (response) => (this.suggestions = response),
       error: () => (this.suggestions = EMPTY_SUGGESTIONS),
     });

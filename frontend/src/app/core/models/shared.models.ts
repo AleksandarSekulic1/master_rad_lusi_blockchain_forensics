@@ -47,22 +47,6 @@ export interface UploadCsvResponse {
 }
 
 export type OnchainNetwork = 'mainnet' | 'sepolia' | 'bitcoin_mainnet';
-export type OnchainMode = 'address_history' | 'tx_single' | 'tx_expand_sender';
-
-export interface FetchOnchainRequest {
-  query: string;
-  network: OnchainNetwork;
-  case_id: string;
-  mode: OnchainMode;
-}
-
-/** POST /bitcoin/fetch - separate slice from Ethereum's FetchOnchainRequest by design
- * (see BITCOIN-UTXO-PLAN.md): no network/mode fields since v1 only supports mainnet
- * address history, never a single transaction by hash. */
-export interface FetchBitcoinRequest {
-  address: string;
-  case_id: string;
-}
 
 export interface GraphNodeData {
   id: string;
@@ -198,148 +182,6 @@ export interface NodeLinkGraphResponse {
   };
 }
 
-export interface AnalyticsRequest {
-  file_name?: string;
-  plugins?: string[] | null;
-}
-
-export interface PathFindingRequest {
-  file_name?: string;
-  source_address: string;
-  target_address: string;
-  strategy?: string;
-  cutoff?: number;
-  max_paths?: number;
-}
-
-export interface PathSummary {
-  path: string[];
-  total_amount: number;
-  transaction_count: number;
-  score?: number;
-  nodes?: Array<Record<string, unknown>>;
-}
-
-export interface PathFindingResponse {
-  source_file?: string;
-  rows?: number;
-  source_address: string;
-  target_address: string;
-  strategy: string;
-  shortest_path: PathSummary | null;
-  paths: PathSummary[];
-}
-
-/** 'specific_address' is the original (From/To) mode. 'nearest_cex' resolves the
- * destination server-side, from the local known_entities registry - never a guess.
- * 'cash_out_point' is a recognized value but not implemented yet (the backend rejects it
- * with a 400 rather than accepting it and doing nothing useful) - kept here so the UI can
- * list it as a disabled/"coming soon" option without a type error. */
-export type PathfindingDestinationMode = 'specific_address' | 'nearest_cex' | 'cash_out_point';
-
-/** Result of the case-scoped Pathfinding Analysis endpoint (POST /cases/{id}/pathfinding)
- * - first version, plain BFS. Deliberately separate from PathFindingResponse above, which
- * describes the older, unrelated standalone /graph/path-finding endpoint (different
- * shape, works off a raw CSV file rather than a case).
- *
- * destination_address/destination_label/message are only ever populated for
- * destination_mode 'nearest_cex' - for 'specific_address' the response is still exactly
- * {found, path, hops}, unchanged since the first version. */
-export interface CasePathfindingResult {
-  found: boolean;
-  path: string[];
-  hops: number;
-  destination_address?: string | null;
-  destination_label?: string | null;
-  message?: string | null;
-}
-
-/** One address reachable from the queried address, `hops` TRANSACTED steps away (the
- * shortest of possibly several paths - see GraphNeighborhoodResult). */
-export interface GraphNeighbor {
-  address: string;
-  hops: number;
-}
-
-/** Result of the graph-db pilot endpoint (GET /cases/{id}/graph-search/neighborhood) -
- * "every address connected to `address` within `max_hops` steps", answered by a Cypher
- * query against Neo4j rather than a hand-rolled bounded BFS. Additive/optional: the
- * backend returns HTTP 503 (surfaced to the caller as an error, not this shape) when
- * Neo4j isn't running - see PREDLOG-GRAF-SUBP.md. */
-export interface CaseGraphNeighborhoodResult {
-  case_id: string;
-  evidence?: string | null;
-  address: string;
-  max_hops: number;
-  transactions_indexed: number;
-  neighbors: GraphNeighbor[];
-  disclaimer: string;
-}
-
-/** Busiest single (day, hour) cell in BehavioralAnalysisResult.hour_by_day_distribution -
- * a more specific claim than "most active hour" (summed across all days) or "most active
- * day" (summed across all hours) alone. Null when the address has no timestamped
- * transactions at all. */
-export interface BehavioralAnalysisPeakPeriod {
-  day: string;
-  hour: string;
-  count: number;
-  label: string;
-}
-
-export interface BehavioralAnalysisStats {
-  most_active_hour: string | null;
-  most_active_hour_count: number;
-  most_active_day: string | null;
-  most_active_day_count: number;
-  peak_period: BehavioralAnalysisPeakPeriod | null;
-  total_analyzed_transactions: number;
-}
-
-/** Heuristic UTC-offset-range / broad-region compatibility estimate, layered on top of
- * BehavioralAnalysisResult.hourly_distribution. NEVER a location claim - see `disclaimer`,
- * which is present on every `available: true` result and MUST be rendered alongside it.
- * `available: false` covers two distinct backend reasons (too few transactions, or enough
- * transactions but no offset's pattern clears the compatibility bar) that both surface the
- * same `message` - the UI only ever needs to branch on `available`. */
-export interface TimezoneEstimate {
-  available: boolean;
-  /** Only present when `available` is true. */
-  utc_offset_min?: number;
-  utc_offset_max?: number;
-  /** Pre-formatted "UTC+5 – UTC+8" (or "UTC+6" alone when the range is a single offset) - render as-is, do not reformat. */
-  utc_offset_range_label?: string;
-  /** Broad regions only (continent-level) - never a country, never phrased as "located in". */
-  possible_regions?: string[];
-  confidence?: 'Low' | 'Medium' | 'High';
-  /** Always present when `available` is true - render verbatim beneath the estimate. */
-  disclaimer?: string;
-  /** Only present when `available` is false - e.g. "Insufficient data for reliable timezone inference." */
-  message?: string;
-  /** Only present when `available` is false: 'insufficient_transactions' | 'no_compatible_offset'.
-   * Lets the UI show a language-specific, reason-specific fallback instead of `message`. */
-  reason?: string;
-}
-
-/** Result of the case-scoped Behavioral / Time-of-Day Analysis endpoint
- * (GET /cases/{id}/behavioral-analysis) - first version, UTC only, no timezone/continent
- * inference. `hourly_distribution` and `day_of_week_distribution` are always fully
- * zero-filled (all 24 hour keys "00".."23", all 7 day names Monday..Sunday), and
- * `hour_by_day_distribution` is the same 7x24 grid nested by day then hour - exactly what
- * the heatmap renders. */
-export interface BehavioralAnalysisResult {
-  case_id: string;
-  evidence: string | null;
-  address: string;
-  timezone_estimate: TimezoneEstimate;
-  total_transactions: number;
-  hourly_distribution: Record<string, number>;
-  day_of_week_distribution: Record<string, number>;
-  hour_by_day_distribution: Record<string, Record<string, number>>;
-  stats: BehavioralAnalysisStats;
-  generated_at: string;
-}
-
 // --- DEX Swap Analysis (see DEX-SWAP-ANALIZA.md) - a heuristic, not a proof. Every event
 // carries an explicit `confidence` ('Detected' when both legs share the same real
 // transaction hash, 'Potential' when matched only by DEX address + a short time window),
@@ -413,18 +255,9 @@ export interface AnalyticsResponse extends NodeLinkGraphResponse {
   };
 }
 
-export interface GraphSearchResult {
-  node: GraphNodeData;
-  score: number;
-}
-
 export type AddressType = 'contract' | 'eoa' | 'unknown';
-export type KnownEntityCategory = 'exchange' | 'mixer' | 'sanctioned';
 
-export interface KnownEntity {
-  name: string;
-  category: KnownEntityCategory;
-}
+export type KnownEntityCategory = 'exchange' | 'mixer' | 'sanctioned';
 
 export interface AddressEnrichment {
   address: string;
@@ -475,11 +308,6 @@ export interface CaseSummary {
 
 export interface Case extends CaseSummary {
   evidence: EvidenceEntry[];
-}
-
-export interface CreateCaseRequest {
-  name: string;
-  description?: string | null;
 }
 
 // --- Investigator layer (see CASE-MANAGEMENT-IMPLEMENTATION.md). An investigation is a
@@ -566,6 +394,7 @@ export interface PinnedNodeListResponse {
 }
 
 export type UserRole = 'admin' | 'analyst';
+
 export type UserStatus = 'active' | 'blocked';
 
 export interface AuthUser {
@@ -588,164 +417,6 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
-export interface CreateUserRequest {
-  username: string;
-  password: string;
-  role: UserRole;
-}
-
-export interface ResetLinkResponse {
-  reset_link: string;
-  token: string;
-}
-
-/** One recorded analyst action (see backend app/evidence/audit_log.py). Everything except
- * timestamp/action/user is optional, because a single log carries several kinds of action:
- * evidence intake has a file + hash but no seed list, an analysis run has a case + seed
- * list but no file, path finding has a file but no case. */
-export interface ActivityLogEntry {
-  timestamp: string;
-  user: string;
-  action: string;
-  case_id: string | null;
-  /** The case's name AS IT WAS when the action happened - kept verbatim rather than
-   * resolved from case_id at read time, so renaming or deleting a case can't rewrite
-   * history. */
-  case_name: string | null;
-  file_name: string | null;
-  sha256: string | null;
-  details: Record<string, unknown> | null;
-}
-
-/** One test in the fixed pytest suite. These come from version-controlled files and are
- * deliberately not editable through the API - see backend app/api/routes/tests.py. */
-export interface SuiteTest {
-  id: string;
-  /** First line of the test's own docstring - the Serbian display name. */
-  name: string;
-  /** Rest of the docstring: what the test proves and why it matters. */
-  explanation: string;
-  /** The test function's actual source, so the page can show exactly what is asserted. */
-  source: string;
-  /** First line of the containing class's docstring - the Serbian group heading. */
-  group_title: string;
-  raw_name: string;
-  group: string;
-  module: string;
-  status?: 'passed' | 'failed' | 'skipped';
-  message?: string | null;
-  duration_ms?: number;
-}
-
-export interface SuiteListResponse {
-  tests: SuiteTest[];
-  total: number;
-  error: string | null;
-}
-
-export interface SuiteRunResponse {
-  results: SuiteTest[];
-  total: number;
-  passed: number;
-  failed: number;
-  skipped: number;
-  duration_ms: number;
-  ran_at: string;
-  error: string | null;
-}
-
-export interface ScenarioTransaction {
-  sender: string;
-  recipient: string;
-  amount: number;
-  timestamp: string;
-}
-
-export interface ScenarioExpectation {
-  address: string;
-  expected_percentage: number;
-}
-
-/** A validation scenario is pure data (transactions + seeds + expected percentages), never
- * code - which is what makes full create/edit/delete safe to expose. */
-export interface TestScenario {
-  id: string;
-  name: string;
-  description: string;
-  transactions: ScenarioTransaction[];
-  seed_addresses: string[];
-  expectations: ScenarioExpectation[];
-  created_at: string;
-  updated_at: string;
-  created_by: string;
-}
-
-export interface ScenarioRequest {
-  name: string;
-  description: string;
-  transactions: ScenarioTransaction[];
-  seed_addresses: string[];
-  expectations: ScenarioExpectation[];
-}
-
-export interface ScenarioCheckResult {
-  address: string;
-  expected_percentage: number;
-  actual_percentage: number | null;
-  passed: boolean;
-  message: string | null;
-}
-
-export interface ScenarioResult {
-  scenario_id: string;
-  name: string;
-  description: string;
-  status: 'passed' | 'failed' | 'error';
-  error: string | null;
-  checks: ScenarioCheckResult[];
-  passed_checks: number;
-  total_checks: number;
-  duration_ms: number;
-}
-
-export interface ScenarioRunResponse {
-  results: ScenarioResult[];
-  total: number;
-  passed: number;
-  failed: number;
-  errors: number;
-  duration_ms: number;
-  ran_at: string;
-}
-
-export interface SeedSuggestionItem {
-  address: string;
-  /** Plain-language reasons; a suggestion never appears without at least one. */
-  reasons: string[];
-}
-
-export interface SeedSuggestionCheck {
-  id: string;
-  label: string;
-  description: string;
-  category: 'origin' | 'laundering';
-  matches: number;
-}
-
-export interface SeedSuggestionResponse {
-  /** Defensible starting points for taint analysis (blacklist, OFAC). */
-  origin_candidates: SeedSuggestionItem[];
-  /** Mixers, relays, pass-through wallets - findings, but wrong to use as seeds. */
-  laundering_points: SeedSuggestionItem[];
-  /** Every rule that ran, including those that matched nothing, so "clean" can be told
-   * apart from "not checked". */
-  checks_performed: SeedSuggestionCheck[];
-  total_addresses: number;
-  /** Set when an empty result is caused by the shape of the evidence (a single-address
-   * history pull) rather than by the data being clean - the two must not be confused. */
-  coverage_note: string | null;
-}
-
 /** What was recorded when a report was signed and exported. */
 export interface ReportRegistryEntry {
   verification_code: string;
@@ -756,35 +427,6 @@ export interface ReportRegistryEntry {
   declaration: string;
   summary: Record<string, number | string>;
   registered_at: string;
-}
-
-export interface ReportVerificationResult {
-  /** Whether the verification code exists in the registry at all. */
-  found: boolean;
-  /** null when no hash was supplied - "not checked" is distinct from "does not match". */
-  matches: boolean | null;
-  message: string;
-  entry: ReportRegistryEntry | null;
-}
-
-export type ActivityPeriodMode = 'all' | 'day' | 'range';
-
-export interface ActivityReportPreview {
-  count: number;
-  period: string;
-  scope: 'all' | 'self';
-  available_users: string[];
-  /** Subset of available_users that still exist as accounts; the rest are historical. */
-  active_users: string[];
-}
-
-export interface ActivityLogResponse {
-  entries: ActivityLogEntry[];
-  /** "all" for an admin (every account), "self" for everyone else - decided server-side. */
-  scope: 'all' | 'self';
-  filtered_user: string | null;
-  /** Only populated for admins; the roster to offer in the per-user filter. */
-  available_users: string[];
 }
 
 // --- Lanac dokaza po transakciji (Obrazac evidencije rukovanja dokaznim materijalom) ---
@@ -801,129 +443,6 @@ export interface TransactionCustodyEntry {
   proizvodjac?: string | null;
   model?: string | null;
   serijski_broj?: string | null;
-}
-
-/** One row of the printed Образац table (Бр./Датум/Име и презиме/Опис радње/Потпис). */
-export interface CustodyLogRow extends TransactionCustodyEntry {
-  redni_broj: number;
-  timestamp: string;
-  user: string;
-}
-
-/** The full form for one transaction: header fields (which stay editable and reflect the
- * MOST RECENT access) plus every access row, oldest first. */
-export interface CustodyChain {
-  case_id: string;
-  case_name: string | null;
-  tx_id: string;
-  tx_hash: string | null;
-  sender_address: string | null;
-  recipient_address: string | null;
-  amount: number | null;
-  currency: string | null;
-  tx_timestamp: string | null;
-  evidence_stored_name: string | null;
-  evidence_file_name: string | null;
-  identifikator_predmeta: string | null;
-  identifikator_dokaznog_materijala: string | null;
-  proizvodjac: string | null;
-  model: string | null;
-  serijski_broj: string | null;
-  entries: CustodyLogRow[];
-}
-
-/** One row of the "Lanac dokaza" browsing list - a transaction that has been accessed at
- * least once, without loading its whole access history. */
-export interface CustodyTransactionSummary {
-  tx_id: string;
-  tx_hash: string | null;
-  sender_address: string | null;
-  recipient_address: string | null;
-  amount: number | null;
-  currency: string | null;
-  tx_timestamp: string | null;
-  evidence_file_name: string | null;
-  access_count: number;
-  last_accessed_at: string | null;
-}
-
-export interface CustodyFieldSuggestions {
-  identifikator_predmeta: string[];
-  identifikator_dokaznog_materijala: string[];
-  proizvodjac: string[];
-  model: string[];
-  serijski_broj: string[];
-}
-
-// --- Lanac dokaza po dokaznom fajlu (coarser sibling - see LANAC-DOKAZA.md) ---
-
-/** The full form for one EVIDENCE FILE (not one transaction): header fields plus every
- * access row, oldest first. The evidence-level analogue of CustodyChain above. */
-export interface CustodyEvidenceChain {
-  case_id: string;
-  case_name: string | null;
-  evidence_stored_name: string;
-  evidence_file_name: string | null;
-  evidence_sha256: string | null;
-  evidence_currency: string | null;
-  evidence_row_count: number | null;
-  identifikator_predmeta: string | null;
-  identifikator_dokaznog_materijala: string | null;
-  proizvodjac: string | null;
-  model: string | null;
-  serijski_broj: string | null;
-  entries: CustodyLogRow[];
-}
-
-/** One row of the "Lanac dokaza" evidence-level browsing list. */
-export interface CustodyEvidenceSummary {
-  evidence_stored_name: string;
-  evidence_file_name: string | null;
-  evidence_sha256: string | null;
-  evidence_currency: string | null;
-  evidence_row_count: number | null;
-  access_count: number;
-  last_accessed_at: string | null;
-}
-/** One evidence file's contribution to the combined case analysis (backend
- * app/exports/service.py :: _evidence_contribution). */
-export interface EvidenceContribution {
-  file_name: string;
-  rows: number;
-  total_amount: number;
-  addresses_touched: number;
-  high_risk_addresses: number;
-  blacklisted_addresses: number;
-}
-
-/** One audit-log row as embedded in the case report context (a subset of ActivityLogEntry
- * - only the fields the CSV/PDF report has ever shown). */
-export interface CaseReportAuditEntry {
-  timestamp?: string | null;
-  action?: string | null;
-  file_name?: string | null;
-  user?: string | null;
-  case_id?: string | null;
-  sha256?: string | null;
-}
-
-/** Full case analysis context returned by GET /exports/cases/{id}/report-context - the
- * frontend renders its own signed, bilingual triage PDF from this. Mirrors
- * app/exports/service.py :: build_case_export_context. */
-export interface CaseReportContext {
-  case: Case;
-  rows: number;
-  nodes: number;
-  edges: number;
-  summary: {
-    blacklisted_nodes?: number;
-    high_risk_nodes?: number;
-    clusters?: number;
-    [key: string]: unknown;
-  };
-  audit_entries: CaseReportAuditEntry[];
-  evidence_contributions: EvidenceContribution[];
-  generated_at: string;
 }
 
 /** One flagged node summarised for the Graph analysis PDF. */

@@ -2,9 +2,9 @@ import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ApiService } from '../../core/services/api.service';
+import { ReportVerificationApiService } from './report-verification.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { ReportVerificationResult } from '../../models/blockchain-forensics.models';
+import { ReportVerificationResult } from './report-verification.models';
 
 @Component({
   selector: 'app-report-verification',
@@ -21,7 +21,7 @@ export class ReportVerificationComponent {
   protected errorMessage: string | null = null;
 
   constructor(
-    private readonly api: ApiService,
+    private readonly reportVerificationApi: ReportVerificationApiService,
     public readonly settings: SettingsService,
   ) {}
 
@@ -43,7 +43,7 @@ export class ReportVerificationComponent {
     this.errorMessage = null;
     this.result = null;
 
-    this.api.verifyReport(this.code.trim(), this.contentHash.trim() || null).subscribe({
+    this.reportVerificationApi.verifyReport(this.code.trim(), this.contentHash.trim() || null).subscribe({
       next: (result) => {
         this.result = result;
         this.isChecking = false;
@@ -78,7 +78,7 @@ export class ReportVerificationComponent {
     return this.result.matches ? 'valid' : 'tampered';
   }
 
-  /** Every `summary` key any report type registers via ApiService.registerReport - one
+  /** Every `summary` key any report type registers via CaseDataApiService.registerReport - one
    * shared, generic verification page for all of them (taint, pathfinding, behavioral,
    * dex_swap, graph_analysis, case_triage), so a key any of those adds here shows a real
    * label instead of falling back to its raw snake_case name. */

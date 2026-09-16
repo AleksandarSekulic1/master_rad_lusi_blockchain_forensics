@@ -9,28 +9,10 @@ import cytoscape, { Core, ElementDefinition } from 'cytoscape';
 
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { GraphVisualizationApiService } from './graph-visualization.api';
 import { SettingsService } from '../../core/services/settings.service';
-import {
-  AddressEnrichment,
-  AddressType,
-  CaseSummary,
-  DexSwapEvent,
-  Investigation,
-  InvestigatorLink,
-  InvestigatorNote,
-  KnownEntityCategory,
-  EvidenceEntry,
-  GraphLinkData,
-  GraphNodeData,
-  GraphReportData,
-  NodeLinkGraphResponse,
-  TaintAnalysisResult,
-  TokenApprovalCorrelationEntry,
-  TokenApprovalGroup,
-  TokenApprovalRiskLevel,
-  TransactionCustodyEntry,
-} from '../../models/blockchain-forensics.models';
+import { AddressEnrichment, AddressType, CaseSummary, DexSwapEvent, EvidenceEntry, GraphLinkData, GraphNodeData, GraphReportData, Investigation, InvestigatorLink, InvestigatorNote, KnownEntityCategory, NodeLinkGraphResponse, TaintAnalysisResult, TokenApprovalCorrelationEntry, TokenApprovalGroup, TokenApprovalRiskLevel, TransactionCustodyEntry } from '../../core/models/shared.models';
 import { CaseOverviewPanelComponent } from '../case-overview-panel/case-overview-panel.component';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
@@ -199,7 +181,8 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
   constructor(
     private readonly state: AnalysisStateService,
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly graphVisualizationApi: GraphVisualizationApiService,
     private readonly destroyRef: DestroyRef,
     public readonly settings: SettingsService,
   ) {
@@ -249,7 +232,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     // independent of the evidence case; a failure just leaves the picker empty. Once
     // loaded, re-select whatever investigation was active before a reload so its persisted
     // notes / pins / links come straight back.
-    this.api.listInvestigations().subscribe({
+    this.graphVisualizationApi.listInvestigations().subscribe({
       next: (response) => {
         this.investigations = response.investigations;
         this.restoreSelectedInvestigation();
@@ -275,7 +258,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   loadEvidenceOptions(caseId: string): void {
-    this.api.getCase(caseId).subscribe({
+    this.caseData.getCase(caseId).subscribe({
       next: (caseDetail) => {
         this.evidenceOptions = caseDetail.evidence;
       },
@@ -320,7 +303,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.selectedApprovalEntry = null;
     this.selectedInvestigatorLink = null;
 
-    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph) => {
         this.state.setGraph(graph);
         this.state.setAnalytics(null);
@@ -338,13 +321,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   }
 
   /** Fetches every candidate DEX swap for the case's currently scoped evidence (no
-   * `address` filter - see ApiService.getDexSwapAnalysis) and draws them as dashed
+   * `address` filter - see CaseDataApiService.getDexSwapAnalysis) and draws them as dashed
    * overlay edges on the ALREADY-rendered graph. Runs independently of, and in parallel
    * with, the plain graph fetch above - on error it just leaves the overlay empty rather
    * than surfacing caseGraphError, since this is supplementary information, not the
    * graph itself. */
   private loadDexSwapOverlay(caseId: string): void {
-    this.api.getDexSwapAnalysis(caseId, null, this.selectedEvidence).subscribe({
+    this.caseData.getDexSwapAnalysis(caseId, null, this.selectedEvidence).subscribe({
       next: (result) => {
         this.dexSwapEvents = result.events;
         this.renderSwapOverlay();
@@ -386,12 +369,12 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
   // immediately above, just for approve()/permit() grants instead of swap events. ---
 
   /** Fetches every approve()/permit() grant for the case's currently scoped evidence (no
-   * `address` filter - see ApiService.getTokenApprovalCorrelation) and draws them as
+   * `address` filter - see CaseDataApiService.getTokenApprovalCorrelation) and draws them as
    * dashed magenta APPROVAL edges on the already-rendered graph, same pattern as
    * loadDexSwapOverlay above. Runs independently of, and in parallel with, both the plain
    * graph fetch and the DEX swap overlay fetch. */
   private loadTokenApprovalOverlay(caseId: string): void {
-    this.api.getTokenApprovalCorrelation(caseId, null, this.selectedEvidence).subscribe({
+    this.caseData.getTokenApprovalCorrelation(caseId, null, this.selectedEvidence).subscribe({
       next: (result) => {
         this.tokenApprovalEntries = result.correlations;
         this.approvalGroupByKey = new Map(
@@ -535,7 +518,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (!name) {
       return;
     }
-    this.api.createInvestigation({ name }).subscribe({
+    this.graphVisualizationApi.createInvestigation({ name }).subscribe({
       next: (created) => {
         this.investigations = [...this.investigations, created];
         this.onInvestigationSelected(created.id);
@@ -561,7 +544,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (!confirmed) {
       return;
     }
-    this.api.deleteInvestigation(id).subscribe({
+    this.graphVisualizationApi.deleteInvestigation(id).subscribe({
       next: () => {
         this.investigations = this.investigations.filter((inv) => inv.id !== id);
         this.onInvestigationSelected('');
@@ -635,7 +618,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (!this.selectedInvestigationId || !address) {
       return;
     }
-    this.api.getInvestigatorNotes(this.selectedInvestigationId, String(address)).subscribe({
+    this.caseData.getInvestigatorNotes(this.selectedInvestigationId, String(address)).subscribe({
       next: (res) => (this.selectedNodeNoteCount = res.notes.length),
       error: () => (this.selectedNodeNoteCount = 0),
     });
@@ -687,7 +670,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.caseOverviewNotes = [];
       return;
     }
-    this.api.getInvestigatorNotes(this.selectedInvestigationId).subscribe({
+    this.caseData.getInvestigatorNotes(this.selectedInvestigationId).subscribe({
       next: (res) => (this.caseOverviewNotes = res.notes),
       error: () => (this.caseOverviewNotes = []),
     });
@@ -714,7 +697,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       element.removeClass('pinned');
     }
     if (this.selectedInvestigationId) {
-      this.api.unpinInvestigatorNode(this.selectedInvestigationId, address).subscribe({ error: () => undefined });
+      this.graphVisualizationApi.unpinInvestigatorNode(this.selectedInvestigationId, address).subscribe({ error: () => undefined });
     }
   }
 
@@ -734,7 +717,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.renderInvestigatorLinkOverlay();
       return;
     }
-    this.api.getInvestigatorLinks(this.selectedInvestigationId).subscribe({
+    this.caseData.getInvestigatorLinks(this.selectedInvestigationId).subscribe({
       next: (result) => {
         this.investigatorLinks = result.links;
         this.renderInvestigatorLinkOverlay();
@@ -815,7 +798,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
     this.isDeletingInvestigatorLink = true;
     this.investigatorLinkError = null;
-    this.api.deleteInvestigatorLink(this.selectedInvestigationId, link.id).subscribe({
+    this.graphVisualizationApi.deleteInvestigatorLink(this.selectedInvestigationId, link.id).subscribe({
       next: () => {
         this.investigatorLinks = this.investigatorLinks.filter((item) => item.id !== link.id);
         this.selectedInvestigatorLink = null;
@@ -1005,7 +988,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.isAnalyzing = true;
     this.custodyDialogError = null;
 
-    this.api.runCaseAnalytics(caseId, this.selectedEvidence, null, custody).subscribe({
+    this.caseData.runCaseAnalytics(caseId, this.selectedEvidence, null, custody).subscribe({
       next: (analytics) => {
         this.state.setGraph(analytics);
         this.state.setAnalytics(analytics);
@@ -1160,7 +1143,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     if (!this.selectedInvestigationId) {
       return;
     }
-    this.api.getInvestigatorPins(this.selectedInvestigationId).subscribe({
+    this.caseData.getInvestigatorPins(this.selectedInvestigationId).subscribe({
       next: (res) => {
         this.pinnedNodePositions.clear();
         for (const pin of res.pins) {
@@ -1211,13 +1194,13 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
       this.pinnedNodePositions.delete(id);
       element.unlock();
       element.removeClass('pinned');
-      this.api.unpinInvestigatorNode(investigationId, id).subscribe({ error: () => undefined });
+      this.graphVisualizationApi.unpinInvestigatorNode(investigationId, id).subscribe({ error: () => undefined });
     } else {
       const position = { ...element.position() };
       this.pinnedNodePositions.set(id, position);
       element.lock();
       element.addClass('pinned');
-      this.api
+      this.graphVisualizationApi
         .pinInvestigatorNode(investigationId, { address: id, x: position.x, y: position.y })
         .subscribe({ error: () => undefined });
     }
@@ -1354,7 +1337,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     }
 
     this.isEnrichingAddress = true;
-    this.api.enrichAddress(String(address)).subscribe({
+    this.caseData.enrichAddress(String(address)).subscribe({
       next: (result) => {
         this.addressEnrichment = result;
         this.isEnrichingAddress = false;

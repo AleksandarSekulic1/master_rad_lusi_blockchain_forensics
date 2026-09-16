@@ -714,5 +714,22 @@
       "potentially_risky_approvals": 4
     },
     "registered_at": "2026-09-14T12:52:09.925259+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-VYLK-VL6W",
+    "content_hash": "808a428e17f7cafc1edbec7c925fa2f0699dda69ede5da18a6a872fc622390e1",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 496,
+      "nodes": 251,
+      "edges": 253,
+      "blacklisted": 2,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-16T13:08:30.568809+00:00"
   }
 ]

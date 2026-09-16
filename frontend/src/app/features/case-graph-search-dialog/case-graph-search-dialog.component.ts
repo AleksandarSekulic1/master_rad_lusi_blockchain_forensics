@@ -3,9 +3,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { CaseGraphSearchDialogApiService } from './case-graph-search-dialog.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { CaseGraphNeighborhoodResult, GraphNeighbor } from '../../models/blockchain-forensics.models';
+import { CaseGraphNeighborhoodResult, GraphNeighbor } from './case-graph-search-dialog.models';
 
 /** One hop distance and every address found at exactly that distance - the shape the
  * template renders (grouped, closest first), derived from the flat `neighbors` list the
@@ -54,7 +55,8 @@ export class CaseGraphSearchDialogComponent implements OnInit {
   protected knownAddresses: string[] = [];
 
   constructor(
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly caseGraphSearchDialogApi: CaseGraphSearchDialogApiService,
     public readonly settings: SettingsService,
   ) {}
 
@@ -63,7 +65,7 @@ export class CaseGraphSearchDialogComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.api.getCaseGraph(this.caseId).subscribe({
+    this.caseData.getCaseGraph(this.caseId).subscribe({
       next: (graph) => {
         const addresses = new Set(graph.nodes.map((node) => node.id));
         this.knownAddresses = [...addresses].sort();
@@ -111,7 +113,7 @@ export class CaseGraphSearchDialogComponent implements OnInit {
     this.errorMessage = null;
     this.result = null;
 
-    this.api.getCaseGraphNeighborhood(this.caseId, address, this.maxHops).subscribe({
+    this.caseGraphSearchDialogApi.getCaseGraphNeighborhood(this.caseId, address, this.maxHops).subscribe({
       next: (result) => {
         this.result = result;
         this.isSearching = false;

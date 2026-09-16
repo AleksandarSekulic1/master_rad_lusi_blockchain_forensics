@@ -5,9 +5,10 @@ import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { CasesApiService } from './cases.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { Case, CaseSummary, EvidenceEntry } from '../../models/blockchain-forensics.models';
+import { Case, CaseSummary, EvidenceEntry } from '../../core/models/shared.models';
 import { CaseGraphSearchDialogComponent } from '../case-graph-search-dialog/case-graph-search-dialog.component';
 
 @Component({
@@ -42,7 +43,8 @@ export class CasesComponent implements OnInit {
   protected graphSearchCase: { id: string; name: string } | null = null;
 
   constructor(
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly casesApi: CasesApiService,
     protected readonly state: AnalysisStateService,
     public readonly settings: SettingsService,
     destroyRef: DestroyRef,
@@ -128,7 +130,7 @@ export class CasesComponent implements OnInit {
   private fetchCases(term: string): void {
     const query = term.trim();
     this.isLoading = true;
-    this.api.listCases(query).subscribe({
+    this.caseData.listCases(query).subscribe({
       next: (response) => {
         this.cases = response.cases;
         this.currentPage = Math.min(this.currentPage, this.totalPages);
@@ -173,7 +175,7 @@ export class CasesComponent implements OnInit {
     }
 
     this.isCreating = true;
-    this.api
+    this.casesApi
       .createCase({
         name,
         description: this.newCaseDescription.trim() || null,
@@ -217,7 +219,7 @@ export class CasesComponent implements OnInit {
   }
 
   private loadCaseDetail(caseSummary: CaseSummary): void {
-    this.api.getCase(caseSummary.id).subscribe({
+    this.caseData.getCase(caseSummary.id).subscribe({
       next: (caseDetail) => {
         this.selectedCase = caseDetail;
       },
@@ -249,7 +251,7 @@ export class CasesComponent implements OnInit {
     }
 
     this.removingEvidence.add(evidence.stored_name);
-    this.api.removeCaseEvidence(detail.id, evidence.stored_name).subscribe({
+    this.casesApi.removeCaseEvidence(detail.id, evidence.stored_name).subscribe({
       next: (updatedCase) => {
         this.removingEvidence.delete(evidence.stored_name);
         this.selectedCase = updatedCase;
@@ -265,7 +267,7 @@ export class CasesComponent implements OnInit {
 
   toggleCaseStatus(caseSummary: CaseSummary): void {
     const nextStatus = caseSummary.status === 'open' ? 'closed' : 'open';
-    this.api.setCaseStatus(caseSummary.id, nextStatus).subscribe({
+    this.casesApi.setCaseStatus(caseSummary.id, nextStatus).subscribe({
       next: () => {
         this.statusMessage = () =>
           `${this.t('Slučaj', 'Case')} "${caseSummary.name}" ${this.t('je sada', 'is now')} ` +
@@ -293,7 +295,7 @@ export class CasesComponent implements OnInit {
       return;
     }
 
-    this.api.deleteCase(caseSummary.id).subscribe({
+    this.casesApi.deleteCase(caseSummary.id).subscribe({
       next: () => {
         this.statusMessage = () => `${this.t('Slučaj', 'Case')} "${caseSummary.name}" ${this.t('je obrisan.', 'was deleted.')}`;
         if (this.state.selectedCaseSnapshot?.id === caseSummary.id) {
