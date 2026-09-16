@@ -1,5 +1,0 @@
-sender_address,recipient_address,amount,timestamp,currency
-bc1qvictim0000000000000000000000000000000,3PeelSeedxxxxxxxxxxxxxxxxxxxxxxxxxx,0.5,2026-01-01T10:00:00Z,BTC
-3PeelSeedxxxxxxxxxxxxxxxxxxxxxxxxxx,3PeelRelay1xxxxxxxxxxxxxxxxxxxxxxx,0.35,2026-01-01T10:15:00Z,BTC
-3PeelSeedxxxxxxxxxxxxxxxxxxxxxxxxxx,1MuleWalletxxxxxxxxxxxxxxxxxxxxxxx,0.15,2026-01-01T10:20:00Z,BTC
-3PeelRelay1xxxxxxxxxxxxxxxxxxxxxxx,bc1qsanctioned0000000000000000000000000,0.30,2026-01-01T10:40:00Z,BTC
