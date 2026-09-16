@@ -5,19 +5,19 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-09-16T10:29:00.044660+00:00",
-  "updated_at": "2026-09-16T10:37:44.955849+00:00",
+  "updated_at": "2026-09-16T10:42:35.574952+00:00",
   "evidence": [
     {
       "file_name": ".bitcoin_test_demo.csv",
-      "stored_name": "20260916_103744_895679_.bitcoin_test_demo.csv",
-      "imported_at": "2026-09-16T10:37:44.955849+00:00",
-      "size_bytes": 1298,
-      "sha256": "50e2e532b4318465978beb9b4266b04c80834a63abab62d4015b4cd4b3e6c03b",
+      "stored_name": "20260916_104235_504415_.bitcoin_test_demo.csv",
+      "imported_at": "2026-09-16T10:42:35.574952+00:00",
+      "size_bytes": 2841,
+      "sha256": "1926af970af09ef75cbeb2b4aae75d4fb292e4924a38df784c283b1632b26ae1",
       "analyst": "admin",
       "currency": "BTC"
     }
   ],
   "evidence_count": 1,
-  "total_size_bytes": 1298,
-  "last_imported_at": "2026-09-16T10:37:44.955849+00:00"
+  "total_size_bytes": 2841,
+  "last_imported_at": "2026-09-16T10:42:35.574952+00:00"
 }
