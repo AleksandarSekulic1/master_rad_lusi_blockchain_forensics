@@ -25,6 +25,7 @@ import {
   CustodyFieldSuggestions,
   CustodyTransactionSummary,
   DexSwapAnalysisResult,
+  FetchBitcoinRequest,
   FetchOnchainRequest,
   Investigation,
   InvestigatorLink,
@@ -81,6 +82,11 @@ export class ApiService {
 
   fetchOnchainTransactions(request: FetchOnchainRequest): Observable<UploadCsvResponse> {
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/onchain/fetch`, request);
+  }
+
+  fetchBitcoinTransactions(address: string, caseId: string): Observable<UploadCsvResponse> {
+    const request: FetchBitcoinRequest = { address, case_id: caseId };
+    return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/bitcoin/fetch`, request);
   }
 
   listCases(search?: string | null): Observable<{ cases: CaseSummary[] }> {

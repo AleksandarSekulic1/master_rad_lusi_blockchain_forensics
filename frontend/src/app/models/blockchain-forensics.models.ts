@@ -46,7 +46,7 @@ export interface UploadCsvResponse {
   resolved_query?: string;
 }
 
-export type OnchainNetwork = 'mainnet' | 'sepolia';
+export type OnchainNetwork = 'mainnet' | 'sepolia' | 'bitcoin_mainnet';
 export type OnchainMode = 'address_history' | 'tx_single' | 'tx_expand_sender';
 
 export interface FetchOnchainRequest {
@@ -54,6 +54,14 @@ export interface FetchOnchainRequest {
   network: OnchainNetwork;
   case_id: string;
   mode: OnchainMode;
+}
+
+/** POST /bitcoin/fetch - separate slice from Ethereum's FetchOnchainRequest by design
+ * (see BITCOIN-UTXO-PLAN.md): no network/mode fields since v1 only supports mainnet
+ * address history, never a single transaction by hash. */
+export interface FetchBitcoinRequest {
+  address: string;
+  case_id: string;
 }
 
 export interface GraphNodeData {

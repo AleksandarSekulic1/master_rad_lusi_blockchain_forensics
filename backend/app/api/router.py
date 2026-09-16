@@ -5,6 +5,7 @@ from app.features.activity_log.router import router as activity_log_router
 from app.features.addresses.router import router as addresses_router
 from app.features.analytics.router import router as analytics_router
 from app.features.auth.router import router as auth_router
+from app.features.bitcoin_ingestion.router import router as bitcoin_ingestion_router
 from app.features.case_analytics_run.router import router as case_analytics_run_router
 from app.features.case_behavioral_analysis.router import router as case_behavioral_analysis_router
 from app.features.case_dex_swap_analysis.router import router as case_dex_swap_analysis_router
@@ -68,6 +69,10 @@ api_router.include_router(investigation_pins_router, dependencies=authenticated)
 api_router.include_router(custody_router, dependencies=authenticated)
 api_router.include_router(exports_router, dependencies=authenticated)
 api_router.include_router(onchain_router, dependencies=authenticated)
+# Bitcoin (UTXO model) - separate slice from onchain_router (Ethereum) by design, see
+# BITCOIN-UTXO-PLAN.md: normalizes at import time to the same evidence CSV shape instead
+# of touching any downstream analysis.
+api_router.include_router(bitcoin_ingestion_router, dependencies=authenticated)
 api_router.include_router(addresses_router, dependencies=authenticated)
 # Readable by any logged-in user, but the route itself narrows non-admins to their own
 # entries (see activity_log.get_activity_log) rather than relying on an admin-only gate.

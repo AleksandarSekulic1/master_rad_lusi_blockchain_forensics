@@ -301,12 +301,32 @@ export class DashboardComponent implements OnInit {
     });
   }
 
+  protected readonly BTC_BASE58_PATTERN = /^[13][a-km-zA-HJ-NP-Z1-9]{24,33}$/;
+  protected readonly BTC_BECH32_PATTERN = /^bc1[a-z0-9]{36,56}$/;
+
+  get isBitcoinNetwork(): boolean {
+    return this.onchainNetwork === 'bitcoin_mainnet';
+  }
+
   get isOnchainQueryTxHash(): boolean {
-    return /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
+    // Bitcoin v1 only supports "address -> full history" - a tx-hash mode never applies,
+    // regardless of what happens to be typed in the field (see BITCOIN-UTXO-PLAN.md).
+    return !this.isBitcoinNetwork && /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
   }
 
   fetchOnchainTransactions(): void {
     const query = this.onchainQuery.trim();
+    const caseId = this.state.selectedCaseSnapshot?.id;
+    if (!caseId) {
+      this.statusMessage = () => this.t('Izaberite slučaj pre povlačenja transakcija.', 'Select a case before fetching transactions.');
+      return;
+    }
+
+    if (this.isBitcoinNetwork) {
+      this.fetchBitcoinTransactions(query, caseId);
+      return;
+    }
+
     const isAddress = /^0x[0-9a-fA-F]{40}$/.test(query);
     const isTxHash = /^0x[0-9a-fA-F]{64}$/.test(query);
 
@@ -316,12 +336,6 @@ export class DashboardComponent implements OnInit {
           'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera).',
           'Enter a valid address (0x + 40 chars) or transaction hash (0x + 64 chars).',
         );
-      return;
-    }
-
-    const caseId = this.state.selectedCaseSnapshot?.id;
-    if (!caseId) {
-      this.statusMessage = () => this.t('Izaberite slučaj pre povlačenja transakcija.', 'Select a case before fetching transactions.');
       return;
     }
 
@@ -336,27 +350,51 @@ export class DashboardComponent implements OnInit {
 
     const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
     this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
-      next: (result) => {
-        this.uploadResult = result;
-        this.state.setUploadResult(result);
-        if (result.case) {
-          this.state.setSelectedCase(result.case);
-        }
-        this.isFetchingOnchain = false;
-        this.statusMessage = () =>
-          `${this.t('Povučeno', 'Fetched')} ${result.rows_total} ${this.t('transakcija', 'transactions')} (${result.resolved_query ?? query}). ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
-        this.loadCaseViews(caseId);
-        this.loadOpenCases();
-      },
-      error: (error: unknown) => {
-        this.isFetchingOnchain = false;
-        this.statusMessage = () =>
-          this.extractErrorMessage(
-            error,
-            this.t('Povlačenje transakcija sa blockchain-a nije uspelo.', 'Fetching transactions from the blockchain failed.'),
-          );
-      },
+      next: (result) => this.handleOnchainFetchSuccess(result, query, caseId),
+      error: (error: unknown) => this.handleOnchainFetchError(error),
     });
+  }
+
+  private fetchBitcoinTransactions(address: string, caseId: string): void {
+    const isValidAddress = this.BTC_BASE58_PATTERN.test(address) || this.BTC_BECH32_PATTERN.test(address);
+    if (!isValidAddress) {
+      this.statusMessage = () =>
+        this.t(
+          'Unesite validnu Bitcoin adresu (Base58: počinje sa 1 ili 3, ili Bech32: počinje sa bc1).',
+          'Enter a valid Bitcoin address (Base58: starts with 1 or 3, or Bech32: starts with bc1).',
+        );
+      return;
+    }
+
+    this.isFetchingOnchain = true;
+    this.statusMessage = () => `${this.t('Povlačenje sa', 'Fetching from')} Blockstream (Bitcoin mainnet)...`;
+
+    this.api.fetchBitcoinTransactions(address, caseId).subscribe({
+      next: (result) => this.handleOnchainFetchSuccess(result, address, caseId),
+      error: (error: unknown) => this.handleOnchainFetchError(error),
+    });
+  }
+
+  private handleOnchainFetchSuccess(result: UploadCsvResponse, query: string, caseId: string): void {
+    this.uploadResult = result;
+    this.state.setUploadResult(result);
+    if (result.case) {
+      this.state.setSelectedCase(result.case);
+    }
+    this.isFetchingOnchain = false;
+    this.statusMessage = () =>
+      `${this.t('Povučeno', 'Fetched')} ${result.rows_total} ${this.t('transakcija', 'transactions')} (${result.resolved_query ?? query}). ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
+    this.loadCaseViews(caseId);
+    this.loadOpenCases();
+  }
+
+  private handleOnchainFetchError(error: unknown): void {
+    this.isFetchingOnchain = false;
+    this.statusMessage = () =>
+      this.extractErrorMessage(
+        error,
+        this.t('Povlačenje transakcija sa blockchain-a nije uspelo.', 'Fetching transactions from the blockchain failed.'),
+      );
   }
 
   refreshLatestEvidence(): void {

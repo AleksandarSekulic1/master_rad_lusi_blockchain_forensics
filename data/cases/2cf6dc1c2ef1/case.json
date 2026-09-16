@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-09-16T10:29:00.044660+00:00",
-  "updated_at": "2026-09-16T10:42:35.574952+00:00",
+  "updated_at": "2026-09-16T11:06:30.247588+00:00",
   "evidence": [
     {
       "file_name": ".bitcoin_test_demo.csv",
@@ -15,9 +15,18 @@
       "sha256": "1926af970af09ef75cbeb2b4aae75d4fb292e4924a38df784c283b1632b26ae1",
       "analyst": "admin",
       "currency": "BTC"
+    },
+    {
+      "file_name": "bitcoin_address_3Lpoy53K625zVeE47ZasiG5jGkAxJ27kh1.csv",
+      "stored_name": "20260916_110630_176240_bitcoin_address_3Lpoy53K625zVeE47ZasiG5jGkAxJ27kh1.csv",
+      "imported_at": "2026-09-16T11:06:30.247588+00:00",
+      "size_bytes": 3638,
+      "sha256": "beafcbe6702ca98ccc1936715c588bcb61995e8dbc4c9962c75dc43c2c1bcafe",
+      "analyst": "admin",
+      "currency": "BTC"
     }
   ],
-  "evidence_count": 1,
-  "total_size_bytes": 2841,
-  "last_imported_at": "2026-09-16T10:42:35.574952+00:00"
+  "evidence_count": 2,
+  "total_size_bytes": 6479,
+  "last_imported_at": "2026-09-16T11:06:30.247588+00:00"
 }

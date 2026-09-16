@@ -40,6 +40,16 @@ DEFAULT_BLACKLIST_ENTRIES: tuple[BlacklistEntry, ...] = (
         sources=('OFAC', 'Chainabuse'),
         label='Simulated multi-source malicious address',
     ),
+    # Real (not simulated) entry - a Bitcoin address is a valid graph node exactly like an
+    # Ethereum one, so it belongs in the same index rather than a chain-specific list. OFAC
+    # designated Garantex Europe OU on 2022-04-05 (see BITCOIN-UTXO-PLAN.md); this address
+    # is listed as one of its "Digital Currency Address - XBT" identifiers in that SDN
+    # entry (ofac.treasury.gov/recent-actions/20220405).
+    BlacklistEntry(
+        address='3lpoy53k625zvee47zasig5jgkaxj27kh1',
+        sources=('OFAC',),
+        label='Garantex Europe OU (OFAC SDN, designated 2022-04-05)',
+    ),
 )
 
 
