@@ -18,9 +18,9 @@ import pandas as pd
 import pytest
 
 from app.analytics.ingestion import clean_transaction_csv
-from app.api.routes.cases import TransactionCustodyEntry, _record_custody_access
 from app.evidence import custody_evidence_log, custody_log
 from app.evidence.tx_identity import transaction_id
+from app.shared.custody_recording import TransactionCustodyEntry, record_custody_access
 
 
 HEADER = 'sender_address,recipient_address,amount,timestamp'
@@ -35,7 +35,7 @@ def write_csv(tmp_path: Path, rows: str, name: str = 'evidence.csv', header: str
 @pytest.fixture(autouse=True)
 def isolated_custody_log(tmp_path, monkeypatch):
     """Testovi ne smeju da pišu u pravi lanac dokaza (ni po transakciji ni po dokaznom
-    fajlu - _record_custody_access upisuje u oba odjednom)."""
+    fajlu - record_custody_access upisuje u oba odjednom)."""
     monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
     monkeypatch.setattr(custody_evidence_log, '_evidence_custody_log_path', lambda: tmp_path / 'custody_evidence_log.jsonl')
 
@@ -167,7 +167,7 @@ class TestRecordCustodyAccessFromAnalyticsRun:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera povezanosti', signature_image='data:image/png;base64,AAA')
 
-        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+        record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
 
         entries = custody_log.load_custody_entries(case_id='c1')
         assert len(entries) == 2
@@ -183,7 +183,7 @@ class TestRecordCustodyAccessFromAnalyticsRun:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
 
-        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+        record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
 
         entry = custody_log.load_custody_entries(case_id='c1')[0]
         assert entry['proizvodjac'] == 'N/A'
@@ -203,7 +203,7 @@ class TestRecordCustodyAccessFromAnalyticsRun:
             identifikator_predmeta='UDF', proizvodjac='Seagate', serijski_broj='BG-HDD-01',
         )
 
-        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+        record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
 
         entry = custody_log.load_custody_entries(case_id='c1')[0]
         assert entry['identifikator_predmeta'] == 'UDF'
@@ -218,7 +218,7 @@ class TestRecordCustodyAccessFromAnalyticsRun:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
 
-        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+        record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
 
         entry = custody_log.load_custody_entries(case_id='c1')[0]
         assert entry['scope'] == 'transaction'
@@ -234,7 +234,7 @@ class TestRecordCustodyAccessFromAnalyticsRun:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
 
-        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+        record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
 
         # Dva reda po transakciji (jedan po redu evidencije)...
         assert len(custody_log.load_custody_entries(case_id='c1')) == 2

@@ -11,8 +11,9 @@ from app.services.address_enrichment import get_known_entity
 
 # Optional internal column (leading underscore - never a real evidence column a CSV would
 # use): when the caller tags each row with the evidence file it came from BEFORE calling
-# analyze_token_approvals (see app.api.routes.cases._combine_frames_with_evidence_tag,
-# used only when writing to the chain of evidence - never by the plain read-only routes),
+# analyze_token_approvals (see app.features.case_token_approval_analysis.service.
+# combine_frames_with_evidence_tag, used only when writing to the chain of evidence -
+# never by the plain read-only routes),
 # each approval gets a stable `tx_id` (app.evidence.tx_identity.transaction_id - the SAME
 # identifier the existing custody_log already keys on), so a Token Approval finding can be
 # attached to its own specific transaction's custody row. Absent this column (the normal
@@ -1272,7 +1273,8 @@ def correlate_approval_usage(
                 },
                 # None unless the caller tagged the input frame with evidence file identity
                 # (see EVIDENCE_STORED_NAME_COLUMN) - used by
-                # app.api.routes.cases._token_approval_custody_enrichment to attach this
+                # app.features.case_token_approval_analysis.service.
+                # token_approval_custody_enrichment to attach this
                 # finding to its own specific transaction's chain-of-custody row
                 # (TOKEN-APPROVAL-IMPLEMENTATION.md #18). Always None for the plain
                 # read-only GET routes, which never tag the frame.

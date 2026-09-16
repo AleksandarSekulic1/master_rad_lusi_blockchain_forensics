@@ -57,6 +57,7 @@
 }
 
 .upload-panel,
+.search-panel,
 .metrics-row,
 .graph-panel,
 .export-panel {
@@ -431,5 +432,188 @@ select option {
   .metrics-row,
   .upload-meta {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- brza pretraga adrese ---------- */
+
+.search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.search-field {
+  flex: 1;
+  min-width: 16rem;
+}
+
+.field-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* .ghost-button/.primary-button already share the input's vertical padding (0.72rem), so
+   they line up on the same baseline as the field via .search-row's align-items: flex-end -
+   this only needs to stop the label wrapping onto two lines in a narrow flex item. */
+.search-submit {
+  white-space: nowrap;
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+  margin-top: 1.2rem;
+  padding: 1.1rem 1.3rem;
+  border-radius: 1rem;
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+}
+
+.search-result.band-high {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.07);
+}
+.search-result.band-medium {
+  border-color: rgba(217, 119, 6, 0.4);
+  background: rgba(217, 119, 6, 0.07);
+}
+.search-result.band-low {
+  border-color: rgba(163, 190, 60, 0.35);
+  background: rgba(163, 190, 60, 0.05);
+}
+
+.search-result-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex: 1;
+  min-width: 16rem;
+}
+
+.risk-pill {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 0.9rem;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--heading);
+}
+
+.risk-pill strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.risk-pill small {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.risk-pill.band-high {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fff;
+}
+.risk-pill.band-medium {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+}
+.risk-pill.band-low {
+  background: linear-gradient(135deg, #a3be3c, #84a017);
+  color: #fff;
+}
+
+.search-result-address-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.search-result-address {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.88rem;
+  color: var(--heading);
+  word-break: break-all;
+}
+
+.search-result-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.search-flag {
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.search-result-stats {
+  display: flex;
+  gap: 1.6rem;
+  flex: none;
+}
+
+.search-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.search-stat span {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.search-stat strong {
+  font-size: 0.98rem;
+  color: var(--heading);
+}
+
+.search-open-graph {
+  flex: none;
+  margin-left: auto;
+}
+
+.search-empty {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+@media (max-width: 720px) {
+  .search-result {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-result-stats {
+    justify-content: space-between;
+  }
+
+  .search-open-graph {
+    margin-left: 0;
   }
 }

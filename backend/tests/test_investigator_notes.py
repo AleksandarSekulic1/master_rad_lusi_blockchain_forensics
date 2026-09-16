@@ -19,11 +19,13 @@ import time
 
 import pytest
 
-from app.investigations import notes_repository, notes_service, repository, service
-from app.investigations.notes_models import InvestigatorNoteCreate, InvestigatorNoteUpdate
-from app.investigations.notes_service import InvestigatorNoteNotFoundError
-from app.investigations.service import InvestigationCaseNotFoundError
+from app.features.investigation_notes import repository as notes_repository
+from app.features.investigation_notes import service as notes_service
+from app.features.investigation_notes.models import InvestigatorNoteCreate, InvestigatorNoteUpdate
+from app.features.investigation_notes.service import InvestigatorNoteNotFoundError
+from app.investigations import repository, service
 from app.investigations.models import InvestigationCaseCreate
+from app.investigations.service import InvestigationCaseNotFoundError
 
 
 @pytest.fixture(autouse=True)

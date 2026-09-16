@@ -12,16 +12,11 @@ off-chain address links attach to it in later steps and are NOT part of this mod
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
-
-def utc_now_iso() -> str:
-    """UTC timestamp in ISO-8601, the same way every other record in this project stamps
-    time (see `app/services/case_management.py`, `app/evidence/audit_log.py`)."""
-    return datetime.now(timezone.utc).isoformat()
+from app.shared.time_utils import utc_now_iso
 
 
 def new_investigation_id() -> str:

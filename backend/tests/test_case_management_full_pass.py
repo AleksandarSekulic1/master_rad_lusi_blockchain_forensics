@@ -18,8 +18,8 @@ import pytest
 
 from app.evidence import audit_log
 from app.investigations import repository
-from app.investigations.links_models import EVIDENCE_MAX_LENGTH, REASON_MAX_LENGTH
-from app.investigations.notes_models import NOTE_TEXT_MAX_LENGTH
+from app.features.investigation_links.models import EVIDENCE_MAX_LENGTH, REASON_MAX_LENGTH
+from app.features.investigation_notes.models import NOTE_TEXT_MAX_LENGTH
 from app.services import user_management
 
 

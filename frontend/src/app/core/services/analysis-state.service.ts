@@ -133,6 +133,24 @@ export class AnalysisStateService {
     }
   }
 
+  /** Same idea as graphImageProvider above, but for a vector (SVG) snapshot - see
+   * report-export.component.ts's exportSvg(). Kept as a separate provider rather than a
+   * second argument on the PNG one so either capture can fail/be absent independently
+   * (e.g. cytoscape-svg not registered yet) without touching the PNG path. */
+  private graphSvgProvider: (() => string | null) | null = null;
+
+  registerGraphSvgProvider(provider: (() => string | null) | null): void {
+    this.graphSvgProvider = provider;
+  }
+
+  captureGraphSvg(): string | null {
+    try {
+      return this.graphSvgProvider?.() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   get uploadSnapshot(): UploadCsvResponse | null {
     return this.uploadSubject.value;
   }

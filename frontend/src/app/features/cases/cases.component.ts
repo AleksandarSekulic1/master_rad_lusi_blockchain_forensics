@@ -8,11 +8,12 @@ import { AnalysisStateService } from '../../core/services/analysis-state.service
 import { ApiService } from '../../core/services/api.service';
 import { SettingsService } from '../../core/services/settings.service';
 import { Case, CaseSummary, EvidenceEntry } from '../../models/blockchain-forensics.models';
+import { CaseGraphSearchDialogComponent } from '../case-graph-search-dialog/case-graph-search-dialog.component';
 
 @Component({
   selector: 'app-cases',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CaseGraphSearchDialogComponent],
   templateUrl: './cases.component.html',
   styleUrl: './cases.component.scss',
 })
@@ -34,6 +35,11 @@ export class CasesComponent implements OnInit {
 
   /** stored_name of evidence entries whose removal request is in flight (per-row spinner). */
   protected readonly removingEvidence = new Set<string>();
+
+  /** Non-null while the graph-search dialog (Neo4j pilot - see PREDLOG-GRAF-SUBP.md) is
+   * open for this case. A plain field rather than a boolean flag so the dialog always has
+   * the case id/name to hand, even if `selectedCase` changes while it's open. */
+  protected graphSearchCase: { id: string; name: string } | null = null;
 
   constructor(
     private readonly api: ApiService,
@@ -91,6 +97,14 @@ export class CasesComponent implements OnInit {
 
   goToPage(page: number): void {
     this.currentPage = Math.min(Math.max(1, page), this.totalPages);
+  }
+
+  openGraphSearch(caseDetail: Case): void {
+    this.graphSearchCase = { id: caseDetail.id, name: caseDetail.name };
+  }
+
+  closeGraphSearch(): void {
+    this.graphSearchCase = null;
   }
 
   formatDate(iso: string | null | undefined): string {

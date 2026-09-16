@@ -92,7 +92,8 @@ def custody_chain_for_transaction(case_id: str, tx_id: str) -> dict[str, Any] | 
     first, last = entries[0], entries[-1]
     numbered = [{**entry, 'redni_broj': index} for index, entry in enumerate(entries, start=1)]
 
-    # A TOKEN_APPROVAL finding (see app.api.routes.cases._token_approval_custody_enrichment)
+    # A TOKEN_APPROVAL finding (see
+    # app.features.case_token_approval_analysis.service.token_approval_custody_enrichment)
     # is the same, deterministic fact every time this transaction is re-analysed - taken
     # from whichever access actually carried it (usually all of them, if any do), rather
     # than assumed to be on `last` specifically, since an unrelated access to the SAME

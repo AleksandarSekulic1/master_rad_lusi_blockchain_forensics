@@ -32,10 +32,38 @@
     >
       {{ isExportingCsv ? t('Izvoz...', 'Exporting...') : t('Izvezi CSV', 'Export CSV') }}
     </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="exportGraphml()"
+      [disabled]="!activeCaseId || !!exportingGraphFormat"
+      [title]="t('Interaktivni graf za dalju analizu u eksternim alatima (npr. Gephi, yEd).', 'The interactive graph for further analysis in external tools (e.g. Gephi, yEd).')"
+    >
+      {{ exportingGraphFormat === 'graphml' ? t('Izvoz...', 'Exporting...') : t('Izvezi GraphML', 'Export GraphML') }}
+    </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="exportGexf()"
+      [disabled]="!activeCaseId || !!exportingGraphFormat"
+      [title]="t('Isti graf u Gephi-jevom sopstvenom formatu.', 'The same graph in Gephi’s own native format.')"
+    >
+      {{ exportingGraphFormat === 'gexf' ? t('Izvoz...', 'Exporting...') : t('Izvezi GEXF', 'Export GEXF') }}
+    </button>
+    <button
+      type="button"
+      class="ghost-button"
+      (click)="exportSvg()"
+      [disabled]="!activeCaseId || !!exportingGraphFormat"
+      [title]="t('Vektorska slika grafa tačno onako kako trenutno izgleda na ekranu (raspored, boje).', 'A vector image of the graph exactly as it currently looks on screen (layout, colours).')"
+    >
+      {{ exportingGraphFormat === 'svg' ? t('Izvoz...', 'Exporting...') : t('Izvezi SVG', 'Export SVG') }}
+    </button>
   </div>
 
   <p class="export-error" *ngIf="exportError">{{ exportError }}</p>
   <p class="export-error" *ngIf="csvExportError">{{ csvExportError }}</p>
+  <p class="export-error" *ngIf="graphFormatExportError">{{ graphFormatExportError }}</p>
 </div>
 
 <!-- Compact trigger for a toolbar (e.g. the graph page's button row). -->

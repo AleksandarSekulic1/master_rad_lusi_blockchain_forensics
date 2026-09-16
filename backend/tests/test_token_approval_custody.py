@@ -1,7 +1,7 @@
 """Integracija Token Approval Analysis sa POSTOJEĆIM lancem dokaza (chain of evidence).
 
 Cilj: dokazati da Token Approval Analysis koristi TAČNO ISTI mehanizam
-(`_record_custody_access`, `custody_log.jsonl`, `custody_evidence_log.jsonl`) kao Taint/
+(`record_custody_access`, `custody_log.jsonl`, `custody_evidence_log.jsonl`) kao Taint/
 Graph/Pathfinding/Behavioral/DEX Swap - ne paralelan sistem - i da svaki approve()/
 permit() red koji dobije nalaz nosi strukturiran `token_approval_evidence` dokaz, jasno
 razdvojen na blockchain_facts / computed_indicators / heuristic_conclusions.
@@ -18,14 +18,13 @@ import pandas as pd
 import pytest
 
 from app.analytics.token_approval_analysis import EVIDENCE_STORED_NAME_COLUMN, correlate_approval_usage
-from app.api.routes.cases import (
-    TransactionCustodyEntry,
-    _combine_frames_with_evidence_tag,
-    _record_custody_access,
-    _token_approval_custody_enrichment,
-)
 from app.evidence import custody_evidence_log, custody_log
 from app.evidence.tx_identity import transaction_id
+from app.features.case_token_approval_analysis.service import (
+    combine_frames_with_evidence_tag,
+    token_approval_custody_enrichment,
+)
+from app.shared.custody_recording import TransactionCustodyEntry, record_custody_access
 
 NOW = pd.Timestamp('2026-01-10T00:00:00Z')
 
@@ -51,7 +50,7 @@ def _clean(path: Path) -> pd.DataFrame:
 
 
 class TestCombineFramesWithEvidenceTag:
-    """_combine_frames_with_evidence_tag - spajanje evidencije uz oznaku porekla"""
+    """combine_frames_with_evidence_tag - spajanje evidencije uz oznaku porekla"""
 
     def test_each_row_tagged_with_its_own_evidence_file(self, tmp_path):
         """Svaki red je označen fajlom iz kog stvarno potiče"""
@@ -59,7 +58,7 @@ class TestCombineFramesWithEvidenceTag:
         path_b = write_csv(tmp_path, '0xOwner,0xSpender,200,2026-01-02T00:00:00Z,,approve,0xTokenA,0xSpender,\n', name='b.csv')
         frames = [({'stored_name': 'a.csv'}, _clean(path_a)), ({'stored_name': 'b.csv'}, _clean(path_b))]
 
-        tagged = _combine_frames_with_evidence_tag(frames)
+        tagged = combine_frames_with_evidence_tag(frames)
 
         assert list(tagged[EVIDENCE_STORED_NAME_COLUMN]) == ['a.csv', 'b.csv']
 
@@ -71,7 +70,7 @@ class TestCombineFramesWithEvidenceTag:
         path_a = write_csv(tmp_path, '0xOwner,0xSpender,100,2026-01-05T00:00:00Z,,approve,0xTokenA,0xSpender,\n', name='a.csv')
         path_b = write_csv(tmp_path, '0xOwner,0xSpender,200,2026-01-01T00:00:00Z,,approve,0xTokenA,0xSpender,\n', name='b.csv')
         frames = [({'stored_name': 'a.csv'}, _clean(path_a)), ({'stored_name': 'b.csv'}, _clean(path_b))]
-        tagged = _combine_frames_with_evidence_tag(frames)
+        tagged = combine_frames_with_evidence_tag(frames)
         # Expected ids computed from the SAME tagged rows (not hand-typed literals) - the
         # point of this test is that the tag survives the sort inside correlate_approval_
         # usage, not to re-derive transaction_id's own hashing by hand.
@@ -88,7 +87,7 @@ class TestCombineFramesWithEvidenceTag:
 
 
 class TestTokenApprovalCustodyEnrichment:
-    """_token_approval_custody_enrichment - građenje strukturiranog dokaza po tx_id"""
+    """token_approval_custody_enrichment - građenje strukturiranog dokaza po tx_id"""
 
     def test_entry_without_tx_id_is_skipped_not_guessed(self):
         """Nalaz bez tx_id (netagovana evidencija) se preskače, ne nagađa mu se identitet"""
@@ -98,7 +97,7 @@ class TestTokenApprovalCustodyEnrichment:
             'disclaimer': '...',
         }
 
-        enrichment = _token_approval_custody_enrichment(full_result)
+        enrichment = token_approval_custody_enrichment(full_result)
 
         assert enrichment == {}
 
@@ -110,10 +109,10 @@ class TestTokenApprovalCustodyEnrichment:
             '0xOwner,0xDest,500000000000000000,2026-01-01T01:00:00Z,0xtx1,transferFrom,0xTokenA,0xSpender,\n',
         )
         frames = [({'stored_name': 'evidence.csv'}, _clean(path))]
-        tagged = _combine_frames_with_evidence_tag(frames)
+        tagged = combine_frames_with_evidence_tag(frames)
         full_result = correlate_approval_usage(tagged, now=NOW)
 
-        enrichment = _token_approval_custody_enrichment(full_result)
+        enrichment = token_approval_custody_enrichment(full_result)
 
         assert len(enrichment) == 1
         item = next(iter(enrichment.values()))['token_approval_evidence']
@@ -145,16 +144,16 @@ class TestTokenApprovalCustodyEnrichment:
         """Dokaz je uparen sa TAČNO tx_id-jem sopstvenog approve reda"""
         path = write_csv(tmp_path, '0xOwner,0xSpender,100,2026-01-01T00:00:00Z,0xapprove1,approve,0xTokenA,0xSpender,\n')
         frames = [({'stored_name': 'evidence.csv'}, _clean(path))]
-        tagged = _combine_frames_with_evidence_tag(frames)
+        tagged = combine_frames_with_evidence_tag(frames)
         full_result = correlate_approval_usage(tagged, now=NOW)
 
-        enrichment = _token_approval_custody_enrichment(full_result)
+        enrichment = token_approval_custody_enrichment(full_result)
 
         assert list(enrichment.keys()) == [transaction_id({'metadata': '0xapprove1'}, 'evidence.csv')]
 
 
 class TestRecordCustodyAccessWithTokenApprovalEnrichment:
-    """_record_custody_access(extra_transaction_fields=...) - upis u lanac dokaza"""
+    """record_custody_access(extra_transaction_fields=...) - upis u lanac dokaza"""
 
     def test_only_the_matching_row_gets_the_token_approval_evidence_field(self, tmp_path):
         """Samo TAČAN red (po tx_id) dobija token_approval_evidence - ostali ostaju kao i pre"""
@@ -168,11 +167,11 @@ class TestRecordCustodyAccessWithTokenApprovalEnrichment:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera Token Approval nalaza', signature_image='data:image/png;base64,AAA')
 
-        tagged = _combine_frames_with_evidence_tag([(evidence_entry, frame)])
+        tagged = combine_frames_with_evidence_tag([(evidence_entry, frame)])
         full_result = correlate_approval_usage(tagged, now=NOW)
-        extra = _token_approval_custody_enrichment(full_result)
+        extra = token_approval_custody_enrichment(full_result)
 
-        _record_custody_access(
+        record_custody_access(
             case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco',
             extra_transaction_fields=extra,
         )
@@ -196,7 +195,7 @@ class TestRecordCustodyAccessWithTokenApprovalEnrichment:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
 
-        _record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
+        record_custody_access(case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco')
 
         entry = custody_log.load_custody_entries(case_id='c1')[0]
         assert 'token_approval_evidence' not in entry
@@ -209,11 +208,11 @@ class TestRecordCustodyAccessWithTokenApprovalEnrichment:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
 
-        tagged = _combine_frames_with_evidence_tag([(evidence_entry, frame)])
+        tagged = combine_frames_with_evidence_tag([(evidence_entry, frame)])
         full_result = correlate_approval_usage(tagged, now=NOW)
-        extra = _token_approval_custody_enrichment(full_result)
+        extra = token_approval_custody_enrichment(full_result)
 
-        _record_custody_access(
+        record_custody_access(
             case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco',
             extra_transaction_fields=extra,
         )
@@ -237,11 +236,11 @@ class TestRecordCustodyAccessWithTokenApprovalEnrichment:
         case = {'id': 'c1', 'name': 'Slučaj 1'}
         custody = TransactionCustodyEntry(ime_prezime='Aleksandar Sekulić', opis_radnje='Provera', signature_image='data:image/png;base64,AAA')
 
-        tagged = _combine_frames_with_evidence_tag([(evidence_entry, frame)])
+        tagged = combine_frames_with_evidence_tag([(evidence_entry, frame)])
         full_result = correlate_approval_usage(tagged, now=NOW)
-        extra = _token_approval_custody_enrichment(full_result)
+        extra = token_approval_custody_enrichment(full_result)
 
-        _record_custody_access(
+        record_custody_access(
             case=case, per_evidence_frames=[(evidence_entry, frame)], custody=custody, user='aco',
             extra_transaction_fields=extra,
         )

@@ -156,7 +156,18 @@
         <p class="panel-kicker">{{ t('Depo dokaza', 'Evidence locker') }}</p>
         <h2>{{ caseDetail.name }}</h2>
       </div>
-      <span class="pill">{{ caseDetail.evidence.length }} {{ t('fajl(ova)', 'file(s)') }}</span>
+      <div class="panel-heading-actions">
+        <button type="button" class="graph-search-button" (click)="openGraphSearch(caseDetail)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="5" cy="12" r="2.3" />
+            <circle cx="18" cy="5.5" r="2.3" />
+            <circle cx="18" cy="18.5" r="2.3" />
+            <path d="M7.2 10.9 15.8 6.8M7.2 13.1 15.8 17.2" />
+          </svg>
+          <span>{{ t('Napredna pretraga grafa', 'Advanced graph search') }}</span>
+        </button>
+        <span class="pill">{{ caseDetail.evidence.length }} {{ t('fajl(ova)', 'file(s)') }}</span>
+      </div>
     </div>
 
     <div class="evidence-list" *ngIf="caseDetail.evidence.length > 0; else emptyEvidence">
@@ -207,3 +218,10 @@
     </ng-template>
   </article>
 </section>
+
+<app-case-graph-search-dialog
+  *ngIf="graphSearchCase as target"
+  [caseId]="target.id"
+  [caseName]="target.name"
+  (closed)="closeGraphSearch()"
+></app-case-graph-search-dialog>

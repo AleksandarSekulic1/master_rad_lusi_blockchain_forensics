@@ -192,17 +192,18 @@ class TestPathfindingRoute:
 
     def test_returns_minimal_shape_and_writes_audit_log(self, tmp_path, monkeypatch):
         """Ruta vraća {found, path, hops} i beleži path_finding u log aktivnosti"""
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
         from app.evidence import audit_log
 
         monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
 
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
 
         csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n0xB,0xC,90,2026-01-01T01:00:00Z\n')
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
 
         request = cases_routes.CasePathfindingRequest(**{'from': '0xA', 'to': '0xC'})
         result = cases_routes.run_case_pathfinding(
@@ -220,7 +221,7 @@ class TestPathfindingRoute:
 
     def test_request_accepts_from_to_json_keys(self):
         """Telo zahteva koristi 'from'/'to' kao u specifikaciji, ne 'from_address'/'to_address'"""
-        from app.api.routes.cases import CasePathfindingRequest
+        from app.features.case_pathfinding.models import CasePathfindingRequest
 
         request = CasePathfindingRequest.model_validate({'from': '0xA', 'to': '0xB'})
 
@@ -229,13 +230,14 @@ class TestPathfindingRoute:
 
     def test_specific_address_mode_requires_to_field(self, tmp_path, monkeypatch):
         """destination_mode 'specific_address' bez 'to' vraća jasnu grešku, ne pucanje"""
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
 
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
         csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n')
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
 
         request = cases_routes.CasePathfindingRequest(**{'from': '0xA'})
         with pytest.raises(HTTPException) as excinfo:
@@ -246,13 +248,14 @@ class TestPathfindingRoute:
 
     def test_unsupported_destination_mode_is_rejected(self, tmp_path, monkeypatch):
         """destination_mode 'cash_out_point' (nije još implementiran) vraća jasnu grešku"""
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
 
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
         csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n')
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
 
         request = cases_routes.CasePathfindingRequest(**{'from': '0xA', 'destination_mode': 'cash_out_point'})
         with pytest.raises(HTTPException) as excinfo:
@@ -274,15 +277,16 @@ class TestPathfindingCustody:
 
     def test_custody_absent_writes_nothing_to_custody_log(self, tmp_path, monkeypatch):
         """Bez 'custody' polja, ruta se ponaša kao ranije - nema upisa u lanac dokaza"""
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
         from app.evidence import custody_log
 
         monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
         csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n')
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
 
         request = cases_routes.CasePathfindingRequest(**{'from': '0xA', 'to': '0xB'})
         cases_routes.run_case_pathfinding(
@@ -293,17 +297,18 @@ class TestPathfindingCustody:
 
     def test_custody_present_writes_one_row_per_evidence_transaction(self, tmp_path, monkeypatch):
         """Sa 'custody' poljem, svaki red evidencije u obuhvatu dobija red u lancu dokaza"""
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
         from app.evidence import custody_log
         from app.evidence.tx_identity import transaction_id
 
         monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
         rows = '0xA,0xB,100,2026-01-01T00:00:00Z\n0xB,0xC,90,2026-01-01T01:00:00Z\n'
         csv_path = write_csv(tmp_path, rows)
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
 
         request = cases_routes.CasePathfindingRequest(**{
             'from': '0xA', 'to': '0xC',
@@ -329,16 +334,17 @@ class TestPathfindingCustody:
 
     def test_custody_recorded_flag_appears_in_activity_log(self, tmp_path, monkeypatch):
         """Log aktivnosti beleži da li je ovo pokretanje upisano i u lanac dokaza"""
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
         from app.evidence import audit_log, custody_log
 
         monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
         monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
         csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z\n')
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
 
         request = cases_routes.CasePathfindingRequest(**{
             'from': '0xA', 'to': '0xB',
@@ -367,15 +373,16 @@ class TestNearestCexMode:
     """
 
     def _setup(self, tmp_path, monkeypatch, rows: str, known_entities: dict[str, dict[str, str]]):
-        from app.api.routes import cases as cases_routes
+        from app.features.case_pathfinding import router as cases_routes
+        from app.shared import case_access
         from app.evidence import audit_log
 
         monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
         case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
-        monkeypatch.setattr(cases_routes, 'get_case', lambda case_id: case)
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
         csv_path = write_csv(tmp_path, rows)
         evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
-        monkeypatch.setattr(cases_routes, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
         monkeypatch.setattr(cases_routes, 'get_known_entity', lambda address: known_entities.get(address))
         return cases_routes
 

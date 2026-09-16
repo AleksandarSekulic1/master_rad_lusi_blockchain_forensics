@@ -54,6 +54,14 @@ export class ReportExportComponent {
   protected isExportingCsv = false;
   protected csvExportError: string | null = null;
 
+  // --- Graph format exports (GraphML/GEXF/SVG) - "interactive graphs exportable for
+  // further analysis in external tools", same unsigned/no-dialog treatment as CSV above:
+  // these are data/vector interchange formats for other software (Gephi, yEd, Illustrator...),
+  // not presentation documents. One shared pair of fields since the three only ever run one
+  // at a time (each button disables while any of them is in flight). ---
+  protected exportingGraphFormat: 'graphml' | 'gexf' | 'svg' | null = null;
+  protected graphFormatExportError: string | null = null;
+
   protected isSigningOpen = false;
   protected isLoadingContext = false;
   protected reportContext: CaseReportContext | null = null;
@@ -174,6 +182,74 @@ export class ReportExportComponent {
         this.csvExportError = this.t('Neuspešan izvoz CSV-a.', 'Failed to export the CSV.');
       },
     });
+  }
+
+  /** GraphML - reconstructs the transaction graph from the case's combined evidence
+   * (same shared backend endpoint the graph page's data comes from, not a client-side
+   * re-derivation) for opening in tools like Gephi or yEd. */
+  exportGraphml(): void {
+    const caseId = this.activeCaseId;
+    if (!caseId || this.exportingGraphFormat) {
+      return;
+    }
+    this.exportingGraphFormat = 'graphml';
+    this.graphFormatExportError = null;
+    this.api.exportCaseGraphml(caseId).subscribe({
+      next: (blob) => {
+        this.exportingGraphFormat = null;
+        this.saveBlob(blob, `${caseId}_graph.graphml`);
+      },
+      error: () => {
+        this.exportingGraphFormat = null;
+        this.graphFormatExportError = this.t('Neuspešan izvoz GraphML-a.', 'Failed to export GraphML.');
+      },
+    });
+  }
+
+  /** GEXF - same graph, Gephi's own native format. */
+  exportGexf(): void {
+    const caseId = this.activeCaseId;
+    if (!caseId || this.exportingGraphFormat) {
+      return;
+    }
+    this.exportingGraphFormat = 'gexf';
+    this.graphFormatExportError = null;
+    this.api.exportCaseGexf(caseId).subscribe({
+      next: (blob) => {
+        this.exportingGraphFormat = null;
+        this.saveBlob(blob, `${caseId}_graph.gexf`);
+      },
+      error: () => {
+        this.exportingGraphFormat = null;
+        this.graphFormatExportError = this.t('Neuspešan izvoz GEXF-a.', 'Failed to export GEXF.');
+      },
+    });
+  }
+
+  /** SVG - a vector snapshot of the graph exactly as it is currently laid out/coloured on
+   * screen (via cytoscape-svg - see AnalysisStateService.captureGraphSvg), unlike
+   * GraphML/GEXF above which reconstruct the graph structure straight from the backend and
+   * carry no layout/styling. Needs the graph page actually mounted somewhere (Dashboard's
+   * own compact graph, or the Graph page) to have something to snapshot - same
+   * precondition as the PDF report's embedded graph image. */
+  exportSvg(): void {
+    const caseId = this.activeCaseId;
+    if (!caseId || this.exportingGraphFormat) {
+      return;
+    }
+    const svgMarkup = this.state.captureGraphSvg();
+    if (!svgMarkup) {
+      this.graphFormatExportError = this.t(
+        'Graf trenutno nije prikazan ni na jednoj otvorenoj stranici - otvorite Kontrolnu tablu ili Graf pre izvoza.',
+        'The graph isn’t currently rendered on any open page - open the Dashboard or Graph page before exporting.',
+      );
+      return;
+    }
+    this.exportingGraphFormat = 'svg';
+    this.graphFormatExportError = null;
+    const blob = new Blob([svgMarkup], { type: 'image/svg+xml' });
+    this.saveBlob(blob, `${caseId}_graph.svg`);
+    this.exportingGraphFormat = null;
   }
 
   private saveBlob(blob: Blob, fileName: string): void {

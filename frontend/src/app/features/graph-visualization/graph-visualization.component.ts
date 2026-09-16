@@ -217,6 +217,10 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
     this.state.registerGraphImageProvider(() =>
       this.cy ? this.cy.png({ full: true, scale: 2, bg: '#0a1425' }) : null,
     );
+    // Same handoff as the PNG provider above, but for a vector snapshot (report-export's
+    // "Izvezi SVG") - a plain string (SVG markup), not a data URL, since cytoscape-svg
+    // returns raw markup rather than an encoded image.
+    this.state.registerGraphSvgProvider(() => (this.cy ? this.cy.svg({ full: true, scale: 2 }) : null));
 
     // Rendered from graph$: the plain /graph response has no blacklist/risk/anomaly/
     // peel-chain data (that's only computed by the analytics pipeline), so it renders
@@ -1022,6 +1026,7 @@ export class GraphVisualizationComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.state.registerGraphImageProvider(null);
+    this.state.registerGraphSvgProvider(null);
     this.cy?.destroy();
     this.cy = null;
     if (this.layoutIndicatorTimer !== null) {

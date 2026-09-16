@@ -19,9 +19,11 @@ import time
 
 import pytest
 
-from app.investigations import links_repository, links_service, repository, service
-from app.investigations.links_models import InvestigatorLinkCreate, InvestigatorLinkUpdate
-from app.investigations.links_service import InvestigatorLinkNotFoundError
+from app.features.investigation_links import repository as links_repository
+from app.features.investigation_links import service as links_service
+from app.features.investigation_links.models import InvestigatorLinkCreate, InvestigatorLinkUpdate
+from app.features.investigation_links.service import InvestigatorLinkNotFoundError
+from app.investigations import repository, service
 from app.investigations.models import InvestigationCaseCreate
 from app.investigations.service import InvestigationCaseNotFoundError
 
