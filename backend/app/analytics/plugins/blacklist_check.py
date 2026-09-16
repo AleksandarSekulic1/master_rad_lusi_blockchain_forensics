@@ -50,6 +50,16 @@ DEFAULT_BLACKLIST_ENTRIES: tuple[BlacklistEntry, ...] = (
         sources=('OFAC',),
         label='Garantex Europe OU (OFAC SDN, designated 2022-04-05)',
     ),
+    # Real Ethereum entry - the Ronin Bridge hack (2022-03-23, ~$625M stolen), attributed
+    # to the Lazarus Group. OFAC designated this exact address on 2022-04-14 as one of its
+    # "Digital Currency Address - ETH" identifiers (ofac.treasury.gov/recent-actions/20220414).
+    # Already present in known_entities.json (address enrichment) under the same label -
+    # added here too since blacklist_check reads its own list, not that file.
+    BlacklistEntry(
+        address='0x098b716b8aaf21512996dc57eb0615e2383e2f96',
+        sources=('OFAC',),
+        label='Ronin Bridge Exploiter / Lazarus Group (OFAC SDN, designated 2022-04-14)',
+    ),
 )
 
 
