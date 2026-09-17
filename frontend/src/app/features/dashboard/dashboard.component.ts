@@ -9,7 +9,7 @@ import { CaseDataApiService } from '../../core/services/case-data.api';
 import { DashboardApiService } from './dashboard.api';
 import { SettingsService } from '../../core/services/settings.service';
 import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainNetwork, UploadCsvResponse } from '../../core/models/shared.models';
-import { OnchainMode } from './dashboard.models';
+import { OnchainMode, PreviewOnchainResult } from './dashboard.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -38,6 +38,8 @@ export class DashboardComponent implements OnInit {
   protected onchainNetwork: OnchainNetwork = 'mainnet';
   protected onchainHashMode: OnchainMode = 'address_history';
   protected isFetchingOnchain = false;
+  protected isPreviewingOnchain = false;
+  protected onchainPreview: PreviewOnchainResult | null = null;
 
   protected openCases: CaseSummary[] = [];
 
@@ -317,6 +319,61 @@ export class DashboardComponent implements OnInit {
     return !this.isBitcoinNetwork && /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
   }
 
+  get isOnchainQueryPreviewable(): boolean {
+    // Preview only exists for the Ethereum flow (address or tx hash) - Bitcoin v1 has no
+    // equivalent lookup on the Blockstream side.
+    if (this.isBitcoinNetwork) {
+      return false;
+    }
+    const query = this.onchainQuery.trim();
+    return /^0x[0-9a-fA-F]{40}$/.test(query) || /^0x[0-9a-fA-F]{64}$/.test(query);
+  }
+
+  onOnchainQueryChange(value: string): void {
+    this.onchainQuery = value;
+    this.onchainPreview = null;
+  }
+
+  onOnchainNetworkChange(value: OnchainNetwork): void {
+    this.onchainNetwork = value;
+    this.onchainPreview = null;
+  }
+
+  onOnchainHashModeChange(value: OnchainMode): void {
+    this.onchainHashMode = value;
+    this.onchainPreview = null;
+  }
+
+  previewOnchainTransactions(): void {
+    const query = this.onchainQuery.trim();
+    if (!this.isOnchainQueryPreviewable) {
+      this.statusMessage = () =>
+        this.t(
+          'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera) za pregled.',
+          'Enter a valid address (0x + 40 chars) or transaction hash (0x + 64 chars) to preview.',
+        );
+      return;
+    }
+
+    const mode: OnchainMode = this.isOnchainQueryTxHash ? this.onchainHashMode : 'address_history';
+    this.onchainPreview = null;
+    this.isPreviewingOnchain = true;
+    this.statusMessage = () => this.t('Učitavanje pregleda...', 'Loading preview...');
+
+    this.dashboardApi.previewOnchainTransactions({ query, network: this.onchainNetwork, mode }).subscribe({
+      next: (result) => {
+        this.isPreviewingOnchain = false;
+        this.onchainPreview = result;
+        this.statusMessage = () =>
+          `${this.t('Pregled spreman', 'Preview ready')} (${result.resolved_query}): ${result.total_transactions} ${this.t('transakcija bi bilo povučeno.', 'transactions would be fetched.')}`;
+      },
+      error: (error: unknown) => {
+        this.isPreviewingOnchain = false;
+        this.statusMessage = () => this.extractErrorMessage(error, this.t('Pregled nije uspeo.', 'Preview failed.'));
+      },
+    });
+  }
+
   fetchOnchainTransactions(): void {
     const query = this.onchainQuery.trim();
     const caseId = this.state.selectedCaseSnapshot?.id;
@@ -385,6 +442,7 @@ export class DashboardComponent implements OnInit {
       this.state.setSelectedCase(result.case);
     }
     this.isFetchingOnchain = false;
+    this.onchainPreview = null;
     this.statusMessage = () =>
       `${this.t('Povučeno', 'Fetched')} ${result.rows_total} ${this.t('transakcija', 'transactions')} (${result.resolved_query ?? query}). ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
     this.loadCaseViews(caseId);

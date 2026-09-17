@@ -4,7 +4,7 @@ import { Injectable } from '@angular/core';
 
 import { environment } from '../../../environments/environment';
 import { UploadCsvResponse } from '../../core/models/shared.models';
-import { FetchBitcoinRequest, FetchOnchainRequest } from '../../features/dashboard/dashboard.models';
+import { FetchBitcoinRequest, FetchOnchainRequest, PreviewOnchainRequest, PreviewOnchainResult } from '../../features/dashboard/dashboard.models';
 
 @Injectable({
   providedIn: 'root',
@@ -24,6 +24,10 @@ export class DashboardApiService {
 
   fetchOnchainTransactions(request: FetchOnchainRequest): Observable<UploadCsvResponse> {
     return this.http.post<UploadCsvResponse>(`${this.apiUrl}/api/v1/onchain/fetch`, request);
+  }
+
+  previewOnchainTransactions(request: PreviewOnchainRequest): Observable<PreviewOnchainResult> {
+    return this.http.post<PreviewOnchainResult>(`${this.apiUrl}/api/v1/onchain/preview`, request);
   }
 
   fetchBitcoinTransactions(address: string, caseId: string): Observable<UploadCsvResponse> {

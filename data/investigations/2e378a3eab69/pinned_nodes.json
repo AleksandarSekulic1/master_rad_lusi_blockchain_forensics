@@ -1,0 +1,22 @@
+{
+  "pinned_nodes": [
+    {
+      "investigation_id": "2e378a3eab69",
+      "address": "0xVictimWallet",
+      "x": 764.8204155098618,
+      "y": -461.83325456864145,
+      "pinned_by": "aco",
+      "pinned_at": "2026-09-17T22:59:09.055301+00:00",
+      "updated_at": "2026-09-17T22:59:09.055301+00:00"
+    },
+    {
+      "investigation_id": "2e378a3eab69",
+      "address": "0xSweepContract",
+      "x": 680.6330812059903,
+      "y": -371.3049568332903,
+      "pinned_by": "aco",
+      "pinned_at": "2026-09-17T22:59:20.312751+00:00",
+      "updated_at": "2026-09-17T22:59:20.312751+00:00"
+    }
+  ]
+}

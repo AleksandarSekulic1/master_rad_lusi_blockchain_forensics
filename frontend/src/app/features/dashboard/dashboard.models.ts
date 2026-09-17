@@ -1,4 +1,4 @@
-import { OnchainNetwork } from '../../core/models/shared.models';
+import { OnchainNetwork, TransactionPreviewRow } from '../../core/models/shared.models';
 
 export type OnchainMode = 'address_history' | 'tx_single' | 'tx_expand_sender';
 
@@ -7,6 +7,23 @@ export interface FetchOnchainRequest {
   network: OnchainNetwork;
   case_id: string;
   mode: OnchainMode;
+}
+
+/** POST /onchain/preview - read-only counterpart of FetchOnchainRequest: no case_id,
+ * because nothing gets stored as evidence. */
+export interface PreviewOnchainRequest {
+  query: string;
+  network: OnchainNetwork;
+  mode: OnchainMode;
+}
+
+export interface PreviewOnchainResult {
+  resolved_query: string;
+  mode: string;
+  /** Present only when the query resolved through a transaction hash. */
+  transaction: TransactionPreviewRow | null;
+  /** How many transactions a matching /onchain/fetch call would pull in. */
+  total_transactions: number;
 }
 
 /** POST /bitcoin/fetch - separate slice from Ethereum's FetchOnchainRequest by design

@@ -298,6 +298,78 @@ select option {
   cursor: pointer;
 }
 
+/* ---------- on-chain preview (before committing a /fetch as evidence) ---------- */
+
+.onchain-preview {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.75rem;
+  border: 1px dashed var(--field-border);
+  background: var(--field-bg);
+}
+
+.onchain-preview-tx {
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.onchain-preview-tx div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.onchain-preview-tx dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.onchain-preview-tx dd {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-strong);
+}
+
+.onchain-preview-count {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-strong);
+}
+
+.onchain-preview-count strong {
+  color: var(--heading);
+}
+
+.onchain-preview-address {
+  margin-left: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.onchain-preview-tx .mono-clip,
+.onchain-preview-address.mono-clip {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+@media (max-width: 560px) {
+  .onchain-preview-tx {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- status + meta ---------- */
 
 .status {

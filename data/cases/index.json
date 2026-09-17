@@ -1,6 +1,30 @@
 {
   "cases": [
     {
+      "id": "07f18f0aa0c8",
+      "name": "NESTO",
+      "description": null,
+      "analyst": "aco",
+      "status": "open",
+      "created_at": "2026-09-17T23:32:31.541033+00:00",
+      "updated_at": "2026-09-17T23:52:52.497591+00:00",
+      "evidence_count": 2,
+      "total_size_bytes": 390389,
+      "last_imported_at": "2026-09-17T23:52:52.497591+00:00"
+    },
+    {
+      "id": "2180a049aef6",
+      "name": "Final Smoke TA",
+      "description": null,
+      "analyst": "admin",
+      "status": "open",
+      "created_at": "2026-09-14T10:28:30.514886+00:00",
+      "updated_at": "2026-09-17T23:31:10.591022+00:00",
+      "evidence_count": 2,
+      "total_size_bytes": 187602,
+      "last_imported_at": "2026-09-17T23:31:10.591022+00:00"
+    },
+    {
       "id": "46ae7f91db9b",
       "name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
       "description": "Demonstracioni slucaj koji pokriva sve heuristike: crna lista, visok rizik, anomalija, peel lanac, skok lanca, i obogacivanje adrese realnom on-chain adresom (poslednja adresa u lancu je stvarna Ethereum adresa).",
@@ -23,18 +47,6 @@
       "evidence_count": 2,
       "total_size_bytes": 6479,
       "last_imported_at": "2026-09-16T11:06:30.247588+00:00"
-    },
-    {
-      "id": "2180a049aef6",
-      "name": "Final Smoke TA",
-      "description": null,
-      "analyst": "admin",
-      "status": "open",
-      "created_at": "2026-09-14T10:28:30.514886+00:00",
-      "updated_at": "2026-09-14T10:28:30.532662+00:00",
-      "evidence_count": 1,
-      "total_size_bytes": 388,
-      "last_imported_at": "2026-09-14T10:28:30.532662+00:00"
     },
     {
       "id": "c6f7997aced1",

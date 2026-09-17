@@ -17,6 +17,7 @@ from app.services.onchain_ingestion import (
     fetch_address_transactions,
     fetch_expanded_sender_history,
     fetch_single_transaction_frame,
+    fetch_transaction_by_hash,
 )
 
 
@@ -33,6 +34,12 @@ class FetchTransactionsRequest(BaseModel):
     mode: str = Field(default='address_history')
 
 
+class PreviewTransactionsRequest(BaseModel):
+    query: str = Field(min_length=1)
+    network: str = Field(default='mainnet')
+    mode: str = Field(default='address_history')
+
+
 def _resolve_dataframe(query: str, network: str, mode: str) -> tuple[pd.DataFrame, str, str]:
     """Returns (dataframe, evidence_label, action_suffix) based on the input format."""
     if _ADDRESS_PATTERN.match(query):
@@ -46,6 +53,60 @@ def _resolve_dataframe(query: str, network: str, mode: str) -> tuple[pd.DataFram
 
         dataframe, sender = fetch_expanded_sender_history(query, network)
         return dataframe, sender, 'tx_expand_sender'
+
+    raise HTTPException(
+        status_code=400,
+        detail='Unos mora biti adresa (0x + 40 heksadecimalnih karaktera) ili heš transakcije (0x + 64 heksadecimalna karaktera).',
+    )
+
+
+@router.post('/preview')
+def preview_transactions(
+    request: PreviewTransactionsRequest,
+    current_user: dict[str, object] = Depends(get_current_user),
+) -> dict[str, object]:
+    """Read-only lookup: shows what a /fetch call would pull in, without storing anything
+    as evidence (no file, no SHA-256, no audit log entry, no case involved).
+    """
+    query = request.query.strip()
+
+    if request.network not in NETWORK_CHAIN_IDS:
+        raise HTTPException(status_code=400, detail=f'Mreža mora biti jedna od: {", ".join(NETWORK_CHAIN_IDS)}.')
+
+    try:
+        if _ADDRESS_PATTERN.match(query):
+            dataframe = fetch_address_transactions(query, request.network)
+            return {
+                'resolved_query': query,
+                'mode': 'address',
+                'transaction': None,
+                'total_transactions': int(len(dataframe)),
+            }
+
+        if _TX_HASH_PATTERN.match(query):
+            transaction = fetch_transaction_by_hash(query, request.network)
+
+            if request.mode == 'tx_single':
+                return {
+                    'resolved_query': query,
+                    'mode': 'tx_single',
+                    'transaction': transaction,
+                    'total_transactions': 1,
+                }
+
+            sender = str(transaction.get('sender_address') or '')
+            if not sender:
+                raise HTTPException(status_code=502, detail='Transakcija nema validnu adresu pošiljaoca.')
+
+            dataframe = fetch_address_transactions(sender, request.network)
+            return {
+                'resolved_query': sender,
+                'mode': 'tx_expand_sender',
+                'transaction': transaction,
+                'total_transactions': int(len(dataframe)),
+            }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     raise HTTPException(
         status_code=400,
