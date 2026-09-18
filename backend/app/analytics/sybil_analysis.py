@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from app.analytics.dex_swap_analysis import _load_known_dex_contracts, classify_dex_node
+from app.evidence.tx_identity import transaction_id
 from app.services.address_enrichment import get_known_entity
 
 # Sybil & Bot Network Analysis - a new, standalone module (see SYBIL-ANALIZA.md), built the
@@ -42,6 +43,18 @@ REQUIRED_COLUMNS = ('sender_address', 'recipient_address', 'amount', 'timestamp'
 # _normalize_columns). The first one present in the evidence wins; absent entirely, function
 # name is simply None for every row and clustering falls back to "same contract" alone.
 FUNCTION_COLUMN_CANDIDATES = ('function_name', 'function', 'method', 'method_name', 'contract_function')
+
+# Purely descriptive, never fetched by this project today (same accounting as
+# token_approval_analysis.py's own BLOCK_NUMBER_COLUMN) - passed through when evidence
+# happens to declare it, otherwise honestly None rather than fabricated.
+BLOCK_NUMBER_COLUMN = 'block_number'
+
+# Internal-only column (leading underscore - never a real evidence column a CSV would use):
+# set by case_sybil_analysis.service.combine_frames_with_evidence_tag ONLY when a run is
+# about to be written to the chain of custody (see SYBIL-ANALIZA.md #12) - absent for every
+# other caller (the passive GET route, this module's own tests), in which case `tx_id` is
+# simply None throughout. Same mechanism as token_approval_analysis.EVIDENCE_STORED_NAME_COLUMN.
+EVIDENCE_STORED_NAME_COLUMN = '_evidence_stored_name'
 
 DEFAULT_TIME_WINDOW_SECONDS = 300  # 5 minutes - "kratak vremenski period" po zahtevu, isti podrazumevani prozor kao DEX Swap Analysis
 MIN_TIME_WINDOW_SECONDS = 10
@@ -158,10 +171,17 @@ def _build_cluster(
     transactions = [
         {
             'sender_address': row['sender_address'],
+            'recipient_address': row['recipient_address'],
             'amount': float(row['amount']),
             'timestamp': row['timestamp'].isoformat(),
             'tx_hash': row.get('_hash'),
+            'block_number': row.get('_block_number'),
             'function_name': row.get('_function'),
+            # Internal-only (see EVIDENCE_STORED_NAME_COLUMN) - None unless this run is
+            # about to be written to the chain of custody. Not part of the module's public
+            # API contract in the sense the other fields are, but harmless to include: it is
+            # simply always None for every existing caller (GET route, this module's tests).
+            'tx_id': row.get('_tx_id'),
         }
         for row in ordered
     ]
@@ -280,6 +300,9 @@ def detect_sybil_clusters(
     for row in frame.to_dict('records'):
         row['_function'] = _clean_text(row.get(function_column)) if function_column else None
         row['_hash'] = _clean_text(row.get('metadata'))
+        row['_block_number'] = _clean_text(row.get(BLOCK_NUMBER_COLUMN))
+        evidence_stored_name = _clean_text(row.get(EVIDENCE_STORED_NAME_COLUMN))
+        row['_tx_id'] = transaction_id(row, evidence_stored_name) if evidence_stored_name else None
         rows.append(row)
 
     groups: dict[tuple[str, str | None], list[dict[str, Any]]] = {}

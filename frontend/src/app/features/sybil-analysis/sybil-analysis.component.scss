@@ -513,3 +513,33 @@
   padding: 0.7rem 0.9rem;
   margin: 0;
 }
+
+.sb-conclusion {
+  border: 1px solid var(--sb-border);
+  border-radius: 0.9rem;
+  background: var(--sb-surface);
+  padding: 0.9rem 1.1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sb-conclusion h3 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sb-kicker);
+}
+
+.sb-conclusion p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--sb-field-text);
+  line-height: 1.5;
+}
+
+.sb-conclusion-link a {
+  color: var(--sb-accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}

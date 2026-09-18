@@ -279,6 +279,17 @@
     </div>
 
     <p class="sb-disclaimer">{{ result.disclaimer }}</p>
+
+    <!-- Kratak, automatski generisan forenzički zaključak - sastavljen isključivo od
+         brojeva/polja iz rezultata iznad (stvarno pronađeni dokazi), na samom kraju
+         stranice, po zahtevu. -->
+    <section class="sb-conclusion" *ngIf="forensicConclusion as conclusion">
+      <h3>{{ t('Forenzički zaključak', 'Forensic conclusion') }}</h3>
+      <p>{{ conclusion }}</p>
+      <p class="sb-conclusion-link" *ngIf="result.custody_findings_recorded">
+        <a routerLink="/lanac-dokaza">{{ t('Otvori Lanac dokaza →', 'Open Chain of custody →') }}</a>
+      </p>
+    </section>
   </div>
 </div>
 

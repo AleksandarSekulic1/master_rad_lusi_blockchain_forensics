@@ -126,6 +126,7 @@ class TestDeliberateRunRoute:
         body = resp.json()
         assert body['total_clusters'] == 1
         assert body['addresses_flagged'] == 3
+        assert body['custody_findings_recorded'] == 3
 
         entries = audit_log.load_audit_log_entries(case_id=case_id)
         run_entries = [entry for entry in entries if entry['action'] == 'sybil_analysis_run']
@@ -135,8 +136,12 @@ class TestDeliberateRunRoute:
         assert details['addresses_flagged'] == 3
         assert details['custody_recorded'] is True
         assert details['custody_transaction_rows'] == 3
+        assert details['sybil_findings_recorded'] == 3
 
-        assert len(custody_log.load_custody_entries(case_id=case_id)) == 3
+        custody_entries = custody_log.load_custody_entries(case_id=case_id)
+        assert len(custody_entries) == 3
+        assert all('sybil_evidence' in entry for entry in custody_entries)
+        assert {entry['sybil_evidence']['type'] for entry in custody_entries} == {'SYBIL_CLUSTER'}
         assert len(custody_evidence_log.load_evidence_custody_entries(case_id=case_id)) == 1
 
     def test_run_without_custody_logs_but_skips_chain_of_custody(self, client, auth, case_id):

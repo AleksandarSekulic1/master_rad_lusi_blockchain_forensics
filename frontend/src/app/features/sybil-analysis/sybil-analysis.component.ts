@@ -406,4 +406,73 @@ export class SybilAnalysisComponent implements OnInit {
       summary.chainHopAddresses.length > 0
     );
   }
+
+  // --- Kratak, automatski generisan forenzički zaključak - sastavljen ISKLJUČIVO od
+  // brojeva/polja iz `result` (stvarno pronađeni dokazi), nikad od pretpostavki van njih -
+  // isti duh kao dex-swap-analysis.component.ts's buildConclusionParagraph, ovde prikazan
+  // direktno na stranici (ne u PDF-u), pošto Sybil Analiza (za sada) nema PDF izveštaj. ---
+
+  protected get forensicConclusion(): string | null {
+    const result = this.result;
+    if (!result) {
+      return null;
+    }
+
+    if (result.total_clusters === 0) {
+      return this.t(
+        `Analizom nije pronađen nijedan Sybil/bot klaster koji zadovoljava zadate parametre ` +
+          `(min. ${result.min_addresses} adresa, vremenski prozor ${result.time_window_seconds}s). ` +
+          `Ovaj zaključak je zasnovan isključivo na pronađenim dokazima u trenutnoj evidenciji.`,
+        `The analysis found no Sybil/bot cluster satisfying the given parameters ` +
+          `(min. ${result.min_addresses} addresses, ${result.time_window_seconds}s time window). ` +
+          `This conclusion is based solely on the evidence found in the current evidence set.`,
+      );
+    }
+
+    const top = result.clusters[0]; // already sorted by risk_score, descending
+    const criticalOrHighCount = result.clusters.filter((c) => c.risk_level === 'critical' || c.risk_level === 'high').length;
+
+    const sentences: string[] = [
+      this.t(
+        `Analizom ${result.total_clusters === 1 ? 'je pronađen' : 'su pronađena'} ${result.total_clusters} ` +
+          `${result.total_clusters === 1 ? 'klaster' : 'klastera'} sinhronizovane aktivnosti, koji ${result.total_clusters === 1 ? 'obuhvata' : 'obuhvataju'} ` +
+          `ukupno ${result.addresses_flagged} označenih adresa.`,
+        `The analysis found ${result.total_clusters} synchronized-activity ${result.total_clusters === 1 ? 'cluster' : 'clusters'}, ` +
+          `covering a total of ${result.addresses_flagged} flagged addresses.`,
+      ),
+      this.t(
+        `Najizraženiji je klaster ${top.cluster_id} (${top.contract_name}${top.function_name ? ', funkcija "' + top.function_name + '"' : ''}) - ` +
+          `${top.address_count} adresa, ${top.activity_count} aktivnosti u periodu od ${top.window_duration_seconds}s, sa risk skorom ${top.risk_score}/100 (${this.riskLabel(top.risk_level)}).`,
+        `The most prominent is cluster ${top.cluster_id} (${top.contract_name}${top.function_name ? ', function "' + top.function_name + '"' : ''}) - ` +
+          `${top.address_count} addresses, ${top.activity_count} activities within ${top.window_duration_seconds}s, risk score ${top.risk_score}/100 (${this.riskLabel(top.risk_level)}).`,
+      ),
+    ];
+
+    if (criticalOrHighCount > 0) {
+      sentences.push(
+        this.t(
+          `${criticalOrHighCount} od ${result.total_clusters} klastera ${criticalOrHighCount === 1 ? 'ima' : 'ima'} visok ili kritičan risk nivo i zahteva prioritetnu dalju proveru.`,
+          `${criticalOrHighCount} of ${result.total_clusters} clusters have a high or critical risk level and warrant priority follow-up.`,
+        ),
+      );
+    }
+
+    if (result.custody_findings_recorded) {
+      sentences.push(
+        this.t(
+          `${result.custody_findings_recorded} transakcija iz cele evidencije je zabeleženo u lancu dokaza sa strukturiranim SYBIL_CLUSTER nalazom (vidi "Lanac dokaza").`,
+          `${result.custody_findings_recorded} transactions across the whole evidence were recorded in the chain of custody with a structured SYBIL_CLUSTER finding (see "Chain of custody").`,
+        ),
+      );
+    }
+
+    sentences.push(
+      this.t(
+        'Ovaj zaključak je automatski sastavljen isključivo od gore pronađenih dokaza i predstavlja heuristiku, ne dokaz zajedničkog vlasništva.',
+        'This conclusion is automatically composed solely from the evidence found above and is a heuristic, not proof of common ownership.',
+      ),
+    );
+
+    return sentences.join(' ');
+  }
 }

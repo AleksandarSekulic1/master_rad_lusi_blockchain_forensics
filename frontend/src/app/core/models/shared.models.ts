@@ -302,6 +302,44 @@ export interface SybilAnalysisResult {
   clusters: SybilCluster[];
   disclaimer: string;
   generated_at: string;
+  /** Only present on the deliberate POST .../run response (not the passive GET) - how many
+   * transactions got a structured `sybil_evidence` chain-of-custody entry, present only
+   * when the request carried a `custody` entry (see SYBIL-ANALIZA.md #12). 0 when the run
+   * had no custody, or found nothing to flag. */
+  custody_findings_recorded?: number;
+}
+
+/** The structured chain-of-custody item a Sybil & Bot Network Analysis run attaches to
+ * one specific transaction (see backend/app/features/case_sybil_analysis/service.py's
+ * sybil_custody_enrichment) - explicitly split into exactly two groups, never blurred:
+ * `blockchain_facts` (read straight from the transaction row - no interpretation) and
+ * `heuristic_conclusions` (everything the Sybil heuristic concluded about the cluster this
+ * transaction was placed into - never presented as fact). */
+export interface SybilCustodyEvidence {
+  type: 'SYBIL_CLUSTER';
+  blockchain_facts: {
+    sender_address: string | null;
+    contract_address: string | null;
+    amount: number | null;
+    timestamp: string | null;
+    transaction_hash: string | null;
+    block_number: string | null;
+    function_name: string | null;
+  };
+  heuristic_conclusions: {
+    cluster_id: string;
+    address_count: number;
+    activity_count: number;
+    window_start: string;
+    window_end: string;
+    window_duration_seconds: number;
+    identical_amount_ratio: number;
+    repeated_address_count: number;
+    risk_score: number;
+    risk_level: SybilCluster['risk_level'];
+    reasons: string[];
+  };
+  disclaimer: string;
 }
 
 export interface AnalyticsResponse extends NodeLinkGraphResponse {

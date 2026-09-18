@@ -442,7 +442,10 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         if (details['custody_recorded']) {
           const txRows = Number(details['custody_transaction_rows'] ?? 0);
           const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
-          summary += ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}`;
+          const findings = Number(details['sybil_findings_recorded'] ?? 0);
+          summary +=
+            ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ` +
+            `${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}, ${findings} ${this.t('SYBIL_CLUSTER nalaza', 'SYBIL_CLUSTER findings')}`;
         }
         return summary;
       }

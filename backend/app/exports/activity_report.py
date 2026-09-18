@@ -271,7 +271,11 @@ def summarize_details(entry: dict[str, Any], lang: Lang = 'sr') -> str:
         if details.get('custody_recorded'):
             tx_rows = details.get('custody_transaction_rows', 0)
             evidence_files = details.get('custody_evidence_files', 0)
-            summary += f' · {L("lanac dokaza", "chain of custody")}: {tx_rows} {L("transakcija", "transactions")}, {evidence_files} {L("fajl(ova)", "file(s)")}'
+            findings = details.get('sybil_findings_recorded', 0)
+            summary += (
+                f' · {L("lanac dokaza", "chain of custody")}: {tx_rows} {L("transakcija", "transactions")}, '
+                f'{evidence_files} {L("fajl(ova)", "file(s)")}, {findings} {L("SYBIL_CLUSTER nalaza", "SYBIL_CLUSTER findings")}'
+            )
         return summary
     if action == 'test_suite_run':
         return f'{details.get("passed", 0)}/{details.get("total", 0)} {L("testova prošlo", "tests passed")}'
