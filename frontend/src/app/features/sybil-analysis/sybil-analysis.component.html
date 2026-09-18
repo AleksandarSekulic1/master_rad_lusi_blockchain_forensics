@@ -135,9 +135,21 @@
         <span class="sb-chip" *ngFor="let address of cluster.addresses">{{ address }}</span>
       </div>
 
-      <button type="button" class="ghost-button sb-toggle" (click)="toggleExpanded(cluster.cluster_id)">
-        {{ isExpanded(cluster.cluster_id) ? t('Sakrij detalje', 'Hide details') : t('Prikaži detalje', 'Show details') }}
-      </button>
+      <div class="sb-cluster-actions">
+        <button type="button" class="ghost-button sb-toggle" (click)="toggleExpanded(cluster.cluster_id)">
+          {{ isExpanded(cluster.cluster_id) ? t('Sakrij detalje', 'Hide details') : t('Prikaži detalje', 'Show details') }}
+        </button>
+        <button
+          type="button"
+          class="ghost-button sb-toggle sb-overview-button"
+          (click)="runForensicOverview(cluster)"
+          [disabled]="isOverviewLoading(cluster.cluster_id)"
+        >
+          {{ isOverviewLoading(cluster.cluster_id)
+              ? t('Pregled u toku…', 'Running review…')
+              : t('Forenzički pregled (Graf/Taint/Putanje/DEX)', 'Forensic overview (Graph/Taint/Pathfinding/DEX)') }}
+        </button>
+      </div>
 
       <div class="sb-details" *ngIf="isExpanded(cluster.cluster_id)">
         <ul class="sb-reasons">
@@ -162,6 +174,107 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Forenzički pregled: kratak unakrsni pregled najvažnijih nalaza iz POSTOJEĆIH
+           Graph/Taint (analytics/run), Pathfinding i DEX Swap analiza, ograničen na adrese
+           ovog klastera - orijentacioni, pasivan pregled (bez potpisa u lanac dokaza), ne
+           zamena za formalno pokretanje tih analiza na njihovim stranicama. -->
+      <div class="sb-overview" *ngIf="overviewFor(cluster.cluster_id) as overview">
+        <p class="sb-overview-note">
+          {{ t(
+            'Orijentacioni unakrsni pregled — automatski pozvane postojeće analize, bez potpisa u lanac dokaza. Za formalan nalaz, pokreni odgovarajuću analizu na njenoj stranici.',
+            'Orientation-only cross-reference — existing analyses called automatically, not recorded in the chain of custody. For a formal finding, run the relevant analysis on its own page.'
+          ) }}
+        </p>
+
+        <div class="sb-overview-grid">
+          <div class="sb-overview-section">
+            <h4>{{ t('Graf i Taint', 'Graph & Taint') }}</h4>
+            <ng-container *ngIf="overview.graphTaint as gt; else gtUnavailable">
+              <ul *ngIf="hasGraphTaintFindings(gt); else gtNone">
+                <li *ngIf="gt.maxRiskScore !== null">
+                  {{ t('Najviši risk score', 'Highest risk score') }}: <strong>{{ gt.maxRiskScore }}/100</strong>
+                  <span class="mono-clip">({{ gt.maxRiskAddress }})</span>
+                </li>
+                <li *ngIf="gt.blacklistedAddresses.length > 0">
+                  {{ gt.blacklistedAddresses.length }} {{ t('adresa na crnoj listi', 'blacklisted address(es)') }}:
+                  <span class="mono-clip" *ngFor="let entry of gt.blacklistedAddresses">{{ entry.address }} ({{ entry.label || '?' }})</span>
+                </li>
+                <li *ngIf="gt.sharedWalletClusters.length > 0" class="sb-highlight">
+                  {{ t('Podudaranje wallet-clustering grupe', 'Wallet-clustering group match') }}:
+                  <span *ngFor="let group of gt.sharedWalletClusters">
+                    {{ group.addresses.length }} {{ t('adrese dele grupu', 'addresses share group') }} "{{ group.clusterId }}"
+                  </span>
+                </li>
+                <li *ngIf="gt.maxTaintPct !== null">
+                  {{ t('Najviši taint (od adresa klastera)', 'Highest taint (from cluster addresses)') }}:
+                  <strong>{{ gt.maxTaintPct }}%</strong> <span class="mono-clip">({{ gt.maxTaintAddress }})</span>
+                </li>
+                <li *ngIf="gt.contractTaintPct !== null">
+                  {{ t('Taint na kontraktu (iz klastera)', 'Taint on the contract (from cluster)') }}: <strong>{{ gt.contractTaintPct }}%</strong>
+                </li>
+                <li *ngIf="gt.chainHopAddresses.length > 0">
+                  {{ gt.chainHopAddresses.length }} {{ t('adresa označeno kao chain-hopping', 'address(es) flagged as chain-hopping') }}
+                </li>
+              </ul>
+              <ng-template #gtNone><p class="sb-dim">{{ t('Nema dodatnih nalaza.', 'No additional findings.') }}</p></ng-template>
+            </ng-container>
+            <ng-template #gtUnavailable>
+              <p class="sb-dim">{{ overview.isLoading ? t('Učitavanje…', 'Loading…') : t('Nedostupno.', 'Unavailable.') }}</p>
+            </ng-template>
+          </div>
+
+          <div class="sb-overview-section">
+            <h4>{{ t('Pretraga putanja', 'Pathfinding') }}</h4>
+            <ng-container *ngIf="overview.pathfinding as pf; else pfUnavailable">
+              <ul>
+                <li *ngIf="pf.directPath as dp">
+                  {{ t('Direktna putanja', 'Direct path') }} <span class="mono-clip">{{ dp.fromAddress }}</span> →
+                  <span class="mono-clip">{{ dp.toAddress }}</span>:
+                  <ng-container *ngIf="dp.found; else noDp"><strong>{{ dp.hops }}</strong> {{ t('skokova', 'hops') }}</ng-container>
+                  <ng-template #noDp>{{ t('nije pronađena', 'not found') }}</ng-template>
+                </li>
+                <li *ngIf="pf.nearestCex as cex">
+                  {{ t('Najbliža poznata berza od', 'Nearest known exchange from') }} <span class="mono-clip">{{ cex.fromAddress }}</span>:
+                  <ng-container *ngIf="cex.found; else noCex">{{ cex.label || '?' }} ({{ cex.hops }} {{ t('skokova', 'hops') }})</ng-container>
+                  <ng-template #noCex>{{ t('nijedna nije dostupna u ovoj evidenciji', 'none reachable in this evidence') }}</ng-template>
+                </li>
+              </ul>
+              <p class="sb-dim sb-overview-caveat">
+                {{ t(
+                  'BFS prati SMER stvarnog transfera sredstava — "nije pronađena" znači da nema direktnog toka u ovom pravcu, ne isključuje zajedničko finansiranje iz istog izvora.',
+                  'BFS follows the DIRECTION funds actually moved — "not found" means no direct forward flow, it does not rule out a shared upstream funding source.'
+                ) }}
+              </p>
+            </ng-container>
+            <ng-template #pfUnavailable>
+              <p class="sb-dim">{{ overview.isLoading ? t('Učitavanje…', 'Loading…') : t('Nedostupno.', 'Unavailable.') }}</p>
+            </ng-template>
+          </div>
+
+          <div class="sb-overview-section">
+            <h4>{{ t('DEX Swap Analiza', 'DEX Swap Analysis') }}</h4>
+            <ng-container *ngIf="overview.dex as dex; else dexUnavailable">
+              <ul *ngIf="dex.addressesWithSwaps > 0; else dexNone">
+                <li>
+                  <strong>{{ dex.addressesWithSwaps }}/{{ dex.totalAddresses }}</strong>
+                  {{ t('adresa iz klastera ima detektovan DEX swap', 'cluster address(es) have a detected DEX swap') }}
+                  ({{ dex.detectedCount }} Detected, {{ dex.potentialCount }} Potential)
+                </li>
+                <li *ngIf="dex.dexNames.length > 0">
+                  {{ t('Korišćeni DEX kontrakti', 'DEX contracts used') }}: <span class="mono-clip">{{ dex.dexNames.join(', ') }}</span>
+                </li>
+              </ul>
+              <ng-template #dexNone>
+                <p class="sb-dim">{{ t('Nijedna adresa iz klastera nema detektovan DEX swap.', 'No cluster address has a detected DEX swap.') }}</p>
+              </ng-template>
+            </ng-container>
+            <ng-template #dexUnavailable>
+              <p class="sb-dim">{{ overview.isLoading ? t('Učitavanje…', 'Loading…') : t('Nedostupno.', 'Unavailable.') }}</p>
+            </ng-template>
+          </div>
+        </div>
       </div>
     </div>
 

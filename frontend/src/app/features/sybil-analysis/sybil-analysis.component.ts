@@ -4,14 +4,69 @@ import { Component, DestroyRef, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { distinctUntilChanged, map } from 'rxjs/operators';
+import { forkJoin, of } from 'rxjs';
+import { catchError, distinctUntilChanged, map } from 'rxjs/operators';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { CaseDataApiService } from '../../core/services/case-data.api';
+import { PathfindingApiService } from '../pathfinding/pathfinding.api';
 import { SybilAnalysisApiService } from './sybil-analysis.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { CaseSummary, EvidenceEntry, SybilAnalysisResult, SybilCluster, TransactionCustodyEntry } from '../../core/models/shared.models';
+import {
+  AnalyticsResponse,
+  CaseSummary,
+  DexSwapAnalysisResult,
+  EvidenceEntry,
+  GraphNodeData,
+  SybilAnalysisResult,
+  SybilCluster,
+  TransactionCustodyEntry,
+} from '../../core/models/shared.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
+
+/** Key findings pulled from the EXISTING Graph/Taint pipeline (POST .../analytics/run,
+ * seeded with the cluster's own addresses - see runCaseAnalytics), read from the
+ * per-node fields it already annotates (risk_score, blacklist_flag, cluster_id from
+ * wallet clustering, taint_percentage, chain_hop_flag - see graph_building.py /
+ * risk_scoring.py / wallet_clustering.py / taint_analysis.py). Nothing here is computed
+ * independently - it is a client-side reduction of that existing response down to what
+ * matters for THIS cluster's addresses. */
+interface ClusterGraphTaintSummary {
+  maxRiskScore: number | null;
+  maxRiskAddress: string | null;
+  blacklistedAddresses: { address: string; label: string | null }[];
+  /** Wallet-clustering groups (cluster_id) shared by 2+ of the Sybil cluster's own
+   * addresses - a genuinely different, corroborating signal (transaction-graph structure)
+   * from the Sybil heuristic's own (purely time/contract-based) grouping. */
+  sharedWalletClusters: { clusterId: string; addresses: string[] }[];
+  maxTaintPct: number | null;
+  maxTaintAddress: string | null;
+  /** Taint the CONTRACT itself now carries, seeded FROM the cluster's addresses - a
+   * nonzero value means a traceable share of the contract's balance came from these
+   * addresses (see taint_analysis.py's proportional model). */
+  contractTaintPct: number | null;
+  chainHopAddresses: string[];
+}
+
+interface ClusterPathfindingSummary {
+  directPath: { fromAddress: string; toAddress: string; found: boolean; hops: number } | null;
+  nearestCex: { fromAddress: string; found: boolean; hops: number; label: string | null } | null;
+}
+
+interface ClusterDexSummary {
+  addressesWithSwaps: number;
+  totalAddresses: number;
+  detectedCount: number;
+  potentialCount: number;
+  dexNames: string[];
+}
+
+interface ClusterForensicOverview {
+  isLoading: boolean;
+  graphTaint: ClusterGraphTaintSummary | null;
+  pathfinding: ClusterPathfindingSummary | null;
+  dex: ClusterDexSummary | null;
+}
 
 /** Sybil & Bot Network Analysis - "did several DIFFERENT addresses interact with the same
  * smart contract and/or the same function in a short, synchronized burst", deliberately
@@ -49,6 +104,12 @@ export class SybilAnalysisComponent implements OnInit {
   /** Which cluster cards currently show their transaction drill-down / full reasons. */
   private readonly expandedClusters = new Set<string>();
 
+  /** Per-cluster "Forenzički pregled" state (see runForensicOverview) - keyed by
+   * cluster_id, populated on demand (never automatically for every cluster at once, to
+   * keep this an opt-in, bounded number of extra backend calls rather than a page that
+   * silently fans out N analyses on load). */
+  private readonly overviews = new Map<string, ClusterForensicOverview>();
+
   // --- Lanac dokaza (see SYBIL-ANALIZA.md / LANAC-DOKAZA.md) - scanning the case's
   // evidence for synchronized clusters is a deliberate access to every transaction it
   // touches, same as "Pokreni taint analizu"/"FIND PATH"/"Analiziraj graf"/DEX Swaps'
@@ -59,6 +120,7 @@ export class SybilAnalysisComponent implements OnInit {
   constructor(
     private readonly state: AnalysisStateService,
     private readonly caseData: CaseDataApiService,
+    private readonly pathfindingApi: PathfindingApiService,
     private readonly sybilAnalysisApi: SybilAnalysisApiService,
     private readonly destroyRef: DestroyRef,
     public readonly settings: SettingsService,
@@ -164,6 +226,7 @@ export class SybilAnalysisComponent implements OnInit {
     this.isCustodyDialogOpen = false;
     this.custodyDialogError = null;
     this.expandedClusters.clear();
+    this.overviews.clear();
   }
 
   // --- Cluster card display helpers ---------------------------------------------------
@@ -193,5 +256,154 @@ export class SybilAnalysisComponent implements OnInit {
       default:
         return this.t('Nema', 'None');
     }
+  }
+
+  // --- Forenzički pregled: za izabrani klaster, automatski unakrsno pozovi POSTOJEĆE
+  // Graph/Taint (analytics/run), Pathfinding i DEX Swap analize i izvuci samo najvažnije
+  // nalaze za adrese/kontrakt tog klastera - kratak pregled, ne pretrpana stranica. Ovo je
+  // orijentacioni, PASIVAN unakrsni pregled (bez custody-ja) - isti tretman kao Graf
+  // stranicin automatski pregled pri izboru evidencije ili DEX Swap overlay-a; formalan,
+  // potpisan nalaz i dalje zahteva da se svaka analiza pokrene na svojoj stranici. -------
+
+  protected overviewFor(clusterId: string): ClusterForensicOverview | null {
+    return this.overviews.get(clusterId) ?? null;
+  }
+
+  protected isOverviewLoading(clusterId: string): boolean {
+    return this.overviews.get(clusterId)?.isLoading ?? false;
+  }
+
+  protected runForensicOverview(cluster: SybilCluster): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || this.isOverviewLoading(cluster.cluster_id)) {
+      return;
+    }
+
+    this.overviews.set(cluster.cluster_id, { isLoading: true, graphTaint: null, pathfinding: null, dex: null });
+
+    // 1) Graph + Taint: ONE call to the existing analytics pipeline, seeded with this
+    // cluster's own addresses, covers both - taint_analysis is just one plugin in that
+    // same pipeline (see case_analytics_run.router / SYBIL-ANALIZA.md). No custody: same
+    // "passive preview" treatment the Graph page's own auto-preview already uses.
+    const graphTaint$ = this.caseData.runCaseAnalytics(caseId, this.selectedEvidence, cluster.addresses, null).pipe(
+      map((response) => this.buildGraphTaintSummary(response, cluster)),
+      catchError(() => of(null)),
+    );
+
+    // 2) Pathfinding: bounded to two representative, cheap calls (not one per address
+    // pair) - a direct fund-flow path between the first two flagged addresses, and the
+    // nearest known exchange from the first one. bfs_shortest_path is DIRECTED, so "not
+    // found" here means no direct forward path in THIS evidence - it does not rule out a
+    // shared funding source upstream (see the panel's own caveat text in the template).
+    const primary = cluster.addresses[0];
+    const secondary = cluster.addresses[1] ?? null;
+    const directPath$ = secondary
+      ? this.pathfindingApi.findCasePath(caseId, primary, 'specific_address', secondary, this.selectedEvidence, null).pipe(
+          map((result) => ({ fromAddress: primary, toAddress: secondary, found: result.found, hops: result.hops })),
+          catchError(() => of(null)),
+        )
+      : of(null);
+    const nearestCex$ = this.pathfindingApi.findCasePath(caseId, primary, 'nearest_cex', null, this.selectedEvidence, null).pipe(
+      map((result) => ({ fromAddress: primary, found: result.found, hops: result.hops, label: result.destination_label ?? null })),
+      catchError(() => of(null)),
+    );
+
+    // 3) DEX Swap Analysis: one case-wide, passive GET (same call the Graph page's own
+    // overlay already uses), filtered client-side to this cluster's addresses - avoids one
+    // request per address.
+    const dex$ = this.caseData.getDexSwapAnalysis(caseId, null, this.selectedEvidence).pipe(
+      map((result) => this.buildDexSummary(result, cluster)),
+      catchError(() => of(null)),
+    );
+
+    forkJoin([graphTaint$, directPath$, nearestCex$, dex$]).subscribe(([graphTaint, directPath, nearestCex, dex]) => {
+      this.overviews.set(cluster.cluster_id, {
+        isLoading: false,
+        graphTaint,
+        pathfinding: directPath || nearestCex ? { directPath, nearestCex } : null,
+        dex,
+      });
+    });
+  }
+
+  private buildGraphTaintSummary(response: AnalyticsResponse, cluster: SybilCluster): ClusterGraphTaintSummary {
+    const nodeById = new Map(response.nodes.map((node) => [String(node.id), node]));
+    const addressNodes = cluster.addresses
+      .map((address) => nodeById.get(address))
+      .filter((node): node is GraphNodeData => !!node);
+    const contractNode = nodeById.get(cluster.contract_address) ?? null;
+
+    let maxRiskScore: number | null = null;
+    let maxRiskAddress: string | null = null;
+    const blacklistedAddresses: { address: string; label: string | null }[] = [];
+    const addressesByWalletCluster = new Map<string, string[]>();
+    let maxTaintPct: number | null = null;
+    let maxTaintAddress: string | null = null;
+    const chainHopAddresses: string[] = [];
+
+    for (const node of addressNodes) {
+      const address = String(node.id);
+      if (typeof node.risk_score === 'number' && (maxRiskScore === null || node.risk_score > maxRiskScore)) {
+        maxRiskScore = node.risk_score;
+        maxRiskAddress = address;
+      }
+      if (node.blacklist_flag) {
+        blacklistedAddresses.push({ address, label: node.blacklist_label ?? null });
+      }
+      if (node.cluster_id) {
+        const members = addressesByWalletCluster.get(node.cluster_id) ?? [];
+        members.push(address);
+        addressesByWalletCluster.set(node.cluster_id, members);
+      }
+      if (typeof node.taint_percentage === 'number' && node.taint_percentage > 0) {
+        if (maxTaintPct === null || node.taint_percentage > maxTaintPct) {
+          maxTaintPct = node.taint_percentage;
+          maxTaintAddress = address;
+        }
+      }
+      if (node.chain_hop_flag) {
+        chainHopAddresses.push(address);
+      }
+    }
+
+    const sharedWalletClusters = [...addressesByWalletCluster.entries()]
+      .filter(([, addresses]) => addresses.length >= 2)
+      .map(([clusterId, addresses]) => ({ clusterId, addresses }));
+
+    return {
+      maxRiskScore,
+      maxRiskAddress,
+      blacklistedAddresses,
+      sharedWalletClusters,
+      maxTaintPct,
+      maxTaintAddress,
+      contractTaintPct: typeof contractNode?.taint_percentage === 'number' ? contractNode.taint_percentage : null,
+      chainHopAddresses,
+    };
+  }
+
+  private buildDexSummary(result: DexSwapAnalysisResult, cluster: SybilCluster): ClusterDexSummary {
+    const clusterAddresses = new Set(cluster.addresses);
+    const relevantEvents = result.events.filter((event) => clusterAddresses.has(event.user_address));
+    const detectedCount = relevantEvents.filter((event) => event.confidence === 'Detected').length;
+    return {
+      addressesWithSwaps: new Set(relevantEvents.map((event) => event.user_address)).size,
+      totalAddresses: cluster.addresses.length,
+      detectedCount,
+      potentialCount: relevantEvents.length - detectedCount,
+      dexNames: [...new Set(relevantEvents.map((event) => event.dex_name))],
+    };
+  }
+
+  /** Whether the loaded Graph/Taint summary has anything worth showing at all, so the
+   * template can print an honest "no additional findings" line instead of an empty list. */
+  protected hasGraphTaintFindings(summary: ClusterGraphTaintSummary): boolean {
+    return (
+      summary.maxRiskScore !== null ||
+      summary.blacklistedAddresses.length > 0 ||
+      summary.sharedWalletClusters.length > 0 ||
+      summary.maxTaintPct !== null ||
+      summary.chainHopAddresses.length > 0
+    );
   }
 }
