@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { SettingsService } from '../../core/services/settings.service';
-import { InvestigatorLink, InvestigatorNote } from '../../models/blockchain-forensics.models';
+import { InvestigatorLink, InvestigatorNote } from '../../core/models/shared.models';
 
 /** Compact "Case Overview / Investigator Case" summary for the currently selected
  * investigation (CASE-MANAGEMENT-IMPLEMENTATION.md §17). Purely a summary + drill-down of

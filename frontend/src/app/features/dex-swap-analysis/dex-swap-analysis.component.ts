@@ -12,17 +12,11 @@ import autoTable from 'jspdf-autotable';
 
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { DexSwapAnalysisApiService } from './dex-swap-analysis.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import {
-  CaseSummary,
-  DexSwapAnalysisResult,
-  DexSwapEvent,
-  EvidenceEntry,
-  NodeLinkGraphResponse,
-  TransactionCustodyEntry,
-} from '../../models/blockchain-forensics.models';
+import { CaseSummary, DexSwapAnalysisResult, DexSwapEvent, EvidenceEntry, NodeLinkGraphResponse, TransactionCustodyEntry } from '../../core/models/shared.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 /** One completed (or failed) per-address DEX swap run. Kept as a flat list, same pattern
@@ -42,7 +36,7 @@ interface AddressDexSwapRun {
  * proof - see backend/app/analytics/dex_swap_analysis.py and DEX-SWAP-ANALIZA.md.
  *
  * Reuses the same case/evidence-picker shell as the sibling analysis pages
- * (AnalysisStateService, ApiService.getCase for the evidence list). Can analyse several
+ * (AnalysisStateService, CaseDataApiService.getCase for the evidence list). Can analyse several
  * addresses in one signed access (queue + forkJoin, same pattern as Behavioral), showing
  * one address's swap cards at a time via tabs - the single number that matters on each
  * card is INPUT TOKEN -> DEX -> OUTPUT TOKEN.
@@ -105,7 +99,8 @@ export class DexSwapAnalysisComponent implements OnInit {
 
   constructor(
     private readonly state: AnalysisStateService,
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly dexSwapAnalysisApi: DexSwapAnalysisApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
     public readonly settings: SettingsService,
@@ -147,7 +142,7 @@ export class DexSwapAnalysisComponent implements OnInit {
   }
 
   private loadEvidenceOptions(caseId: string): void {
-    this.api.getCase(caseId).subscribe({
+    this.caseData.getCase(caseId).subscribe({
       next: (caseDetail) => {
         this.evidenceOptions = caseDetail.evidence;
       },
@@ -167,7 +162,7 @@ export class DexSwapAnalysisComponent implements OnInit {
       return;
     }
     this.isLoadingCaseAddresses = true;
-    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph: NodeLinkGraphResponse) => {
         this.caseAddresses = [...new Set(graph.nodes.map((node) => String(node.id)))].sort((a, b) =>
           a.localeCompare(b),
@@ -301,7 +296,7 @@ export class DexSwapAnalysisComponent implements OnInit {
 
     forkJoin(
       addresses.map((address) =>
-        this.api.runDexSwapAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+        this.dexSwapAnalysisApi.runDexSwapAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
           map((result): AddressDexSwapRun => ({ address, result, error: null })),
           catchError((error: HttpErrorResponse) =>
             of<AddressDexSwapRun>({
@@ -352,7 +347,7 @@ export class DexSwapAnalysisComponent implements OnInit {
     this.analysisError = null;
     this.custodyDialogError = null;
 
-    this.api.runDexSwapAnalysis(caseId, null, this.selectedEvidence, custody).subscribe({
+    this.dexSwapAnalysisApi.runDexSwapAnalysis(caseId, null, this.selectedEvidence, custody).subscribe({
       next: (result) => {
         this.isAnalyzing = false;
         const newRuns = DexSwapAnalysisComponent.groupEventsByAddress(result);
@@ -652,7 +647,7 @@ export class DexSwapAnalysisComponent implements OnInit {
       // Registered BEFORE the document is built: the verification code has to be printed
       // inside the very report it identifies.
       const registration = await firstValueFrom(
-        this.api.registerReport({
+        this.caseData.registerReport({
           case_id: this.activeCase.id,
           case_name: this.activeCase.name ?? '',
           declaration,

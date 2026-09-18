@@ -1446,5 +1446,9 @@
   "0xffbac21a641dcfe4552920138d90f3638b3c9fba": {
     "category": "mixer",
     "name": "Tornado.Cash: Governance Impl"
+  },
+  "3lpoy53k625zvee47zasig5jgkaxj27kh1": {
+    "category": "sanctioned",
+    "name": "OFAC SDN: Garantex Europe OU (designated 2022-04-05)"
   }
 }

@@ -12,21 +12,11 @@ import autoTable from 'jspdf-autotable';
 
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { TokenApprovalApiService } from './token-approval.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import {
-  CaseSummary,
-  EvidenceEntry,
-  NodeLinkGraphResponse,
-  TaintAnalysisResult,
-  TokenApprovalCorrelationEntry,
-  TokenApprovalCorrelationResult,
-  TokenApprovalGroup,
-  TokenApprovalRiskIndicator,
-  TokenApprovalRiskLevel,
-  TransactionCustodyEntry,
-} from '../../models/blockchain-forensics.models';
+import { CaseSummary, EvidenceEntry, NodeLinkGraphResponse, TaintAnalysisResult, TokenApprovalCorrelationEntry, TokenApprovalCorrelationResult, TokenApprovalGroup, TokenApprovalRiskIndicator, TokenApprovalRiskLevel, TransactionCustodyEntry } from '../../core/models/shared.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { InvestigatorNodeDialogComponent } from '../investigator-node-dialog/investigator-node-dialog.component';
 
@@ -83,7 +73,7 @@ interface PersistedTokenApprovalSnapshot {
  * the data actually supports one (§19.3) - never a fabricated link.
  *
  * Reuses the same case/evidence-picker shell as the sibling analysis pages
- * (AnalysisStateService, ApiService.getCase for the evidence list, ApiService.getCaseGraph
+ * (AnalysisStateService, CaseDataApiService.getCase for the evidence list, CaseDataApiService.getCaseGraph
  * for the address autocomplete list - identical pattern to dex-swap-analysis.component.ts's
  * own loadCaseAddresses).
  */
@@ -165,7 +155,8 @@ export class TokenApprovalComponent implements OnInit {
 
   constructor(
     private readonly state: AnalysisStateService,
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly tokenApprovalApi: TokenApprovalApiService,
     private readonly auth: AuthService,
     private readonly router: Router,
     private readonly destroyRef: DestroyRef,
@@ -289,7 +280,7 @@ export class TokenApprovalComponent implements OnInit {
   }
 
   private loadEvidenceOptions(caseId: string): void {
-    this.api.getCase(caseId).subscribe({
+    this.caseData.getCase(caseId).subscribe({
       next: (caseDetail) => {
         this.evidenceOptions = caseDetail.evidence;
       },
@@ -305,7 +296,7 @@ export class TokenApprovalComponent implements OnInit {
       this.caseAddresses = [];
       return;
     }
-    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph: NodeLinkGraphResponse) => {
         this.caseAddresses = [...new Set(graph.nodes.map((node) => String(node.id)))].sort((a, b) => a.localeCompare(b));
       },
@@ -413,7 +404,7 @@ export class TokenApprovalComponent implements OnInit {
 
     if (addresses.length === 1) {
       // Single address - unchanged from before multi-address support existed.
-      this.api.runTokenApprovalAnalysis(caseId, addresses[0], this.selectedEvidence, custody).subscribe({
+      this.tokenApprovalApi.runTokenApprovalAnalysis(caseId, addresses[0], this.selectedEvidence, custody).subscribe({
         next: (result) => {
           this.result = result;
           this.multiResults = [];
@@ -441,7 +432,7 @@ export class TokenApprovalComponent implements OnInit {
     // that DID resolve. Every call still writes its own custody-log entry server-side.
     forkJoin(
       addresses.map((address) =>
-        this.api.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+        this.tokenApprovalApi.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
           map((result) => ({ address, result, error: null as string | null })),
           catchError((error: HttpErrorResponse) => of({ address, result: null as TokenApprovalCorrelationResult | null, error: this.tokenApprovalErrorMessage(error) })),
         ),
@@ -720,7 +711,7 @@ export class TokenApprovalComponent implements OnInit {
     this.caseSuggestions = null;
     this.selectedCaseSuggestions = new Set();
 
-    this.api.getTokenApprovalCorrelation(caseId, null, this.selectedEvidence).subscribe({
+    this.caseData.getTokenApprovalCorrelation(caseId, null, this.selectedEvidence).subscribe({
       next: (result) => {
         this.isSuggestingCaseAddresses = false;
         this.caseSuggestions = this.rankRiskySpenders(result.groups);
@@ -842,7 +833,7 @@ export class TokenApprovalComponent implements OnInit {
     this.isRunningTaintCheck = true;
     this.taintCustodyError = null;
 
-    const taint$ = this.api.runCaseAnalytics(caseId, this.selectedEvidence, addresses, custody);
+    const taint$ = this.caseData.runCaseAnalytics(caseId, this.selectedEvidence, addresses, custody);
 
     if (!this.pendingTaintCheckAlsoFetchApprovals) {
       taint$.subscribe({
@@ -873,7 +864,7 @@ export class TokenApprovalComponent implements OnInit {
     // downstream taint spread arrive together.
     const approvals$ = forkJoin(
       addresses.map((address) =>
-        this.api.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
+        this.tokenApprovalApi.runTokenApprovalAnalysis(caseId, address, this.selectedEvidence, custody).pipe(
           map((result) => ({ address, result, error: null as string | null })),
           catchError((error: HttpErrorResponse) => of({ address, result: null as TokenApprovalCorrelationResult | null, error: this.tokenApprovalErrorMessage(error) })),
         ),
@@ -1189,7 +1180,7 @@ export class TokenApprovalComponent implements OnInit {
    * failure here just means no cross-reference badge is shown, it never blocks or errors
    * the Token Approval result already on screen. */
   private loadDexSwapCrossReference(caseId: string): void {
-    this.api.getDexSwapAnalysis(caseId, null, this.selectedEvidence).subscribe({
+    this.caseData.getDexSwapAnalysis(caseId, null, this.selectedEvidence).subscribe({
       next: (swapResult) => {
         this.dexSwapAddresses = new Set(swapResult.events.map((event) => event.user_address));
       },
@@ -1420,7 +1411,7 @@ export class TokenApprovalComponent implements OnInit {
       const declaration = this.signatureDeclaration();
 
       const registration = await firstValueFrom(
-        this.api.registerReport({
+        this.caseData.registerReport({
           case_id: this.activeCase.id,
           case_name: this.activeCase.name ?? '',
           declaration,

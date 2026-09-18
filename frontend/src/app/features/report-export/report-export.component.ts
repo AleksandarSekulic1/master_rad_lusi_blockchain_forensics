@@ -8,10 +8,12 @@ import autoTable from 'jspdf-autotable';
 
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { ReportExportApiService } from './report-export.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import { CaseReportContext, GraphReportData } from '../../models/blockchain-forensics.models';
+import { GraphReportData } from '../../core/models/shared.models';
+import { CaseReportContext } from './report-export.models';
 
 type Rgb = [number, number, number];
 
@@ -90,7 +92,8 @@ export class ReportExportComponent {
   };
 
   constructor(
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly reportExportApi: ReportExportApiService,
     private readonly state: AnalysisStateService,
     private readonly auth: AuthService,
     public readonly settings: SettingsService,
@@ -138,7 +141,7 @@ export class ReportExportComponent {
 
     setTimeout(() => this.signaturePad?.clear());
 
-    this.api.getCaseReportContext(caseId).subscribe({
+    this.reportExportApi.getCaseReportContext(caseId).subscribe({
       next: (context) => {
         this.reportContext = context;
         this.isLoadingContext = false;
@@ -172,7 +175,7 @@ export class ReportExportComponent {
     }
     this.isExportingCsv = true;
     this.csvExportError = null;
-    this.api.exportCaseTransactionsCsv(caseId).subscribe({
+    this.reportExportApi.exportCaseTransactionsCsv(caseId).subscribe({
       next: (blob) => {
         this.isExportingCsv = false;
         this.saveBlob(blob, `${caseId}_transactions.csv`);
@@ -194,7 +197,7 @@ export class ReportExportComponent {
     }
     this.exportingGraphFormat = 'graphml';
     this.graphFormatExportError = null;
-    this.api.exportCaseGraphml(caseId).subscribe({
+    this.reportExportApi.exportCaseGraphml(caseId).subscribe({
       next: (blob) => {
         this.exportingGraphFormat = null;
         this.saveBlob(blob, `${caseId}_graph.graphml`);
@@ -214,7 +217,7 @@ export class ReportExportComponent {
     }
     this.exportingGraphFormat = 'gexf';
     this.graphFormatExportError = null;
-    this.api.exportCaseGexf(caseId).subscribe({
+    this.reportExportApi.exportCaseGexf(caseId).subscribe({
       next: (blob) => {
         this.exportingGraphFormat = null;
         this.saveBlob(blob, `${caseId}_graph.gexf`);
@@ -277,7 +280,7 @@ export class ReportExportComponent {
 
       const gr = this.graphReport;
       const registration = await firstValueFrom(
-        this.api.registerReport({
+        this.caseData.registerReport({
           case_id: caseId,
           case_name: context.case.name ?? '',
           declaration,

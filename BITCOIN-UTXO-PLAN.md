@@ -1,5 +1,9 @@
 # Plan implementacije: podrška za Bitcoin (UTXO model)
 
+> **Status: implementirano i testirano (Faze 0-3 završene).** Korisničko uputstvo je u
+> [`BITCOIN-UVOZ.md`](BITCOIN-UVOZ.md). Ovaj dokument je ostavljen kao istorijski zapis
+> plana i arhitektonskih odluka.
+
 Ovo je **plan za implementaciju, ništa još nije napisano u kodu**. Dokument je namerno
 samostalan (piše se pred otvaranje nove sesije/chat-a) — sadrži sav kontekst, sve odluke i
 korak-po-korak plan sa očekivanim rezultatima, tako da se implementacija može nastaviti bez

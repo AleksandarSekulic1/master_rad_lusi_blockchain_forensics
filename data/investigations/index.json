@@ -1,6 +1,13 @@
 {
   "investigations": [
     {
+      "id": "2e378a3eab69",
+      "name": "Istraga Demo",
+      "description": null,
+      "created_at": "2026-09-17T22:58:52.761520+00:00",
+      "updated_at": "2026-09-17T22:58:52.761520+00:00"
+    },
+    {
       "id": "804444a9ad1b",
       "name": "idemo",
       "description": null,

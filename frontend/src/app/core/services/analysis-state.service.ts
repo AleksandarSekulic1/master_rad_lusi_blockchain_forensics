@@ -1,13 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 
-import {
-  AnalyticsResponse,
-  CaseSummary,
-  GraphNodeData,
-  NodeLinkGraphResponse,
-  UploadCsvResponse,
-} from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, UploadCsvResponse } from '../../core/models/shared.models';
 
 const SELECTED_CASE_KEY = 'lusi_selected_case';
 

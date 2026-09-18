@@ -1,4 +1,4 @@
-import { TimezoneEstimate } from '../../models/blockchain-forensics.models';
+import { TimezoneEstimate } from './behavioral-analysis.models';
 
 /**
  * TypeScript port of backend/app/analytics/timezone_heuristics.py

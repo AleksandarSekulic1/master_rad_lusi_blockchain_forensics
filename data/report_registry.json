@@ -714,5 +714,53 @@
       "potentially_risky_approvals": 4
     },
     "registered_at": "2026-09-14T12:52:09.925259+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-VYLK-VL6W",
+    "content_hash": "808a428e17f7cafc1edbec7c925fa2f0699dda69ede5da18a6a872fc622390e1",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam pregledao prikupljene dokaze u okviru navedenog predmeta i da je ovaj izveštaj za trijažu izrađen radi odluke o daljoj analizi transakcija. Potpis iznad je moj.",
+    "summary": {
+      "rows": 496,
+      "nodes": 251,
+      "edges": 253,
+      "blacklisted": 2,
+      "high_risk": 3,
+      "clusters": 4
+    },
+    "registered_at": "2026-09-16T13:08:30.568809+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-RKET-TARN",
+    "content_hash": "6b6a4cff5aa1dddf122fd4bf6505f3dcbdaedc47283d86189f8ce1c31fc086ec",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam pregledao transakcioni graf navedenog predmeta i da ovaj izveštaj verno prikazuje graf i analitičke nalaze onakve kakve je aplikacija izračunala u trenutku izvoza. Potpis iznad je moj.",
+    "summary": {
+      "nodes": 251,
+      "edges": 253,
+      "blacklisted": 2,
+      "high_risk": 3,
+      "clusters": 4,
+      "flagged_nodes": 21,
+      "analyzed": true
+    },
+    "registered_at": "2026-09-17T23:05:07.541230+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZUCR-U6TE",
+    "content_hash": "e856ffd43a1d7ac91a5940524bfc4fd2c05d83243713baec8cde55e9578abf2e",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala nad navedenom evidencijom.",
+    "summary": {
+      "addresses": 2,
+      "evidence_scope": "combined"
+    },
+    "registered_at": "2026-09-17T23:17:48.728872+00:00"
   }
 ]

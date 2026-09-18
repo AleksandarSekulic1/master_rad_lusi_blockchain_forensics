@@ -2,15 +2,9 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ApiService } from '../../core/services/api.service';
+import { TestsApiService } from './tests.api';
 import { SettingsService } from '../../core/services/settings.service';
-import {
-  ScenarioExpectation,
-  ScenarioResult,
-  ScenarioTransaction,
-  SuiteTest,
-  TestScenario,
-} from '../../models/blockchain-forensics.models';
+import { ScenarioExpectation, ScenarioResult, ScenarioTransaction, SuiteTest, TestScenario } from './tests.models';
 
 /** Working copy of a scenario while it's being edited in the form. Kept separate from the
  * saved TestScenario so an abandoned edit never touches what's stored. */
@@ -55,7 +49,7 @@ export class TestsComponent implements OnInit {
   protected expandedGroups = new Set<string>();
 
   constructor(
-    private readonly api: ApiService,
+    private readonly testsApi: TestsApiService,
     protected readonly settings: SettingsService,
   ) {}
 
@@ -77,7 +71,7 @@ export class TestsComponent implements OnInit {
   // --- Fixed pytest suite (read-only) ---
 
   loadSuite(): void {
-    this.api.listSuiteTests().subscribe({
+    this.testsApi.listSuiteTests().subscribe({
       next: (response) => {
         // Collection only tells us WHICH tests exist, never their outcome - so a fresh
         // page load must not imply anything about pass/fail until a run happens.
@@ -94,7 +88,7 @@ export class TestsComponent implements OnInit {
   runSuite(): void {
     this.isRunningSuite = true;
     this.errorMessage = null;
-    this.api.runSuite().subscribe({
+    this.testsApi.runSuite().subscribe({
       next: (response) => {
         this.suiteTests = response.results;
         this.suitePassed = response.passed;
@@ -160,7 +154,7 @@ export class TestsComponent implements OnInit {
   // --- Validation scenarios (full CRUD) ---
 
   loadScenarios(): void {
-    this.api.listScenarios().subscribe({
+    this.testsApi.listScenarios().subscribe({
       next: (response) => {
         this.scenarios = response.scenarios;
       },
@@ -173,7 +167,7 @@ export class TestsComponent implements OnInit {
   runAllScenarios(): void {
     this.isRunningScenarios = true;
     this.errorMessage = null;
-    this.api.runScenarios().subscribe({
+    this.testsApi.runScenarios().subscribe({
       next: (response) => {
         this.scenarioResults = new Map(response.results.map((result) => [result.scenario_id, result]));
         this.isRunningScenarios = false;
@@ -187,7 +181,7 @@ export class TestsComponent implements OnInit {
 
   runOneScenario(scenario: TestScenario): void {
     this.runningScenarioId = scenario.id;
-    this.api.runScenarios(scenario.id).subscribe({
+    this.testsApi.runScenarios(scenario.id).subscribe({
       next: (response) => {
         const result = response.results[0];
         if (result) {
@@ -293,7 +287,7 @@ export class TestsComponent implements OnInit {
     };
 
     this.isSaving = true;
-    const call = this.draft.id ? this.api.updateScenario(this.draft.id, request) : this.api.createScenario(request);
+    const call = this.draft.id ? this.testsApi.updateScenario(this.draft.id, request) : this.testsApi.createScenario(request);
     call.subscribe({
       next: (saved) => {
         this.isSaving = false;
@@ -315,7 +309,7 @@ export class TestsComponent implements OnInit {
     if (!confirm(this.t(`Obrisati scenario "${scenario.name}"?`, `Delete the scenario "${scenario.name}"?`))) {
       return;
     }
-    this.api.deleteScenario(scenario.id).subscribe({
+    this.testsApi.deleteScenario(scenario.id).subscribe({
       next: () => {
         this.statusMessage = this.t(`Scenario "${scenario.name}" je obrisan.`, `Scenario "${scenario.name}" was deleted.`);
         this.loadScenarios();

@@ -4,9 +4,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
-import { ApiService } from '../../core/services/api.service';
+import { AdminApiService } from './admin.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { AuthUser, UserRole } from '../../models/blockchain-forensics.models';
+import { AuthUser, UserRole } from '../../core/models/shared.models';
 
 @Component({
   selector: 'app-user-management',
@@ -49,7 +49,7 @@ export class UserManagementComponent implements OnInit {
   private readonly searchChanges = new Subject<string>();
 
   constructor(
-    private readonly api: ApiService,
+    private readonly adminApi: AdminApiService,
     protected readonly settings: SettingsService,
     destroyRef: DestroyRef,
   ) {
@@ -103,7 +103,7 @@ export class UserManagementComponent implements OnInit {
   private fetchUsers(term: string): void {
     const query = term.trim();
     this.isLoading = true;
-    this.api.listUsers(query).subscribe({
+    this.adminApi.listUsers(query).subscribe({
       next: (response) => {
         this.users = response.users;
         this.isLoading = false;
@@ -159,7 +159,7 @@ export class UserManagementComponent implements OnInit {
     }
 
     this.isCreating = true;
-    this.api.createUser({ username, password: this.newPassword, role: this.newRole }).subscribe({
+    this.adminApi.createUser({ username, password: this.newPassword, role: this.newRole }).subscribe({
       next: () => {
         this.isCreating = false;
         this.newUsername = '';
@@ -201,7 +201,7 @@ export class UserManagementComponent implements OnInit {
 
     this.isRenaming = true;
     this.renameError = null;
-    this.api.renameUser(user.id, username).subscribe({
+    this.adminApi.renameUser(user.id, username).subscribe({
       next: () => {
         this.isRenaming = false;
         this.expandedUserId = null;
@@ -230,7 +230,7 @@ export class UserManagementComponent implements OnInit {
   protected confirmDeleteUser(user: AuthUser): void {
     this.isDeleting = true;
     this.deleteError = null;
-    this.api.deleteUser(user.id).subscribe({
+    this.adminApi.deleteUser(user.id).subscribe({
       next: () => {
         this.isDeleting = false;
         this.confirmingDeleteId = null;
@@ -247,7 +247,7 @@ export class UserManagementComponent implements OnInit {
 
   toggleStatus(user: AuthUser): void {
     const nextStatus = user.status === 'active' ? 'blocked' : 'active';
-    this.api.setUserStatus(user.id, nextStatus).subscribe({
+    this.adminApi.setUserStatus(user.id, nextStatus).subscribe({
       next: () => {
         const statusWord = nextStatus === 'active' ? this.t('aktivan', 'active') : this.t('blokiran', 'blocked');
         this.statusMessage = this.t(`Nalog "${user.username}" je sada ${statusWord}.`, `Account "${user.username}" is now ${statusWord}.`);
@@ -260,7 +260,7 @@ export class UserManagementComponent implements OnInit {
   }
 
   generateResetLink(user: AuthUser): void {
-    this.api.generateResetLink(user.id).subscribe({
+    this.adminApi.generateResetLink(user.id).subscribe({
       next: (response) => {
         this.resetLinkByUsername = { ...this.resetLinkByUsername, [user.username]: response.reset_link };
         this.statusMessage = this.t(

@@ -13,27 +13,12 @@ import autoTable from 'jspdf-autotable';
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 import { ensureCytoscapeExtensionsRegistered } from '../../core/cytoscape-setup';
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { TaintAnalysisApiService } from './taint-analysis.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import {
-  AddressEnrichment,
-  AddressType,
-  CaseSummary,
-  EvidenceEntry,
-  GraphNodeData,
-  InvestigatorNote,
-  KnownEntity,
-  KnownEntityCategory,
-  NodeLinkGraphResponse,
-  SeedSuggestionResponse,
-  TaintAnalysisResult,
-  TaintedHop,
-  TaintNodeResult,
-  TaintTimelineEntry,
-  TaintTimelineEvent,
-  TransactionCustodyEntry,
-} from '../../models/blockchain-forensics.models';
+import { AddressEnrichment, AddressType, CaseSummary, EvidenceEntry, GraphNodeData, InvestigatorNote, KnownEntityCategory, NodeLinkGraphResponse, TaintAnalysisResult, TaintNodeResult, TaintTimelineEntry, TaintTimelineEvent, TaintedHop, TransactionCustodyEntry } from '../../core/models/shared.models';
+import { KnownEntity, SeedSuggestionResponse } from './taint-analysis.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 
 /** One individual transaction on a clicked edge, joined from the raw per-transaction data
@@ -170,7 +155,8 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
 
   constructor(
     private readonly state: AnalysisStateService,
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly taintAnalysisApi: TaintAnalysisApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
     public readonly settings: SettingsService,
@@ -230,7 +216,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
   }
 
   loadEvidenceOptions(caseId: string): void {
-    this.api.getCase(caseId).subscribe({
+    this.caseData.getCase(caseId).subscribe({
       next: (caseDetail) => {
         this.evidenceOptions = caseDetail.evidence;
       },
@@ -264,7 +250,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.isLoadingGraph = true;
     this.graphError = null;
 
-    this.api.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
       next: (graph) => {
         this.graph = graph;
         this.resetAnalysisState();
@@ -388,7 +374,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.taintError = null;
     this.seedSuggestions = null;
 
-    this.api.getSeedSuggestions(caseId, this.selectedEvidence).subscribe({
+    this.taintAnalysisApi.getSeedSuggestions(caseId, this.selectedEvidence).subscribe({
       next: (response) => {
         this.isSuggestingSeeds = false;
         this.seedSuggestions = response;
@@ -502,7 +488,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     this.isRunningTaint = true;
     this.custodyDialogError = null;
 
-    this.api.runCaseAnalytics(caseId, this.selectedEvidence, this.seedAddresses, custody).subscribe({
+    this.caseData.runCaseAnalytics(caseId, this.selectedEvidence, this.seedAddresses, custody).subscribe({
       next: (response) => {
         this.graph = response;
         this.taintResult = (response.analytics?.['taint_analysis'] as TaintAnalysisResult | undefined) ?? null;
@@ -582,7 +568,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (addresses.length === 0) {
       return;
     }
-    this.api.getKnownEntities(addresses).subscribe({
+    this.taintAnalysisApi.getKnownEntities(addresses).subscribe({
       next: (result) => {
         for (const [address, entity] of Object.entries(result)) {
           if (entity) {
@@ -1009,7 +995,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     if (!investigationId) {
       return;
     }
-    this.api.getInvestigatorPins(investigationId).subscribe({
+    this.caseData.getInvestigatorPins(investigationId).subscribe({
       next: (response) => {
         this.pinnedAddresses = response.pins.map((pin) => pin.address);
       },
@@ -1077,7 +1063,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingInvestigatorNotes = true;
-    this.api.getInvestigatorNotes(investigationId, String(address)).subscribe({
+    this.caseData.getInvestigatorNotes(investigationId, String(address)).subscribe({
       next: (response) => {
         this.investigatorNotes = response.notes;
         this.isLoadingInvestigatorNotes = false;
@@ -1115,7 +1101,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
     }
 
     this.isEnrichingAddress = true;
-    this.api.enrichAddress(String(address)).subscribe({
+    this.caseData.enrichAddress(String(address)).subscribe({
       next: (result) => {
         this.addressEnrichment = result;
         this.isEnrichingAddress = false;
@@ -2057,7 +2043,7 @@ export class TaintAnalysisComponent implements OnInit, OnDestroy {
       // Registered BEFORE the document is built: the verification code has to be printed
       // inside the very report it identifies.
       const registration = await firstValueFrom(
-        this.api.registerReport({
+        this.caseData.registerReport({
           case_id: this.activeCase.id,
           case_name: this.activeCase.name ?? '',
           declaration,

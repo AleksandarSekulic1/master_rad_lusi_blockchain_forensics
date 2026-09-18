@@ -2,10 +2,11 @@ import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ActivityReportOptions, ApiService } from '../../core/services/api.service';
+import { ActivityLogApiService } from './activity-log.api';
+import { ActivityReportOptions } from './activity-log.api';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
-import { ActivityLogEntry, ActivityPeriodMode } from '../../models/blockchain-forensics.models';
+import { ActivityLogEntry, ActivityPeriodMode } from './activity-log.models';
 import { SignaturePadComponent } from '../../core/components/signature-pad/signature-pad.component';
 
 /** How each raw `action` string is presented: a short human label, a one-word group used
@@ -163,7 +164,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   };
 
   constructor(
-    private readonly api: ApiService,
+    private readonly activityLogApi: ActivityLogApiService,
     protected readonly auth: AuthService,
     public readonly settings: SettingsService,
   ) {}
@@ -189,7 +190,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
 
   loadEntries(): void {
     this.isLoading = true;
-    this.api.getActivityLog({ user: this.selectedUser || null }).subscribe({
+    this.activityLogApi.getActivityLog({ user: this.selectedUser || null }).subscribe({
       next: (response) => {
         this.entries = response.entries;
         this.availableUsers = response.available_users;
@@ -560,7 +561,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
       return;
     }
     this.isCountingReport = true;
-    this.api.getActivityReportPreview(this.reportOptions()).subscribe({
+    this.activityLogApi.getActivityReportPreview(this.reportOptions()).subscribe({
       next: (preview) => {
         this.reportCount = preview.count;
         this.reportPeriodLabel = preview.period;
@@ -582,7 +583,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
   downloadReportCsv(): void {
     this.isDownloadingReport = true;
     this.reportError = null;
-    this.api.downloadActivityReportCsv(this.reportOptions()).subscribe({
+    this.activityLogApi.downloadActivityReportCsv(this.reportOptions()).subscribe({
       next: (blob) => {
         this.isDownloadingReport = false;
         const suffix = this.periodMode === 'all' ? 'sve' : this.reportDay || this.reportFrom;
@@ -637,7 +638,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     this.isExportingSignedPdf = true;
     this.signatureError = null;
 
-    this.api
+    this.activityLogApi
       .signActivityReportPdf(this.reportOptions(), {
         lang: this.reportLang,
         declaration: this.signatureDeclaration(),

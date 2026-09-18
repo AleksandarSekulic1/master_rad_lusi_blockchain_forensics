@@ -5,9 +5,11 @@ import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { DashboardApiService } from './dashboard.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainMode, OnchainNetwork, UploadCsvResponse } from '../../models/blockchain-forensics.models';
+import { AnalyticsResponse, CaseSummary, GraphNodeData, NodeLinkGraphResponse, OnchainNetwork, UploadCsvResponse } from '../../core/models/shared.models';
+import { OnchainMode, PreviewOnchainResult } from './dashboard.models';
 import { GraphVisualizationComponent } from '../graph-visualization/graph-visualization.component';
 import { ReportExportComponent } from '../report-export/report-export.component';
 
@@ -36,6 +38,8 @@ export class DashboardComponent implements OnInit {
   protected onchainNetwork: OnchainNetwork = 'mainnet';
   protected onchainHashMode: OnchainMode = 'address_history';
   protected isFetchingOnchain = false;
+  protected isPreviewingOnchain = false;
+  protected onchainPreview: PreviewOnchainResult | null = null;
 
   protected openCases: CaseSummary[] = [];
 
@@ -141,7 +145,8 @@ export class DashboardComponent implements OnInit {
   }
 
   constructor(
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly dashboardApi: DashboardApiService,
     public readonly state: AnalysisStateService,
     public readonly settings: SettingsService,
   ) {
@@ -163,7 +168,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadOpenCases(): void {
-    this.api.listCases().subscribe({
+    this.caseData.listCases().subscribe({
       next: (response) => {
         this.openCases = response.cases.filter((entry) => entry.status === 'open');
 
@@ -279,7 +284,7 @@ export class DashboardComponent implements OnInit {
     this.isUploading = true;
     this.statusMessage = () => this.t('Učitavanje i heš-ovanje dokaza...', 'Uploading and hashing evidence...');
 
-    this.api.uploadCsv(this.selectedFile, caseId).subscribe({
+    this.dashboardApi.uploadCsv(this.selectedFile, caseId).subscribe({
       next: (uploadResult) => {
         this.uploadResult = uploadResult;
         this.state.setUploadResult(uploadResult);
@@ -301,12 +306,87 @@ export class DashboardComponent implements OnInit {
     });
   }
 
+  protected readonly BTC_BASE58_PATTERN = /^[13][a-km-zA-HJ-NP-Z1-9]{24,33}$/;
+  protected readonly BTC_BECH32_PATTERN = /^bc1[a-z0-9]{36,56}$/;
+
+  get isBitcoinNetwork(): boolean {
+    return this.onchainNetwork === 'bitcoin_mainnet';
+  }
+
   get isOnchainQueryTxHash(): boolean {
-    return /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
+    // Bitcoin v1 only supports "address -> full history" - a tx-hash mode never applies,
+    // regardless of what happens to be typed in the field (see BITCOIN-UTXO-PLAN.md).
+    return !this.isBitcoinNetwork && /^0x[0-9a-fA-F]{64}$/.test(this.onchainQuery.trim());
+  }
+
+  get isOnchainQueryPreviewable(): boolean {
+    // Preview only exists for the Ethereum flow (address or tx hash) - Bitcoin v1 has no
+    // equivalent lookup on the Blockstream side.
+    if (this.isBitcoinNetwork) {
+      return false;
+    }
+    const query = this.onchainQuery.trim();
+    return /^0x[0-9a-fA-F]{40}$/.test(query) || /^0x[0-9a-fA-F]{64}$/.test(query);
+  }
+
+  onOnchainQueryChange(value: string): void {
+    this.onchainQuery = value;
+    this.onchainPreview = null;
+  }
+
+  onOnchainNetworkChange(value: OnchainNetwork): void {
+    this.onchainNetwork = value;
+    this.onchainPreview = null;
+  }
+
+  onOnchainHashModeChange(value: OnchainMode): void {
+    this.onchainHashMode = value;
+    this.onchainPreview = null;
+  }
+
+  previewOnchainTransactions(): void {
+    const query = this.onchainQuery.trim();
+    if (!this.isOnchainQueryPreviewable) {
+      this.statusMessage = () =>
+        this.t(
+          'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera) za pregled.',
+          'Enter a valid address (0x + 40 chars) or transaction hash (0x + 64 chars) to preview.',
+        );
+      return;
+    }
+
+    const mode: OnchainMode = this.isOnchainQueryTxHash ? this.onchainHashMode : 'address_history';
+    this.onchainPreview = null;
+    this.isPreviewingOnchain = true;
+    this.statusMessage = () => this.t('Učitavanje pregleda...', 'Loading preview...');
+
+    this.dashboardApi.previewOnchainTransactions({ query, network: this.onchainNetwork, mode }).subscribe({
+      next: (result) => {
+        this.isPreviewingOnchain = false;
+        this.onchainPreview = result;
+        this.statusMessage = () =>
+          `${this.t('Pregled spreman', 'Preview ready')} (${result.resolved_query}): ${result.total_transactions} ${this.t('transakcija bi bilo povučeno.', 'transactions would be fetched.')}`;
+      },
+      error: (error: unknown) => {
+        this.isPreviewingOnchain = false;
+        this.statusMessage = () => this.extractErrorMessage(error, this.t('Pregled nije uspeo.', 'Preview failed.'));
+      },
+    });
   }
 
   fetchOnchainTransactions(): void {
     const query = this.onchainQuery.trim();
+    const caseId = this.state.selectedCaseSnapshot?.id;
+    if (!caseId) {
+      this.statusMessage = () => this.t('Izaberite slučaj pre povlačenja transakcija.', 'Select a case before fetching transactions.');
+      return;
+    }
+
+    if (this.isBitcoinNetwork) {
+      this.fetchBitcoinTransactions(query, caseId);
+      return;
+    }
+
     const isAddress = /^0x[0-9a-fA-F]{40}$/.test(query);
     const isTxHash = /^0x[0-9a-fA-F]{64}$/.test(query);
 
@@ -316,12 +396,6 @@ export class DashboardComponent implements OnInit {
           'Unesite validnu adresu (0x + 40 karaktera) ili heš transakcije (0x + 64 karaktera).',
           'Enter a valid address (0x + 40 chars) or transaction hash (0x + 64 chars).',
         );
-      return;
-    }
-
-    const caseId = this.state.selectedCaseSnapshot?.id;
-    if (!caseId) {
-      this.statusMessage = () => this.t('Izaberite slučaj pre povlačenja transakcija.', 'Select a case before fetching transactions.');
       return;
     }
 
@@ -335,28 +409,53 @@ export class DashboardComponent implements OnInit {
     };
 
     const mode: OnchainMode = isTxHash ? this.onchainHashMode : 'address_history';
-    this.api.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
-      next: (result) => {
-        this.uploadResult = result;
-        this.state.setUploadResult(result);
-        if (result.case) {
-          this.state.setSelectedCase(result.case);
-        }
-        this.isFetchingOnchain = false;
-        this.statusMessage = () =>
-          `${this.t('Povučeno', 'Fetched')} ${result.rows_total} ${this.t('transakcija', 'transactions')} (${result.resolved_query ?? query}). ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
-        this.loadCaseViews(caseId);
-        this.loadOpenCases();
-      },
-      error: (error: unknown) => {
-        this.isFetchingOnchain = false;
-        this.statusMessage = () =>
-          this.extractErrorMessage(
-            error,
-            this.t('Povlačenje transakcija sa blockchain-a nije uspelo.', 'Fetching transactions from the blockchain failed.'),
-          );
-      },
+    this.dashboardApi.fetchOnchainTransactions({ query, network: this.onchainNetwork, case_id: caseId, mode }).subscribe({
+      next: (result) => this.handleOnchainFetchSuccess(result, query, caseId),
+      error: (error: unknown) => this.handleOnchainFetchError(error),
     });
+  }
+
+  private fetchBitcoinTransactions(address: string, caseId: string): void {
+    const isValidAddress = this.BTC_BASE58_PATTERN.test(address) || this.BTC_BECH32_PATTERN.test(address);
+    if (!isValidAddress) {
+      this.statusMessage = () =>
+        this.t(
+          'Unesite validnu Bitcoin adresu (Base58: počinje sa 1 ili 3, ili Bech32: počinje sa bc1).',
+          'Enter a valid Bitcoin address (Base58: starts with 1 or 3, or Bech32: starts with bc1).',
+        );
+      return;
+    }
+
+    this.isFetchingOnchain = true;
+    this.statusMessage = () => `${this.t('Povlačenje sa', 'Fetching from')} Blockstream (Bitcoin mainnet)...`;
+
+    this.dashboardApi.fetchBitcoinTransactions(address, caseId).subscribe({
+      next: (result) => this.handleOnchainFetchSuccess(result, address, caseId),
+      error: (error: unknown) => this.handleOnchainFetchError(error),
+    });
+  }
+
+  private handleOnchainFetchSuccess(result: UploadCsvResponse, query: string, caseId: string): void {
+    this.uploadResult = result;
+    this.state.setUploadResult(result);
+    if (result.case) {
+      this.state.setSelectedCase(result.case);
+    }
+    this.isFetchingOnchain = false;
+    this.onchainPreview = null;
+    this.statusMessage = () =>
+      `${this.t('Povučeno', 'Fetched')} ${result.rows_total} ${this.t('transakcija', 'transactions')} (${result.resolved_query ?? query}). ${this.t('Učitavanje kombinovanog grafa slučaja...', 'Loading combined case graph...')}`;
+    this.loadCaseViews(caseId);
+    this.loadOpenCases();
+  }
+
+  private handleOnchainFetchError(error: unknown): void {
+    this.isFetchingOnchain = false;
+    this.statusMessage = () =>
+      this.extractErrorMessage(
+        error,
+        this.t('Povlačenje transakcija sa blockchain-a nije uspelo.', 'Fetching transactions from the blockchain failed.'),
+      );
   }
 
   refreshLatestEvidence(): void {
@@ -378,7 +477,7 @@ export class DashboardComponent implements OnInit {
 
   /** "Evidencija je sadržala 3 valute — automatski razdvojena u 3 fajla: ETH (2), USDC
    * (1), DAI (1)." - the per-currency split summary shown after an auto-split upload (see
-   * ApiService.uploadCsv / upload.py's _split_and_store_by_currency). A file with no
+   * DashboardApiService.uploadCsv / upload.py's _split_and_store_by_currency). A file with no
    * declared currency at all is labeled distinctly from a real currency code. */
   private splitSummaryLabel(result: UploadCsvResponse): string {
     const files = result.files ?? [];
@@ -421,8 +520,8 @@ export class DashboardComponent implements OnInit {
 
   private loadCaseViews(caseId: string): void {
     forkJoin({
-      graph: this.api.getCaseGraph(caseId),
-      analytics: this.api.runCaseAnalytics(caseId),
+      graph: this.caseData.getCaseGraph(caseId),
+      analytics: this.caseData.runCaseAnalytics(caseId),
     }).subscribe({
       next: ({ graph, analytics }) => {
         this.applyGraphAndAnalytics(graph, analytics);

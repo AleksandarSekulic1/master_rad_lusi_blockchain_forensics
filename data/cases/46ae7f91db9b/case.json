@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-07-16T16:48:06.761081+00:00",
-  "updated_at": "2026-09-14T10:48:49.073750+00:00",
+  "updated_at": "2026-09-16T11:44:51.074995+00:00",
   "evidence": [
     {
       "file_name": "demo_case.csv",
@@ -83,9 +83,18 @@
       "sha256": "d416080057c28a98ae471a23de5fbeaf12e514ab58a3b05c9807366db5af07a5",
       "analyst": "admin",
       "currency": null
+    },
+    {
+      "file_name": "onchain_mainnet_address_0x098b716b8aaf21512996dc57eb0615e2383e2f96.csv",
+      "stored_name": "20260916_114450_977422_onchain_mainnet_address_0x098b716b8aaf21512996dc57eb0615e2383e2f96.csv",
+      "imported_at": "2026-09-16T11:44:51.074995+00:00",
+      "size_bytes": 79797,
+      "sha256": "0e605c3ed366ff88b42dcf90e0549b98b13df3bf24b3a6f6051a4c3acfa46e6f",
+      "analyst": "admin",
+      "currency": "ETH"
     }
   ],
-  "evidence_count": 9,
-  "total_size_bytes": 5128,
-  "last_imported_at": "2026-09-14T10:48:49.073750+00:00"
+  "evidence_count": 10,
+  "total_size_bytes": 84925,
+  "last_imported_at": "2026-09-16T11:44:51.074995+00:00"
 }

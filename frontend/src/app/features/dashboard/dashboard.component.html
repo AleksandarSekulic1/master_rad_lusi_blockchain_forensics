@@ -60,22 +60,87 @@
         <h3 class="intake-title">{{ t('Sa blockchain-a', 'From the blockchain') }}</h3>
 
         <label class="field">
-          <span class="field-label">{{ t('Adresa novčanika ili heš transakcije', 'Wallet address or transaction hash') }}</span>
+          <span class="field-label">
+            {{ isBitcoinNetwork
+              ? t('Bitcoin adresa', 'Bitcoin address')
+              : t('Adresa novčanika ili heš transakcije', 'Wallet address or transaction hash') }}
+          </span>
           <input
-            [(ngModel)]="onchainQuery"
+            [ngModel]="onchainQuery"
+            (ngModelChange)="onOnchainQueryChange($event)"
             type="text"
-            [placeholder]="t('0x...', '0x...')"
+            [placeholder]="isBitcoinNetwork ? t('1... / 3... / bc1...', '1... / 3... / bc1...') : t('0x...', '0x...')"
             spellcheck="false"
           />
         </label>
 
         <label class="field">
           <span class="field-label">{{ t('Mreža', 'Network') }}</span>
-          <select [(ngModel)]="onchainNetwork">
+          <select [ngModel]="onchainNetwork" (ngModelChange)="onOnchainNetworkChange($event)">
             <option value="mainnet">Ethereum mainnet</option>
             <option value="sepolia">Sepolia (testnet)</option>
+            <option value="bitcoin_mainnet">Bitcoin mainnet</option>
           </select>
         </label>
+
+        <div class="onchain-hash-mode" *ngIf="isOnchainQueryTxHash">
+          <span>{{ t('Prepoznat heš transakcije — šta da povučem?', 'Transaction hash detected — what should we fetch?') }}</span>
+          <label>
+            <input
+              type="radio"
+              name="onchainHashMode"
+              value="address_history"
+              [ngModel]="onchainHashMode"
+              (ngModelChange)="onOnchainHashModeChange($event)"
+            />
+            {{ t('Celu istoriju pošiljaoca (preporučeno)', 'Full sender history (recommended)') }}
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="onchainHashMode"
+              value="tx_single"
+              [ngModel]="onchainHashMode"
+              (ngModelChange)="onOnchainHashModeChange($event)"
+            />
+            {{ t('Samo ovu transakciju', 'Only this transaction') }}
+          </label>
+        </div>
+
+        <button
+          type="button"
+          class="ghost-button block"
+          (click)="previewOnchainTransactions()"
+          [disabled]="isPreviewingOnchain || !isOnchainQueryPreviewable"
+        >
+          {{ isPreviewingOnchain ? t('Učitavanje pregleda...', 'Loading preview...') : t('Prikaži pregled', 'Show preview') }}
+        </button>
+
+        <div class="onchain-preview" *ngIf="onchainPreview as preview">
+          <dl class="onchain-preview-tx" *ngIf="preview.transaction as tx">
+            <div>
+              <dt>{{ t('Od', 'From') }}</dt>
+              <dd class="mono-clip">{{ tx.sender_address }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('Za', 'To') }}</dt>
+              <dd class="mono-clip">{{ tx.recipient_address }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('Iznos', 'Amount') }}</dt>
+              <dd>{{ tx.amount | number : '1.0-8' }} ETH</dd>
+            </div>
+            <div>
+              <dt>{{ t('Vreme', 'Time') }}</dt>
+              <dd>{{ tx.timestamp }}</dd>
+            </div>
+          </dl>
+          <p class="onchain-preview-count">
+            {{ t('Transakcija koje bi bile povučene', 'Transactions that would be fetched') }}:
+            <strong>{{ preview.total_transactions | number }}</strong>
+            <span class="onchain-preview-address mono-clip">({{ preview.resolved_query }})</span>
+          </p>
+        </div>
 
         <button
           type="button"
@@ -85,18 +150,6 @@
         >
           {{ isFetchingOnchain ? t('Povlačenje...', 'Fetching...') : t('Povuci transakcije', 'Fetch transactions') }}
         </button>
-
-        <div class="onchain-hash-mode" *ngIf="isOnchainQueryTxHash">
-          <span>{{ t('Prepoznat heš transakcije — šta da povučem?', 'Transaction hash detected — what should we fetch?') }}</span>
-          <label>
-            <input type="radio" name="onchainHashMode" value="address_history" [(ngModel)]="onchainHashMode" />
-            {{ t('Celu istoriju pošiljaoca (preporučeno)', 'Full sender history (recommended)') }}
-          </label>
-          <label>
-            <input type="radio" name="onchainHashMode" value="tx_single" [(ngModel)]="onchainHashMode" />
-            {{ t('Samo ovu transakciju', 'Only this transaction') }}
-          </label>
-        </div>
       </section>
     </div>
 

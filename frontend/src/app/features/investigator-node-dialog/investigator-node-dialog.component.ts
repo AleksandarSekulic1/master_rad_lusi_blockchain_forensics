@@ -2,9 +2,10 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ApiService } from '../../core/services/api.service';
+import { CaseDataApiService } from '../../core/services/case-data.api';
+import { InvestigatorNodeDialogApiService } from './investigator-node-dialog.api';
 import { SettingsService } from '../../core/services/settings.service';
-import { InvestigatorLinkConfidence, InvestigatorNote } from '../../models/blockchain-forensics.models';
+import { InvestigatorLinkConfidence, InvestigatorNote } from '../../core/models/shared.models';
 
 /** Compact modal launched from the graph node-details panel (CASE-MANAGEMENT-IMPLEMENTATION.md
  * §16). Two tabs: investigator notes for the selected address (list + add + edit + delete),
@@ -58,7 +59,8 @@ export class InvestigatorNodeDialogComponent implements OnInit {
   protected linkError: string | null = null;
 
   constructor(
-    private readonly api: ApiService,
+    private readonly caseData: CaseDataApiService,
+    private readonly investigatorNodeDialogApi: InvestigatorNodeDialogApiService,
     public readonly settings: SettingsService,
   ) {}
 
@@ -74,7 +76,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
   protected loadNotes(): void {
     this.isLoadingNotes = true;
     this.notesError = null;
-    this.api.getInvestigatorNotes(this.investigationId, this.address).subscribe({
+    this.caseData.getInvestigatorNotes(this.investigationId, this.address).subscribe({
       next: (res) => {
         this.notes = res.notes;
         this.isLoadingNotes = false;
@@ -96,7 +98,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
     }
     this.isAddingNote = true;
     this.notesError = null;
-    this.api
+    this.investigatorNodeDialogApi
       .addInvestigatorNote(this.investigationId, { address: this.address, text: this.newNoteText.trim() })
       .subscribe({
         next: () => {
@@ -128,7 +130,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
       return;
     }
     this.isSavingNote = true;
-    this.api.updateInvestigatorNote(this.investigationId, note.id, { text }).subscribe({
+    this.investigatorNodeDialogApi.updateInvestigatorNote(this.investigationId, note.id, { text }).subscribe({
       next: () => {
         this.isSavingNote = false;
         this.cancelEdit();
@@ -146,7 +148,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
     if (!window.confirm(this.t('Obrisati ovu belešku?', 'Delete this note?'))) {
       return;
     }
-    this.api.deleteInvestigatorNote(this.investigationId, note.id).subscribe({
+    this.investigatorNodeDialogApi.deleteInvestigatorNote(this.investigationId, note.id).subscribe({
       next: () => {
         this.loadNotes();
         this.notesChanged.emit();
@@ -172,7 +174,7 @@ export class InvestigatorNodeDialogComponent implements OnInit {
     }
     this.isCreatingLink = true;
     this.linkError = null;
-    this.api
+    this.investigatorNodeDialogApi
       .addInvestigatorLink(this.investigationId, {
         source_address: this.address,
         target_address: this.linkTarget.trim(),

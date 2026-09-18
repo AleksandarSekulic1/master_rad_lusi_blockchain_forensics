@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { AuthUser, LoginRequest, LoginResponse } from '../../models/blockchain-forensics.models';
+import { AuthUser, LoginRequest, LoginResponse } from '../models/shared.models';
 
 const TOKEN_KEY = 'lusi_access_token';
 const USER_KEY = 'lusi_current_user';
