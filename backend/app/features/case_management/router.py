@@ -5,7 +5,7 @@ on-chain facts and their custody - NOT the investigator-layer `InvestigationCase
 (app/investigations/). This slice owns the case entity itself: create/list/delete a case,
 list/remove its evidence files, and open/close it. Every other case-scoped feature slice
 (case_graph, case_behavioral_analysis, case_dex_swap_analysis,
-case_token_approval_analysis, case_seed_suggestion, case_analytics_run,
+case_token_approval_analysis, case_sybil_analysis, case_seed_suggestion, case_analytics_run,
 case_pathfinding) only READS a case through `app.shared.case_access.get_case_or_404` -
 none of them own it.
 """

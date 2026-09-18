@@ -1,7 +1,7 @@
 """Shared "load this case, 404 if missing" helpers.
 
 Every case-scoped feature slice (case_management, case_graph, case_behavioral_analysis,
-case_dex_swap_analysis, case_token_approval_analysis, case_seed_suggestion,
+case_dex_swap_analysis, case_token_approval_analysis, case_sybil_analysis, case_seed_suggestion,
 case_analytics_run, case_pathfinding) needs the exact same three steps before it can do
 anything: load the case (or 404), resolve its evidence CSV paths (or 404), and optionally
 narrow that to one evidence file (or 404 if it does not exist in the case). Kept here once

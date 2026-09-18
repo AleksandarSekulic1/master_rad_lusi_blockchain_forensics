@@ -5,7 +5,7 @@
   "analyst": "admin",
   "status": "open",
   "created_at": "2026-07-16T16:48:06.761081+00:00",
-  "updated_at": "2026-09-16T11:44:51.074995+00:00",
+  "updated_at": "2026-09-18T20:52:33.682063+00:00",
   "evidence": [
     {
       "file_name": "demo_case.csv",
@@ -92,9 +92,18 @@
       "sha256": "0e605c3ed366ff88b42dcf90e0549b98b13df3bf24b3a6f6051a4c3acfa46e6f",
       "analyst": "admin",
       "currency": "ETH"
+    },
+    {
+      "file_name": "demo_sybil_analysis.csv",
+      "stored_name": "20260918_205233_669964_demo_sybil_analysis.csv",
+      "imported_at": "2026-09-18T20:52:33.682063+00:00",
+      "size_bytes": 1101,
+      "sha256": "ac92eb3312213d76db8246e7edfcbe0f9404c8e7804c7187abdf149f7cc7069c",
+      "analyst": "admin",
+      "currency": null
     }
   ],
-  "evidence_count": 10,
-  "total_size_bytes": 84925,
-  "last_imported_at": "2026-09-16T11:44:51.074995+00:00"
+  "evidence_count": 11,
+  "total_size_bytes": 86026,
+  "last_imported_at": "2026-09-18T20:52:33.682063+00:00"
 }

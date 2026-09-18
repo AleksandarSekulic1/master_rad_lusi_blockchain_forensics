@@ -1,0 +1,183 @@
+<div class="sybil-shell">
+  <div class="sb-controls">
+    <div class="sb-bar">
+      <div class="sb-case" *ngIf="activeCase; else noCase">
+        <span class="sb-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="sb-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
+
+      <label class="sb-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="sb-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="sybil-header">
+    <p class="panel-kicker">{{ t('Sybil & Bot Network analiza', 'Sybil & Bot Network analysis') }}</p>
+    <h2>{{ t('SYBIL & BOT NETWORK ANALIZA', 'SYBIL & BOT NETWORK ANALYSIS') }}</h2>
+    <p>
+      {{ t(
+        'Detektuje grupe RAZLIČITIH adresa koje u kratkom vremenskom periodu pozivaju isti smart contract i/ili istu funkciju.',
+        'Detects groups of DIFFERENT addresses that call the same smart contract and/or the same function within a short time window.'
+      ) }}
+    </p>
+  </div>
+
+  <div class="sb-params">
+    <div class="sb-params-row">
+      <label class="sb-field">
+        {{ t('Adresa (opciono)', 'Address (optional)') }}
+        <input type="text" [(ngModel)]="addressFilter" placeholder="0x..." [disabled]="!activeCase" />
+      </label>
+      <label class="sb-field">
+        {{ t('Kontrakt (opciono)', 'Contract (optional)') }}
+        <input type="text" [(ngModel)]="contractFilter" placeholder="0x..." [disabled]="!activeCase" />
+      </label>
+      <label class="sb-field sb-field-narrow">
+        {{ t('Vremenski prozor (s)', 'Time window (s)') }}
+        <input type="number" [(ngModel)]="timeWindowSeconds" min="10" max="3600" [disabled]="!activeCase" />
+      </label>
+      <label class="sb-field sb-field-narrow">
+        {{ t('Min. broj adresa', 'Min. addresses') }}
+        <input type="number" [(ngModel)]="minAddresses" min="2" max="50" [disabled]="!activeCase" />
+      </label>
+    </div>
+
+    <div class="analyze-row">
+      <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
+        {{ isAnalyzing ? t('Analiza…', 'Analysing…') : t('ANALIZIRAJ', 'ANALYZE') }}
+      </button>
+      <span class="sb-error" *ngIf="analysisError">{{ analysisError }}</span>
+    </div>
+  </div>
+
+  <div class="sb-results" *ngIf="result">
+    <div class="sb-summary">
+      <div class="sb-summary-stat">
+        <span class="sb-summary-value">{{ result.total_clusters }}</span>
+        <span class="sb-summary-label">{{ t('klastera', 'clusters') }}</span>
+      </div>
+      <div class="sb-summary-stat">
+        <span class="sb-summary-value">{{ result.addresses_flagged }}</span>
+        <span class="sb-summary-label">{{ t('označenih adresa', 'flagged addresses') }}</span>
+      </div>
+      <div class="sb-summary-stat">
+        <span class="sb-summary-value">{{ result.time_window_seconds }}s</span>
+        <span class="sb-summary-label">{{ t('vremenski prozor', 'time window') }}</span>
+      </div>
+      <div class="sb-summary-note" *ngIf="!result.function_data_available">
+        {{ t('Evidencija ne deklariše pozvanu funkciju - grupisanje je isključivo po kontraktu.', 'The evidence does not declare a called function - grouping is by contract only.') }}
+      </div>
+    </div>
+
+    <div class="sb-empty" *ngIf="result.total_clusters === 0">
+      {{ t('Nijedan Sybil/bot klaster nije detektovan za zadate parametre.', 'No Sybil/bot cluster was detected for the given parameters.') }}
+    </div>
+
+    <div class="sb-cluster-card" *ngFor="let cluster of result.clusters" [class]="'risk-' + cluster.risk_level">
+      <div class="sb-cluster-head">
+        <span class="sb-badge" [class]="'risk-' + cluster.risk_level">
+          {{ riskLabel(cluster.risk_level) }} · {{ cluster.risk_score }}/100
+        </span>
+        <span class="sb-cluster-id">{{ cluster.cluster_id }}</span>
+      </div>
+
+      <div class="sb-cluster-title">
+        <span class="mono-clip">{{ cluster.contract_name }}</span>
+        <span class="sb-fn" *ngIf="cluster.function_name">· {{ t('funkcija', 'function') }}: {{ cluster.function_name }}</span>
+      </div>
+      <div class="sb-cluster-basis" *ngIf="cluster.contract_match_basis">{{ cluster.contract_match_basis }}</div>
+
+      <div class="sb-cluster-stats">
+        <div class="sb-stat">
+          <span class="sb-stat-value">{{ cluster.address_count }}</span>
+          <span class="sb-stat-label">{{ t('adresa', 'addresses') }}</span>
+        </div>
+        <div class="sb-stat">
+          <span class="sb-stat-value">{{ cluster.activity_count }}</span>
+          <span class="sb-stat-label">{{ t('aktivnosti', 'activities') }}</span>
+        </div>
+        <div class="sb-stat">
+          <span class="sb-stat-value">{{ cluster.window_duration_seconds }}s</span>
+          <span class="sb-stat-label">{{ t('trajanje', 'duration') }}</span>
+        </div>
+        <div class="sb-stat">
+          <span class="sb-stat-value">{{ cluster.avg_gap_seconds }}s</span>
+          <span class="sb-stat-label">{{ t('prosečan razmak', 'avg gap') }}</span>
+        </div>
+        <div class="sb-stat" *ngIf="cluster.modal_amount_count >= 2">
+          <span class="sb-stat-value">{{ (cluster.identical_amount_ratio * 100) | number : '1.0-0' }}%</span>
+          <span class="sb-stat-label">{{ t('identičan iznos', 'identical amount') }}</span>
+        </div>
+        <div class="sb-stat" *ngIf="cluster.repeated_address_count > 0">
+          <span class="sb-stat-value">{{ cluster.repeated_address_count }}</span>
+          <span class="sb-stat-label">{{ t('ponovljenih adresa', 'repeated addresses') }}</span>
+        </div>
+      </div>
+
+      <div class="sb-window">
+        {{ cluster.window_start | date : 'short' }} → {{ cluster.window_end | date : 'short' }}
+      </div>
+
+      <div class="sb-addresses">
+        <span class="sb-chip" *ngFor="let address of cluster.addresses">{{ address }}</span>
+      </div>
+
+      <button type="button" class="ghost-button sb-toggle" (click)="toggleExpanded(cluster.cluster_id)">
+        {{ isExpanded(cluster.cluster_id) ? t('Sakrij detalje', 'Hide details') : t('Prikaži detalje', 'Show details') }}
+      </button>
+
+      <div class="sb-details" *ngIf="isExpanded(cluster.cluster_id)">
+        <ul class="sb-reasons">
+          <li *ngFor="let reason of cluster.reasons">{{ reason }}</li>
+        </ul>
+
+        <table class="sb-tx-table">
+          <thead>
+            <tr>
+              <th>{{ t('Adresa', 'Address') }}</th>
+              <th>{{ t('Iznos', 'Amount') }}</th>
+              <th>{{ t('Vreme', 'Time') }}</th>
+              <th>Tx</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let tx of cluster.transactions">
+              <td class="mono-clip">{{ tx.sender_address }}</td>
+              <td>{{ tx.amount }}</td>
+              <td>{{ tx.timestamp | date : 'medium' }}</td>
+              <td class="mono-clip">{{ tx.tx_hash ?? '?' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="sb-disclaimer">{{ result.disclaimer }}</p>
+  </div>
+</div>
+
+<!-- Lanac dokaza: razlog pristupa i potpis pre same Sybil analize (isti deljeni dijalog
+     kao Taint/Pathfinding/Graf/DEX Swaps - vidi LANAC-DOKAZA.md i SYBIL-ANALIZA.md) -->
+<app-custody-access-dialog
+  *ngIf="isCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isAnalyzing"
+  [submitError]="custodyDialogError"
+  (confirmed)="confirmCustodyAndAnalyze($event)"
+  (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>

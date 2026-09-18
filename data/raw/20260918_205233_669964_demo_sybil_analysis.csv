@@ -1,0 +1,14 @@
+sender_address,recipient_address,amount,timestamp,tx_hash,function_name
+0xBotWallet1,0xAirdropClaimContract,0.0001,2026-09-01T10:00:00Z,0xsyb0001,claimAirdrop
+0xBotWallet2,0xAirdropClaimContract,0.0001,2026-09-01T10:00:15Z,0xsyb0002,claimAirdrop
+0xBotWallet3,0xAirdropClaimContract,0.0001,2026-09-01T10:00:32Z,0xsyb0003,claimAirdrop
+0xBotWallet4,0xAirdropClaimContract,0.0001,2026-09-01T10:00:48Z,0xsyb0004,claimAirdrop
+0xBotWallet5,0xAirdropClaimContract,0.0001,2026-09-01T10:01:05Z,0xsyb0005,claimAirdrop
+0xRegularUserA,0xAirdropClaimContract,0.0001,2026-09-02T09:00:00Z,0xsyb0006,claimAirdrop
+0xRegularUserB,0xAirdropClaimContract,0.0001,2026-09-02T09:00:20Z,0xsyb0007,claimAirdrop
+0xSlowUserA,0xVoteContract,1,2026-09-03T08:00:00Z,0xsyb0008,vote
+0xSlowUserB,0xVoteContract,1,2026-09-03T11:00:00Z,0xsyb0009,vote
+0xSlowUserC,0xVoteContract,1,2026-09-03T15:00:00Z,0xsyb0010,vote
+0xBotWallet1,0xMintContract,0.05,2026-09-04T12:00:00Z,0xsyb0011,mint
+0xBotWallet2,0xMintContract,0.05,2026-09-04T12:00:18Z,0xsyb0012,mint
+0xBotWallet3,0xMintContract,0.05,2026-09-04T12:00:36Z,0xsyb0013,mint

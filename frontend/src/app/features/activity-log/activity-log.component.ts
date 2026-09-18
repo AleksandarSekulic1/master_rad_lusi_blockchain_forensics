@@ -99,6 +99,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     dex_swap_analysis_run: { label: ['Pokrenuta DEX swap analiza', 'Ran DEX swap analysis'], group: 'analysis', icon: '⇌' },
     behavioral_analysis_run: { label: ['Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'], group: 'analysis', icon: '◔' },
     token_approval_analysis_run: { label: ['Pokrenuta Token Approval analiza', 'Ran Token Approval analysis'], group: 'analysis', icon: '🔑' },
+    sybil_analysis_run: { label: ['Pokrenuta Sybil & Bot Network analiza', 'Ran Sybil & Bot Network analysis'], group: 'analysis', icon: '👥' },
     case_created: { label: ['Kreiran slučaj', 'Case created'], group: 'case', icon: '＋' },
     case_status_changed: { label: ['Promenjen status slučaja', 'Case status changed'], group: 'case', icon: '⇄' },
     case_deleted: { label: ['Obrisan slučaj', 'Case deleted'], group: 'case', icon: '✕' },
@@ -128,6 +129,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     'dex_swap_analysis_run',
     'behavioral_analysis_run',
     'token_approval_analysis_run',
+    'sybil_analysis_run',
     'case_created',
     'case_status_changed',
     'case_deleted',
@@ -426,6 +428,21 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
           summary +=
             ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ` +
             `${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}, ${findings} ${this.t('TOKEN_APPROVAL nalaza', 'TOKEN_APPROVAL findings')}`;
+        }
+        return summary;
+      }
+      case 'sybil_analysis_run': {
+        const address = String(details['address'] ?? '') || this.t('sve adrese', 'all addresses');
+        const contract = details['contract'] ? ` · ${String(details['contract'])}` : '';
+        const scope = String(details['evidence_scope'] ?? 'combined');
+        const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        let summary =
+          `${address}${contract} · ${scopeText} · ${Number(details['total_clusters'] ?? 0)} ${this.t('klastera', 'clusters')}, ` +
+          `${Number(details['addresses_flagged'] ?? 0)} ${this.t('označenih adresa', 'flagged addresses')}`;
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          summary += ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}`;
         }
         return summary;
       }
