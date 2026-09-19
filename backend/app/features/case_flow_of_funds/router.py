@@ -155,12 +155,33 @@ def run_case_flow_of_funds(
             end_time=request.end_time,
         )
     except ValueError as exc:
+        # FAILED - written even though nothing was traced, so an investigator can later see
+        # that a Flow of Funds run was ATTEMPTED for this address/period and why it did not
+        # complete, same "log the attempt, not just the success" discipline as
+        # case_sybil_analysis/case_token_approval_analysis/case_dex_swap_analysis.
+        write_audit_log(
+            action='flow_of_funds_run',
+            user=str(current_user['username']),
+            case_id=case_id,
+            case_name=str(case.get('name') or ''),
+            details={
+                'status': 'FAILED',
+                'source_addresses': request.source_addresses,
+                'direction': request.direction,
+                'evidence_scope': evidence or 'combined',
+                'error': str(exc),
+            },
+        )
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     _attach_node_annotations(
         result, combined_frame, request.source_addresses, request.start_time, request.end_time,
         request.include_taint, request.include_sybil,
     )
+
+    # Distinct assets (ETH/BTC/UNKNOWN/...) this trace actually touched - "which blockchain"
+    # in a mixed-evidence case, where source_addresses/direction alone don't say that.
+    assets = sorted({str(flow['asset']) for flow in result['address_flows']})
 
     has_custody = bool(request.custody)
     write_audit_log(
@@ -169,10 +190,12 @@ def run_case_flow_of_funds(
         case_id=case_id,
         case_name=str(case.get('name') or ''),
         details={
+            'status': 'SUCCESS',
             'source_addresses': request.source_addresses,
             'direction': request.direction,
             'max_levels': request.max_levels,
             'evidence_scope': evidence or 'combined',
+            'assets': assets,
             'flow_count': result['flow_count'],
             'levels_reached': result['levels_reached'],
             'truncated': result['truncated'],

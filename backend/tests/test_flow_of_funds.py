@@ -465,6 +465,36 @@ class TestFlowOfFundsRunRouteAndCustody:
         assert entries[0]['action'] == 'flow_of_funds_run'
         assert entries[0]['details']['source_addresses'] == ['0xA']
         assert entries[0]['details']['custody_recorded'] is False
+        assert entries[0]['details']['status'] == 'SUCCESS'
+        assert entries[0]['details']['assets'] == ['UNKNOWN']
+
+    def test_failed_run_writes_failed_status_to_audit_log(self, tmp_path, monkeypatch):
+        """Neuspešno pokretanje (npr. nepostojeća adresa) i dalje ostavlja trag u logu, sa status=FAILED"""
+        from app.features.case_flow_of_funds import router as flow_router
+        from app.features.case_flow_of_funds.models import FlowOfFundsRunRequest
+        from app.shared import case_access
+        from app.evidence import audit_log
+        from fastapi import HTTPException
+
+        monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
+        csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z,0xtx1\n')
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        request = FlowOfFundsRunRequest(source_addresses=['0xNePostoji'])
+        with pytest.raises(HTTPException):
+            flow_router.run_case_flow_of_funds(
+                case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
+            )
+
+        entries = audit_log.load_audit_log_entries(case_id='c1')
+        assert len(entries) == 1
+        assert entries[0]['action'] == 'flow_of_funds_run'
+        assert entries[0]['details']['status'] == 'FAILED'
+        assert entries[0]['details']['source_addresses'] == ['0xNePostoji']
+        assert 'error' in entries[0]['details']
 
     def test_custody_present_writes_one_row_per_evidence_transaction(self, tmp_path, monkeypatch):
         """Sa 'custody' poljem, svaki red evidencije u obuhvatu dobija red u lancu dokaza"""

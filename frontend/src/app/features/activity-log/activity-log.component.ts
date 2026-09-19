@@ -100,6 +100,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     behavioral_analysis_run: { label: ['Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'], group: 'analysis', icon: '◔' },
     token_approval_analysis_run: { label: ['Pokrenuta Token Approval analiza', 'Ran Token Approval analysis'], group: 'analysis', icon: '🔑' },
     sybil_analysis_run: { label: ['Pokrenuta Sybil & Bot Network analiza', 'Ran Sybil & Bot Network analysis'], group: 'analysis', icon: '👥' },
+    flow_of_funds_run: { label: ['Pokrenuta Flow of Funds analiza', 'Ran Flow of Funds analysis'], group: 'analysis', icon: '⇀' },
     case_created: { label: ['Kreiran slučaj', 'Case created'], group: 'case', icon: '＋' },
     case_status_changed: { label: ['Promenjen status slučaja', 'Case status changed'], group: 'case', icon: '⇄' },
     case_deleted: { label: ['Obrisan slučaj', 'Case deleted'], group: 'case', icon: '✕' },
@@ -130,6 +131,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     'behavioral_analysis_run',
     'token_approval_analysis_run',
     'sybil_analysis_run',
+    'flow_of_funds_run',
     'case_created',
     'case_status_changed',
     'case_deleted',
@@ -164,6 +166,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     behavioral: ['Bihevioralni izveštaj', 'Behavioral report'],
     token_approval: ['Token Approval izveštaj', 'Token Approval report'],
     sybil: ['Sybil & Bot Network izveštaj', 'Sybil & Bot Network report'],
+    flow_of_funds: ['Flow of Funds izveštaj', 'Flow of Funds report'],
   };
 
   constructor(
@@ -454,6 +457,30 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         }
         return summary;
       }
+      case 'flow_of_funds_run': {
+        const addresses = (details['source_addresses'] as string[] | undefined) ?? [];
+        const addressText = addresses.length > 0 ? addresses.join(', ') : this.t('sve adrese', 'all addresses');
+        const scope = String(details['evidence_scope'] ?? 'combined');
+        const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        if (details['status'] === 'FAILED') {
+          const error = String(details['error'] ?? this.t('nepoznata greška', 'unknown error'));
+          return `${this.t('NEUSPEŠNO', 'FAILED')} · ${addressText} · ${scopeText} · ${error}`;
+        }
+        const assets = (details['assets'] as string[] | undefined) ?? [];
+        const assetsText = assets.length > 0 ? assets.join(', ') : '?';
+        let summary =
+          `${addressText} · ${scopeText} · ${assetsText} · ${Number(details['flow_count'] ?? 0)} ${this.t('tokova', 'flows')}, ` +
+          `${Number(details['levels_reached'] ?? 0)} ${this.t('nivoa', 'levels')}`;
+        if (details['truncated']) {
+          summary += ` · ${this.t('skraćeno', 'truncated')}`;
+        }
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          summary += ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}`;
+        }
+        return summary;
+      }
       case 'custody_pdf_exported': {
         const scope = details['scope'] === 'transaction' ? this.t('transakcija', 'transaction') : this.t('dokazni fajl', 'evidence file');
         const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
@@ -478,6 +505,8 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
           extra = ` · ${Number(details['total_approvals'] ?? 0)} ${this.t('odobrenja', 'approvals')}, ${Number(details['potentially_risky_approvals'] ?? 0)} ${this.t('rizičnih', 'risky')}`;
         } else if (reportType === 'sybil') {
           extra = ` · ${Number(details['total_clusters'] ?? 0)} ${this.t('klastera', 'clusters')}, ${Number(details['addresses_flagged'] ?? 0)} ${this.t('označenih adresa', 'flagged addresses')}`;
+        } else if (reportType === 'flow_of_funds') {
+          extra = ` · ${Number(details['flow_count'] ?? 0)} ${this.t('tokova', 'flows')}, ${Number(details['levels_reached'] ?? 0)} ${this.t('nivoa', 'levels')}`;
         }
         return `${typeLabel} · ${code}${extra}`;
       }

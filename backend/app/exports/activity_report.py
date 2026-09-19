@@ -60,6 +60,7 @@ ACTION_LABELS: dict[str, tuple[str, str]] = {
     'behavioral_analysis_run': ('Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'),
     'token_approval_analysis_run': ('Pokrenuta Token Approval analiza', 'Ran Token Approval analysis'),
     'sybil_analysis_run': ('Pokrenuta Sybil & Bot Network analiza', 'Ran Sybil & Bot Network analysis'),
+    'flow_of_funds_run': ('Pokrenuta Flow of Funds analiza', 'Ran Flow of Funds analysis'),
     'case_created': ('Kreiran slučaj', 'Case created'),
     'case_status_changed': ('Promenjen status slučaja', 'Case status changed'),
     'case_deleted': ('Obrisan slučaj', 'Case deleted'),
@@ -83,6 +84,7 @@ _REPORT_TYPE_LABELS: dict[str, tuple[str, str]] = {
     'behavioral': ('Bihevioralni izveštaj', 'Behavioral report'),
     'token_approval': ('Token Approval izveštaj', 'Token Approval report'),
     'sybil': ('Sybil & Bot Network izveštaj', 'Sybil & Bot Network report'),
+    'flow_of_funds': ('Flow of Funds izveštaj', 'Flow of Funds report'),
     'case_triage': ('Izveštaj za trijažu', 'Triage report'),
     'graph_analysis': ('Izveštaj analize grafa', 'Graph analysis report'),
     'activity_log': ('Izveštaj aktivnosti', 'Activity report'),
@@ -118,6 +120,7 @@ ACTION_HUE_ORDER: tuple[str, ...] = (
     'behavioral_analysis_run',
     'token_approval_analysis_run',
     'sybil_analysis_run',
+    'flow_of_funds_run',
     'case_created',
     'case_status_changed',
     'case_deleted',
@@ -281,6 +284,27 @@ def summarize_details(entry: dict[str, Any], lang: Lang = 'sr') -> str:
                 f'{evidence_files} {L("fajl(ova)", "file(s)")}, {findings} {L("SYBIL_CLUSTER nalaza", "SYBIL_CLUSTER findings")}'
             )
         return summary
+    if action == 'flow_of_funds_run':
+        addresses = details.get('source_addresses') or []
+        address_text = ', '.join(str(address) for address in addresses) if addresses else L('sve adrese', 'all addresses')
+        scope = details.get('evidence_scope', 'combined')
+        scope_text = L('sva evidencija (kombinovano)', 'all evidence (combined)') if scope == 'combined' else str(scope)
+        if details.get('status') == 'FAILED':
+            error = str(details.get('error') or L('nepoznata greška', 'unknown error'))
+            return f'{L("NEUSPEŠNO", "FAILED")} · {address_text} · {scope_text} · {error}'
+        assets = details.get('assets') or []
+        assets_text = ', '.join(str(asset) for asset in assets) if assets else '?'
+        summary = (
+            f'{address_text} · {scope_text} · {assets_text} · {details.get("flow_count", 0)} {L("tokova", "flows")}, '
+            f'{details.get("levels_reached", 0)} {L("nivoa", "levels")}'
+        )
+        if details.get('truncated'):
+            summary += f' · {L("skraćeno", "truncated")}'
+        if details.get('custody_recorded'):
+            tx_rows = details.get('custody_transaction_rows', 0)
+            evidence_files = details.get('custody_evidence_files', 0)
+            summary += f' · {L("lanac dokaza", "chain of custody")}: {tx_rows} {L("transakcija", "transactions")}, {evidence_files} {L("fajl(ova)", "file(s)")}'
+        return summary
     if action == 'test_suite_run':
         return f'{details.get("passed", 0)}/{details.get("total", 0)} {L("testova prošlo", "tests passed")}'
     if action == 'test_scenarios_run':
@@ -338,6 +362,8 @@ def _report_signed_summary(details: dict[str, Any], lang: Lang = 'sr') -> str:
         extra = f' · {details.get("total_approvals", 0)} {L("odobrenja", "approvals")}, {details.get("potentially_risky_approvals", 0)} {L("rizičnih", "risky")}'
     elif report_type == 'sybil':
         extra = f' · {details.get("total_clusters", 0)} {L("klastera", "clusters")}, {details.get("addresses_flagged", 0)} {L("označenih adresa", "flagged addresses")}'
+    elif report_type == 'flow_of_funds':
+        extra = f' · {details.get("flow_count", 0)} {L("tokova", "flows")}, {details.get("levels_reached", 0)} {L("nivoa", "levels")}'
     elif report_type in ('case_triage', 'graph_analysis'):
         extra = f' · {details.get("nodes", 0)} {L("čvorova", "nodes")}, {details.get("edges", 0)} {L("veza", "edges")}, {details.get("blacklisted", 0)} {L("na crnoj listi", "blacklisted")}'
 
