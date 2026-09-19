@@ -762,5 +762,20 @@
       "evidence_scope": "combined"
     },
     "registered_at": "2026-09-17T23:17:48.728872+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ERQB-9A92",
+    "content_hash": "5b01140af69a82d08b38e3d805361acfb56f0dbffdf55c8a420f658046bec533",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_clusters": 1,
+      "addresses_flagged": 3,
+      "highest_risk_score": 61,
+      "custody_findings_recorded": 8
+    },
+    "registered_at": "2026-09-19T12:44:37.881891+00:00"
   }
 ]

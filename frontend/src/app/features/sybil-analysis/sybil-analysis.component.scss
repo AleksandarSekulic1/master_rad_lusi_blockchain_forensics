@@ -196,6 +196,55 @@
   flex: 1 1 12rem;
 }
 
+.sb-advanced-toggle {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0.2rem 0;
+  color: var(--sb-kicker);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.sb-advanced-toggle:hover {
+  text-decoration: underline;
+}
+
+.sb-input-with-clear {
+  position: relative;
+  display: flex;
+}
+
+.sb-input-with-clear input {
+  width: 100%;
+  padding-right: 1.9rem;
+}
+
+.sb-clear-button {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  width: 1.3rem;
+  height: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: var(--sb-chip-bg);
+  color: var(--sb-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sb-clear-button:hover {
+  background: var(--sb-btn-hover-bg);
+  color: var(--sb-heading);
+}
+
 .analyze-row {
   display: flex;
   flex-wrap: wrap;

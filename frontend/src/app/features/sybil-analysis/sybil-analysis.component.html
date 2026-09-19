@@ -37,6 +37,22 @@
 
   <div class="sb-params">
     <div class="sb-params-row">
+      <label class="sb-field sb-field-narrow">
+        {{ t('Vremenski prozor (s)', 'Time window (s)') }}
+        <input type="number" [(ngModel)]="timeWindowSeconds" min="10" max="3600" [disabled]="!activeCase" />
+      </label>
+      <label class="sb-field sb-field-narrow">
+        {{ t('Min. broj adresa', 'Min. addresses') }}
+        <input type="number" [(ngModel)]="minAddresses" min="2" max="50" [disabled]="!activeCase" />
+      </label>
+    </div>
+
+    <button type="button" class="sb-advanced-toggle" (click)="showAdvancedFilters = !showAdvancedFilters">
+      {{ showAdvancedFilters ? '▾' : '▸' }}
+      {{ t('Napredni filteri (opciono) — ograniči na jednu adresu ili kontrakt', 'Advanced filters (optional) — narrow to one address or contract') }}
+    </button>
+
+    <div class="sb-params-row" *ngIf="showAdvancedFilters">
       <label class="sb-field">
         {{ t('Adresa (opciono)', 'Address (optional)') }}
         <span class="sb-input-with-clear">
@@ -86,14 +102,6 @@
         <datalist id="sb-contract-datalist">
           <option *ngFor="let addr of caseContracts" [value]="addr"></option>
         </datalist>
-      </label>
-      <label class="sb-field sb-field-narrow">
-        {{ t('Vremenski prozor (s)', 'Time window (s)') }}
-        <input type="number" [(ngModel)]="timeWindowSeconds" min="10" max="3600" [disabled]="!activeCase" />
-      </label>
-      <label class="sb-field sb-field-narrow">
-        {{ t('Min. broj adresa', 'Min. addresses') }}
-        <input type="number" [(ngModel)]="minAddresses" min="2" max="50" [disabled]="!activeCase" />
       </label>
     </div>
 
@@ -210,7 +218,7 @@
 
       <div class="sb-details" *ngIf="isExpanded(cluster.cluster_id)">
         <ul class="sb-reasons">
-          <li *ngFor="let reason of cluster.reasons">{{ reason }}</li>
+          <li *ngFor="let reason of clusterReasons(cluster)">{{ reason }}</li>
         </ul>
 
         <table class="sb-tx-table">
@@ -335,7 +343,7 @@
       </div>
     </div>
 
-    <p class="sb-disclaimer">{{ result.disclaimer }}</p>
+    <p class="sb-disclaimer">{{ disclaimerText }}</p>
 
     <!-- Kratak, automatski generisan forenzički zaključak - sastavljen isključivo od
          brojeva/polja iz rezultata iznad (stvarno pronađeni dokazi), na samom kraju

@@ -101,6 +101,10 @@ export class SybilAnalysisComponent implements OnInit {
   protected contractFilter = '';
   protected timeWindowSeconds = 300;
   protected minAddresses = 3;
+  /** Adresa/Kontrakt su opcioni napredni filteri, ne obavezni za pokretanje analize -
+   * sakriveni iza ovog toggle-a po podrazumevanom, da osnovni tok (samo ANALIZIRAJ) ne bude
+   * pretrpan dvema retko korišćenim poljima. */
+  protected showAdvancedFilters = false;
 
   // --- Case address pick-list (see behavioral-analysis/dex-swap-analysis.component.ts's
   // own loadCaseAddresses for the original pattern) - lets the analyst pick an address seen
@@ -335,6 +339,103 @@ export class SybilAnalysisComponent implements OnInit {
       default:
         return this.t('Nema', 'None');
     }
+  }
+
+  /** The backend's `disclaimer`/`reasons[]` text is generated Serbian-only (see
+   * sybil_analysis.py - it has no English variant), so displaying it verbatim would leave
+   * this text stuck in Serbian even when the app's language toggle is set to English. This
+   * getter recomposes the SAME disclaimer wording bilingually on the client instead of
+   * reading `result.disclaimer` directly - keep this in sync with detect_sybil_clusters'
+   * own disclaimer string if that one ever changes. */
+  protected get disclaimerText(): string {
+    return this.t(
+      'Sybil & Bot Network Analysis je heuristika zasnovana isključivo na vremenskoj sinhronizaciji i '
+        + 'zajedničkom kontraktu/funkciji poziva - NIKADA ne predstavlja dokaz da navedene adrese pripadaju '
+        + 'istoj osobi ili entitetu. Legitimni, nekoordinisani skupovi korisnika (npr. javna prodaja, popularan '
+        + 'airdrop, viralna kampanja) mogu proizvesti isti obrazac. Svaki nalaz zahteva dodatnu, nezavisnu '
+        + 'istražnu proveru pre bilo kakvog zaključka o vlasništvu.',
+      'Sybil & Bot Network Analysis is a heuristic based solely on time synchronization and a shared contract/'
+        + 'function call - it NEVER constitutes proof that the listed addresses belong to the same person or '
+        + 'entity. Legitimate, uncoordinated groups of users (e.g. a public sale, a popular airdrop, a viral '
+        + 'campaign) can produce the same pattern. Every finding requires additional, independent investigative '
+        + 'verification before any conclusion about ownership.',
+    );
+  }
+
+  /** Same reasoning as disclaimerText above: `cluster.reasons` is Serbian-only backend
+   * text, so it is rebuilt bilingually on the client from the cluster's own structured
+   * fields instead of shown verbatim. This mirrors sybil_analysis.py's `_score_cluster`
+   * EXACTLY (same components, same point values, same order) - keep the two in sync if the
+   * scoring formula ever changes. `translate` is injected so the PDF builder (which uses
+   * `lx()`, tied to the report's own language choice) and the on-screen list (which uses
+   * `t()`, tied to the app's language toggle) can both reuse this one implementation. */
+  private buildClusterReasons(cluster: SybilCluster, translate: (sr: string, en: string) => string): string[] {
+    if (!this.result) {
+      return cluster.reasons;
+    }
+    const timeWindowSeconds = this.result.time_window_seconds;
+    const reasons: string[] = [];
+
+    const addressComponent = Math.min(40, cluster.address_count * 6);
+    reasons.push(
+      translate(
+        `${cluster.address_count} različitih adresa pozvalo je ${cluster.contract_name} (${cluster.activity_count} `
+          + `aktivnosti) u periodu od ${cluster.window_duration_seconds}s (+${addressComponent}/40 za broj adresa).`,
+        `${cluster.address_count} different addresses called ${cluster.contract_name} (${cluster.activity_count} `
+          + `activities) within ${cluster.window_duration_seconds}s (+${addressComponent}/40 for address count).`,
+      ),
+    );
+
+    const densityRatio = timeWindowSeconds > 0 ? Math.max(0, 1 - cluster.avg_gap_seconds / timeWindowSeconds) : 1;
+    const densityComponent = Math.round(30 * densityRatio);
+    reasons.push(
+      translate(
+        `Prosečan razmak između uzastopnih aktivnosti: ${cluster.avg_gap_seconds}s od dozvoljenih `
+          + `${timeWindowSeconds}s (+${densityComponent}/30 za vremensku zbijenost).`,
+        `Average gap between consecutive activities: ${cluster.avg_gap_seconds}s out of the allowed `
+          + `${timeWindowSeconds}s (+${densityComponent}/30 for time density).`,
+      ),
+    );
+
+    if (cluster.function_name) {
+      reasons.push(
+        translate(
+          `Sve aktivnosti pozivaju istu deklarisanu funkciju: '${cluster.function_name}'.`,
+          `All activities call the same declared function: '${cluster.function_name}'.`,
+        ),
+      );
+    }
+
+    if (cluster.modal_amount_count >= 2) {
+      const amountComponent = cluster.identical_amount_ratio >= 0.5 ? 15 : 7;
+      reasons.push(
+        translate(
+          `${cluster.modal_amount_count}/${cluster.activity_count} transakcija koristi identičan iznos `
+            + `(${cluster.modal_amount}) - obrazac tipičan za skriptovano/automatizovano ponašanje `
+            + `(+${amountComponent}/15).`,
+          `${cluster.modal_amount_count}/${cluster.activity_count} transactions use an identical amount `
+            + `(${cluster.modal_amount}) - a pattern typical of scripted/automated behavior (+${amountComponent}/15).`,
+        ),
+      );
+    }
+
+    if (cluster.repeated_address_count > 0) {
+      const recurrenceComponent = cluster.repeated_address_count >= 2 ? 15 : 5;
+      reasons.push(
+        translate(
+          `${cluster.repeated_address_count} adresa iz ovog klastera se ponavlja u bar jednom drugom klasteru `
+            + `(+${recurrenceComponent}/15 za ponavljanje kohorte).`,
+          `${cluster.repeated_address_count} address(es) from this cluster recur in at least one other cluster `
+            + `(+${recurrenceComponent}/15 for cohort recurrence).`,
+        ),
+      );
+    }
+
+    return reasons;
+  }
+
+  protected clusterReasons(cluster: SybilCluster): string[] {
+    return this.buildClusterReasons(cluster, (sr, en) => this.t(sr, en));
   }
 
   // --- Forenzički pregled: za izabrani klaster, automatski unakrsno pozovi POSTOJEĆE
@@ -974,12 +1075,13 @@ export class SybilAnalysisComponent implements OnInit {
       // Heuristicki zakljucak - eksplicitno odvojen naslov i boja od "Kljucnih dokaza"
       // iznad, ista disciplina kao backend-ov sybil_evidence (blockchain_facts vs.
       // heuristic_conclusions - vidi SYBIL-ANALIZA.md #9.1).
-      ensureSpace(20 + cluster.reasons.length * 4.4);
+      const pdfReasons = this.buildClusterReasons(cluster, (sr, en) => this.lx(sr, en));
+      ensureSpace(20 + pdfReasons.length * 4.4);
       sectionTitle(L('Heuristicki zakljucak ovog klastera', "This cluster's heuristic conclusion"));
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_DARK);
-      for (const reason of cluster.reasons) {
+      for (const reason of pdfReasons) {
         const lines: string[] = doc.splitTextToSize(this.asciiSafe(reason), usableWidth - 6);
         ensureSpace(lines.length * 4.2 + 2);
         doc.setFillColor(...ACCENT);
