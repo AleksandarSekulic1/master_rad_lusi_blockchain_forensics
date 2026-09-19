@@ -123,8 +123,12 @@ istu ocenu.
 `SYBIL-ANALYSIS-IMPLEMENTATION.md`.)*
 
 **Otvori:** stranica **Sybil & Bot mreže** → „Prikaz transakcija" → izaberi
-`demo_sybil_analysis.csv`. Ostavi podrazumevane parametre i klikni **ANALIZIRAJ** →
-razlog pristupa + potpis.
+`demo_sybil_analysis.csv` (ne kombinovano — vidi `14. SYBIL-ANALIZA.md` §2/§7 zašto).
+Klikni **ANALIZIRAJ** → razlog pristupa + potpis.
+
+Prvo (potpisano) ANALIZIRAJ uvek skenira sa najširim mogućim parametrima (min. 2 adrese,
+prozor 3600s) — polja u „Napredna podešavanja" posle toga samo sužavaju prikaz, uživo,
+bez novog potpisa (šta tačno znače ta polja — vidi `14. SYBIL-ANALIZA.md` §10).
 
 **Vidiš:** tačno **2 klastera**:
 
@@ -133,21 +137,22 @@ razlog pristupa + potpis.
 | **SYBIL-1** | `0xAirdropClaimContract` / `claimAirdrop` | `0xBotWallet1..5` | **88, critical** |
 | **SYBIL-2** | `0xMintContract` / `mint` | `0xBotWallet1-3` | **76, high** |
 
-**Probaj i (opciono, svaki put nov potpis):**
+**Probaj i (opciono, menja se uživo — bez novog potpisa):**
 
 **A) Prag:**
-1. Min. broj adresa → **2**.
-2. ANALIZIRAJ → treći klaster: `0xRegularUserA`/`0xRegularUserB`.
+1. Min. broj adresa → **3**.
+2. Dobijaš isti prikaz kao u tabeli (2 klastera) — `0xRegularUserA`/`0xRegularUserB` ne
+   zadovoljavaju ovaj prag pa nestaju iz prikaza.
 
 **B) Filter po adresi:**
-1. Min. broj adresa → vrati na 3.
-2. Adresa → `0xBotWallet1`.
-3. ANALIZIRAJ → oba klastera.
+1. Adresa → `0xBotWallet1`.
+2. Prikaz se odmah osveži → oba klastera (SYBIL-1 i SYBIL-2), jer ta adresa učestvuje u
+   oba.
 
 **C) Filter po kontraktu:**
 1. Adresa → prazno (dugme × pored polja).
 2. Kontrakt → `0xMintContract`.
-3. ANALIZIRAJ → samo jedan klaster.
+3. Prikaz se odmah osveži → samo jedan klaster.
 
 **Lanac dokaza:** posle potpisanog ANALIZIRAJ, u **Lanac dokaza** → „Po transakciji" —
 bedž **👥 SYBIL** i poseban panel (Blockchain činjenice / Heuristički zaključci).

@@ -1156,16 +1156,20 @@ export class SybilAnalysisComponent implements OnInit {
     doc.text(`${L('Slucaj', 'Case')}: ${this.asciiSafe(caseSummary.name)}`, titleX, 19);
     doc.setTextColor(...TEXT_DARK);
 
+    // Column x-position for the value is computed from the LABEL's own rendered width
+    // (not a fixed 42mm guess) - a fixed offset overlapped the value whenever a label was
+    // longer than that guess ("ADRESA/KONTRAKT FILTER" in particular), in both languages.
     const kv = (label: string, value: string): void => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(...TEXT_GRAY);
       doc.text(label, marginX, y);
+      const valueX = marginX + Math.max(42, doc.getTextWidth(label) + 6);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...TEXT_DARK);
-      const lines: string[] = doc.splitTextToSize(value || 'n/a', usableWidth - 42);
-      doc.text(lines, marginX + 42, y);
+      const lines: string[] = doc.splitTextToSize(value || 'n/a', usableWidth - (valueX - marginX));
+      doc.text(lines, valueX, y);
       y += Math.max(6, lines.length * 5);
     };
 
@@ -1175,7 +1179,8 @@ export class SybilAnalysisComponent implements OnInit {
       L('EVIDENCIJA', 'EVIDENCE'),
       this.selectedEvidence ? this.asciiSafe(this.selectedEvidence) : L('Sve transakcije (kombinovano)', 'All transactions (combined)'),
     );
-    kv(L('ADRESA/KONTRAKT FILTER', 'ADDRESS/CONTRACT FILTER'), `${result.target_address ?? L('sve', 'all')} / ${result.contract ?? L('svi', 'all')}`);
+    kv(L('ADRESA', 'ADDRESS'), result.target_address ?? L('sve adrese', 'all addresses'));
+    kv(L('KONTRAKT', 'CONTRACT'), result.contract ?? L('svi kontrakti', 'all contracts'));
     kv(
       L('PARAMETRI', 'PARAMETERS'),
       L(
