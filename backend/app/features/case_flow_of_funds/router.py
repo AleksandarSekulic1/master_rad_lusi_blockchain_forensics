@@ -44,11 +44,14 @@ def get_case_flow_of_funds(
     max_levels: int = Query(default=DEFAULT_LEVELS, ge=MIN_LEVELS, le=MAX_LEVELS),
     min_amount: float = Query(default=0.0, ge=0.0),
     max_flows: int = Query(default=DEFAULT_MAX_FLOWS, ge=MIN_MAX_FLOWS, le=MAX_MAX_FLOWS),
+    start_time: str | None = Query(default=None),
+    end_time: str | None = Query(default=None),
     evidence: str | None = None,
 ) -> dict[str, object]:
     """Read-only: only re-reads already-cleaned evidence, no new custody dialog, no audit
     log entry. `source` may be repeated (`?source=0xA&source=0xB`) to trace from several
-    seed addresses at once.
+    seed addresses at once. `start_time`/`end_time` (ISO date/datetime, either optional)
+    scope the trace to a time window - see trace_flow_of_funds.
     """
     if not source:
         raise HTTPException(status_code=400, detail='Polje "source" je obavezno (bar jedna adresa).')
@@ -67,6 +70,8 @@ def get_case_flow_of_funds(
             max_levels=max_levels,
             min_amount=min_amount,
             max_flows=max_flows,
+            start_time=start_time,
+            end_time=end_time,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -109,6 +114,8 @@ def run_case_flow_of_funds(
             max_levels=request.max_levels,
             min_amount=request.min_amount,
             max_flows=request.max_flows,
+            start_time=request.start_time,
+            end_time=request.end_time,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

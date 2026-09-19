@@ -74,6 +74,12 @@ export const appRoutes: Routes = [
 			import('./features/sybil-analysis/sybil-analysis.component').then((module) => module.SybilAnalysisComponent),
 	},
 	{
+		path: 'flow-of-funds',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/flow-of-funds/flow-of-funds.component').then((module) => module.FlowOfFundsComponent),
+	},
+	{
 		path: 'verify-report',
 		canActivate: [authGuard],
 		loadComponent: () =>

@@ -1,0 +1,266 @@
+<div class="ff-shell">
+  <div class="ff-controls">
+    <div class="ff-bar">
+      <div class="ff-case" *ngIf="activeCase; else noCase">
+        <span class="ff-eyebrow">{{ t('Aktivan slučaj', 'Active case') }}</span>
+        <strong>{{ activeCase.name }}</strong>
+      </div>
+      <ng-template #noCase>
+        <span class="ff-nocase">
+          {{ t('Nije izabran slučaj —', 'No case selected —') }}
+          <a routerLink="/cases">{{ t('izaberi na stranici Slučajevi', 'pick one on the Cases page') }}</a>
+        </span>
+      </ng-template>
+
+      <label class="ff-field" *ngIf="activeCase && evidenceOptions.length > 0">
+        <span class="ff-field-label">{{ t('Prikaz transakcija', 'Transaction view') }}</span>
+        <select [ngModel]="selectedEvidence ?? ''" (ngModelChange)="onEvidenceSelected($event)">
+          <option value="">{{ t('Sve transakcije (kombinovano)', 'All transactions (combined)') }}</option>
+          <option *ngFor="let entry of evidenceOptions" [value]="entry.stored_name">
+            {{ entry.file_name }} — {{ entry.imported_at | date : 'short' }}
+          </option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="ff-header">
+    <p class="panel-kicker">{{ t('Tok sredstava / Layering analiza', 'Flow of Funds / Layering Analysis') }}</p>
+    <h2>{{ t('Kako se sredstva raslojavaju od polazne adrese?', 'How do funds layer outward from a source address?') }}</h2>
+    <p>
+      {{ t('Prati novac kroz više nivoa transakcija i prikazuje AGREGIRANE tokove — između adresa, poznatih entiteta ili kategorija — kao Sankey dijagram. Nijedan prikazani tok nije izmišljen: svaki se može vratiti do konkretnih transakcija i njihovih hash-eva.',
+            'Traces money through several transaction levels and shows AGGREGATED flows — between addresses, known entities or categories — as a Sankey diagram. No flow shown here is invented: every one can be traced back to concrete transactions and their hashes.') }}
+    </p>
+  </div>
+
+  <ng-container *ngIf="activeCase">
+    <section class="ff-search">
+      <p class="panel-kicker">{{ t('Parametri praćenja', 'Trace parameters') }}</p>
+
+      <div class="ff-search-grid">
+        <div class="ff-seed-block">
+          <span class="ff-field-label">{{ t('Polazne adrese', 'Source addresses') }}</span>
+          <div class="ff-seed-input">
+            <input
+              type="text"
+              list="ff-address-list"
+              [(ngModel)]="manualSeedInput"
+              (keydown.enter)="addManualSeed()"
+              [placeholder]="t('Unesi adresu (0x... ili bc1...)', 'Enter an address (0x... or bc1...)')"
+            />
+            <datalist id="ff-address-list">
+              <option *ngFor="let address of caseAddresses" [value]="address"></option>
+            </datalist>
+            <button type="button" class="ghost-button" (click)="addManualSeed()">{{ t('Dodaj', 'Add') }}</button>
+          </div>
+          <div class="ff-seed-chips" *ngIf="seedAddresses.length > 0">
+            <span class="ff-seed-chip" *ngFor="let address of seedAddresses">
+              <span class="mono-address">{{ address }}</span>
+              <button type="button" (click)="removeSeed(address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
+            </span>
+          </div>
+          <p class="ff-hint" *ngIf="seedAddresses.length === 0">
+            {{ t('Dodaj bar jednu adresu da bi se pretraga pokrenula.', 'Add at least one address to enable the trace.') }}
+          </p>
+        </div>
+
+        <label class="ff-field">
+          <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
+          <div class="ff-toggle-group">
+            <button type="button" [class.active]="direction === 'forward'" (click)="direction = 'forward'">
+              {{ t('Unapred (kuda su otišla)', 'Forward (where it went)') }}
+            </button>
+            <button type="button" [class.active]="direction === 'backward'" (click)="direction = 'backward'">
+              {{ t('Unazad (odakle su stigla)', 'Backward (where it came from)') }}
+            </button>
+          </div>
+        </label>
+
+        <label class="ff-field ff-field-narrow">
+          <span class="ff-field-label">{{ t('Broj nivoa (skokova)', 'Levels (hops)') }}</span>
+          <input type="number" [min]="minLevels" [max]="maxLevelsCap" [(ngModel)]="maxLevels" />
+        </label>
+
+        <label class="ff-field ff-field-narrow">
+          <span class="ff-field-label">{{ t('Min. iznos po toku', 'Min. amount per flow') }}</span>
+          <input type="number" min="0" step="any" [(ngModel)]="minAmount" placeholder="0" />
+        </label>
+
+        <div class="ff-field">
+          <span class="ff-field-label">{{ t('Vremenski period', 'Time period') }}</span>
+          <div class="ff-toggle-group">
+            <button type="button" [class.active]="periodMode === 'all'" (click)="setPeriodMode('all')">
+              {{ t('Ceo period', 'Whole period') }}
+            </button>
+            <button type="button" [class.active]="periodMode === 'range'" (click)="setPeriodMode('range')">
+              {{ t('Od — do', 'From — to') }}
+            </button>
+          </div>
+          <div class="ff-date-row" *ngIf="periodMode === 'range'">
+            <input type="date" [(ngModel)]="startDate" />
+            <span class="ff-dash">—</span>
+            <input type="date" [(ngModel)]="endDate" />
+          </div>
+          <p class="ff-warning" *ngIf="isRangeInverted">
+            {{ t('Datum „od" je posle datuma „do".', 'The "from" date is after the "to" date.') }}
+          </p>
+        </div>
+      </div>
+
+      <div class="ff-run-row">
+        <button type="button" class="primary-button" [disabled]="!canRun" (click)="openCustodyDialog()">
+          {{ isRunning ? t('Praćenje u toku…', 'Tracing…') : t('POKRENI PRAĆENJE', 'RUN TRACE') }}
+        </button>
+        <p class="ff-error" *ngIf="runError">{{ runError }}</p>
+      </div>
+    </section>
+
+    <app-custody-access-dialog
+      *ngIf="isCustodyDialogOpen && activeCase"
+      [caseId]="activeCase.id"
+      [caseName]="activeCase.name"
+      [evidenceFileName]="selectedEvidenceFileName"
+      [isSubmitting]="isRunning"
+      [submitError]="custodyDialogError"
+      (confirmed)="confirmCustodyAndRun($event)"
+      (cancelled)="closeCustodyDialog()"
+    ></app-custody-access-dialog>
+
+    <section class="ff-results" *ngIf="result">
+      <div class="ff-summary">
+        <div class="ff-stat">
+          <span class="ff-stat-value">{{ result.flow_count }}</span>
+          <span class="ff-stat-label">{{ t('agregiranih tokova', 'aggregated flows') }}</span>
+        </div>
+        <div class="ff-stat">
+          <span class="ff-stat-value">{{ result.levels_reached }}</span>
+          <span class="ff-stat-label">{{ t('dostignutih nivoa', 'levels reached') }}</span>
+        </div>
+        <div class="ff-stat">
+          <span class="ff-stat-value">{{ result.source_addresses.length }}</span>
+          <span class="ff-stat-label">{{ t('polaznih adresa', 'source addresses') }}</span>
+        </div>
+        <p class="ff-truncated-warning" *ngIf="result.truncated">
+          {{ t('Rezultat je skraćen (dostignut je limit broja tokova) — suzi period ili broj nivoa za potpuniju sliku.',
+                'The result was truncated (flow limit reached) — narrow the period or level count for the full picture.') }}
+        </p>
+      </div>
+
+      <div class="ff-view-controls">
+        <div class="ff-field">
+          <span class="ff-field-label">{{ t('Nivo prikaza', 'Aggregation level') }}</span>
+          <div class="ff-toggle-group">
+            <button type="button" [class.active]="aggregationLevel === 'address'" (click)="setAggregationLevel('address')">
+              {{ t('Adrese', 'Addresses') }}
+            </button>
+            <button type="button" [class.active]="aggregationLevel === 'entity'" (click)="setAggregationLevel('entity')">
+              {{ t('Entiteti', 'Entities') }}
+            </button>
+            <button type="button" [class.active]="aggregationLevel === 'category'" (click)="setAggregationLevel('category')">
+              {{ t('Kategorije', 'Categories') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="ff-field" *ngIf="availableAssets.length > 1">
+          <span class="ff-field-label">{{ t('Blockchain / imovina', 'Blockchain / asset') }}</span>
+          <div class="ff-toggle-group">
+            <button type="button" [class.active]="assetFilter === null" (click)="setAssetFilter(null)">
+              {{ t('Sve', 'All') }}
+            </button>
+            <button type="button" *ngFor="let asset of availableAssets" [class.active]="assetFilter === asset" (click)="setAssetFilter(asset)">
+              {{ assetLabel(asset) }}
+            </button>
+          </div>
+        </div>
+
+        <div class="ff-field">
+          <span class="ff-field-label">{{ t('Jedinica prikaza', 'Display unit') }}</span>
+          <div class="ff-toggle-group">
+            <button type="button" [class.active]="unitMode === 'native'" (click)="unitMode = 'native'">
+              {{ t('Izvorna valuta (ETH/BTC)', 'Native (ETH/BTC)') }}
+            </button>
+            <button
+              type="button"
+              class="ff-toggle-disabled"
+              [class.active]="unitMode === 'usd'"
+              disabled
+              [title]="t('Istorijska cena nije dostupna u ovoj verziji aplikacije.', 'Historical price data is not available in this version of the app.')"
+            >
+              USD
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ff-diagram-layout">
+        <app-sankey-diagram
+          [nodes]="sankeyNodes"
+          [links]="sankeyLinks"
+          [emptyMessage]="t('Nema tokova za izabrane filtere.', 'No flows for the selected filters.')"
+          (linkSelected)="onFlowSelected($event)"
+        ></app-sankey-diagram>
+
+        <aside class="ff-flow-detail" *ngIf="selectedFlow as flow">
+          <div class="ff-flow-detail-head">
+            <p class="panel-kicker">{{ t('Detalji toka', 'Flow details') }}</p>
+            <button type="button" class="ff-close" (click)="closeFlowDetail()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+          </div>
+
+          <div class="ff-flow-route">
+            <span class="mono-address">{{ flow.source_label }}</span>
+            <span class="ff-arrow">→</span>
+            <span class="mono-address">{{ flow.target_label }}</span>
+          </div>
+
+          <div class="ff-flow-meta">
+            <span>{{ t('Nivo', 'Level') }}: <strong>{{ flow.level }}</strong></span>
+            <span>{{ t('Imovina', 'Asset') }}: <strong>{{ assetLabel(flow.asset) }}</strong></span>
+            <span>{{ t('Ukupno', 'Total') }}: <strong>{{ formatAmount(flow.amount) }} {{ assetLabel(flow.asset) }}</strong></span>
+            <span>{{ t('Broj transakcija', 'Transaction count') }}: <strong>{{ flow.transaction_count }}</strong></span>
+          </div>
+
+          <p class="ff-multi-output-badge" *ngIf="flow.multi_output_same_tx">
+            {{ t('Sadrži transakciju sa više izlaza (UTXO) — jedan tx istovremeno plaća više primalaca.',
+                  'Contains a multi-output (UTXO) transaction — one tx pays several recipients at once.') }}
+          </p>
+
+          <div class="ff-contributing" *ngIf="flow.contributing_addresses as contrib">
+            <span class="ff-field-label">{{ t('Adrese uključene u ovaj agregat', 'Addresses folded into this aggregate') }}</span>
+            <p class="ff-contributing-row" *ngIf="contrib.source.length > 1 || contrib.source[0] !== flow.source">
+              {{ t('Izvor:', 'Source:') }} <span class="mono-address" *ngFor="let addr of contrib.source">{{ addr }}</span>
+            </p>
+            <p class="ff-contributing-row" *ngIf="contrib.target.length > 1 || contrib.target[0] !== flow.target">
+              {{ t('Odredište:', 'Target:') }} <span class="mono-address" *ngFor="let addr of contrib.target">{{ addr }}</span>
+            </p>
+          </div>
+
+          <span class="ff-field-label ff-tx-label">
+            {{ t('Konkretne transakcije iza ovog toka', 'Concrete transactions behind this flow') }}
+            ({{ flow.transactions.length }})
+          </span>
+          <ul class="ff-tx-list">
+            <li *ngFor="let tx of flow.transactions">
+              <div class="ff-tx-row-top">
+                <span class="ff-tx-amount">{{ formatAmount(tx.amount) }} {{ assetLabel(flow.asset) }}</span>
+                <span class="ff-tx-time" *ngIf="tx.timestamp">{{ tx.timestamp | date : 'yyyy-MM-dd HH:mm' : 'UTC' }} UTC</span>
+              </div>
+              <p class="ff-tx-hash mono-address" *ngIf="tx.tx_hash">{{ tx.tx_hash }}</p>
+              <p class="ff-tx-hash ff-tx-no-hash" *ngIf="!tx.tx_hash">{{ t('bez tx hash-a u evidenciji', 'no tx hash in evidence') }}</p>
+              <p class="ff-tx-pair" *ngIf="aggregationLevel !== 'address'">
+                <span class="mono-address">{{ tx.sender_address }}</span>
+                <span class="ff-arrow">→</span>
+                <span class="mono-address">{{ tx.recipient_address }}</span>
+              </p>
+            </li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <p class="ff-hint" *ngIf="!result && !isRunning">
+      {{ t('Unesi bar jednu polaznu adresu i pokreni praćenje da bi se prikazao Sankey dijagram.',
+            'Enter at least one source address and run the trace to see the Sankey diagram.') }}
+    </p>
+  </ng-container>
+</div>

@@ -128,9 +128,37 @@ def _index_rows_by_edge(dataframe: pd.DataFrame) -> dict[tuple[str, str], dict[s
             'amount': amount,
             'timestamp': timestamp,
             'tx_hash': tx_hash,
+            'sender_address': sender,
+            'recipient_address': recipient,
         })
 
     return index
+
+
+def _filter_by_period(dataframe: pd.DataFrame, start_time: str | None, end_time: str | None) -> pd.DataFrame:
+    """Restricts evidence rows to a caller-chosen time window BEFORE any graph/aggregation
+    step sees them, so a period-scoped trace only ever includes transactions that actually
+    happened in that window - filtering the already-aggregated flow records afterwards
+    would be wrong, since one flow's amount/tx_hashes can span transactions from outside the
+    window. `None` (either bound, or both) means unbounded on that side."""
+    if start_time is None and end_time is None:
+        return dataframe
+    if dataframe.empty or 'timestamp' not in dataframe.columns:
+        return dataframe
+
+    timestamps = pd.to_datetime(dataframe['timestamp'], utc=True, errors='coerce')
+    mask = pd.Series(True, index=dataframe.index)
+
+    if start_time:
+        start = pd.to_datetime(start_time, utc=True, errors='coerce')
+        if pd.notna(start):
+            mask &= timestamps >= start
+    if end_time:
+        end = pd.to_datetime(end_time, utc=True, errors='coerce')
+        if pd.notna(end):
+            mask &= timestamps <= end
+
+    return dataframe[mask].reset_index(drop=True)
 
 
 def _fan_out_tx_hashes(dataframe: pd.DataFrame) -> set[str]:
@@ -159,6 +187,26 @@ def _build_flow_record(
     tx_hashes = sorted({row['tx_hash'] for row in rows if row['tx_hash']})
     timestamps = sorted(row['timestamp'] for row in rows if row['timestamp'])
     total_amount = sum(row['amount'] for row in rows)
+    # The individual evidence rows behind this one aggregated flow, so a caller (e.g. a
+    # "show me the transactions behind this Sankey link" UI) never has to re-fetch or
+    # re-derive them - every aggregate stays traceable back to concrete rows without a
+    # second round trip. sender/recipient_address are carried per-transaction (not just
+    # implied by this record's own source/target) because _collapse_flows below reuses the
+    # same list at entity/category granularity, where several different address pairs merge
+    # into one flow record.
+    transactions = sorted(
+        (
+            {
+                'tx_hash': row['tx_hash'],
+                'amount': row['amount'],
+                'timestamp': row['timestamp'],
+                'sender_address': row['sender_address'],
+                'recipient_address': row['recipient_address'],
+            }
+            for row in rows
+        ),
+        key=lambda transaction: (transaction['timestamp'] or '', transaction['tx_hash'] or ''),
+    )
     # Row count vs. unique tx hash count on THIS edge - collapses repeat payments between
     # the same pair, distinct from (but related to) the fan-out flag below. Falls back to
     # the row count when no row carries a tx hash at all (nothing to tell rows apart by).
@@ -188,6 +236,7 @@ def _build_flow_record(
         'distinct_tx_count': distinct_tx_count,
         'multi_output_same_tx': multi_output_same_tx,
         'tx_hashes': tx_hashes,
+        'transactions': transactions,
         'first_seen': timestamps[0] if timestamps else None,
         'last_seen': timestamps[-1] if timestamps else None,
     }
@@ -255,6 +304,7 @@ def _collapse_flows(flows: list[dict[str, Any]], key_fn) -> list[dict[str, Any]]
                 'value': 0.0,
                 'transaction_count': 0,
                 'tx_hashes': set(),
+                'transactions': [],
                 'contributing_addresses': {'source': set(), 'target': set()},
                 'multi_output_same_tx': False,
                 'first_seen': None,
@@ -266,6 +316,7 @@ def _collapse_flows(flows: list[dict[str, Any]], key_fn) -> list[dict[str, Any]]
         entry['value'] += flow['amount']
         entry['transaction_count'] += flow['transaction_count']
         entry['tx_hashes'].update(flow['tx_hashes'])
+        entry['transactions'].extend(flow['transactions'])
         entry['multi_output_same_tx'] = entry['multi_output_same_tx'] or flow['multi_output_same_tx']
         entry['contributing_addresses']['source'].add(flow['source'])
         entry['contributing_addresses']['target'].add(flow['target'])
@@ -277,9 +328,11 @@ def _collapse_flows(flows: list[dict[str, Any]], key_fn) -> list[dict[str, Any]]
     result = []
     for entry in grouped.values():
         tx_hashes = sorted(entry['tx_hashes'])
+        transactions = sorted(entry['transactions'], key=lambda transaction: (transaction['timestamp'] or '', transaction['tx_hash'] or ''))
         result.append({
             **entry,
             'tx_hashes': tx_hashes,
+            'transactions': transactions,
             'distinct_tx_count': len(tx_hashes) if tx_hashes else entry['transaction_count'],
             'contributing_addresses': {
                 'source': sorted(entry['contributing_addresses']['source']),
@@ -312,6 +365,8 @@ def trace_flow_of_funds(
     max_levels: int = DEFAULT_LEVELS,
     min_amount: float = 0.0,
     max_flows: int = DEFAULT_MAX_FLOWS,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> dict[str, Any]:
     """Traces aggregated flows of funds outward from `source_addresses` (direction
     'forward', following the direction money actually moved - sender -> recipient) or
@@ -320,8 +375,15 @@ def trace_flow_of_funds(
 
     Every transaction between the same (source, target) pair, at the same BFS level and in
     the same asset, is aggregated into ONE flow record - never returned as individual
-    transactions - carrying the underlying tx hashes so the aggregate can always be traced
-    back to concrete evidence rows.
+    transactions - carrying the underlying transactions (and their tx hashes) so the
+    aggregate can always be traced back to concrete evidence rows.
+
+    `start_time`/`end_time` (ISO date or datetime strings, either or both optional) scope
+    the trace to a time window - applied to the evidence BEFORE aggregation (see
+    `_filter_by_period`), not as a post-hoc filter on the resulting flow records, so a
+    period-scoped result only ever reflects transactions that actually happened in that
+    window. A seed address that exists in the case but has no activity within the window is
+    not an error - it simply ends up with no outgoing flows (still listed in `nodes`).
 
     Deliberately mirrors the frontier/visited-set shape of
     app.analytics.path_finding.bfs_shortest_path/find_path_to_nearest_of (own copy, that
@@ -338,17 +400,22 @@ def trace_flow_of_funds(
     if not seeds:
         raise ValueError('At least one source address is required.')
 
-    graph = build_transaction_graph(dataframe)
-    missing = [address for address in seeds if address not in graph]
+    # Existence is checked against the FULL (unfiltered) evidence - an address the case has
+    # simply never seen is a real error, distinct from "this address exists, but not within
+    # the chosen period" (which is a legitimate, empty-ish result, not an error).
+    full_graph = build_transaction_graph(dataframe)
+    missing = [address for address in seeds if address not in full_graph]
     if missing:
         raise ValueError(f'Source address(es) not found in graph: {", ".join(missing)}')
 
-    edge_rows = _index_rows_by_edge(dataframe)
-    fan_out_tx_hashes = _fan_out_tx_hashes(dataframe)
+    period_frame = _filter_by_period(dataframe, start_time, end_time)
+    graph = build_transaction_graph(period_frame)
+    edge_rows = _index_rows_by_edge(period_frame)
+    fan_out_tx_hashes = _fan_out_tx_hashes(period_frame)
 
     seed_set = set(seeds)
     visited = set(seeds)
-    frontier = list(seeds)
+    frontier = [address for address in seeds if address in graph]
     flows: list[dict[str, Any]] = []
     truncated = False
     levels_reached = 0
@@ -397,6 +464,8 @@ def trace_flow_of_funds(
         'direction': direction,
         'max_levels': max_levels,
         'levels_reached': levels_reached,
+        'start_time': start_time,
+        'end_time': end_time,
         'flow_count': len(address_flows),
         'truncated': truncated,
         'nodes': nodes,

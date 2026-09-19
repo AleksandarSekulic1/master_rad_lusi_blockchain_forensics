@@ -22,4 +22,8 @@ class FlowOfFundsRunRequest(BaseModel):
     max_levels: int = Field(default=DEFAULT_LEVELS, ge=MIN_LEVELS, le=MAX_LEVELS)
     min_amount: float = Field(default=0.0, ge=0.0)
     max_flows: int = Field(default=DEFAULT_MAX_FLOWS, ge=MIN_MAX_FLOWS, le=MAX_MAX_FLOWS)
+    # Optional time window (ISO date/datetime), applied to evidence before aggregation - see
+    # app.analytics.flow_of_funds.trace_flow_of_funds. Either/both may be omitted.
+    start_time: str | None = None
+    end_time: str | None = None
     custody: TransactionCustodyEntry | None = None

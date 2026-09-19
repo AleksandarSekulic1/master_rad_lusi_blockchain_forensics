@@ -173,6 +173,64 @@ class TestTraceFlowOfFunds:
         assert result['truncated'] is False
         assert result['flow_count'] == 2
 
+    def test_flow_carries_underlying_transactions_traceable_to_evidence(self):
+        """Svaki agregirani tok nosi listu pojedinačnih transakcija (ne samo hash)"""
+        frame = frame_from_rows([
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 40, 'timestamp': '2026-01-01T00:00:00Z', 'metadata': '0xtx1'},
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 60, 'timestamp': '2026-01-01T00:05:00Z', 'metadata': '0xtx2'},
+        ])
+
+        result = trace_flow_of_funds(frame, source_addresses=['0xA'])
+
+        transactions = result['address_flows'][0]['transactions']
+        assert len(transactions) == 2
+        assert transactions[0]['tx_hash'] == '0xtx1'
+        assert transactions[0]['amount'] == 40
+        assert transactions[0]['sender_address'] == '0xA'
+        assert transactions[0]['recipient_address'] == '0xB'
+
+
+class TestTimePeriodFilter:
+    """Filtriranje po vremenskom periodu (start_time/end_time)"""
+
+    def test_only_transactions_within_period_are_included(self):
+        """Transakcije van izabranog perioda se ne uračunavaju u agregirani iznos"""
+        frame = frame_from_rows([
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 100, 'timestamp': '2026-01-01T00:00:00Z'},
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 500, 'timestamp': '2026-06-01T00:00:00Z'},
+        ])
+
+        result = trace_flow_of_funds(
+            frame, source_addresses=['0xA'], start_time='2026-01-01T00:00:00Z', end_time='2026-01-31T23:59:59Z',
+        )
+
+        assert result['flow_count'] == 1
+        assert result['address_flows'][0]['amount'] == 100
+
+    def test_seed_with_no_activity_in_period_returns_empty_not_error(self):
+        """Adresa koja postoji u slučaju, ali nema aktivnosti u periodu, ne baca grešku"""
+        frame = frame_from_rows([
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 100, 'timestamp': '2026-06-01T00:00:00Z'},
+        ])
+
+        result = trace_flow_of_funds(
+            frame, source_addresses=['0xA'], start_time='2026-01-01T00:00:00Z', end_time='2026-01-31T23:59:59Z',
+        )
+
+        assert result['flow_count'] == 0
+        assert any(node['id'] == '0xA' for node in result['nodes'])
+
+    def test_no_period_given_includes_everything(self):
+        """Bez start_time/end_time, ponašanje je nepromenjeno (sve transakcije uključene)"""
+        frame = frame_from_rows([
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 100, 'timestamp': '2026-01-01T00:00:00Z'},
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 500, 'timestamp': '2026-06-01T00:00:00Z'},
+        ])
+
+        result = trace_flow_of_funds(frame, source_addresses=['0xA'])
+
+        assert result['address_flows'][0]['amount'] == 600
+
 
 class TestCurrencyAndAssetSafety:
     """Ethereum vs Bitcoin - bezbednost jedinica (valuta)"""

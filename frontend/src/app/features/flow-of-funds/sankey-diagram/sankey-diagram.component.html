@@ -1,0 +1,70 @@
+<div class="sankey-wrap">
+  <div class="sankey-toolbar">
+    <button type="button" class="sankey-tool" (click)="zoomOut()" title="Zoom out" aria-label="Zoom out">−</button>
+    <button type="button" class="sankey-tool" (click)="resetView()" title="Reset view" aria-label="Reset view">{{ (transform.k * 100).toFixed(0) }}%</button>
+    <button type="button" class="sankey-tool" (click)="zoomIn()" title="Zoom in" aria-label="Zoom in">+</button>
+  </div>
+
+  <div class="sankey-canvas" *ngIf="layoutNodes.length > 0; else emptyState">
+    <svg
+      #svgRoot
+      [attr.viewBox]="'0 0 ' + width + ' ' + height"
+      preserveAspectRatio="xMidYMid meet"
+      (wheel)="onWheel($event)"
+      (pointerdown)="onPointerDown($event)"
+      (pointermove)="onPointerMove($event)"
+      (pointerup)="onPointerUp($event)"
+      (pointerleave)="onPointerUp($event)"
+    >
+      <g [attr.transform]="transformAttr">
+        <g class="sankey-links">
+          <path
+            *ngFor="let link of layoutLinks; trackBy: trackLink"
+            class="sankey-link"
+            [class]="'asset-' + assetClass(link.asset)"
+            [class.selected]="selectedLinkId === link.linkId"
+            [class.dimmed]="selectedLinkId && selectedLinkId !== link.linkId"
+            [attr.d]="linkPath(link)"
+            [attr.stroke-width]="Math.max(1.5, link.width ?? 1.5)"
+            (click)="onLinkClick(link)"
+            (mouseenter)="onLinkEnter($event, link)"
+            (mousemove)="onLinkMove($event, link)"
+            (mouseleave)="onLinkLeave()"
+          ></path>
+        </g>
+
+        <g class="sankey-nodes">
+          <g
+            *ngFor="let node of layoutNodes; trackBy: trackNode"
+            class="sankey-node"
+            [class.seed]="node.isSeed"
+            [attr.transform]="'translate(' + node.x0 + ',' + node.y0 + ')'"
+            (mouseenter)="hoveredNodeId = node.id"
+            (mouseleave)="hoveredNodeId = null"
+          >
+            <rect
+              [attr.width]="(node.x1 ?? 0) - (node.x0 ?? 0)"
+              [attr.height]="Math.max(2, (node.y1 ?? 0) - (node.y0 ?? 0))"
+              rx="2"
+            ></rect>
+            <text
+              [attr.x]="((node.x1 ?? 0) - (node.x0 ?? 0)) / 2"
+              [attr.y]="((node.y1 ?? 0) - (node.y0 ?? 0)) / 2 - 8"
+              text-anchor="middle"
+            >
+              {{ node.label.length > 18 ? node.label.slice(0, 8) + '…' + node.label.slice(-6) : node.label }}
+            </text>
+          </g>
+        </g>
+      </g>
+    </svg>
+
+    <div class="sankey-tooltip" *ngIf="tooltip" [style.left.px]="tooltip.x + 14" [style.top.px]="tooltip.y + 14">
+      <span *ngFor="let line of tooltip.lines">{{ line }}</span>
+    </div>
+  </div>
+
+  <ng-template #emptyState>
+    <p class="sankey-empty">{{ emptyMessage }}</p>
+  </ng-template>
+</div>
