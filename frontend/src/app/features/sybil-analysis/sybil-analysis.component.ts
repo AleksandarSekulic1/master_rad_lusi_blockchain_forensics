@@ -844,17 +844,22 @@ export class SybilAnalysisComponent implements OnInit {
 
   // --- Kratak, automatski generisan forenzički zaključak - sastavljen ISKLJUČIVO od
   // brojeva/polja iz `result` (stvarno pronađeni dokazi), nikad od pretpostavki van njih -
-  // isti duh kao dex-swap-analysis.component.ts's buildConclusionParagraph, ovde prikazan
-  // direktno na stranici (ne u PDF-u), pošto Sybil Analiza (za sada) nema PDF izveštaj. ---
+  // isti duh kao dex-swap-analysis.component.ts's buildConclusionParagraph. Prikazuje se
+  // SAMO u PDF izveštaju (ne na ekranu - vidi .component.html). `translate` je injektovan
+  // (ista disciplina kao buildClusterReasons) da PDF builder (koji koristi `lx()`, vezano
+  // za JEZIK IZVEŠTAJA analitičar bira na dijalogu potpisa) i bilo koji drugi pozivalac
+  // (koji bi koristio `t()`, vezano za trenutni jezik APLIKACIJE) nikad ne izmešaju ta dva -
+  // upravo to mešanje je ranije ostavljalo ovaj pasus na jeziku aplikacije čak i kad je
+  // ostatak izveštaja izvezen na drugom jeziku. ---
 
-  protected get forensicConclusion(): string | null {
+  private buildForensicConclusion(translate: (sr: string, en: string) => string): string | null {
     const result = this.result;
     if (!result) {
       return null;
     }
 
     if (result.total_clusters === 0) {
-      return this.t(
+      return translate(
         `Analizom nije pronađen nijedan Sybil/bot klaster koji zadovoljava zadate parametre ` +
           `(min. ${result.min_addresses} adresa, vremenski prozor ${result.time_window_seconds}s). ` +
           `Ovaj zaključak je zasnovan isključivo na pronađenim dokazima u trenutnoj evidenciji.`,
@@ -868,14 +873,14 @@ export class SybilAnalysisComponent implements OnInit {
     const criticalOrHighCount = result.clusters.filter((c) => c.risk_level === 'critical' || c.risk_level === 'high').length;
 
     const sentences: string[] = [
-      this.t(
+      translate(
         `Analizom ${result.total_clusters === 1 ? 'je pronađen' : 'su pronađena'} ${result.total_clusters} ` +
           `${result.total_clusters === 1 ? 'klaster' : 'klastera'} sinhronizovane aktivnosti, koji ${result.total_clusters === 1 ? 'obuhvata' : 'obuhvataju'} ` +
           `ukupno ${result.addresses_flagged} označenih adresa.`,
         `The analysis found ${result.total_clusters} synchronized-activity ${result.total_clusters === 1 ? 'cluster' : 'clusters'}, ` +
           `covering a total of ${result.addresses_flagged} flagged addresses.`,
       ),
-      this.t(
+      translate(
         `Najizraženiji je klaster ${top.cluster_id} (${top.contract_name}${top.function_name ? ', funkcija "' + top.function_name + '"' : ''}) - ` +
           `${top.address_count} adresa, ${top.activity_count} aktivnosti u periodu od ${top.window_duration_seconds}s, sa risk skorom ${top.risk_score}/100 (${this.riskLabel(top.risk_level)}).`,
         `The most prominent is cluster ${top.cluster_id} (${top.contract_name}${top.function_name ? ', function "' + top.function_name + '"' : ''}) - ` +
@@ -885,7 +890,7 @@ export class SybilAnalysisComponent implements OnInit {
 
     if (criticalOrHighCount > 0) {
       sentences.push(
-        this.t(
+        translate(
           `${criticalOrHighCount} od ${result.total_clusters} klastera ${criticalOrHighCount === 1 ? 'ima' : 'ima'} visok ili kritičan risk nivo i zahteva prioritetnu dalju proveru.`,
           `${criticalOrHighCount} of ${result.total_clusters} clusters have a high or critical risk level and warrant priority follow-up.`,
         ),
@@ -894,7 +899,7 @@ export class SybilAnalysisComponent implements OnInit {
 
     if (result.custody_findings_recorded) {
       sentences.push(
-        this.t(
+        translate(
           `${result.custody_findings_recorded} transakcija iz cele evidencije je zabeleženo u lancu dokaza sa strukturiranim SYBIL_CLUSTER nalazom (vidi "Lanac dokaza").`,
           `${result.custody_findings_recorded} transactions across the whole evidence were recorded in the chain of custody with a structured SYBIL_CLUSTER finding (see "Chain of custody").`,
         ),
@@ -902,13 +907,21 @@ export class SybilAnalysisComponent implements OnInit {
     }
 
     sentences.push(
-      this.t(
+      translate(
         'Ovaj zaključak je automatski sastavljen isključivo od gore pronađenih dokaza i predstavlja heuristiku, ne dokaz zajedničkog vlasništva.',
         'This conclusion is automatically composed solely from the evidence found above and is a heuristic, not proof of common ownership.',
       ),
     );
 
     return sentences.join(' ');
+  }
+
+  /** Kept for any consumer that wants the app-language version (tied to `t()`/`settings
+   * .lang()`) - the PDF builder does NOT use this getter (it calls buildForensicConclusion
+   * with `lx()` directly instead), precisely so the report's own chosen language always
+   * wins over whatever the app's UI toggle happens to be set to at export time. */
+  protected get forensicConclusion(): string | null {
+    return this.buildForensicConclusion((sr, en) => this.t(sr, en));
   }
 
   // --- PDF izveštaj ------------------------------------------------------------------
@@ -919,7 +932,7 @@ export class SybilAnalysisComponent implements OnInit {
   // doslednosti sa ostalim izveštajima u aplikaciji. Izveštaj obuhvata: Sybil klaster(e),
   // ključne dokaze (blockchain činjenice po transakciji), rezultate Forenzičkog pregleda
   // (Graph/Taint/Pathfinding/DEX - kad je pokrenut za dati klaster), potvrdu upisa u lanac
-  // dokaza, i završni forenzički zaključak (isti tekst kao na ekranu, §9.2/§13).
+  // dokaza, i završni forenzički zaključak (PDF-only, ne prikazuje se na ekranu - §9.2/§13).
 
   private static readonly PDF_NAVY: [number, number, number] = [13, 24, 40];
   private static readonly PDF_ACCENT: [number, number, number] = [43, 130, 191];
@@ -1444,13 +1457,16 @@ export class SybilAnalysisComponent implements OnInit {
     doc.text(custodyLines, marginX, y);
     y += custodyLines.length * 4.6 + 4;
 
-    // --- Zavrsni forenzicki zakljucak (isti tekst kao na ekranu) -------------------------
+    // --- Zavrsni forenzicki zakljucak (PDF-only - vidi buildForensicConclusion) ----------
     ensureSpace(24);
     sectionTitle(L('Zavrsni forenzicki zakljucak', 'Final forensic conclusion'));
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(...TEXT_DARK);
-    const conclusionText = this.asciiSafe(this.forensicConclusion ?? '');
+    // NOT this.forensicConclusion - that getter is tied to the app's UI language toggle
+    // (t()); the report must follow the language the analyst picked on the signing modal
+    // (sybilPdfLang, via lx()) regardless of what the app's own toggle is set to.
+    const conclusionText = this.buildForensicConclusion((sr, en) => this.lx(sr, en)) ?? '';
     const conclusionLines = doc.splitTextToSize(conclusionText, usableWidth);
     ensureSpace(conclusionLines.length * 4.6);
     doc.text(conclusionLines, marginX, y);
