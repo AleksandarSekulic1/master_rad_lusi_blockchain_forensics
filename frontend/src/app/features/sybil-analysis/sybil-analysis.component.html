@@ -49,11 +49,27 @@
     <div class="sb-params-row" *ngIf="showAdvancedFilters">
       <label class="sb-field sb-field-narrow">
         {{ t('Vremenski prozor (s)', 'Time window (s)') }}
-        <input type="number" [(ngModel)]="timeWindowSeconds" (blur)="clampTimeWindow()" min="10" max="3600" [disabled]="!activeCase" />
+        <input
+          type="number"
+          [(ngModel)]="timeWindowSeconds"
+          (ngModelChange)="onFilterFieldChanged()"
+          (blur)="clampTimeWindow()"
+          min="10"
+          max="3600"
+          [disabled]="!activeCase"
+        />
       </label>
       <label class="sb-field sb-field-narrow">
         {{ t('Min. broj adresa', 'Min. addresses') }}
-        <input type="number" [(ngModel)]="minAddresses" (blur)="clampMinAddresses()" min="2" max="50" [disabled]="!activeCase" />
+        <input
+          type="number"
+          [(ngModel)]="minAddresses"
+          (ngModelChange)="onFilterFieldChanged()"
+          (blur)="clampMinAddresses()"
+          min="2"
+          max="50"
+          [disabled]="!activeCase"
+        />
       </label>
       <label class="sb-field">
         {{ t('Adresa (opciono)', 'Address (optional)') }}
@@ -62,6 +78,7 @@
             type="text"
             list="sb-address-datalist"
             [(ngModel)]="addressFilter"
+            (ngModelChange)="onFilterFieldChanged()"
             [placeholder]="t('0x... ili izaberi sa liste', '0x... or pick from the list')"
             [disabled]="!activeCase"
           />
@@ -69,7 +86,7 @@
             type="button"
             class="sb-clear-button"
             *ngIf="addressFilter"
-            (click)="addressFilter = ''"
+            (click)="addressFilter = ''; onFilterFieldChanged()"
             [attr.aria-label]="t('Obriši adresu', 'Clear address')"
             title="{{ t('Obriši', 'Clear') }}"
           >
@@ -87,6 +104,7 @@
             type="text"
             list="sb-contract-datalist"
             [(ngModel)]="contractFilter"
+            (ngModelChange)="onFilterFieldChanged()"
             [placeholder]="t('0x... ili izaberi sa liste', '0x... or pick from the list')"
             [disabled]="!activeCase"
           />
@@ -94,7 +112,7 @@
             type="button"
             class="sb-clear-button"
             *ngIf="contractFilter"
-            (click)="contractFilter = ''"
+            (click)="contractFilter = ''; onFilterFieldChanged()"
             [attr.aria-label]="t('Obriši kontrakt', 'Clear contract')"
             title="{{ t('Obriši', 'Clear') }}"
           >
@@ -105,6 +123,7 @@
           <option *ngFor="let addr of caseContracts" [value]="addr"></option>
         </datalist>
       </label>
+      <span class="sb-refining-indicator" *ngIf="isRefiningLiveFilter">{{ t('Osvežavanje…', 'Refreshing…') }}</span>
     </div>
 
     <div class="analyze-row">
@@ -360,7 +379,8 @@
       </div>
     </div>
 
-    <p class="sb-disclaimer">{{ disclaimerText }}</p>
+    <!-- Disclaimer se ne prikazuje na ekranu (po zahtevu - stranica je pretrpana) - i dalje
+         je deo PDF izveštaja (§11), ista logika kao forenzički zaključak ispod. -->
 
     <!-- Forenzički zaključak (forensicConclusion) se ne prikazuje na ekranu (po zahtevu -
          stranica je pretrpana) - i dalje je deo PDF izveštaja (§11), gde je obavezan

@@ -777,5 +777,20 @@
       "custody_findings_recorded": 8
     },
     "registered_at": "2026-09-19T12:44:37.881891+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-2F2D-9727",
+    "content_hash": "547d36acad27e87d734414fe9aefd94cbca96c122f37ad7cbff704a67ca7ebbb",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_clusters": 3,
+      "addresses_flagged": 7,
+      "highest_risk_score": 90,
+      "custody_findings_recorded": 10
+    },
+    "registered_at": "2026-09-19T13:22:29.045286+00:00"
   }
 ]

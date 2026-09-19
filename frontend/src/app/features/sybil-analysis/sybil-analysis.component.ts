@@ -4,8 +4,8 @@ import { Component, DestroyRef, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom, forkJoin, of } from 'rxjs';
-import { catchError, distinctUntilChanged, map } from 'rxjs/operators';
+import { firstValueFrom, forkJoin, of, Subject } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -164,6 +164,20 @@ export class SybilAnalysisComponent implements OnInit {
   protected analysisError: string | null = null;
   protected result: SybilAnalysisResult | null = null;
 
+  // --- Live filtering (see LANAC-DOKAZA.md's own "passive re-read vs deliberate access"
+  // split): the FIRST run always goes through the custody dialog (confirmCustodyAndAnalyze,
+  // POST .../run). Once a result exists, tweaking the time window/address threshold/address/
+  // contract filter re-reads the SAME already-accessed evidence via the passive GET route
+  // (refineWithoutCustody) - no new signature, since nothing new is being deliberately
+  // accessed, only re-displayed under a different parameter combination. Debounced so
+  // typing an address doesn't fire a request per keystroke. ---
+  private readonly filterChange$ = new Subject<void>();
+  protected isRefiningLiveFilter = false;
+  /** custody_findings_recorded from the last SIGNED run - kept separately from `result`
+   * because the passive GET refinements below don't return it at all (only POST /run does),
+   * and it describes the whole evidence scan, not whatever is currently filtered/displayed. */
+  protected lastCustodyFindingsRecorded: number | null = null;
+
   /** Which cluster cards currently show their transaction drill-down / full reasons. */
   private readonly expandedClusters = new Set<string>();
 
@@ -216,6 +230,8 @@ export class SybilAnalysisComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.filterChange$.pipe(debounceTime(400), takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refineWithoutCustody());
+
     this.state.selectedCase$
       .pipe(
         map((caseSummary) => caseSummary?.id ?? null),
@@ -315,16 +331,38 @@ export class SybilAnalysisComponent implements OnInit {
     this.analysisError = null;
     this.custodyDialogError = null;
 
-    const address = this.addressFilter.trim() || null;
-    const contract = this.contractFilter.trim() || null;
-
+    // The FIRST, signed run always scans with the LOOSEST possible parameters - no address/
+    // contract filter, minimum address threshold, maximum time window - regardless of
+    // whatever is currently typed in "Napredna podešavanja". This deliberately makes the one
+    // signed access as BROAD as the heuristic can ever be (every cluster it could possibly
+    // find, and everything the chain-of-custody enrichment could possibly flag), so every
+    // later narrowing (address/contract/threshold/window) is a passive re-read of data
+    // already accessed, not a new deliberate access - see refineWithoutCustody/
+    // onFilterFieldChanged.
     this.sybilAnalysisApi
-      .runSybilAnalysis(caseId, address, contract, this.selectedEvidence, this.timeWindowSeconds, this.minAddresses, custody)
+      .runSybilAnalysis(
+        caseId,
+        null,
+        null,
+        this.selectedEvidence,
+        SybilAnalysisComponent.MAX_TIME_WINDOW_SECONDS,
+        SybilAnalysisComponent.MIN_MIN_ADDRESSES,
+        custody,
+      )
       .subscribe({
         next: (result) => {
           this.isAnalyzing = false;
           this.result = result;
+          this.lastCustodyFindingsRecorded = result.custody_findings_recorded ?? null;
+          // Reflect what was ACTUALLY just fetched in the visible fields, so they never lie
+          // about the scope of the current `result` - narrowing from here on is exactly
+          // what the fields now show.
+          this.addressFilter = '';
+          this.contractFilter = '';
+          this.timeWindowSeconds = SybilAnalysisComponent.MAX_TIME_WINDOW_SECONDS;
+          this.minAddresses = SybilAnalysisComponent.MIN_MIN_ADDRESSES;
           this.expandedClusters.clear();
+          this.overviews.clear();
           this.isCustodyDialogOpen = false;
         },
         error: (error: HttpErrorResponse) => {
@@ -338,6 +376,49 @@ export class SybilAnalysisComponent implements OnInit {
       });
   }
 
+  /** Bound to (ngModelChange) on the time window/min addresses/address/contract fields -
+   * only actually triggers a re-read once a signed run already exists (before that, there
+   * is nothing to refine, and ANALIZIRAJ itself will pick up whatever is currently typed). */
+  protected onFilterFieldChanged(): void {
+    if (this.result) {
+      this.filterChange$.next();
+    }
+  }
+
+  /** Passive re-read of the SAME evidence a signed run already accessed, under a different
+   * parameter combination - see filterChange$'s own comment for why this needs no new
+   * custody dialog. Clamps time window/min addresses first, same as blur does, so a
+   * still-being-typed out-of-range number never reaches the backend mid-keystroke. */
+  private refineWithoutCustody(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || !this.result) {
+      return;
+    }
+    this.clampTimeWindow();
+    this.clampMinAddresses();
+
+    const address = this.addressFilter.trim() || null;
+    const contract = this.contractFilter.trim() || null;
+
+    this.isRefiningLiveFilter = true;
+    this.sybilAnalysisApi.getSybilAnalysis(caseId, address, contract, this.selectedEvidence, this.timeWindowSeconds, this.minAddresses).subscribe({
+      next: (result) => {
+        this.isRefiningLiveFilter = false;
+        this.analysisError = null;
+        this.result = { ...result, custody_findings_recorded: this.lastCustodyFindingsRecorded ?? undefined };
+        this.expandedClusters.clear();
+        this.overviews.clear();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.isRefiningLiveFilter = false;
+        this.analysisError =
+          error.status === 404
+            ? this.t('Adresa/kontrakt nije pronađen u evidenciji ovog slučaja.', 'The address/contract was not found in this case’s evidence.')
+            : this.t('Neuspešno filtriranje.', 'Filtering failed.');
+      },
+    });
+  }
+
   private clearResult(): void {
     this.result = null;
     this.analysisError = null;
@@ -346,6 +427,7 @@ export class SybilAnalysisComponent implements OnInit {
     this.expandedClusters.clear();
     this.overviews.clear();
     this.isSignatureDialogOpen = false;
+    this.lastCustodyFindingsRecorded = null;
   }
 
   // --- Cluster card display helpers ---------------------------------------------------

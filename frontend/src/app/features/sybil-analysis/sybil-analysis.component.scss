@@ -289,6 +289,13 @@
   font-size: 0.8rem;
 }
 
+.sb-refining-indicator {
+  align-self: center;
+  font-size: 0.74rem;
+  font-style: italic;
+  color: var(--sb-dim);
+}
+
 /* ---------- rezultati ---------- */
 .sb-results {
   display: grid;
