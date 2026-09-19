@@ -56,6 +56,7 @@
                   <th>{{ t('Vreme transakcije', 'Transaction time') }}</th>
                   <th>{{ t('Broj pristupa', 'Access count') }}</th>
                   <th>{{ t('Poslednji pristup', 'Last accessed') }}</th>
+                  <th>{{ t('Nalazi', 'Findings') }}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -70,6 +71,9 @@
                   <td>{{ formatDateTime(item.tx_timestamp) }}</td>
                   <td>{{ item.access_count }}</td>
                   <td>{{ formatDateTime(item.last_accessed_at) }}</td>
+                  <td>
+                    <span class="finding-badge sybil" *ngIf="item.has_sybil_evidence" title="Sybil & Bot Network">👥 SYBIL</span>
+                  </td>
                   <td class="col-action"><button type="button" class="ghost-button small">{{ t('Prikaži lanac dokaza', 'Show chain of custody') }}</button></td>
                 </tr>
               </tbody>
@@ -111,6 +115,57 @@
           </div>
 
           <p class="error-banner" *ngIf="exportError">{{ exportError }}</p>
+
+          <!-- Sybil & Bot Network nalaz (v. SYBIL-ANALIZA.md §12) - namerno IZVAN i VIZUELNO
+               odvojen od zvaničnog obrasca ispod: obrazac je pravni dokument o PRISTUPU
+               dokazu, ovo je forenzički NALAZ o njemu - dva različita tvrđenja, nikad
+               pomešana. Jasno razdvojeno na blockchain činjenice i heurističke zaključke. -->
+          <section class="sybil-evidence-panel" *ngIf="selectedChain.sybil_evidence as sybilEvidence">
+            <h3>👥 {{ t('Sybil & Bot Network nalaz', 'Sybil & Bot Network finding') }}</h3>
+
+            <div class="evidence-columns">
+              <div class="evidence-column">
+                <h4>{{ t('Blockchain činjenice', 'Blockchain facts') }}</h4>
+                <dl class="evidence-facts">
+                  <dt>{{ t('Pošiljalac', 'Sender') }}</dt>
+                  <dd class="mono">{{ sybilEvidence.blockchain_facts.sender_address || '?' }}</dd>
+                  <dt>{{ t('Kontrakt (primalac)', 'Contract (recipient)') }}</dt>
+                  <dd class="mono">{{ sybilEvidence.blockchain_facts.contract_address || '?' }}</dd>
+                  <dt>{{ t('Iznos', 'Amount') }}</dt>
+                  <dd>{{ sybilEvidence.blockchain_facts.amount }}</dd>
+                  <dt>{{ t('Vreme', 'Timestamp') }}</dt>
+                  <dd>{{ formatDateTime(sybilEvidence.blockchain_facts.timestamp) }}</dd>
+                  <dt>{{ t('Transaction hash', 'Transaction hash') }}</dt>
+                  <dd class="mono">{{ sybilEvidence.blockchain_facts.transaction_hash || t('nije deklarisan', 'not declared') }}</dd>
+                  <dt>{{ t('Blok', 'Block') }}</dt>
+                  <dd>{{ sybilEvidence.blockchain_facts.block_number || t('nije dostupan', 'not available') }}</dd>
+                  <dt>{{ t('Funkcija', 'Function') }}</dt>
+                  <dd>{{ sybilEvidence.blockchain_facts.function_name || t('nije deklarisana', 'not declared') }}</dd>
+                </dl>
+              </div>
+
+              <div class="evidence-column heuristic">
+                <h4>{{ t('Heuristički zaključci', 'Heuristic conclusions') }}</h4>
+                <dl class="evidence-facts">
+                  <dt>{{ t('Klaster', 'Cluster') }}</dt>
+                  <dd class="mono">{{ sybilEvidence.heuristic_conclusions.cluster_id }}</dd>
+                  <dt>{{ t('Broj adresa', 'Address count') }}</dt>
+                  <dd>{{ sybilEvidence.heuristic_conclusions.address_count }}</dd>
+                  <dt>{{ t('Broj aktivnosti', 'Activity count') }}</dt>
+                  <dd>{{ sybilEvidence.heuristic_conclusions.activity_count }}</dd>
+                  <dt>{{ t('Vremenski prozor', 'Time window') }}</dt>
+                  <dd>{{ sybilEvidence.heuristic_conclusions.window_duration_seconds }}s</dd>
+                  <dt>{{ t('Risk score', 'Risk score') }}</dt>
+                  <dd><strong>{{ sybilEvidence.heuristic_conclusions.risk_score }}/100</strong> ({{ sybilEvidence.heuristic_conclusions.risk_level }})</dd>
+                </dl>
+                <ul class="evidence-reasons">
+                  <li *ngFor="let reason of sybilEvidence.heuristic_conclusions.reasons">{{ reason }}</li>
+                </ul>
+              </div>
+            </div>
+
+            <p class="evidence-disclaimer">{{ sybilEvidence.disclaimer }}</p>
+          </section>
 
           <!-- Reprodukcija zvaničnog obrasca (v. LANAC-DOKAZA.md §1) - naslov i nazivi
                polja se prevode kao i ostatak stranice; PDF izvoz (custody_report.py) i

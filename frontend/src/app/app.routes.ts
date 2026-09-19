@@ -68,6 +68,12 @@ export const appRoutes: Routes = [
 			import('./features/token-approval/token-approval.component').then((module) => module.TokenApprovalComponent),
 	},
 	{
+		path: 'sybil-analysis',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./features/sybil-analysis/sybil-analysis.component').then((module) => module.SybilAnalysisComponent),
+	},
+	{
 		path: 'verify-report',
 		canActivate: [authGuard],
 		loadComponent: () =>

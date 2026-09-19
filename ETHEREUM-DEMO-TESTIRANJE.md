@@ -3,9 +3,9 @@
 ## O čemu je reč (ukratko)
 
 Postoji već pripremljen demo slučaj koji pokriva **baš svaku** analizu u sistemu, sastavljen
-od 9 ručno napravljenih evidencijskih fajlova (svaki za jednu konkretnu heuristiku) **plus**
-jedna prava, uživo povučena on-chain evidencija (stvaran hakerski incident — vidi odeljak 8)
-— svih 10 se spaja u jedan graf.
+od 10 ručno napravljenih evidencijskih fajlova (svaki za jednu konkretnu heuristiku) **plus**
+jedna prava, uživo povučena on-chain evidencija (stvaran hakerski incident — vidi odeljak 9)
+— svih 11 se spaja u jedan graf.
 
 **Otvori:** slučaj **"Demo: Sumnjiva laundering šema (hakovan novčanik)"** (id `46ae7f91db9b`).
 
@@ -20,8 +20,8 @@ Ovaj dokument prolazi kroz svaku stranicu aplikacije redom: šta otvoriti, koju 
 
 **Otvori:** stranica **Graf** → izabrani slučaj gore.
 
-**Vidiš:** 251 čvor, 253 grane (zbir svih 9 ručnih fajlova + 430 pravih transakcija Ronin
-Bridge hakerske adrese — odeljak 8).
+**Vidiš:** 264 čvora, 266 grana (zbir svih 10 ručnih fajlova + 430 pravih transakcija Ronin
+Bridge hakerske adrese — odeljak 9).
 
 Klikni na pojedine čvorove:
 
@@ -30,7 +30,7 @@ Klikni na pojedine čvorove:
 | `0xPeelSeed` | **Peel uloga: seed**, visok risk score | Prima 500 od `0xVictimWallet` i odmah deli na dva izlaza (350 nastavak + 150 "peel") — `peel_chains` plugin prepoznaje lanac `PeelSeed → PeelRelay1 → PeelRelay2` (3 koraka, confidence 80). |
 | `0xUniswapRouter` | **Skok lanca: swap** | `chain_hopping` prepoznaje reč "uniswap"/"router"/"swap" u imenu — isto važi za `0xSushiRouter`, `0xBridgeRouterHop` (bridge), i sve adrese sa "exchange" u imenu (`0xCashOutExchangeWallet`, `0xExchangeHacker`, `0xExchangeMule`, `0xExchangeCounterparty`) — ukupno 7 tačaka. |
 | `0xbad0000000000000000000000000000000000001` | **Crne liste: OFAC** (simulirana adresa), risk score **100** | Hardkodovana "simulaciona" demo adresa u `blacklist_check` plugin-u. |
-| `0x098b716b8aaf21512996dc57eb0615e2383e2f96` | **Crne liste: OFAC** — "Ronin Bridge Exploiter / Lazarus Group", risk score **100** | Ovo **nije** simulirana adresa — stvarna, OFAC-sankcionisana adresa (designacija 2022-04-14) hakera Ronin Bridge-a. Vidi odeljak 8. |
+| `0x098b716b8aaf21512996dc57eb0615e2383e2f96` | **Crne liste: OFAC** — "Ronin Bridge Exploiter / Lazarus Group", risk score **100** | Ovo **nije** simulirana adresa — stvarna, OFAC-sankcionisana adresa (designacija 2022-04-14) hakera Ronin Bridge-a. Vidi odeljak 9. |
 | `0xCoConspirator1` | **Klaster: 2 člana** (sa `0xCoConspirator2`) | Obe adrese šalju **isti iznos (25), istoj adresi, u istom trenutku** — `multi_input` heuristika. |
 | `0xAsiaHoursWallet` | **Klaster: 2 člana** (sa `0xNightOwlWallet`) | Ove dve nemaju zajedničku transakciju — spojene su preko `behavioral_similarity` heuristike (preklapaju im se skupovi suseda ≥75%), ne preko deljene transakcije. |
 | `0xInvestorWallet` | **Klaster: 2 člana** (sa `0xUniswapRouter`) | Isto — `multi_input`, jer u kratkom prozoru razmenjuju 100 USDC u oba smera po istom obrascu kao ostatak seta. Dobar primer da heuristika ume i da preširoko uhvati (Investor i DEX router nisu isti "vlasnik") — heuristike su indikator za proveru, ne dokaz. |
@@ -117,7 +117,47 @@ Namerno je uparen jedan "žrtva" i jedan "oprezan korisnik" primer sa istim DEX 
 da se pokaže da isti spender kod dva različita ponašanja vlasnika ne dobija automatski
 istu ocenu.
 
-### 7. Napredna pretraga grafa (Neo4j)
+### 7. Sybil & Bot Network analiza
+
+*(Pozadina i heuristika: `14. SYBIL-ANALIZA.md`. Implementacija/fajlovi:
+`SYBIL-ANALYSIS-IMPLEMENTATION.md`.)*
+
+**Otvori:** stranica **Sybil & Bot mreže** → „Prikaz transakcija" → izaberi
+`demo_sybil_analysis.csv` (ne kombinovano — vidi `14. SYBIL-ANALIZA.md` §2/§7 zašto).
+Klikni **ANALIZIRAJ** → razlog pristupa + potpis.
+
+Prvo (potpisano) ANALIZIRAJ uvek skenira sa najširim mogućim parametrima (min. 2 adrese,
+prozor 3600s) — polja u „Napredna podešavanja" posle toga samo sužavaju prikaz, uživo,
+bez novog potpisa (šta tačno znače ta polja — vidi `14. SYBIL-ANALIZA.md` §10).
+
+**Vidiš:** tačno **2 klastera**:
+
+| Klaster | Kontrakt / funkcija | Adrese | Risk score |
+|---|---|---|---|
+| **SYBIL-1** | `0xAirdropClaimContract` / `claimAirdrop` | `0xBotWallet1..5` | **88, critical** |
+| **SYBIL-2** | `0xMintContract` / `mint` | `0xBotWallet1-3` | **76, high** |
+
+**Probaj i (opciono, menja se uživo — bez novog potpisa):**
+
+**A) Prag:**
+1. Min. broj adresa → **3**.
+2. Dobijaš isti prikaz kao u tabeli (2 klastera) — `0xRegularUserA`/`0xRegularUserB` ne
+   zadovoljavaju ovaj prag pa nestaju iz prikaza.
+
+**B) Filter po adresi:**
+1. Adresa → `0xBotWallet1`.
+2. Prikaz se odmah osveži → oba klastera (SYBIL-1 i SYBIL-2), jer ta adresa učestvuje u
+   oba.
+
+**C) Filter po kontraktu:**
+1. Adresa → prazno (dugme × pored polja).
+2. Kontrakt → `0xMintContract`.
+3. Prikaz se odmah osveži → samo jedan klaster.
+
+**Lanac dokaza:** posle potpisanog ANALIZIRAJ, u **Lanac dokaza** → „Po transakciji" —
+bedž **👥 SYBIL** i poseban panel (Blockchain činjenice / Heuristički zaključci).
+
+### 8. Napredna pretraga grafa (Neo4j)
 
 **Otvori:** stranica **Slučajevi** → kartica demo slučaja → dugme za naprednu pretragu
 grafa → unesi `0xVictimWallet`, 2 koraka.
@@ -127,9 +167,9 @@ grafa → unesi `0xVictimWallet`, 2 koraka.
 token-approval scenariju — namerno deljena adresa da poveže dve priče). Na 2 koraka —
 `0xMuleWallet1`, `0xPeelRelay1`, `0xVictimWallet2`.
 
-### 8. Prava on-chain evidencija — Ronin Bridge hak (2022)
+### 9. Prava on-chain evidencija — Ronin Bridge hak (2022)
 
-Svih 9 fajlova do sad su ručno napravljeni demo scenariji. Za metodologiju predloga teme
+Svih 10 fajlova do sad su ručno napravljeni demo scenariji. Za metodologiju predloga teme
 ("Praktično dokazivanje — testiranje na stvarnim, istorijskim podacima o poznatom
 incidentu") ovome je dodata i **prava** evidencija:
 
@@ -152,10 +192,11 @@ adresa):
   skor).
 - **Taint analiza** (seed = ova adresa) → širi se kroz 25 čvorova stvarne mreže u koju je
   haker rasturio ukradena sredstva.
-- Ostale analize (peel chains, chain hopping, wallet clustering, anomaly detection) i dalje
-  rade bez greške na kombinovanom (ručni demo + pravi) grafu od 251 čvora.
+- Ostale analize (peel chains, chain hopping, wallet clustering, anomaly detection, Sybil &
+  Bot Network) i dalje rade bez greške na kombinovanom (ručni demo + pravi) grafu od 264
+  čvora — vidi odeljak 7 za tačan broj Sybil klastera koje TA kombinacija proizvodi.
 
-**Zašto je ovo važno:** ostalih 9 fajlova dokazuje da algoritam radi na kontrolisanim,
+**Zašto je ovo važno:** ostalih 10 fajlova dokazuje da algoritam radi na kontrolisanim,
 poznatim ulazima (jedinični test, u suštini). Ova adresa dokazuje da alat radi i na
 **stvarnim, neuređenim** on-chain podacima pravog hakerskog incidenta — potpuno isti kod,
 bez ijedne izmene za ovu priliku.
@@ -164,9 +205,12 @@ bez ijedne izmene za ovu priliku.
 
 ## Poenta ovog demo slučaja
 
-Devet ručnih fajlova zajedno pokrivaju **svaku** analizu u sistemu barem jednim jasnim,
+Deset ručnih fajlova zajedno pokrivaju **svaku** analizu u sistemu barem jednim jasnim,
 namerno-dizajniranim primerom — uključujući i granične slučajeve koji **ne smeju** da se
-lažno prijave (bounce transakcija u DEX Swap-u, oprezan korisnik u Token Approval-u). Deseti,
-pravi (Ronin Bridge), dokazuje da isti kod radi i van kontrolisanih uslova. Isti princip kao
-Bitcoin demo (`BITCOIN-UVOZ.md`): svaka tvrdnja se može stvarno pokrenuti i proveriti, ne
-samo pročitati.
+lažno prijave (bounce transakcija u DEX Swap-u, oprezan korisnik u Token Approval-u, adrese
+ispod praga i van vremenskog prozora u Sybil & Bot Network analizi). Jedanaesti, pravi
+(Ronin Bridge), dokazuje da isti kod radi i van kontrolisanih uslova — i, uzgred, pokazuje
+da Sybil heuristika hvata svaku sinhronizovanu konvergenciju na stvarnim podacima, ne samo
+namerno-dizajnirane demo primere (odeljak 7). Isti princip kao Bitcoin demo
+(`BITCOIN-UVOZ.md`): svaka tvrdnja se može stvarno pokrenuti i proveriti, ne samo
+pročitati.

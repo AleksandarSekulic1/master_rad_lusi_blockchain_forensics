@@ -1,7 +1,7 @@
 """Shared chain-of-custody recording, used by every case-scoped analysis that treats
 running it as a deliberate access to the evidence: case_analytics_run (taint analysis /
 "Analiziraj graf"), case_pathfinding ("FIND PATH"), case_behavioral_analysis,
-case_dex_swap_analysis and case_token_approval_analysis. Each of those accepts an optional
+case_dex_swap_analysis, case_token_approval_analysis and case_sybil_analysis. Each of those accepts an optional
 `TransactionCustodyEntry` on its "run" request and, when present, calls
 `record_custody_access` before returning - see LANAC-DOKAZA.md for why this is one shared
 mechanism rather than a parallel log per analysis.

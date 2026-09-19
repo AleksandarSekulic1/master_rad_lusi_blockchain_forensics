@@ -99,6 +99,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     dex_swap_analysis_run: { label: ['Pokrenuta DEX swap analiza', 'Ran DEX swap analysis'], group: 'analysis', icon: '⇌' },
     behavioral_analysis_run: { label: ['Pokrenuta bihevioralna analiza', 'Ran behavioral analysis'], group: 'analysis', icon: '◔' },
     token_approval_analysis_run: { label: ['Pokrenuta Token Approval analiza', 'Ran Token Approval analysis'], group: 'analysis', icon: '🔑' },
+    sybil_analysis_run: { label: ['Pokrenuta Sybil & Bot Network analiza', 'Ran Sybil & Bot Network analysis'], group: 'analysis', icon: '👥' },
     case_created: { label: ['Kreiran slučaj', 'Case created'], group: 'case', icon: '＋' },
     case_status_changed: { label: ['Promenjen status slučaja', 'Case status changed'], group: 'case', icon: '⇄' },
     case_deleted: { label: ['Obrisan slučaj', 'Case deleted'], group: 'case', icon: '✕' },
@@ -128,6 +129,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     'dex_swap_analysis_run',
     'behavioral_analysis_run',
     'token_approval_analysis_run',
+    'sybil_analysis_run',
     'case_created',
     'case_status_changed',
     'case_deleted',
@@ -161,6 +163,7 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
     dex_swap: ['DEX Swap izveštaj', 'DEX Swap report'],
     behavioral: ['Bihevioralni izveštaj', 'Behavioral report'],
     token_approval: ['Token Approval izveštaj', 'Token Approval report'],
+    sybil: ['Sybil & Bot Network izveštaj', 'Sybil & Bot Network report'],
   };
 
   constructor(
@@ -429,6 +432,28 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
         }
         return summary;
       }
+      case 'sybil_analysis_run': {
+        const address = String(details['address'] ?? '') || this.t('sve adrese', 'all addresses');
+        const contract = details['contract'] ? ` · ${String(details['contract'])}` : '';
+        const scope = String(details['evidence_scope'] ?? 'combined');
+        const scopeText = scope === 'combined' ? this.t('sva evidencija (kombinovano)', 'all evidence (combined)') : scope;
+        if (details['status'] === 'FAILED') {
+          const error = String(details['error'] ?? this.t('nepoznata greška', 'unknown error'));
+          return `${this.t('NEUSPEŠNO', 'FAILED')} · ${address}${contract} · ${scopeText} · ${error}`;
+        }
+        let summary =
+          `${address}${contract} · ${scopeText} · ${Number(details['total_clusters'] ?? 0)} ${this.t('klastera', 'clusters')}, ` +
+          `${Number(details['addresses_flagged'] ?? 0)} ${this.t('označenih adresa', 'flagged addresses')}`;
+        if (details['custody_recorded']) {
+          const txRows = Number(details['custody_transaction_rows'] ?? 0);
+          const evidenceFiles = Number(details['custody_evidence_files'] ?? 0);
+          const findings = Number(details['sybil_findings_recorded'] ?? 0);
+          summary +=
+            ` · ${this.t('lanac dokaza', 'chain of custody')}: ${txRows} ${this.t('transakcija', 'transactions')}, ` +
+            `${evidenceFiles} ${this.t('fajl(ova)', 'file(s)')}, ${findings} ${this.t('SYBIL_CLUSTER nalaza', 'SYBIL_CLUSTER findings')}`;
+        }
+        return summary;
+      }
       case 'custody_pdf_exported': {
         const scope = details['scope'] === 'transaction' ? this.t('transakcija', 'transaction') : this.t('dokazni fajl', 'evidence file');
         const target = String(details['tx_id'] ?? details['evidence_stored_name'] ?? '?');
@@ -451,6 +476,8 @@ export class ActivityLogComponent implements OnInit, OnDestroy {
           extra = ` · ${Number(details['total_events'] ?? 0)} ${this.t('događaja', 'events')}`;
         } else if (reportType === 'token_approval') {
           extra = ` · ${Number(details['total_approvals'] ?? 0)} ${this.t('odobrenja', 'approvals')}, ${Number(details['potentially_risky_approvals'] ?? 0)} ${this.t('rizičnih', 'risky')}`;
+        } else if (reportType === 'sybil') {
+          extra = ` · ${Number(details['total_clusters'] ?? 0)} ${this.t('klastera', 'clusters')}, ${Number(details['addresses_flagged'] ?? 0)} ${this.t('označenih adresa', 'flagged addresses')}`;
         }
         return `${typeLabel} · ${code}${extra}`;
       }

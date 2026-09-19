@@ -246,6 +246,102 @@ export interface DexSwapAnalysisResult {
   generated_at: string;
 }
 
+// --- Sybil & Bot Network Analysis (see SYBIL-ANALIZA.md) - a heuristic, not a proof.
+// Flags groups of DIFFERENT addresses that call the same smart contract and/or the same
+// function within a short, synchronized time window. `disclaimer` must always be rendered
+// alongside the results - this NEVER means the flagged addresses share a real owner. ---
+
+/** One transaction inside a flagged cluster, kept for drill-down. */
+export interface SybilClusterTransaction {
+  sender_address: string;
+  amount: number;
+  timestamp: string;
+  tx_hash: string | null;
+  function_name: string | null;
+}
+
+/** One potential Sybil/bot cluster: `address_count` different addresses called
+ * `contract_address` (and, when declared, the same `function_name`) within
+ * `window_duration_seconds`. `risk_score` (0-100) and `risk_level` are a heuristic
+ * confidence signal, never proof of common ownership - see `reasons` for the breakdown. */
+export interface SybilCluster {
+  cluster_id: string;
+  contract_address: string;
+  contract_name: string;
+  contract_match_basis: string | null;
+  function_name: string | null;
+  address_count: number;
+  addresses: string[];
+  activity_count: number;
+  window_start: string;
+  window_end: string;
+  window_duration_seconds: number;
+  avg_gap_seconds: number;
+  max_gap_seconds_observed: number;
+  modal_amount: number;
+  modal_amount_count: number;
+  identical_amount_ratio: number;
+  repeated_address_count: number;
+  risk_score: number;
+  risk_level: 'none' | 'low' | 'medium' | 'high' | 'critical';
+  reasons: string[];
+  transactions: SybilClusterTransaction[];
+}
+
+/** Result of the case-scoped Sybil Analysis endpoint (GET/POST .../sybil-analysis[/run]). */
+export interface SybilAnalysisResult {
+  case_id: string;
+  evidence: string | null;
+  target_address: string | null;
+  contract: string | null;
+  time_window_seconds: number;
+  min_addresses: number;
+  total_clusters: number;
+  addresses_flagged: number;
+  function_data_available: boolean;
+  clusters: SybilCluster[];
+  disclaimer: string;
+  generated_at: string;
+  /** Only present on the deliberate POST .../run response (not the passive GET) - how many
+   * transactions got a structured `sybil_evidence` chain-of-custody entry, present only
+   * when the request carried a `custody` entry (see SYBIL-ANALIZA.md #12). 0 when the run
+   * had no custody, or found nothing to flag. */
+  custody_findings_recorded?: number;
+}
+
+/** The structured chain-of-custody item a Sybil & Bot Network Analysis run attaches to
+ * one specific transaction (see backend/app/features/case_sybil_analysis/service.py's
+ * sybil_custody_enrichment) - explicitly split into exactly two groups, never blurred:
+ * `blockchain_facts` (read straight from the transaction row - no interpretation) and
+ * `heuristic_conclusions` (everything the Sybil heuristic concluded about the cluster this
+ * transaction was placed into - never presented as fact). */
+export interface SybilCustodyEvidence {
+  type: 'SYBIL_CLUSTER';
+  blockchain_facts: {
+    sender_address: string | null;
+    contract_address: string | null;
+    amount: number | null;
+    timestamp: string | null;
+    transaction_hash: string | null;
+    block_number: string | null;
+    function_name: string | null;
+  };
+  heuristic_conclusions: {
+    cluster_id: string;
+    address_count: number;
+    activity_count: number;
+    window_start: string;
+    window_end: string;
+    window_duration_seconds: number;
+    identical_amount_ratio: number;
+    repeated_address_count: number;
+    risk_score: number;
+    risk_level: SybilCluster['risk_level'];
+    reasons: string[];
+  };
+  disclaimer: string;
+}
+
 export interface AnalyticsResponse extends NodeLinkGraphResponse {
   analytics: Record<string, unknown>;
   summary: {

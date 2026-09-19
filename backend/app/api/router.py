@@ -14,6 +14,7 @@ from app.features.case_graph_search.router import router as case_graph_search_ro
 from app.features.case_management.router import router as case_management_router
 from app.features.case_pathfinding.router import router as case_pathfinding_router
 from app.features.case_seed_suggestion.router import router as case_seed_suggestion_router
+from app.features.case_sybil_analysis.router import router as case_sybil_analysis_router
 from app.features.case_token_approval_analysis.router import router as case_token_approval_analysis_router
 from app.features.custody.router import router as custody_router
 from app.features.exports.router import router as exports_router
@@ -51,6 +52,7 @@ api_router.include_router(case_graph_search_router, dependencies=authenticated)
 api_router.include_router(case_behavioral_analysis_router, dependencies=authenticated)
 api_router.include_router(case_dex_swap_analysis_router, dependencies=authenticated)
 api_router.include_router(case_token_approval_analysis_router, dependencies=authenticated)
+api_router.include_router(case_sybil_analysis_router, dependencies=authenticated)
 api_router.include_router(case_seed_suggestion_router, dependencies=authenticated)
 api_router.include_router(case_analytics_run_router, dependencies=authenticated)
 api_router.include_router(case_pathfinding_router, dependencies=authenticated)

@@ -1,0 +1,767 @@
+/* Same visual language as dex-swap-analysis.component.scss / behavioral-analysis /
+   pathfinding.component.scss (Angular scopes styles per component, so this is a fresh,
+   self-contained copy of the relevant shell rules, not a shared import) - kept consistent
+   on purpose so Sybil & Bot Network Analysis reads as a sibling of the other analysis
+   pages, not a different app. */
+
+:host {
+  --sb-border: rgba(148, 163, 184, 0.18);
+  --sb-border-soft: rgba(148, 163, 184, 0.14);
+  --sb-surface: rgba(4, 9, 18, 0.78);
+  --sb-heading: #f4f7fe;
+  --sb-muted: #8ea6c7;
+  --sb-kicker: #7bd6ff;
+  --sb-dim: #9ab1d0;
+  --sb-field-border: rgba(148, 163, 184, 0.24);
+  --sb-field-text: #eef4ff;
+  --sb-field-bg: rgba(255, 255, 255, 0.03);
+  --sb-chip-bg: rgba(255, 255, 255, 0.05);
+  --sb-btn-bg: rgba(255, 255, 255, 0.02);
+  --sb-btn-text: #d9e6ff;
+  --sb-btn-hover-bg: rgba(125, 211, 252, 0.1);
+  --sb-btn-hover-border: rgba(125, 211, 252, 0.45);
+  --sb-error: #fca5a5;
+  --sb-accent: #7dd3fc;
+  --sb-card-bg: rgba(4, 9, 18, 0.55);
+  --sb-note-bg: rgba(255, 255, 255, 0.03);
+  --sb-note-border: rgba(148, 163, 184, 0.22);
+
+  --sb-none: #64748b;
+  --sb-low: #7bd6ff;
+  --sb-medium: #facc15;
+  --sb-high: #fb923c;
+  --sb-critical: #f87171;
+}
+
+:host-context([data-theme='light']) {
+  --sb-border: rgba(15, 23, 42, 0.12);
+  --sb-border-soft: rgba(15, 23, 42, 0.1);
+  --sb-surface: #ffffff;
+  --sb-heading: #16233b;
+  --sb-muted: #55658c;
+  --sb-kicker: #2563eb;
+  --sb-dim: #55658c;
+  --sb-field-border: rgba(15, 23, 42, 0.16);
+  --sb-field-text: #16233b;
+  --sb-field-bg: #f6f8fc;
+  --sb-chip-bg: rgba(15, 23, 42, 0.05);
+  --sb-btn-bg: rgba(15, 23, 42, 0.03);
+  --sb-btn-text: #1e293b;
+  --sb-btn-hover-bg: rgba(37, 99, 235, 0.1);
+  --sb-btn-hover-border: rgba(37, 99, 235, 0.4);
+  --sb-error: #b91c1c;
+  --sb-accent: #2563eb;
+  --sb-card-bg: #ffffff;
+  --sb-note-bg: rgba(15, 23, 42, 0.03);
+  --sb-note-border: rgba(15, 23, 42, 0.16);
+
+  --sb-none: #64748b;
+  --sb-low: #2563eb;
+  --sb-medium: #b45309;
+  --sb-high: #c2410c;
+  --sb-critical: #b91c1c;
+}
+
+.sybil-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+/* ---------- gornja kontrolna kartica (slučaj + evidencija) ---------- */
+.sb-controls {
+  border: 1px solid var(--sb-border);
+  border-radius: 1rem;
+  background: var(--sb-surface);
+  overflow: hidden;
+}
+
+.sb-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.sb-case {
+  display: grid;
+  gap: 0.1rem;
+  align-self: center;
+}
+
+.sb-eyebrow {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sb-kicker);
+}
+
+.sb-case strong {
+  font-size: 0.92rem;
+  color: var(--sb-heading);
+}
+
+.sb-nocase {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--sb-dim);
+}
+
+.sb-nocase a {
+  color: var(--sb-kicker);
+}
+
+.sb-field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--sb-muted);
+}
+
+.sb-field-narrow {
+  max-width: 9rem;
+}
+
+.sb-field-label {
+  font-size: 0.72rem;
+  color: var(--sb-muted);
+}
+
+.sb-field input,
+.sb-field select {
+  border: 1px solid var(--sb-field-border);
+  border-radius: 0.6rem;
+  background: var(--sb-field-bg);
+  color: var(--sb-field-text);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+/* The dropdown's OPEN option list is rendered by the OS/browser, not by this app's theme -
+   it ignores --sb-field-bg/--sb-field-text and defaults to a white popup, so an option left
+   without its own color inherits the dark theme's light text onto that white background and
+   becomes unreadable. Same fix as dex-swap-analysis/behavioral-analysis.component.scss's own
+   "select option" rule - force a dark-on-white pair explicitly, for all three selects on
+   this page (Prikaz transakcija, Adrese iz slučaja, Kontrakti iz slučaja). */
+.sb-field select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
+/* ---------- naslov ---------- */
+.sybil-header {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.panel-kicker {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sb-kicker);
+  margin: 0;
+}
+
+.sybil-header h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--sb-heading);
+}
+
+.sybil-header p {
+  margin: 0;
+  color: var(--sb-muted);
+  max-width: 60rem;
+}
+
+/* ---------- parametri + dugme ---------- */
+.sb-params {
+  border: 1px solid var(--sb-border);
+  border-radius: 1rem;
+  background: var(--sb-surface);
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.sb-params-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.sb-params-row .sb-field {
+  flex: 1 1 12rem;
+}
+
+.sb-advanced-toggle {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0.2rem 0;
+  color: var(--sb-kicker);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.sb-advanced-toggle:hover {
+  text-decoration: underline;
+}
+
+.sb-input-with-clear {
+  position: relative;
+  display: flex;
+}
+
+.sb-input-with-clear input {
+  width: 100%;
+  padding-right: 1.9rem;
+}
+
+.sb-clear-button {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  width: 1.3rem;
+  height: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: var(--sb-chip-bg);
+  color: var(--sb-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sb-clear-button:hover {
+  background: var(--sb-btn-hover-bg);
+  color: var(--sb-heading);
+}
+
+.analyze-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.primary-button {
+  border: none;
+  border-radius: 0.7rem;
+  padding: 0.6rem 1.4rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: #071019;
+  background: var(--sb-accent);
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost-button {
+  border: 1px solid var(--sb-field-border);
+  border-radius: 0.6rem;
+  background: var(--sb-btn-bg);
+  color: var(--sb-btn-text);
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.ghost-button:hover {
+  background: var(--sb-btn-hover-bg);
+  border-color: var(--sb-btn-hover-border);
+}
+
+.sb-error {
+  color: var(--sb-error);
+  font-size: 0.8rem;
+}
+
+.sb-refining-indicator {
+  align-self: center;
+  font-size: 0.74rem;
+  font-style: italic;
+  color: var(--sb-dim);
+}
+
+/* ---------- rezultati ---------- */
+.sb-results {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.sb-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.5rem;
+  border: 1px solid var(--sb-border);
+  border-radius: 1rem;
+  background: var(--sb-surface);
+  padding: 0.85rem 1.1rem;
+}
+
+.sb-summary-stat {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.sb-summary-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--sb-heading);
+}
+
+.sb-summary-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+
+.sb-summary-note {
+  font-size: 0.78rem;
+  color: var(--sb-dim);
+  font-style: italic;
+}
+
+.sb-empty {
+  border: 1px dashed var(--sb-border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--sb-muted);
+}
+
+/* ---------- klaster kartica ---------- */
+.sb-cluster-card {
+  border: 1px solid var(--sb-border);
+  border-left-width: 4px;
+  border-radius: 0.9rem;
+  background: var(--sb-card-bg);
+  padding: 0.9rem 1.1rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sb-cluster-card.risk-none { border-left-color: var(--sb-none); }
+.sb-cluster-card.risk-low { border-left-color: var(--sb-low); }
+.sb-cluster-card.risk-medium { border-left-color: var(--sb-medium); }
+.sb-cluster-card.risk-high { border-left-color: var(--sb-high); }
+.sb-cluster-card.risk-critical { border-left-color: var(--sb-critical); }
+
+.sb-cluster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sb-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #071019;
+}
+
+.sb-badge.risk-none { background: var(--sb-none); }
+.sb-badge.risk-low { background: var(--sb-low); }
+.sb-badge.risk-medium { background: var(--sb-medium); }
+.sb-badge.risk-high { background: var(--sb-high); }
+.sb-badge.risk-critical { background: var(--sb-critical); }
+
+.sb-cluster-id {
+  font-size: 0.72rem;
+  color: var(--sb-dim);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.sb-cluster-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--sb-heading);
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.sb-fn {
+  font-size: 0.82rem;
+  color: var(--sb-dim);
+  font-weight: 400;
+}
+
+.sb-cluster-basis {
+  font-size: 0.72rem;
+  color: var(--sb-dim);
+}
+
+.sb-cluster-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+}
+
+.sb-stat {
+  display: grid;
+  gap: 0.05rem;
+}
+
+.sb-stat-value {
+  font-weight: 700;
+  color: var(--sb-heading);
+  font-size: 0.95rem;
+}
+
+.sb-stat-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+
+.sb-window {
+  font-size: 0.78rem;
+  color: var(--sb-muted);
+}
+
+.sb-addresses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sb-chip {
+  background: var(--sb-chip-bg);
+  border: 1px solid var(--sb-border-soft);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: var(--sb-field-text);
+}
+
+.mono-clip {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  word-break: break-all;
+}
+
+.sb-toggle {
+  justify-self: start;
+}
+
+.sb-cluster-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sb-overview-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sb-overview {
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--sb-border-soft);
+}
+
+.sb-overview-note {
+  margin: 0;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--sb-dim);
+}
+
+.sb-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.85rem;
+}
+
+.sb-overview-section {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+
+.sb-overview-section h4 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sb-kicker);
+}
+
+.sb-overview-section ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--sb-field-text);
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sb-overview-section li.sb-highlight {
+  color: var(--sb-accent);
+  font-weight: 600;
+}
+
+.sb-overview-caveat {
+  margin: 0;
+}
+
+.sb-dim {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--sb-dim);
+}
+
+.sb-details {
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--sb-border-soft);
+}
+
+.sb-reasons {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--sb-muted);
+  display: grid;
+  gap: 0.25rem;
+}
+
+.sb-tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.sb-tx-table th,
+.sb-tx-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--sb-border-soft);
+  color: var(--sb-field-text);
+}
+
+.sb-tx-table th {
+  color: var(--sb-muted);
+  font-weight: 600;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sb-disclaimer {
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--sb-dim);
+  border: 1px solid var(--sb-note-border);
+  background: var(--sb-note-bg);
+  border-radius: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  margin: 0;
+}
+
+.sb-conclusion {
+  border: 1px solid var(--sb-border);
+  border-radius: 0.9rem;
+  background: var(--sb-surface);
+  padding: 0.9rem 1.1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sb-conclusion h3 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sb-kicker);
+}
+
+.sb-conclusion p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--sb-field-text);
+  line-height: 1.5;
+}
+
+.sb-conclusion-link a {
+  color: var(--sb-accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.export-pdf-button {
+  flex: none;
+}
+
+.error-inline {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--sb-error);
+}
+
+/* --- PDF export signature dialog - identical copy of
+   dex-swap-analysis.component.scss's own rules (see SYBIL-ANALIZA.md #11), not a shared
+   import, same convention as every other duplicated "shell" block in this app. --- */
+
+.signature-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(3, 8, 18, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.signature-dialog {
+  width: min(46rem, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.4rem 1.5rem;
+  border-radius: 1.25rem;
+  background: #0b1526;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+}
+
+.signature-dialog h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  color: #eef4ff;
+}
+
+.signature-intro {
+  margin: 0 0 1rem;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: #8ea6c7;
+  text-wrap: balance;
+}
+
+.signature-intro strong {
+  color: #cdd9ef;
+}
+
+.signature-lang {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+}
+
+.signature-lang legend {
+  padding: 0 0.35rem;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8ea6c7;
+}
+
+.signature-lang label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: #cdd9ef;
+  cursor: pointer;
+}
+
+.signature-lang input {
+  accent-color: #7dd3fc;
+}
+
+.signature-lang-hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: #8ea6c7;
+}
+
+.signature-lang-hint strong {
+  color: #cdd9ef;
+}
+
+.signature-declaration {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #cdd9ef;
+  cursor: pointer;
+}
+
+.signature-declaration input {
+  margin-top: 0.2rem;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  accent-color: #7dd3fc;
+}
+
+.signature-limit {
+  margin: 0.85rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #8ea6c7;
+}
+
+.signature-limit strong {
+  color: #fbbf24;
+}
+
+.signature-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.signature-actions .primary-button {
+  padding: 0.7rem 1.1rem;
+  border: none;
+  border-radius: 0.9rem;
+  cursor: pointer;
+  font-size: 0.87rem;
+  color: #04111f;
+  background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+}
+
+.signature-actions .primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

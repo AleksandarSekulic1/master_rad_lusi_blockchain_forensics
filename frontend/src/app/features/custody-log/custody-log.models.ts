@@ -1,4 +1,4 @@
-import { TransactionCustodyEntry } from '../../core/models/shared.models';
+import { SybilCustodyEvidence, TransactionCustodyEntry } from '../../core/models/shared.models';
 
 /** One row of the printed Образац table (Бр./Датум/Име и презиме/Опис радње/Потпис). */
 export interface CustodyLogRow extends TransactionCustodyEntry {
@@ -26,6 +26,10 @@ export interface CustodyChain {
   proizvodjac: string | null;
   model: string | null;
   serijski_broj: string | null;
+  /** Structured Sybil & Bot Network Analysis finding for THIS transaction, if any access
+   * to it ever attached one (see backend's custody_chain_for_transaction) - null for every
+   * transaction that was never part of a flagged cluster. */
+  sybil_evidence?: SybilCustodyEvidence | null;
   entries: CustodyLogRow[];
 }
 
@@ -42,6 +46,10 @@ export interface CustodyTransactionSummary {
   evidence_file_name: string | null;
   access_count: number;
   last_accessed_at: string | null;
+  /** True when ANY access to this transaction identified it as a Sybil & Bot Network
+   * finding - a quick "has forensic annotation" flag for the browsing list; the full
+   * structured item only appears once the transaction's own chain is opened. */
+  has_sybil_evidence?: boolean;
 }
 
 // --- Lanac dokaza po dokaznom fajlu (coarser sibling - see LANAC-DOKAZA.md) ---
