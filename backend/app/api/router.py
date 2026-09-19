@@ -9,6 +9,7 @@ from app.features.bitcoin_ingestion.router import router as bitcoin_ingestion_ro
 from app.features.case_analytics_run.router import router as case_analytics_run_router
 from app.features.case_behavioral_analysis.router import router as case_behavioral_analysis_router
 from app.features.case_dex_swap_analysis.router import router as case_dex_swap_analysis_router
+from app.features.case_flow_of_funds.router import router as case_flow_of_funds_router
 from app.features.case_graph.router import router as case_graph_router
 from app.features.case_graph_search.router import router as case_graph_search_router
 from app.features.case_management.router import router as case_management_router
@@ -52,6 +53,10 @@ api_router.include_router(case_graph_search_router, dependencies=authenticated)
 api_router.include_router(case_behavioral_analysis_router, dependencies=authenticated)
 api_router.include_router(case_dex_swap_analysis_router, dependencies=authenticated)
 api_router.include_router(case_token_approval_analysis_router, dependencies=authenticated)
+# Flow of Funds / Layering Analysis: multi-hop aggregated traversal, Sankey-ready output -
+# see app/analytics/flow_of_funds.py. Reuses build_transaction_graph like every other case
+# analysis; does not touch Taint/Pathfinding/Graph.
+api_router.include_router(case_flow_of_funds_router, dependencies=authenticated)
 api_router.include_router(case_sybil_analysis_router, dependencies=authenticated)
 api_router.include_router(case_seed_suggestion_router, dependencies=authenticated)
 api_router.include_router(case_analytics_run_router, dependencies=authenticated)
