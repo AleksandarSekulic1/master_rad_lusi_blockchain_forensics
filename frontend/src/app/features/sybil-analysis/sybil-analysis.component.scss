@@ -138,6 +138,17 @@
   font-size: 0.85rem;
 }
 
+/* The dropdown's OPEN option list is rendered by the OS/browser, not by this app's theme -
+   it ignores --sb-field-bg/--sb-field-text and defaults to a white popup, so an option left
+   without its own color inherits the dark theme's light text onto that white background and
+   becomes unreadable. Same fix as dex-swap-analysis/behavioral-analysis.component.scss's own
+   "select option" rule - force a dark-on-white pair explicitly, for all three selects on
+   this page (Prikaz transakcija, Adrese iz slučaja, Kontrakti iz slučaja). */
+.sb-field select option {
+  color: #0b1526;
+  background: #ffffff;
+}
+
 /* ---------- naslov ---------- */
 .sybil-header {
   display: grid;

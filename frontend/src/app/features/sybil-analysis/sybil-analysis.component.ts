@@ -102,6 +102,24 @@ export class SybilAnalysisComponent implements OnInit {
   protected timeWindowSeconds = 300;
   protected minAddresses = 3;
 
+  // --- Case address pick-list (see behavioral-analysis/dex-swap-analysis.component.ts's
+  // own loadCaseAddresses for the original pattern) - lets the analyst pick an address seen
+  // in the case's evidence instead of typing a hash by hand. Reuses the plain case graph
+  // endpoint (same one Graf/Taint/Behavioral/DEX Swap seed from), no new backend route.
+  //
+  // Two SEPARATE lists, not one reused for both pickers: the backend's `contract` filter
+  // only ever matches an address that is a `recipient_address` on some transaction (see
+  // sybil_analysis.py's detect_sybil_clusters - contract="X" 404s unless the frame has a row
+  // with recipient_address == X). A sender-only address (e.g. a bot wallet that only ever
+  // pays OUT) can never satisfy that, so offering it under "Kontrakti iz slučaja" would let
+  // the analyst pick a value that is guaranteed to fail. `caseContracts` is therefore
+  // restricted to addresses seen as a link TARGET (recipient) in the graph; `caseAddresses`
+  // (every node, sender or recipient) stays the source for the plain "Adrese iz slučaja"
+  // picker, since `address` has no such restriction. ---
+  protected caseAddresses: string[] = [];
+  protected caseContracts: string[] = [];
+  protected isLoadingCaseAddresses = false;
+
   protected isAnalyzing = false;
   protected analysisError: string | null = null;
   protected result: SybilAnalysisResult | null = null;
@@ -171,6 +189,10 @@ export class SybilAnalysisComponent implements OnInit {
         this.clearResult();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
+          this.loadCaseAddresses();
+        } else {
+          this.caseAddresses = [];
+          this.caseContracts = [];
         }
       });
   }
@@ -186,9 +208,38 @@ export class SybilAnalysisComponent implements OnInit {
     });
   }
 
+  /** Pulls every address in the current case/evidence graph so the analyst can pick from a
+   * list instead of pasting a hash - identical pattern to dex-swap-analysis/behavioral
+   * -analysis.component.ts's own loadCaseAddresses. Also derives `caseContracts` (addresses
+   * that received at least one transfer, i.e. a link TARGET) from the same graph response,
+   * since the backend's `contract` filter 404s on anything that never appears as a
+   * recipient - see the field's own comment above. */
+  private loadCaseAddresses(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      this.caseAddresses = [];
+      this.caseContracts = [];
+      return;
+    }
+    this.isLoadingCaseAddresses = true;
+    this.caseData.getCaseGraph(caseId, this.selectedEvidence).subscribe({
+      next: (graph) => {
+        this.caseAddresses = [...new Set(graph.nodes.map((node) => String(node.id)))].sort((a, b) => a.localeCompare(b));
+        this.caseContracts = [...new Set(graph.links.map((link) => String(link.target)))].sort((a, b) => a.localeCompare(b));
+        this.isLoadingCaseAddresses = false;
+      },
+      error: () => {
+        this.caseAddresses = [];
+        this.caseContracts = [];
+        this.isLoadingCaseAddresses = false;
+      },
+    });
+  }
+
   protected onEvidenceSelected(storedName: string): void {
     this.selectedEvidence = storedName || null;
     this.clearResult();
+    this.loadCaseAddresses();
   }
 
   protected get selectedEvidenceFileName(): string | null {

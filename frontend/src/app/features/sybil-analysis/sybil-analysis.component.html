@@ -39,11 +39,53 @@
     <div class="sb-params-row">
       <label class="sb-field">
         {{ t('Adresa (opciono)', 'Address (optional)') }}
-        <input type="text" [(ngModel)]="addressFilter" placeholder="0x..." [disabled]="!activeCase" />
+        <span class="sb-input-with-clear">
+          <input
+            type="text"
+            list="sb-address-datalist"
+            [(ngModel)]="addressFilter"
+            [placeholder]="t('0x... ili izaberi sa liste', '0x... or pick from the list')"
+            [disabled]="!activeCase"
+          />
+          <button
+            type="button"
+            class="sb-clear-button"
+            *ngIf="addressFilter"
+            (click)="addressFilter = ''"
+            [attr.aria-label]="t('Obriši adresu', 'Clear address')"
+            title="{{ t('Obriši', 'Clear') }}"
+          >
+            ×
+          </button>
+        </span>
+        <datalist id="sb-address-datalist">
+          <option *ngFor="let addr of caseAddresses" [value]="addr"></option>
+        </datalist>
       </label>
       <label class="sb-field">
         {{ t('Kontrakt (opciono)', 'Contract (optional)') }}
-        <input type="text" [(ngModel)]="contractFilter" placeholder="0x..." [disabled]="!activeCase" />
+        <span class="sb-input-with-clear">
+          <input
+            type="text"
+            list="sb-contract-datalist"
+            [(ngModel)]="contractFilter"
+            [placeholder]="t('0x... ili izaberi sa liste', '0x... or pick from the list')"
+            [disabled]="!activeCase"
+          />
+          <button
+            type="button"
+            class="sb-clear-button"
+            *ngIf="contractFilter"
+            (click)="contractFilter = ''"
+            [attr.aria-label]="t('Obriši kontrakt', 'Clear contract')"
+            title="{{ t('Obriši', 'Clear') }}"
+          >
+            ×
+          </button>
+        </span>
+        <datalist id="sb-contract-datalist">
+          <option *ngFor="let addr of caseContracts" [value]="addr"></option>
+        </datalist>
       </label>
       <label class="sb-field sb-field-narrow">
         {{ t('Vremenski prozor (s)', 'Time window (s)') }}
