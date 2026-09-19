@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
@@ -12,8 +12,25 @@ import { SettingsService } from '../../core/services/settings.service';
 import { CaseSummary, EvidenceEntry, TransactionCustodyEntry } from '../../core/models/shared.models';
 import { CustodyAccessDialogComponent } from '../custody-access-dialog/custody-access-dialog.component';
 import { FlowOfFundsApiService } from './flow-of-funds.api';
-import { AggregatedFlow, FlowAggregationLevel, FlowOfFundsDirection, FlowOfFundsNode, FlowOfFundsResult } from './flow-of-funds.models';
+import {
+  AggregatedFlow,
+  FlowAggregationLevel,
+  FlowOfFundsDirection,
+  FlowOfFundsNode,
+  FlowOfFundsResult,
+  NodeAnnotationBuckets,
+} from './flow-of-funds.models';
 import { SankeyDiagramComponent, SankeyDiagramLink, SankeyDiagramNode } from './sankey-diagram/sankey-diagram.component';
+
+/** One address involved in the currently selected flow, paired with whatever the rest of
+ * the app already knows about it (see FlowOfFundsResult.node_annotations) - the detail
+ * panel renders one of these per relevant address (source/target at address granularity,
+ * every contributing address at entity/category granularity). */
+interface FlowDetailAddress {
+  address: string;
+  role: 'source' | 'target';
+  annotations: NodeAnnotationBuckets;
+}
 
 const MIN_LEVELS = 1;
 const MAX_LEVELS = 10;
@@ -55,6 +72,11 @@ export class FlowOfFundsComponent implements OnInit {
   protected startDate = '';
   protected endDate = '';
 
+  // --- opt-in cross-references (both default off server-side - see
+  // flow_of_funds_enrichment.enrich_flow_of_funds_nodes) ---
+  protected includeTaint = false;
+  protected includeSybil = false;
+
   // --- run state (custody-gated, same convention as every other case analysis) ---
   protected isRunning = false;
   protected runError: string | null = null;
@@ -74,6 +96,7 @@ export class FlowOfFundsComponent implements OnInit {
     private readonly caseData: CaseDataApiService,
     private readonly flowApi: FlowOfFundsApiService,
     private readonly destroyRef: DestroyRef,
+    private readonly router: Router,
     public readonly settings: SettingsService,
   ) {}
 
@@ -228,6 +251,8 @@ export class FlowOfFundsComponent implements OnInit {
           minAmount: this.minAmount ?? 0,
           startTime: this.startTimeIso,
           endTime: this.endTimeIso,
+          includeTaint: this.includeTaint,
+          includeSybil: this.includeSybil,
         },
         this.selectedEvidence,
         custody,
@@ -372,5 +397,83 @@ export class FlowOfFundsComponent implements OnInit {
 
   protected formatAmount(value: number): string {
     return value.toLocaleString('en-US', { maximumFractionDigits: 8 });
+  }
+
+  /** A NodeAnnotationBadge's extra fields are typed `unknown` (different `type`s carry
+   * different shapes - see flow_of_funds_enrichment.py) - these two narrow just enough for
+   * the template to call .join()/toLocaleString() on them without an `any` cast. */
+  protected asStringArray(value: unknown): string[] {
+    return Array.isArray(value) ? value.map((item) => String(item)) : [];
+  }
+
+  protected asNumber(value: unknown): number {
+    return typeof value === 'number' ? value : 0;
+  }
+
+  // --- cross-referenced findings for the currently selected flow (Graph/DEX/Token
+  // Approval/Taint/Sybil - see backend/app/analytics/flow_of_funds_enrichment.py). Always
+  // looked up by real address, never by an entity/category label - at address granularity
+  // that's just [source, target]; at entity/category granularity it's every underlying
+  // address the collapsed flow folds together (contributing_addresses), so a reader can
+  // still see exactly what's known about each real wallet behind the aggregate. ---
+
+  private static readonly EMPTY_ANNOTATIONS: NodeAnnotationBuckets = { facts: [], aggregated: [], heuristics: [] };
+
+  private annotationsFor(address: string): NodeAnnotationBuckets {
+    return this.result?.node_annotations?.[address] ?? FlowOfFundsComponent.EMPTY_ANNOTATIONS;
+  }
+
+  get selectedFlowAddresses(): FlowDetailAddress[] {
+    const flow = this.selectedFlow;
+    if (!flow) {
+      return [];
+    }
+    const sourceAddresses = flow.contributing_addresses?.source ?? [flow.source];
+    const targetAddresses = flow.contributing_addresses?.target ?? [flow.target];
+
+    return [
+      ...sourceAddresses.map((address): FlowDetailAddress => ({ address, role: 'source', annotations: this.annotationsFor(address) })),
+      ...targetAddresses.map((address): FlowDetailAddress => ({ address, role: 'target', annotations: this.annotationsFor(address) })),
+    ];
+  }
+
+  /** True when at least one address behind the current flow has ANY cross-referenced
+   * finding at all - lets the template skip an empty "Povezani nalazi" section instead of
+   * showing three empty headings. */
+  get selectedFlowHasAnnotations(): boolean {
+    return this.selectedFlowAddresses.some(
+      (entry) => entry.annotations.facts.length + entry.annotations.aggregated.length + entry.annotations.heuristics.length > 0,
+    );
+  }
+
+  // --- Chain of Evidence deep link: every transaction already carries the SAME tx_id its
+  // custody entry (if any) is keyed by - see custody-log.component.ts's own ?tx= deep link,
+  // reused as-is, nothing new added to that page. ---
+
+  protected custodyLinkParams(txId: string): Record<string, string> {
+    return this.activeCase ? { tx: txId, caseId: this.activeCase.id } : { tx: txId };
+  }
+
+  // --- handoff to Pathfinding/Taint Analysis, reusing the SAME one-shot mechanism
+  // token-approval.component.ts already uses (AnalysisStateService.setPendingPathfindingSeed/
+  // setPendingTaintSeeds) - neither of those pages is touched, they already know how to pick
+  // this up on load. ---
+
+  protected openFlowInPathfinding(): void {
+    const flow = this.selectedFlow;
+    if (!flow || this.aggregationLevel !== 'address') {
+      return;
+    }
+    this.state.setPendingPathfindingSeed({ from: flow.source, to: flow.target });
+    this.router.navigateByUrl('/pathfinding');
+  }
+
+  protected sendFlowAddressesToTaint(): void {
+    const addresses = this.selectedFlowAddresses.map((entry) => entry.address);
+    if (addresses.length === 0) {
+      return;
+    }
+    this.state.setPendingTaintSeeds(Array.from(new Set(addresses)));
+    this.router.navigateByUrl('/taint');
   }
 }

@@ -54,6 +54,7 @@ from typing import Any, Literal
 import pandas as pd
 
 from app.analytics.graph_building import _serialize_value, build_transaction_graph
+from app.evidence.tx_identity import transaction_id
 from app.services.address_enrichment import get_known_entity
 
 
@@ -106,6 +107,44 @@ def _describe_address(address: str) -> dict[str, str | None]:
     }
 
 
+def attach_evidence_provenance(per_evidence_frames: list[tuple[dict[str, object], pd.DataFrame]]) -> pd.DataFrame:
+    """Concatenates per-evidence-file frames (same input shape as
+    app.analytics.case_graph.combine_frames) into one DataFrame, tagged with an extra
+    `evidence_stored_name` column per row - the one piece of provenance `combine_frames`
+    itself deliberately drops. `trace_flow_of_funds`/`_index_rows_by_edge` read that column,
+    when present, to compute each transaction's `tx_id` exactly the way
+    app.shared.custody_recording.record_custody_access does, so a flow's transactions can
+    link straight to an existing chain-of-custody entry (see app/features/custody/router.py's
+    GET .../custody/transactions/{tx_id}). Callers that don't care about that linkage can
+    keep using combine_frames as before - this is purely additive."""
+    if not per_evidence_frames:
+        return pd.DataFrame(columns=['sender_address', 'recipient_address', 'amount', 'timestamp', 'metadata', 'evidence_stored_name'])
+
+    tagged_frames = []
+    for evidence_entry, frame in per_evidence_frames:
+        tagged = frame.copy()
+        tagged['evidence_stored_name'] = str(evidence_entry.get('stored_name') or '')
+        tagged_frames.append(tagged)
+
+    return pd.concat(tagged_frames, ignore_index=True)
+
+
+def _clean_na(value: Any) -> Any:
+    """`itertuples()` hands back pandas' raw missing-value sentinel (e.g. `pd.NA` for a
+    nullable string column) unconverted - unlike `frame.to_dict('records')`, which quietly
+    turns it into plain `None` (see app.shared.custody_recording._clean_scalar, the same
+    normalization, needed there for the same reason). `pd.NA or x` raises `TypeError`
+    ('boolean value of NA is ambiguous'), so anything handed to `transaction_id()` - which
+    does exactly that - has to go through this first to match what to_dict('records') would
+    have produced from the same cell."""
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 def _index_rows_by_edge(dataframe: pd.DataFrame) -> dict[tuple[str, str], dict[str, list[dict[str, Any]]]]:
     """Groups the raw (already-cleaned) evidence rows by (sender, recipient) and, within
     that, by inferred/declared asset - the per-currency bucketing that keeps amount
@@ -113,21 +152,50 @@ def _index_rows_by_edge(dataframe: pd.DataFrame) -> dict[tuple[str, str], dict[s
     DataFrame rather than the pre-built graph's `total_amount`, which already mixes
     whatever currencies were combined into one case."""
     has_currency = 'currency' in dataframe.columns
+    # Optional - only present when the caller tagged each row with its source evidence file
+    # (see attach_evidence_provenance) - lets every transaction carry the SAME `tx_id` its
+    # chain-of-custody entry is keyed by (app.evidence.tx_identity.transaction_id), so a
+    # flow's transaction list can link straight to Lanac dokaza. Falls back to '' when
+    # absent (e.g. direct/test callers with a plain combined frame) - still a valid,
+    # deterministic id, just not guaranteed to match a real custody entry.
+    has_evidence_name = 'evidence_stored_name' in dataframe.columns
     index: dict[tuple[str, str], dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
 
     for row in dataframe.itertuples(index=False):
         sender = str(getattr(row, 'sender_address'))
         recipient = str(getattr(row, 'recipient_address'))
         amount = float(getattr(row, 'amount'))
-        timestamp = _serialize_value(getattr(row, 'timestamp', None))
-        tx_hash = _serialize_value(getattr(row, 'metadata', None))
+        raw_timestamp = getattr(row, 'timestamp', None)
+        raw_metadata = getattr(row, 'metadata', None)
+        timestamp = _serialize_value(raw_timestamp)
+        tx_hash = _serialize_value(raw_metadata)
         currency = getattr(row, 'currency', None) if has_currency else None
+        evidence_stored_name = str(getattr(row, 'evidence_stored_name', '') or '') if has_evidence_name else ''
+
+        # Computed from the RAW (pre-serialization) values, matching exactly what
+        # app.shared.custody_recording.record_custody_access computes from the same
+        # per-evidence DataFrame row - so this id lines up with a real chain-of-custody
+        # entry whenever one already exists, not a lookalike. record_custody_access reads
+        # its rows via frame.to_dict('records'), which silently turns a missing nullable-
+        # string cell (pd.NA) into plain None; itertuples does NOT do that on its own
+        # (`pd.NA or x` raises TypeError), so _clean_na does that same normalization here.
+        tx_id = transaction_id(
+            {
+                'sender_address': sender,
+                'recipient_address': recipient,
+                'amount': _clean_na(getattr(row, 'amount')),
+                'timestamp': _clean_na(raw_timestamp),
+                'metadata': _clean_na(raw_metadata),
+            },
+            evidence_stored_name,
+        )
 
         asset = _row_asset(currency, sender, recipient)
         index[(sender, recipient)][asset].append({
             'amount': amount,
             'timestamp': timestamp,
             'tx_hash': tx_hash,
+            'tx_id': tx_id,
             'sender_address': sender,
             'recipient_address': recipient,
         })
@@ -198,6 +266,7 @@ def _build_flow_record(
         (
             {
                 'tx_hash': row['tx_hash'],
+                'tx_id': row['tx_id'],
                 'amount': row['amount'],
                 'timestamp': row['timestamp'],
                 'sender_address': row['sender_address'],

@@ -13,10 +13,35 @@ export type FlowAggregationLevel = 'address' | 'entity' | 'category';
  * granularity, where several different address pairs can be merged into one flow. */
 export interface FlowTransactionDetail {
   tx_hash: string | null;
+  /** Same id app.evidence.tx_identity.transaction_id computes for this row - identical to
+   * the one a chain-of-custody entry for this exact transaction is keyed by, so a click can
+   * open "/lanac-dokaza?tx=...&caseId=..." directly (see custody-log.component.ts's own
+   * deep-link handling - that page already knows how to open a tx id, nothing new there). */
+  tx_id: string;
   amount: number;
   timestamp: string | null;
   sender_address: string;
   recipient_address: string;
+}
+
+/** One cross-referenced finding about an address, always tagged with WHICH existing
+ * analysis produced it (`type`) - see backend/app/analytics/flow_of_funds_enrichment.py for
+ * the full field shape per type. Kept loose (index signature) since each `type` carries
+ * different extra fields (a `risk_score` badge has `score`/`band`/`reasons`, a
+ * `known_entity` badge has `name`/`category`, etc.) - the component picks fields by `type`. */
+export interface NodeAnnotationBadge {
+  type: string;
+  [key: string]: unknown;
+}
+
+/** The three CLEARLY SEPARATED buckets a node's cross-referenced findings are split into -
+ * never blended into one list, so a reader never mistakes a model's guess for an
+ * established fact (see the enrichment module's own docstring for the exact rule per
+ * bucket). */
+export interface NodeAnnotationBuckets {
+  facts: NodeAnnotationBadge[];
+  aggregated: NodeAnnotationBadge[];
+  heuristics: NodeAnnotationBadge[];
 }
 
 /** One node summary from the backend result - the smallest BFS level at which this
@@ -80,6 +105,11 @@ export interface FlowOfFundsResult {
   address_flows: AggregatedFlow[];
   entity_flows: AggregatedFlow[];
   category_flows: AggregatedFlow[];
+  /** Cross-referenced findings from the rest of the app's existing analyses (Graph's own
+   * plugin pipeline, DEX Swap, Token Approval, and - opt-in - Taint/Sybil), keyed by real
+   * address (always address-level, even when the Sankey view itself shows entities/
+   * categories - see flow-of-funds.component.ts's annotationsForFlow). */
+  node_annotations: Record<string, NodeAnnotationBuckets>;
   case_id: string;
   evidence: string | null;
   generated_at: string;
@@ -95,4 +125,8 @@ export interface FlowOfFundsRequestParams {
   maxFlows?: number;
   startTime?: string | null;
   endTime?: string | null;
+  /** Opt into the two heavier cross-referenced analyses (see flow_of_funds_enrichment) -
+   * both default OFF server-side, so these are only ever sent when explicitly true. */
+  includeTaint?: boolean;
+  includeSybil?: boolean;
 }

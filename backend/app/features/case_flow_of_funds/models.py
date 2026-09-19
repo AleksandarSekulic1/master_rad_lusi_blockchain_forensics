@@ -26,4 +26,11 @@ class FlowOfFundsRunRequest(BaseModel):
     # app.analytics.flow_of_funds.trace_flow_of_funds. Either/both may be omitted.
     start_time: str | None = None
     end_time: str | None = None
+    # Cross-references this trace's nodes against the rest of the app's existing analyses -
+    # see app.analytics.flow_of_funds_enrichment. The cheap, deterministic ones (known-entity/
+    # blacklist registry, risk scoring, peel chains, chain hopping, wallet clustering, DEX
+    # swaps, token approvals) always run; these two default OFF since both are heavier,
+    # deliberate analyses elsewhere in the app with their own "run" action.
+    include_taint: bool = False
+    include_sybil: bool = False
     custody: TransactionCustodyEntry | None = None

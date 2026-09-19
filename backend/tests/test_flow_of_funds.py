@@ -536,3 +536,107 @@ class TestFlowOfFundsRunRouteAndCustody:
                 case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
             )
         assert excinfo.value.status_code == 400
+
+
+class TestEvidenceProvenanceAndCustodyLinking:
+    """Povezivanje sa Lancem dokaza: svaka transakcija u toku nosi ISTI tx_id koji dobija
+    njen zapis u lancu dokaza (app.evidence.tx_identity.transaction_id), tako da klik na
+    transakciju iz Flow of Funds rezultata može direktno da otvori njen lanac dokaza
+    (GET /cases/{id}/custody/transactions/{tx_id} - vidi app/features/custody/router.py).
+    """
+
+    def test_attach_evidence_provenance_tags_rows_with_stored_name(self):
+        """attach_evidence_provenance doda evidence_stored_name kolonu iz evidence entry-ja"""
+        from app.analytics.flow_of_funds import attach_evidence_provenance
+
+        frame_a = frame_from_rows([{'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 1, 'timestamp': '2026-01-01T00:00:00Z'}])
+        frame_b = frame_from_rows([{'sender_address': '0xC', 'recipient_address': '0xD', 'amount': 2, 'timestamp': '2026-01-01T00:00:00Z'}])
+
+        combined = attach_evidence_provenance([
+            ({'stored_name': 'evidence_a.csv'}, frame_a),
+            ({'stored_name': 'evidence_b.csv'}, frame_b),
+        ])
+
+        assert list(combined['evidence_stored_name']) == ['evidence_a.csv', 'evidence_b.csv']
+
+    def test_flow_transaction_tx_id_matches_the_recorded_custody_entry(self, tmp_path, monkeypatch):
+        """tx_id u toku je IDENTIČAN tx_id-u upisanom u lanac dokaza za istu transakciju"""
+        from app.features.case_flow_of_funds import router as flow_router
+        from app.features.case_flow_of_funds.models import FlowOfFundsRunRequest
+        from app.shared import case_access
+        from app.evidence import custody_log
+
+        monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
+        # No tx hash column value on this row - exercises the derived (non-hash) fallback
+        # id, the harder case to keep consistent between the two computations.
+        csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z,\n')
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        request = FlowOfFundsRunRequest(
+            source_addresses=['0xA'],
+            custody={
+                'ime_prezime': 'Aleksandar Sekulić',
+                'opis_radnje': 'Praćenje toka sredstava od 0xA',
+                'signature_image': 'data:image/png;base64,AAA',
+            },
+        )
+        result = flow_router.run_case_flow_of_funds(
+            case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
+        )
+
+        flow_tx_id = result['address_flows'][0]['transactions'][0]['tx_id']
+        custody_entries = custody_log.load_custody_entries(case_id='c1')
+        assert len(custody_entries) == 1
+        assert flow_tx_id == custody_entries[0]['tx_id']
+
+    def test_get_route_includes_tx_id_without_touching_custody(self, tmp_path, monkeypatch):
+        """Pasivna GET ruta takođe vraća tx_id po transakciji, ali ne upisuje u lanac dokaza"""
+        from app.features.case_flow_of_funds import router as flow_router
+        from app.shared import case_access
+        from app.evidence import custody_log
+
+        monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
+        csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z,0xtx1\n')
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        result = flow_router.get_case_flow_of_funds(
+            case_id='c1', source=['0xA'], direction='forward', max_levels=2, min_amount=0.0, max_flows=500,
+            start_time=None, end_time=None, include_taint=False, include_sybil=False,
+        )
+
+        assert result['address_flows'][0]['transactions'][0]['tx_id']
+        assert custody_log.load_custody_entries(case_id='c1') == []
+
+
+class TestNodeAnnotationsWiring:
+    """Rute uključuju node_annotations (fakti/agregati/heuristike) u odgovor"""
+
+    def test_run_route_includes_node_annotations_with_three_buckets(self, tmp_path, monkeypatch):
+        """POST /run odgovor sadrži node_annotations sa 'facts'/'aggregated'/'heuristics'"""
+        from app.features.case_flow_of_funds import router as flow_router
+        from app.features.case_flow_of_funds.models import FlowOfFundsRunRequest
+        from app.shared import case_access
+        from app.evidence import audit_log, custody_log
+
+        monkeypatch.setattr(audit_log, '_audit_log_path', lambda: tmp_path / 'audit_log.jsonl')
+        monkeypatch.setattr(custody_log, '_custody_log_path', lambda: tmp_path / 'custody_log.jsonl')
+        case = {'id': 'c1', 'name': 'Slučaj 1', 'evidence': []}
+        monkeypatch.setattr(case_access, 'get_case', lambda case_id: case)
+        csv_path = write_csv(tmp_path, '0xA,0xB,100,2026-01-01T00:00:00Z,0xtx1\n')
+        evidence_entry = {'stored_name': 'evidence.csv', 'file_name': 'original.csv'}
+        monkeypatch.setattr(case_access, 'get_case_evidence_paths', lambda case: [(evidence_entry, csv_path)])
+
+        request = FlowOfFundsRunRequest(source_addresses=['0xA'])
+        result = flow_router.run_case_flow_of_funds(
+            case_id='c1', request=request, current_user={'id': '1', 'username': 'aco', 'role': 'analyst'},
+        )
+
+        assert '0xA' in result['node_annotations']
+        assert '0xB' in result['node_annotations']
+        assert set(result['node_annotations']['0xA'].keys()) == {'facts', 'aggregated', 'heuristics'}

@@ -33,6 +33,12 @@ export class FlowOfFundsApiService {
     if (params.endTime) {
       httpParams = httpParams.set('end_time', params.endTime);
     }
+    if (params.includeTaint) {
+      httpParams = httpParams.set('include_taint', 'true');
+    }
+    if (params.includeSybil) {
+      httpParams = httpParams.set('include_sybil', 'true');
+    }
     if (evidence) {
       httpParams = httpParams.set('evidence', evidence);
     }
@@ -64,6 +70,8 @@ export class FlowOfFundsApiService {
       max_flows: params.maxFlows ?? 500,
       start_time: params.startTime ?? null,
       end_time: params.endTime ?? null,
+      include_taint: params.includeTaint ?? false,
+      include_sybil: params.includeSybil ?? false,
       custody,
     };
     return this.http.post<FlowOfFundsResult>(`${this.apiUrl}/api/v1/cases/${caseId}/flow-of-funds/run`, body, { params: httpParams });

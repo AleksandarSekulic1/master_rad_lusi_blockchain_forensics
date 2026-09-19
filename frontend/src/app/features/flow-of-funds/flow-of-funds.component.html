@@ -105,6 +105,22 @@
             {{ t('Datum „od" je posle datuma „do".', 'The "from" date is after the "to" date.') }}
           </p>
         </div>
+
+        <div class="ff-field ff-field-narrow">
+          <span class="ff-field-label">{{ t('Poveži sa drugim analizama', 'Cross-reference with') }}</span>
+          <label class="ff-checkbox-row">
+            <input type="checkbox" [(ngModel)]="includeTaint" />
+            {{ t('Taint analizom (isti seed-ovi)', 'Taint Analysis (same seeds)') }}
+          </label>
+          <label class="ff-checkbox-row">
+            <input type="checkbox" [(ngModel)]="includeSybil" />
+            {{ t('Sybil analizom (ceo slučaj)', 'Sybil Analysis (whole case)') }}
+          </label>
+          <p class="ff-hint">
+            {{ t('Blacklist, procena rizika, peel chain/chain hopping, DEX swap i Token Approval nalazi se uvek prikazuju kad postoje.',
+                  'Blacklist, risk scoring, peel chain/chain hopping, DEX swap and Token Approval findings are always shown when they exist.') }}
+          </p>
+        </div>
       </div>
 
       <div class="ff-run-row">
@@ -220,10 +236,113 @@
             <span>{{ t('Broj transakcija', 'Transaction count') }}: <strong>{{ flow.transaction_count }}</strong></span>
           </div>
 
+          <div class="ff-handoff-row">
+            <button
+              type="button"
+              class="ghost-button ff-handoff-btn"
+              *ngIf="aggregationLevel === 'address'"
+              (click)="openFlowInPathfinding()"
+            >
+              {{ t('Otvori u Pathfinding', 'Open in Pathfinding') }}
+            </button>
+            <button type="button" class="ghost-button ff-handoff-btn" (click)="sendFlowAddressesToTaint()">
+              {{ t('Pošalji adrese u Taint analizu', 'Send addresses to Taint Analysis') }}
+            </button>
+          </div>
+
           <p class="ff-multi-output-badge" *ngIf="flow.multi_output_same_tx">
             {{ t('Sadrži transakciju sa više izlaza (UTXO) — jedan tx istovremeno plaća više primalaca.',
                   'Contains a multi-output (UTXO) transaction — one tx pays several recipients at once.') }}
           </p>
+
+          <div class="ff-annotations" *ngIf="selectedFlowHasAnnotations">
+            <span class="ff-field-label">{{ t('Povezani nalazi iz drugih analiza', 'Cross-referenced findings') }}</span>
+
+            <div class="ff-annotation-address" *ngFor="let entry of selectedFlowAddresses">
+              <ng-container
+                *ngIf="entry.annotations.facts.length + entry.annotations.aggregated.length + entry.annotations.heuristics.length > 0"
+              >
+                <p class="ff-annotation-address-label">
+                  <span class="ff-role-tag">{{ entry.role === 'source' ? t('izvor', 'source') : t('odredište', 'target') }}</span>
+                  <span class="mono-address">{{ entry.address }}</span>
+                </p>
+
+                <div class="ff-annotation-bucket ff-bucket-fact" *ngIf="entry.annotations.facts.length > 0">
+                  <span class="ff-bucket-title">{{ t('Direktne blockchain činjenice', 'Direct blockchain facts') }}</span>
+                  <ul>
+                    <li *ngFor="let badge of entry.annotations.facts">
+                      <ng-container [ngSwitch]="badge.type">
+                        <span *ngSwitchCase="'known_entity'">
+                          {{ t('Poznat entitet', 'Known entity') }}: <strong>{{ badge['name'] }}</strong> ({{ badge['category'] }})
+                        </span>
+                        <span *ngSwitchCase="'blacklist'">
+                          {{ t('Na crnoj listi', 'Blacklisted') }} ({{ asStringArray(badge['sources']).join(', ') }}): {{ badge['label'] }}
+                        </span>
+                        <span *ngSwitchDefault>{{ badge.type }}</span>
+                      </ng-container>
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="ff-annotation-bucket ff-bucket-aggregated" *ngIf="entry.annotations.aggregated.length > 0">
+                  <span class="ff-bucket-title">{{ t('Agregovani rezultati', 'Aggregated results') }}</span>
+                  <ul>
+                    <li *ngFor="let badge of entry.annotations.aggregated">
+                      <ng-container [ngSwitch]="badge.type">
+                        <span *ngSwitchCase="'flow_totals'">
+                          {{ t('Ukupno primljeno', 'Total received') }}: <strong>{{ formatAmount(asNumber(badge['total_received'])) }}</strong>
+                          · {{ t('poslato', 'sent') }}: <strong>{{ formatAmount(asNumber(badge['total_sent'])) }}</strong>
+                        </span>
+                        <span *ngSwitchCase="'dex_swap_detected'">
+                          {{ t('Potvrđen DEX swap', 'Confirmed DEX swap') }} ({{ badge['dex_name'] || t('nepoznat DEX', 'unknown DEX') }})
+                          — {{ t('isti tx hash na oba kraka', 'shared tx hash on both legs') }}
+                        </span>
+                        <span *ngSwitchCase="'token_approval'">
+                          {{ t('Token approval', 'Token approval') }} ({{ badge['role'] }}, {{ badge['status'] }})
+                        </span>
+                        <span *ngSwitchDefault>{{ badge.type }}</span>
+                      </ng-container>
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="ff-annotation-bucket ff-bucket-heuristic" *ngIf="entry.annotations.heuristics.length > 0">
+                  <span class="ff-bucket-title">{{ t('Heuristički zaključci (mogu biti pogrešni)', 'Heuristic conclusions (may be wrong)') }}</span>
+                  <ul>
+                    <li *ngFor="let badge of entry.annotations.heuristics">
+                      <ng-container [ngSwitch]="badge.type">
+                        <span *ngSwitchCase="'risk_score'">
+                          {{ t('Risk scoring', 'Risk scoring') }}: <strong>{{ badge['score'] }}/100</strong> ({{ badge['band'] }})
+                        </span>
+                        <span *ngSwitchCase="'peel_chain'">
+                          {{ t('Peel chain uloga', 'Peel chain role') }}: <strong>{{ badge['role'] }}</strong>
+                        </span>
+                        <span *ngSwitchCase="'chain_hop'">
+                          {{ t('Chain hopping', 'Chain hopping') }}: <strong>{{ badge['service_type'] }}</strong>
+                        </span>
+                        <span *ngSwitchCase="'wallet_cluster'">
+                          {{ t('Wallet clustering', 'Wallet clustering') }}: <strong>{{ badge['cluster_id'] }}</strong>
+                        </span>
+                        <span *ngSwitchCase="'dex_swap_potential'">
+                          {{ t('Moguć DEX swap', 'Potential DEX swap') }} ({{ t('samo vremenska podudarnost', 'timing match only') }})
+                        </span>
+                        <span *ngSwitchCase="'token_approval_risk'">
+                          {{ t('Rizičan token approval', 'Risky token approval') }}: <strong>{{ badge['risk_level'] }}</strong>
+                        </span>
+                        <span *ngSwitchCase="'sybil_cluster'">
+                          {{ t('Sybil klaster', 'Sybil cluster') }}: <strong>{{ badge['cluster_id'] }}</strong> ({{ badge['risk_level'] }})
+                        </span>
+                        <span *ngSwitchCase="'taint'">
+                          {{ t('Taint procenat', 'Taint percentage') }}: <strong>{{ badge['percentage'] }}%</strong>
+                        </span>
+                        <span *ngSwitchDefault>{{ badge.type }}</span>
+                      </ng-container>
+                    </li>
+                  </ul>
+                </div>
+              </ng-container>
+            </div>
+          </div>
 
           <div class="ff-contributing" *ngIf="flow.contributing_addresses as contrib">
             <span class="ff-field-label">{{ t('Adrese uključene u ovaj agregat', 'Addresses folded into this aggregate') }}</span>
@@ -252,6 +371,9 @@
                 <span class="ff-arrow">→</span>
                 <span class="mono-address">{{ tx.recipient_address }}</span>
               </p>
+              <a class="ff-custody-link" routerLink="/lanac-dokaza" [queryParams]="custodyLinkParams(tx.tx_id)">
+                {{ t('Prikaži u Lancu dokaza', 'View in Chain of Custody') }}
+              </a>
             </li>
           </ul>
         </aside>

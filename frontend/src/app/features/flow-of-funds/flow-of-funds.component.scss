@@ -29,6 +29,10 @@
   --ff-warning-text: #fde68a;
   --ff-good-bg: rgba(134, 239, 172, 0.1);
   --ff-good-border: rgba(134, 239, 172, 0.28);
+  --ff-good-text: #86efac;
+  --ff-fact-bg: rgba(125, 211, 252, 0.08);
+  --ff-fact-border: rgba(125, 211, 252, 0.35);
+  --ff-fact-text: #7dd3fc;
 }
 
 :host-context([data-theme='light']) {
@@ -59,6 +63,10 @@
   --ff-warning-text: #92400e;
   --ff-good-bg: rgba(22, 163, 74, 0.1);
   --ff-good-border: rgba(22, 163, 74, 0.3);
+  --ff-good-text: #15803d;
+  --ff-fact-bg: rgba(37, 99, 235, 0.06);
+  --ff-fact-border: rgba(37, 99, 235, 0.3);
+  --ff-fact-text: #1d4ed8;
 }
 
 .ff-shell {
@@ -613,4 +621,132 @@ app-sankey-diagram {
 .ff-tx-pair .mono-address {
   font-size: 0.66rem;
   padding: 0.15rem 0.4rem;
+}
+
+.ff-custody-link {
+  justify-self: start;
+  font-size: 0.7rem;
+  color: var(--ff-link);
+  text-decoration: none;
+}
+
+.ff-custody-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- opt-in cross-reference checkboxes (search panel) ---------- */
+
+.ff-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--ff-text-2);
+  cursor: pointer;
+}
+
+.ff-checkbox-row input {
+  accent-color: var(--ff-accent);
+}
+
+/* ---------- handoff to Pathfinding/Taint Analysis ---------- */
+
+.ff-handoff-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ff-handoff-btn {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.72rem;
+}
+
+/* ---------- cross-referenced findings (facts / aggregated / heuristics) ---------- */
+
+.ff-annotations {
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--ff-border-soft);
+}
+
+.ff-annotation-address {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ff-annotation-address-label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ff-role-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ff-muted);
+}
+
+.ff-annotation-bucket {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--ff-border-soft);
+}
+
+.ff-annotation-bucket ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ff-annotation-bucket li {
+  font-size: 0.75rem;
+  color: var(--ff-text-2);
+}
+
+.ff-bucket-title {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Facts - solid border, "established" (blue): a curated registry match. */
+.ff-bucket-fact {
+  border-color: var(--ff-fact-border);
+  background: var(--ff-fact-bg);
+}
+
+.ff-bucket-fact .ff-bucket-title {
+  color: var(--ff-fact-text);
+}
+
+/* Aggregated - solid border (green): plain arithmetic/counting, no model involved. */
+.ff-bucket-aggregated {
+  border-color: var(--ff-good-border);
+  background: var(--ff-good-bg);
+}
+
+.ff-bucket-aggregated .ff-bucket-title {
+  color: var(--ff-good-text);
+}
+
+/* Heuristics - DASHED border (amber): a model's conclusion, could be wrong - the dashed
+   line is a deliberate visual "handle with care" cue distinct from the two solid-border
+   buckets above. */
+.ff-bucket-heuristic {
+  border-style: dashed;
+  border-color: var(--ff-warning-border);
+  background: var(--ff-warning-bg);
+}
+
+.ff-bucket-heuristic .ff-bucket-title {
+  color: var(--ff-warning-text);
 }
