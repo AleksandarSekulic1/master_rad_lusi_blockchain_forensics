@@ -99,6 +99,11 @@ export class ReportVerificationComponent {
     total_events: ['Ukupno događaja', 'Total events'],
     detected_count: ['Detektovano', 'Detected'],
     potential_count: ['Moguće', 'Potential'],
+    // Sybil & Bot Network analysis (sybil-analysis.component.ts)
+    total_clusters: ['Ukupno klastera', 'Total clusters'],
+    addresses_flagged: ['Označenih adresa', 'Flagged addresses'],
+    custody_findings_recorded: ['Nalaza u lancu dokaza', 'Chain-of-custody findings'],
+    highest_risk_score: ['Najviši risk score', 'Highest risk score'],
     // Graph analysis / case triage (report-export.component.ts)
     nodes: ['Čvorova', 'Nodes'],
     edges: ['Veza', 'Edges'],

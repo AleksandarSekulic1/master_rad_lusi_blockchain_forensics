@@ -123,6 +123,23 @@ def run_case_sybil_analysis(
             min_addresses=request.min_addresses,
         )
     except ValueError as exc:
+        # FAILED - written even though nothing was found/analysed, so an investigator can
+        # later see that a Sybil run was ATTEMPTED for this address/contract and why it did
+        # not complete (same "log the attempt, not just the success" discipline as
+        # case_token_approval_analysis - see TOKEN-APPROVAL-IMPLEMENTATION.md #19.2).
+        write_audit_log(
+            action='sybil_analysis_run',
+            user=str(current_user['username']),
+            case_id=case_id,
+            case_name=str(case.get('name') or ''),
+            details={
+                'status': 'FAILED',
+                'address': normalized_address,
+                'contract': normalized_contract,
+                'evidence_scope': evidence or 'combined',
+                'error': str(exc),
+            },
+        )
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     has_custody = bool(request.custody)
@@ -153,6 +170,7 @@ def run_case_sybil_analysis(
         case_id=case_id,
         case_name=str(case.get('name') or ''),
         details={
+            'status': 'SUCCESS',
             'address': normalized_address,
             'contract': normalized_contract,
             'evidence_scope': evidence or 'combined',
@@ -160,6 +178,7 @@ def run_case_sybil_analysis(
             'min_addresses': request.min_addresses,
             'total_clusters': result['total_clusters'],
             'addresses_flagged': result['addresses_flagged'],
+            'highest_risk_score': max((cluster['risk_score'] for cluster in result['clusters']), default=0),
             'custody_recorded': has_custody,
             'custody_transaction_rows': int(len(combined_frame)) if has_custody else 0,
             'custody_evidence_files': len(per_evidence_frames) if has_custody else 0,

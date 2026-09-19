@@ -132,8 +132,10 @@ class TestDeliberateRunRoute:
         run_entries = [entry for entry in entries if entry['action'] == 'sybil_analysis_run']
         assert len(run_entries) == 1
         details = run_entries[0]['details']
+        assert details['status'] == 'SUCCESS'
         assert details['total_clusters'] == 1
         assert details['addresses_flagged'] == 3
+        assert details['highest_risk_score'] > 0
         assert details['custody_recorded'] is True
         assert details['custody_transaction_rows'] == 3
         assert details['sybil_findings_recorded'] == 3
@@ -155,8 +157,8 @@ class TestDeliberateRunRoute:
         assert details['custody_recorded'] is False
         assert custody_log.load_custody_entries(case_id=case_id) == []
 
-    def test_run_with_unknown_address_returns_404_and_writes_nothing(self, client, auth, case_id):
-        """Adresa koja ne postoji u evidenciji vraća 404 i ne piše ništa"""
+    def test_run_with_unknown_address_returns_404_and_logs_failed_status(self, client, auth, case_id):
+        """Adresa koja ne postoji u evidenciji vraća 404 i loguje FAILED status sa greškom"""
         upload_csv(client, auth, case_id, SYNCHRONIZED_ROWS)
 
         resp = client.post(
@@ -167,5 +169,29 @@ class TestDeliberateRunRoute:
 
         assert resp.status_code == 404
         entries = [entry for entry in audit_log.load_audit_log_entries(case_id=case_id) if entry['action'] == 'sybil_analysis_run']
-        assert entries == []
+        assert len(entries) == 1
+        details = entries[0]['details']
+        assert details['status'] == 'FAILED'
+        assert details['address'] == '0xGhost'
+        assert 'error' in details and details['error']
+        # Ne upisuje se NIŠTA u lanac dokaza kad detekcija nije uspela - iako je custody poslat.
+        assert custody_log.load_custody_entries(case_id=case_id) == []
+
+    def test_run_with_unknown_contract_returns_404_and_logs_failed_status(self, client, auth, case_id):
+        """Kontrakt koji nikad nije primalac transakcije vraća 404 i loguje FAILED status"""
+        upload_csv(client, auth, case_id, SYNCHRONIZED_ROWS)
+
+        resp = client.post(
+            f'/api/v1/cases/{case_id}/sybil-analysis/run',
+            headers=auth,
+            json={'contract': '0xNeverSeenAsRecipient', 'custody': CUSTODY},
+        )
+
+        assert resp.status_code == 404
+        entries = [entry for entry in audit_log.load_audit_log_entries(case_id=case_id) if entry['action'] == 'sybil_analysis_run']
+        assert len(entries) == 1
+        details = entries[0]['details']
+        assert details['status'] == 'FAILED'
+        assert details['contract'] == '0xNeverSeenAsRecipient'
+        assert 'error' in details and details['error']
         assert custody_log.load_custody_entries(case_id=case_id) == []

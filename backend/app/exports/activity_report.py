@@ -82,6 +82,7 @@ _REPORT_TYPE_LABELS: dict[str, tuple[str, str]] = {
     'dex_swap': ('DEX Swap izveštaj', 'DEX Swap report'),
     'behavioral': ('Bihevioralni izveštaj', 'Behavioral report'),
     'token_approval': ('Token Approval izveštaj', 'Token Approval report'),
+    'sybil': ('Sybil & Bot Network izveštaj', 'Sybil & Bot Network report'),
     'case_triage': ('Izveštaj za trijažu', 'Triage report'),
     'graph_analysis': ('Izveštaj analize grafa', 'Graph analysis report'),
     'activity_log': ('Izveštaj aktivnosti', 'Activity report'),
@@ -264,6 +265,9 @@ def summarize_details(entry: dict[str, Any], lang: Lang = 'sr') -> str:
         scope = details.get('evidence_scope', 'combined')
         scope_text = L('sva evidencija (kombinovano)', 'all evidence (combined)') if scope == 'combined' else str(scope)
         target_text = f'{address}' + (f' · {contract}' if contract else '')
+        if details.get('status') == 'FAILED':
+            error = str(details.get('error') or L('nepoznata greška', 'unknown error'))
+            return f'{L("NEUSPEŠNO", "FAILED")} · {target_text} · {scope_text} · {error}'
         summary = (
             f'{target_text} · {scope_text} · {details.get("total_clusters", 0)} {L("klastera", "clusters")}, '
             f'{details.get("addresses_flagged", 0)} {L("označenih adresa", "flagged addresses")}'
@@ -332,6 +336,8 @@ def _report_signed_summary(details: dict[str, Any], lang: Lang = 'sr') -> str:
         extra = f' · {details.get("total_events", 0)} {L("događaja", "events")}'
     elif report_type == 'token_approval':
         extra = f' · {details.get("total_approvals", 0)} {L("odobrenja", "approvals")}, {details.get("potentially_risky_approvals", 0)} {L("rizičnih", "risky")}'
+    elif report_type == 'sybil':
+        extra = f' · {details.get("total_clusters", 0)} {L("klastera", "clusters")}, {details.get("addresses_flagged", 0)} {L("označenih adresa", "flagged addresses")}'
     elif report_type in ('case_triage', 'graph_analysis'):
         extra = f' · {details.get("nodes", 0)} {L("čvorova", "nodes")}, {details.get("edges", 0)} {L("veza", "edges")}, {details.get("blacklisted", 0)} {L("na crnoj listi", "blacklisted")}'
 
