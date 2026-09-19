@@ -98,7 +98,7 @@
         </datalist>
       </label>
       <label class="sb-field">
-        {{ t('Kontrakt (opciono)', 'Contract (optional)') }}
+        {{ t('Kontrakt-meta (opciono)', 'Contract-meta (optional)') }}
         <span class="sb-input-with-clear">
           <input
             type="text"
@@ -144,6 +144,21 @@
         "
       >
         {{ isRunningAllOverviews ? t('Pokretanje pregleda…', 'Running overview…') : t('Forenzički pregled — svi klasteri', 'Forensic overview — all clusters') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="result && result.total_clusters > 0"
+        (click)="openForensicCustodyDialog()"
+        [disabled]="!canRecordForensicOverview"
+        [title]="
+          t(
+            'Upiši Taint/Graf/Putanje/DEX preglede za sve klastere u lanac dokaza - jedan potpis, potom se svaka analiza pokreće na svoj potpisan (deliberatan) način',
+            'Record the Taint/Graph/Pathfinding/DEX overviews for all clusters in the chain of custody - one signature, then each analysis runs its own signed (deliberate) way'
+          )
+        "
+      >
+        {{ isRecordingForensicOverview ? t('Upisivanje…', 'Recording…') : t('🖋 Upiši u lanac dokaza', '🖋 Record in chain of custody') }}
       </button>
       <button
         type="button"
@@ -399,6 +414,20 @@
   [submitError]="custodyDialogError"
   (confirmed)="confirmCustodyAndAnalyze($event)"
   (cancelled)="closeCustodyDialog()"
+></app-custody-access-dialog>
+
+<!-- Lanac dokaza za "Upiši u lanac dokaza" dugme - poseban dijalog (ne isti kao gore) jer
+     potvrđuje jedan potpis koji se onda deli između Taint/Graf, Pathfinding i DEX Swap
+     poziva (vidi confirmForensicCustodyAndRecord). -->
+<app-custody-access-dialog
+  *ngIf="isForensicCustodyDialogOpen && activeCase"
+  [caseId]="activeCase.id"
+  [caseName]="activeCase.name"
+  [evidenceFileName]="selectedEvidenceFileName"
+  [isSubmitting]="isRecordingForensicOverview"
+  [submitError]="forensicCustodyError"
+  (confirmed)="confirmForensicCustodyAndRecord($event)"
+  (cancelled)="closeForensicCustodyDialog()"
 ></app-custody-access-dialog>
 
 <!-- Isti obrazac potpisa/pečata/kontrolnog broja kao DEX Swap/Taint Analysis (vidi

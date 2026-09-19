@@ -4,7 +4,7 @@ import { Component, DestroyRef, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom, forkJoin, of, Subject } from 'rxjs';
+import { firstValueFrom, forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import { jsPDF } from 'jspdf';
@@ -14,6 +14,7 @@ import { SignaturePadComponent } from '../../core/components/signature-pad/signa
 import { AnalysisStateService } from '../../core/services/analysis-state.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CaseDataApiService } from '../../core/services/case-data.api';
+import { DexSwapAnalysisApiService } from '../dex-swap-analysis/dex-swap-analysis.api';
 import { PathfindingApiService } from '../pathfinding/pathfinding.api';
 import { SybilAnalysisApiService } from './sybil-analysis.api';
 import { AppLang, SettingsService } from '../../core/services/settings.service';
@@ -212,6 +213,7 @@ export class SybilAnalysisComponent implements OnInit {
     private readonly state: AnalysisStateService,
     private readonly caseData: CaseDataApiService,
     private readonly pathfindingApi: PathfindingApiService,
+    private readonly dexSwapAnalysisApi: DexSwapAnalysisApiService,
     private readonly sybilAnalysisApi: SybilAnalysisApiService,
     private readonly auth: AuthService,
     private readonly destroyRef: DestroyRef,
@@ -428,6 +430,8 @@ export class SybilAnalysisComponent implements OnInit {
     this.overviews.clear();
     this.isSignatureDialogOpen = false;
     this.lastCustodyFindingsRecorded = null;
+    this.isForensicCustodyDialogOpen = false;
+    this.forensicCustodyError = null;
   }
 
   // --- Cluster card display helpers ---------------------------------------------------
@@ -571,6 +575,37 @@ export class SybilAnalysisComponent implements OnInit {
     return this.overviews.get(clusterId)?.isLoading ?? false;
   }
 
+  /** Bounded to two representative, cheap calls (not one per address pair) - a direct
+   * fund-flow path between the first two flagged addresses, and the nearest known exchange
+   * from the first one. bfs_shortest_path is DIRECTED, so "not found" here means no direct
+   * forward path in THIS evidence - it does not rule out a shared funding source upstream
+   * (see the panel's own caveat text in the template). `custody`, when given, makes both
+   * calls the DELIBERATE, custody-recording variant of Pathfinding instead of the passive
+   * one - shared by both the free preview (runForensicOverview, custody=null) and the
+   * "upiši u lanac dokaza" recording flow (confirmForensicCustodyAndRecord) below, so the
+   * two never drift into computing this differently. */
+  private fetchClusterPathfinding(
+    cluster: SybilCluster,
+    caseId: string,
+    custody: TransactionCustodyEntry | null,
+  ): Observable<ClusterPathfindingSummary | null> {
+    const primary = cluster.addresses[0];
+    const secondary = cluster.addresses[1] ?? null;
+    const directPath$ = secondary
+      ? this.pathfindingApi.findCasePath(caseId, primary, 'specific_address', secondary, this.selectedEvidence, custody).pipe(
+          map((result) => ({ fromAddress: primary, toAddress: secondary, found: result.found, hops: result.hops })),
+          catchError(() => of(null)),
+        )
+      : of(null);
+    const nearestCex$ = this.pathfindingApi.findCasePath(caseId, primary, 'nearest_cex', null, this.selectedEvidence, custody).pipe(
+      map((result) => ({ fromAddress: primary, found: result.found, hops: result.hops, label: result.destination_label ?? null })),
+      catchError(() => of(null)),
+    );
+    return forkJoin([directPath$, nearestCex$]).pipe(
+      map(([directPath, nearestCex]) => (directPath || nearestCex ? { directPath, nearestCex } : null)),
+    );
+  }
+
   /** `onDone` (used by runAllForensicOverviews below) fires once this ONE cluster's
    * overview has settled (success or failure) - lets the "run for all clusters" button
    * track when every one of them is finished, without this method itself needing to know
@@ -593,23 +628,8 @@ export class SybilAnalysisComponent implements OnInit {
       catchError(() => of(null)),
     );
 
-    // 2) Pathfinding: bounded to two representative, cheap calls (not one per address
-    // pair) - a direct fund-flow path between the first two flagged addresses, and the
-    // nearest known exchange from the first one. bfs_shortest_path is DIRECTED, so "not
-    // found" here means no direct forward path in THIS evidence - it does not rule out a
-    // shared funding source upstream (see the panel's own caveat text in the template).
-    const primary = cluster.addresses[0];
-    const secondary = cluster.addresses[1] ?? null;
-    const directPath$ = secondary
-      ? this.pathfindingApi.findCasePath(caseId, primary, 'specific_address', secondary, this.selectedEvidence, null).pipe(
-          map((result) => ({ fromAddress: primary, toAddress: secondary, found: result.found, hops: result.hops })),
-          catchError(() => of(null)),
-        )
-      : of(null);
-    const nearestCex$ = this.pathfindingApi.findCasePath(caseId, primary, 'nearest_cex', null, this.selectedEvidence, null).pipe(
-      map((result) => ({ fromAddress: primary, found: result.found, hops: result.hops, label: result.destination_label ?? null })),
-      catchError(() => of(null)),
-    );
+    // 2) Pathfinding - see fetchClusterPathfinding's own comment.
+    const pathfinding$ = this.fetchClusterPathfinding(cluster, caseId, null);
 
     // 3) DEX Swap Analysis: one case-wide, passive GET (same call the Graph page's own
     // overlay already uses), filtered client-side to this cluster's addresses - avoids one
@@ -619,13 +639,8 @@ export class SybilAnalysisComponent implements OnInit {
       catchError(() => of(null)),
     );
 
-    forkJoin([graphTaint$, directPath$, nearestCex$, dex$]).subscribe(([graphTaint, directPath, nearestCex, dex]) => {
-      this.overviews.set(cluster.cluster_id, {
-        isLoading: false,
-        graphTaint,
-        pathfinding: directPath || nearestCex ? { directPath, nearestCex } : null,
-        dex,
-      });
+    forkJoin([graphTaint$, pathfinding$, dex$]).subscribe(([graphTaint, pathfinding, dex]) => {
+      this.overviews.set(cluster.cluster_id, { isLoading: false, graphTaint, pathfinding, dex });
       onDone?.();
     });
   }
@@ -663,6 +678,87 @@ export class SybilAnalysisComponent implements OnInit {
     for (const cluster of pending) {
       this.runForensicOverview(cluster, onOneDone);
     }
+  }
+
+  // --- "Upiši forenzički pregled u lanac dokaza" - ONE signed access that, unlike the free
+  // preview above, actually calls the DELIBERATE, custody-accepting variant of each
+  // underlying analysis (Taint/Graph, Pathfinding, DEX Swap Analysis) with the SAME custody
+  // entry, so each one gets its own real custody_log/custody_evidence_log/audit_log entry -
+  // exactly as if the analyst had visited Taint/Pathfinding/DEX Swaps separately and signed
+  // each page's own dialog, but behind ONE shared modal. ------------------------------------
+
+  protected isForensicCustodyDialogOpen = false;
+  protected forensicCustodyError: string | null = null;
+  protected isRecordingForensicOverview = false;
+
+  protected get canRecordForensicOverview(): boolean {
+    return !!this.result && this.result.clusters.length > 0 && !this.isRecordingForensicOverview;
+  }
+
+  protected openForensicCustodyDialog(): void {
+    if (!this.canRecordForensicOverview) {
+      return;
+    }
+    this.forensicCustodyError = null;
+    this.isForensicCustodyDialogOpen = true;
+  }
+
+  protected closeForensicCustodyDialog(): void {
+    this.isForensicCustodyDialogOpen = false;
+  }
+
+  /** Taint/Graph and DEX Swap Analysis are each called EXACTLY ONCE for the whole batch
+   * (Taint/Graph seeded with every flagged address across every cluster; DEX Swap scanned
+   * evidence-wide, same as its own "scan all addresses" mode) rather than once per cluster -
+   * re-running the SAME evidence-wide scan per cluster would otherwise write N duplicate
+   * custody/audit log entries for the exact same transactions. Pathfinding is the one piece
+   * that genuinely differs per cluster (a different representative address pair each time),
+   * so it stays one call per cluster - see fetchClusterPathfinding. Every one of these calls
+   * shares the SAME `custody` entry: it is one deliberate act of cross-referencing this
+   * Sybil result against the case's other analyses, not four separate justifications. */
+  protected confirmForensicCustodyAndRecord(custody: TransactionCustodyEntry): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || !this.result || this.isRecordingForensicOverview) {
+      return;
+    }
+
+    const clusters = this.result.clusters;
+    const allAddresses = [...new Set(clusters.flatMap((cluster) => cluster.addresses))];
+
+    this.isRecordingForensicOverview = true;
+    this.forensicCustodyError = null;
+    for (const cluster of clusters) {
+      this.overviews.set(cluster.cluster_id, { isLoading: true, graphTaint: null, pathfinding: null, dex: null });
+    }
+
+    const graphTaint$ = this.caseData.runCaseAnalytics(caseId, this.selectedEvidence, allAddresses, custody).pipe(catchError(() => of(null)));
+    const dex$ = this.dexSwapAnalysisApi.runDexSwapAnalysis(caseId, null, this.selectedEvidence, custody).pipe(catchError(() => of(null)));
+
+    forkJoin([graphTaint$, dex$]).subscribe(([graphTaintResponse, dexResponse]) => {
+      const pathfinding$ = clusters.map((cluster) => this.fetchClusterPathfinding(cluster, caseId, custody));
+
+      forkJoin(pathfinding$).subscribe({
+        next: (pathfindingResults) => {
+          clusters.forEach((cluster, index) => {
+            this.overviews.set(cluster.cluster_id, {
+              isLoading: false,
+              graphTaint: graphTaintResponse ? this.buildGraphTaintSummary(graphTaintResponse, cluster) : null,
+              dex: dexResponse ? this.buildDexSummary(dexResponse, cluster) : null,
+              pathfinding: pathfindingResults[index],
+            });
+          });
+          this.isRecordingForensicOverview = false;
+          this.isForensicCustodyDialogOpen = false;
+        },
+        error: () => {
+          this.isRecordingForensicOverview = false;
+          this.forensicCustodyError = this.t(
+            'Neuspešno upisivanje u lanac dokaza.',
+            'Failed to record in the chain of custody.',
+          );
+        },
+      });
+    });
   }
 
   private buildGraphTaintSummary(response: AnalyticsResponse, cluster: SybilCluster): ClusterGraphTaintSummary {

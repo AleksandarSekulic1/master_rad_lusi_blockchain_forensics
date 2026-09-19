@@ -792,5 +792,35 @@
       "custody_findings_recorded": 10
     },
     "registered_at": "2026-09-19T13:22:29.045286+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-G769-APW7",
+    "content_hash": "b4ec0d4d6626a4f800f0998ce42e1af0141299402d1fc9aa785e985209b38d69",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (heuristički) nad navedenom evidencijom.",
+    "summary": {
+      "total_clusters": 3,
+      "addresses_flagged": 7,
+      "highest_risk_score": 90,
+      "custody_findings_recorded": 10
+    },
+    "registered_at": "2026-09-19T13:34:05.376411+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-U8AA-SHUW",
+    "content_hash": "1d5ba3e1a9bb07ad24f23221f94e3d9ae1576e053568b694771db9b5ede989bf",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed over the stated evidence (heuristically).",
+    "summary": {
+      "total_clusters": 3,
+      "addresses_flagged": 7,
+      "highest_risk_score": 90,
+      "custody_findings_recorded": 10
+    },
+    "registered_at": "2026-09-19T13:35:03.273531+00:00"
   }
 ]
