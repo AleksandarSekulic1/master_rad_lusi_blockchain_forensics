@@ -82,6 +82,23 @@ class TestAggregatedResults:
         assert totals['total_sent'] == 40
         assert totals['net_flow'] == 60
 
+    def test_flow_totals_are_split_per_asset_not_blindly_summed(self):
+        """Adresa aktivna u DVE valute dobija poseban flow_totals bedž po imovini, ne jedan pogrešno sabran broj"""
+        frame = frame_from_rows([
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 10, 'timestamp': '2026-01-01T00:00:00Z', 'currency': 'ETH'},
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 25000, 'timestamp': '2026-01-01T00:01:00Z', 'currency': 'USDC'},
+        ])
+
+        annotations = enrich_flow_of_funds_nodes(['0xA', '0xB'], frame, seed_addresses=['0xA'])
+
+        totals = {item['asset']: item for item in annotations['0xB']['aggregated'] if item['type'] == 'flow_totals'}
+        assert set(totals.keys()) == {'ETH', 'USDC'}
+        assert totals['ETH']['total_received'] == 10
+        assert totals['USDC']['total_received'] == 25000
+        # Never a single combined "10 + 25000" figure - that would silently sum incompatible
+        # units, exactly the mistake flow_of_funds.py's own asset bucketing exists to avoid.
+        assert not any(item['type'] == 'flow_totals' and item.get('total_received') == 25010 for item in annotations['0xB']['aggregated'])
+
     def test_dex_swap_with_shared_tx_hash_is_aggregated_not_heuristic(self):
         """DEX swap potvrđen istim tx hash-om na oba kraka je 'aggregated' (Detected)"""
         frame = frame_from_rows([
@@ -95,6 +112,23 @@ class TestAggregatedResults:
         heuristic_types = [item['type'] for item in annotations['0xTrader']['heuristics']]
         assert 'dex_swap_detected' in aggregated_types
         assert 'dex_swap_potential' not in heuristic_types
+
+    def test_token_approval_event_is_reported_as_aggregated_for_owner_and_spender(self):
+        """Token approval DOGAĐAJ (da je do njega uopšte došlo) je 'aggregated', za obe strane"""
+        frame = pd.DataFrame([
+            {
+                'sender_address': '0xOwner', 'recipient_address': '0xSpender', 'amount': 1000.0,
+                'timestamp': '2026-01-01T00:00:00Z', 'metadata': None, 'currency': None,
+                'event_type': 'approve',
+            },
+        ])
+
+        annotations = enrich_flow_of_funds_nodes(['0xOwner', '0xSpender'], frame, seed_addresses=['0xOwner'])
+
+        owner_types = [item['type'] for item in annotations['0xOwner']['aggregated']]
+        spender_types = [item['type'] for item in annotations['0xSpender']['aggregated']]
+        assert 'token_approval' in owner_types
+        assert 'token_approval' in spender_types
 
 
 class TestHeuristicConclusions:
@@ -167,6 +201,25 @@ class TestHeuristicConclusions:
         # Nema dovoljno podataka za pravi sybil klaster u ovom malom uzorku - samo proveravamo
         # da uključivanje flag-a ne baca grešku i i dalje vraća validnu strukturu.
         assert set(with_sybil.keys()) == {'0xA', '0xB'}
+
+    def test_taint_failure_does_not_crash_the_whole_enrichment(self, monkeypatch):
+        """Greška unutar (opcione) Taint analize ne obara ceo Flow of Funds nalaz"""
+        from app.analytics import flow_of_funds_enrichment
+
+        def _boom(**kwargs):
+            raise ValueError('simulated taint failure')
+
+        monkeypatch.setattr(flow_of_funds_enrichment, 'run_taint_analysis', _boom)
+
+        frame = frame_from_rows([
+            {'sender_address': '0xA', 'recipient_address': '0xB', 'amount': 100, 'timestamp': '2026-01-01T00:00:00Z'},
+        ])
+
+        annotations = enrich_flow_of_funds_nodes(['0xA', '0xB'], frame, seed_addresses=['0xA'], include_taint=True)
+
+        assert not any(item['type'] == 'taint' for item in annotations['0xB']['heuristics'])
+        # Everything else (aggregated flow totals in particular) still comes through fine.
+        assert any(item['type'] == 'flow_totals' for item in annotations['0xB']['aggregated'])
 
 
 class TestPeriodScoping:

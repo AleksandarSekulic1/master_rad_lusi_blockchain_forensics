@@ -1,8 +1,8 @@
 <div class="sankey-wrap">
   <div class="sankey-toolbar">
-    <button type="button" class="sankey-tool" (click)="zoomOut()" title="Zoom out" aria-label="Zoom out">−</button>
-    <button type="button" class="sankey-tool" (click)="resetView()" title="Reset view" aria-label="Reset view">{{ (transform.k * 100).toFixed(0) }}%</button>
-    <button type="button" class="sankey-tool" (click)="zoomIn()" title="Zoom in" aria-label="Zoom in">+</button>
+    <button type="button" class="sankey-tool" (click)="zoomOut()" [title]="t('Umanji', 'Zoom out')" [attr.aria-label]="t('Umanji', 'Zoom out')">−</button>
+    <button type="button" class="sankey-tool" (click)="resetView()" [title]="t('Resetuj prikaz', 'Reset view')" [attr.aria-label]="t('Resetuj prikaz', 'Reset view')">{{ (transform.k * 100).toFixed(0) }}%</button>
+    <button type="button" class="sankey-tool" (click)="zoomIn()" [title]="t('Uvećaj', 'Zoom in')" [attr.aria-label]="t('Uvećaj', 'Zoom in')">+</button>
   </div>
 
   <div class="sankey-canvas" *ngIf="layoutNodes.length > 0; else emptyState">

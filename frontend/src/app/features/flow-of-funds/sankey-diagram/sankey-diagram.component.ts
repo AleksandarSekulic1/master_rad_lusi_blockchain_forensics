@@ -3,6 +3,8 @@ import { Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleCh
 
 import { sankey, sankeyLinkHorizontal, SankeyLink, SankeyNode } from 'd3-sankey';
 
+import { SettingsService } from '../../../core/services/settings.service';
+
 /** Plain data the parent hands in - already reduced to whichever aggregation level/asset
  * filter is currently selected. Kept deliberately generic (no AggregatedFlow import) so
  * this component has no idea what a "flow" means - it only knows how to lay out and draw
@@ -92,6 +94,15 @@ export class SankeyDiagramComponent implements OnChanges {
 
   protected transform = { x: 0, y: 0, k: 1 };
   protected tooltip: { x: number; y: number; lines: string[] } | null = null;
+
+  constructor(public readonly settings: SettingsService) {}
+
+  /** Tiny inline translator: picks the Serbian or English string for the active language
+   * (same pattern as every other page's own t()) - this component has its own copy since
+   * it's mounted stand-alone, not passed labels from the parent. */
+  protected t(sr: string, en: string): string {
+    return this.settings.lang() === 'sr' ? sr : en;
+  }
 
   private isPanning = false;
   private didPan = false;

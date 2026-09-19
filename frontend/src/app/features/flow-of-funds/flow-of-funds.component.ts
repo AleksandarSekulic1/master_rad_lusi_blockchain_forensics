@@ -317,6 +317,16 @@ export class FlowOfFundsComponent implements OnInit {
     return Array.from(new Set(this.result.address_flows.map((flow) => flow.asset))).sort();
   }
 
+  /** True when the diagram is currently mixing more than one asset (filter = "Sve"/"All")
+   * - link WIDTH is proportional to raw amount, so mixing e.g. ETH and BTC in one view
+   * makes widths visually imply a direct magnitude comparison between incompatible units,
+   * which is not true. Shown as an explicit warning rather than silently letting the
+   * picture make a claim the numbers don't support - narrowing to one asset (the filter
+   * chips above the diagram) is always the way to get comparable widths. */
+  get showsMixedAssetWidths(): boolean {
+    return this.assetFilter === null && this.availableAssets.length > 1;
+  }
+
   setAggregationLevel(level: FlowAggregationLevel): void {
     this.aggregationLevel = level;
     this.selectedFlow = null;
@@ -423,6 +433,15 @@ export class FlowOfFundsComponent implements OnInit {
     return asset === 'UNKNOWN' ? this.t('Nepoznato', 'Unknown') : asset;
   }
 
+  /** Same as assetLabel(), but follows the PDF's OWN chosen language (flowOfFundsPdfLang,
+   * via lx()) instead of the app's current UI language (t()) - used everywhere inside
+   * buildFlowOfFundsPdf/formatAnnotationLine, so a PDF exported in English never shows a
+   * Serbian "Nepoznato" (or vice versa) just because the app happened to be in a different
+   * language at export time. */
+  private pdfAssetLabel(asset: string): string {
+    return asset === 'UNKNOWN' ? this.lx('Nepoznato', 'Unknown') : asset;
+  }
+
   protected formatAmount(value: number): string {
     return value.toLocaleString('en-US', { maximumFractionDigits: 8 });
   }
@@ -436,6 +455,10 @@ export class FlowOfFundsComponent implements OnInit {
 
   protected asNumber(value: unknown): number {
     return typeof value === 'number' ? value : 0;
+  }
+
+  protected asString(value: unknown): string {
+    return typeof value === 'string' ? value : '';
   }
 
   // --- cross-referenced findings for the currently selected flow (Graph/DEX/Token
@@ -551,6 +574,18 @@ export class FlowOfFundsComponent implements OnInit {
    * sybil-analysis/pathfinding.component.ts's own reportContentPayload. */
   private reportContentPayload(): Record<string, unknown> {
     const result = this.result!;
+    // Total facts/aggregated/heuristics counts across every touched address - part of the
+    // hash so a reader can tell whether the cross-referenced findings section was altered
+    // after export, without hashing the full descriptive text (same "numbers, not prose"
+    // discipline as sybil-analysis/pathfinding.component.ts's own payload).
+    const annotationCounts = Object.values(result.node_annotations ?? {}).reduce(
+      (totals, buckets) => ({
+        facts: totals.facts + buckets.facts.length,
+        aggregated: totals.aggregated + buckets.aggregated.length,
+        heuristics: totals.heuristics + buckets.heuristics.length,
+      }),
+      { facts: 0, aggregated: 0, heuristics: 0 },
+    );
     return {
       case_id: this.activeCase!.id,
       evidence: this.selectedEvidence ?? 'combined',
@@ -562,6 +597,11 @@ export class FlowOfFundsComponent implements OnInit {
       end_time: result.end_time,
       truncated: result.truncated,
       flow_count: result.flow_count,
+      // Scope of the optional cross-references included in THIS export - part of the hash
+      // so "was taint/sybil included" is itself a disputable, verifiable fact.
+      include_taint: this.includeTaint,
+      include_sybil: this.includeSybil,
+      node_annotation_counts: annotationCounts,
       address_flows: [...result.address_flows]
         .map((flow) => ({
           level: flow.level,
@@ -690,11 +730,13 @@ export class FlowOfFundsComponent implements OnInit {
           `${short}: na crnoj listi (${this.asStringArray(badge['sources']).join(', ')}) - ${badge['label']}`,
           `${short}: blacklisted (${this.asStringArray(badge['sources']).join(', ')}) - ${badge['label']}`,
         );
-      case 'flow_totals':
+      case 'flow_totals': {
+        const asset = this.pdfAssetLabel(this.asString(badge['asset']));
         return L(
-          `${short}: ukupno primljeno ${this.formatAmount(this.asNumber(badge['total_received']))}, poslato ${this.formatAmount(this.asNumber(badge['total_sent']))}`,
-          `${short}: total received ${this.formatAmount(this.asNumber(badge['total_received']))}, sent ${this.formatAmount(this.asNumber(badge['total_sent']))}`,
+          `${short}: (${asset}) ukupno primljeno ${this.formatAmount(this.asNumber(badge['total_received']))}, poslato ${this.formatAmount(this.asNumber(badge['total_sent']))}`,
+          `${short}: (${asset}) total received ${this.formatAmount(this.asNumber(badge['total_received']))}, sent ${this.formatAmount(this.asNumber(badge['total_sent']))}`,
         );
+      }
       case 'dex_swap_detected':
         return L(`${short}: potvrđen DEX swap (${badge['dex_name'] ?? '?'}) - isti tx hash na oba kraka`, `${short}: confirmed DEX swap (${badge['dex_name'] ?? '?'}) - shared tx hash on both legs`);
       case 'token_approval':
@@ -796,7 +838,7 @@ export class FlowOfFundsComponent implements OnInit {
     kv(L('SMER', 'DIRECTION'), directionText);
     kv(L('VREMENSKI PERIOD', 'TIME PERIOD'), periodText);
     kv(L('NIVOI', 'LEVELS'), L(`dostignuto ${result.levels_reached} od trazenih ${result.max_levels}`, `reached ${result.levels_reached} of ${result.max_levels} requested`));
-    kv(L('IMOVINA / BLOCKCHAIN', 'ASSET / BLOCKCHAIN'), this.availableAssets.map((asset) => this.assetLabel(asset)).join(', ') || 'n/a');
+    kv(L('IMOVINA / BLOCKCHAIN', 'ASSET / BLOCKCHAIN'), this.availableAssets.map((asset) => this.pdfAssetLabel(asset)).join(', ') || 'n/a');
     kv(L('GENERISANO', 'GENERATED AT'), new Date().toLocaleString(this.flowOfFundsPdfLang === 'sr' ? 'sr-RS' : 'en-GB'));
     y += 2;
 
@@ -896,7 +938,7 @@ export class FlowOfFundsComponent implements OnInit {
       startY: y,
       margin: { left: marginX, right: marginX },
       head: [[L('Imovina', 'Asset'), L('Ukupan iznos', 'Total amount'), L('Broj transakcija', 'Transaction count')]],
-      body: Array.from(volumeByAsset.entries()).map(([asset, entry]) => [this.assetLabel(asset), this.formatAmount(entry.amount), String(entry.count)]),
+      body: Array.from(volumeByAsset.entries()).map(([asset, entry]) => [this.pdfAssetLabel(asset), this.formatAmount(entry.amount), String(entry.count)]),
       styles: { fontSize: 8.5, cellPadding: 1.8, font: 'helvetica', textColor: TEXT_DARK },
       headStyles: { fillColor: NAVY, textColor: WHITE, font: 'helvetica', fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 245, 250] },
@@ -916,7 +958,7 @@ export class FlowOfFundsComponent implements OnInit {
         String(flow.level),
         FlowOfFundsComponent.truncateAddress(flow.source),
         FlowOfFundsComponent.truncateAddress(flow.target),
-        this.assetLabel(flow.asset),
+        this.pdfAssetLabel(flow.asset),
         this.formatAmount(flow.amount),
         String(flow.transaction_count),
         flow.multi_output_same_tx ? L('da', 'yes') : '',
@@ -1041,12 +1083,30 @@ export class FlowOfFundsComponent implements OnInit {
     doc.setTextColor(...FlowOfFundsComponent.PDF_AMBER);
     doc.text(L('Sledece stavke su zakljucci modela/heuristike (risk scoring, peel chain, chain hopping, wallet clustering, DEX swap "Potential", taint, sybil) - NIKADA blockchain cinjenica.', 'The following items are model/heuristic conclusions (risk scoring, peel chain, chain hopping, wallet clustering, "Potential" DEX swap, taint, sybil) - NEVER a blockchain fact.'), marginX, y, { maxWidth: usableWidth });
     y += 9;
+
+    // Scope note - Taint/Sybil are opt-in per run (see flow_of_funds_enrichment.py), so
+    // their ABSENCE below could otherwise look like "checked, found nothing" when it may
+    // simply mean "not checked in this run" - the same incomplete-data-as-fact mistake this
+    // whole report is built to avoid. Always state the scope explicitly, regardless of
+    // whether any heuristic findings exist at all.
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_GRAY);
+    doc.text(
+      L(
+        `Taint analiza u ovom pokretanju: ${this.includeTaint ? 'UKLJUCENA' : 'NIJE ukljucena'}. Sybil analiza: ${this.includeSybil ? 'UKLJUCENA' : 'NIJE ukljucena'}.`,
+        `Taint analysis in this run: ${this.includeTaint ? 'INCLUDED' : 'NOT included'}. Sybil analysis: ${this.includeSybil ? 'INCLUDED' : 'NOT included'}.`,
+      ),
+      marginX,
+      y,
+    );
+    y += 6;
     doc.setTextColor(...TEXT_DARK);
     if (heuristicLines.length === 0) {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8.5);
       doc.setTextColor(...TEXT_GRAY);
-      doc.text(L('Nema heuristickih nalaza (risk/peel/hop/cluster/taint/sybil) za adrese u ovom toku.', 'No heuristic findings (risk/peel/hop/cluster/taint/sybil) for the addresses in this trace.'), marginX, y);
+      doc.text(L('Nema heuristickih nalaza (risk/peel/hop/cluster i, ako su ukljuceni, taint/sybil) za adrese u ovom toku.', 'No heuristic findings (risk/peel/hop/cluster and, if included, taint/sybil) for the addresses in this trace.'), marginX, y);
       y += 6;
     } else {
       for (const line of heuristicLines.slice(0, FINDINGS_LIMIT)) {

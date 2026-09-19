@@ -28,12 +28,13 @@ generic "info" list, so a reader never mistakes a model's guess for an establish
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 import pandas as pd
 
 from app.analytics.dex_swap_analysis import detect_dex_swaps
-from app.analytics.flow_of_funds import _filter_by_period
+from app.analytics.flow_of_funds import _filter_by_period, _row_asset
 from app.analytics.graph_building import build_transaction_graph
 from app.analytics.plugins.blacklist_check import run_blacklist_check
 from app.analytics.plugins.chain_hopping import run_chain_hopping
@@ -114,14 +115,34 @@ def enrich_flow_of_funds_nodes(
             })
 
     # --- aggregated: arithmetic straight over this case's own transactions ---
+    # Deliberately NOT graph.nodes[address]['total_received']/'total_sent'
+    # (app.analytics.graph_building._annotate_node_flow_totals) - that sums every edge's
+    # `total_amount` regardless of asset, which is exactly the "amounts summed across
+    # incompatible units" mistake this whole module's own unit-safety rule (see
+    # flow_of_funds.py's module docstring, point 1) exists to prevent. A node active in more
+    # than one asset gets one flow_totals badge PER asset here instead of one blindly-summed
+    # number that would misrepresent a mixed-asset node as a single, trustworthy figure.
+    has_currency = 'currency' in period_frame.columns
+    totals_by_address_asset: dict[str, dict[str, dict[str, float]]] = defaultdict(lambda: defaultdict(lambda: {'received': 0.0, 'sent': 0.0}))
+    for row in period_frame.itertuples(index=False):
+        sender = str(getattr(row, 'sender_address'))
+        recipient = str(getattr(row, 'recipient_address'))
+        amount = float(getattr(row, 'amount'))
+        currency = getattr(row, 'currency', None) if has_currency else None
+        asset = _row_asset(currency, sender, recipient)
+        if sender in address_set:
+            totals_by_address_asset[sender][asset]['sent'] += amount
+        if recipient in address_set:
+            totals_by_address_asset[recipient][asset]['received'] += amount
+
     for address in addresses:
-        if graph.has_node(address):
-            node_attrs = graph.nodes[address]
+        for asset, totals in sorted(totals_by_address_asset.get(address, {}).items()):
             add(address, 'aggregated', {
                 'type': 'flow_totals',
-                'total_received': float(node_attrs.get('total_received', 0.0) or 0.0),
-                'total_sent': float(node_attrs.get('total_sent', 0.0) or 0.0),
-                'net_flow': float(node_attrs.get('net_flow', 0.0) or 0.0),
+                'asset': asset,
+                'total_received': totals['received'],
+                'total_sent': totals['sent'],
+                'net_flow': totals['received'] - totals['sent'],
             })
 
     # --- heuristics: the SAME plugin pipeline the Graph page's "Analiziraj graf" button
@@ -243,10 +264,17 @@ def enrich_flow_of_funds_nodes(
     # answers "how much of THIS trace's own funds reached this node", not a number diluted
     # by an unrelated blacklist seed elsewhere in the case. ---
     if include_taint and seed_addresses:
-        taint_result = run_taint_analysis(
-            dataframe=period_frame, graph=graph, seed_addresses=seed_addresses, seed_from_blacklist=False,
-        )
-        for entry in taint_result.get('results', []) or []:
+        try:
+            taint_result: dict[str, Any] | None = run_taint_analysis(
+                dataframe=period_frame, graph=graph, seed_addresses=seed_addresses, seed_from_blacklist=False,
+            )
+        except ValueError:
+            # Same "an optional cross-reference degrades gracefully, it never takes the
+            # whole trace down with it" discipline as the DEX/Token Approval/Sybil calls
+            # above - a taint hiccup on some edge case in the data should never turn an
+            # otherwise-successful Flow of Funds trace into a 500.
+            taint_result = None
+        for entry in (taint_result or {}).get('results', []) or []:
             address = str(entry.get('address') or '')
             percentage = entry.get('taint_percentage') or 0
             if address in address_set and percentage > 0:

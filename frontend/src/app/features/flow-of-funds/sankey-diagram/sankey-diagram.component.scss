@@ -19,6 +19,7 @@
   --sk-asset-btc: #d95926;
   --sk-asset-other: #9085e9;
   --sk-asset-unknown: #64748b;
+  --sk-selected: #7dd3fc;
 }
 
 :host-context([data-theme='light']) {
@@ -37,6 +38,7 @@
   --sk-asset-btc: #eb6834;
   --sk-asset-other: #4a3aa7;
   --sk-asset-unknown: #94a3b8;
+  --sk-selected: #2563eb;
 }
 
 .sankey-wrap {
@@ -105,7 +107,7 @@ svg:active {
 
 .sankey-link.selected {
   opacity: 0.95;
-  stroke: #7dd3fc;
+  stroke: var(--sk-selected);
 }
 
 .sankey-link.dimmed {
@@ -132,7 +134,7 @@ svg:active {
 .sankey-link.selected.asset-btc,
 .sankey-link.selected.asset-other,
 .sankey-link.selected.asset-unknown {
-  stroke: #7dd3fc;
+  stroke: var(--sk-selected);
 }
 
 .sankey-node rect {

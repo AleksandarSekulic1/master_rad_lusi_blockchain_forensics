@@ -209,6 +209,11 @@
         </div>
       </div>
 
+      <p class="ff-mixed-asset-warning" *ngIf="showsMixedAssetWidths">
+        {{ t('Upozorenje: prikazane su najmanje dve različite imovine istovremeno (npr. ETH i BTC) — debljine tokova NISU direktno uporedive preko različitih valuta. Izaberi jednu imovinu gore za tačno poređenje.',
+              'Warning: at least two different assets are shown at once (e.g. ETH and BTC) — flow widths are NOT directly comparable across different currencies. Select a single asset above for an accurate comparison.') }}
+      </p>
+
       <div class="ff-diagram-layout">
         <app-sankey-diagram
           [nodes]="sankeyNodes"
@@ -290,7 +295,9 @@
                     <li *ngFor="let badge of entry.annotations.aggregated">
                       <ng-container [ngSwitch]="badge.type">
                         <span *ngSwitchCase="'flow_totals'">
-                          {{ t('Ukupno primljeno', 'Total received') }}: <strong>{{ formatAmount(asNumber(badge['total_received'])) }}</strong>
+                          {{ t('Ukupno primljeno', 'Total received') }}
+                          (<strong>{{ assetLabel(asString(badge['asset'])) }}</strong>):
+                          <strong>{{ formatAmount(asNumber(badge['total_received'])) }}</strong>
                           · {{ t('poslato', 'sent') }}: <strong>{{ formatAmount(asNumber(badge['total_sent'])) }}</strong>
                         </span>
                         <span *ngSwitchCase="'dex_swap_detected'">
