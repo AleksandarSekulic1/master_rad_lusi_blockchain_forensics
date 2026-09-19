@@ -36,23 +36,25 @@
   </div>
 
   <div class="sb-params">
-    <div class="sb-params-row">
-      <label class="sb-field sb-field-narrow">
-        {{ t('Vremenski prozor (s)', 'Time window (s)') }}
-        <input type="number" [(ngModel)]="timeWindowSeconds" min="10" max="3600" [disabled]="!activeCase" />
-      </label>
-      <label class="sb-field sb-field-narrow">
-        {{ t('Min. broj adresa', 'Min. addresses') }}
-        <input type="number" [(ngModel)]="minAddresses" min="2" max="50" [disabled]="!activeCase" />
-      </label>
-    </div>
-
     <button type="button" class="sb-advanced-toggle" (click)="showAdvancedFilters = !showAdvancedFilters">
       {{ showAdvancedFilters ? '▾' : '▸' }}
-      {{ t('Napredni filteri (opciono) — ograniči na jednu adresu ili kontrakt', 'Advanced filters (optional) — narrow to one address or contract') }}
+      {{
+        t(
+          'Napredna podešavanja (opciono) — vremenski prozor, prag adresa, filter po adresi/kontraktu',
+          'Advanced settings (optional) — time window, address threshold, address/contract filter'
+        )
+      }}
     </button>
 
     <div class="sb-params-row" *ngIf="showAdvancedFilters">
+      <label class="sb-field sb-field-narrow">
+        {{ t('Vremenski prozor (s)', 'Time window (s)') }}
+        <input type="number" [(ngModel)]="timeWindowSeconds" (blur)="clampTimeWindow()" min="10" max="3600" [disabled]="!activeCase" />
+      </label>
+      <label class="sb-field sb-field-narrow">
+        {{ t('Min. broj adresa', 'Min. addresses') }}
+        <input type="number" [(ngModel)]="minAddresses" (blur)="clampMinAddresses()" min="2" max="50" [disabled]="!activeCase" />
+      </label>
       <label class="sb-field">
         {{ t('Adresa (opciono)', 'Address (optional)') }}
         <span class="sb-input-with-clear">
@@ -108,6 +110,21 @@
     <div class="analyze-row">
       <button type="button" class="primary-button analyze-button" (click)="openCustodyDialog()" [disabled]="!canAnalyze">
         {{ isAnalyzing ? t('Analiza…', 'Analysing…') : t('ANALIZIRAJ', 'ANALYZE') }}
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        *ngIf="result && result.total_clusters > 0"
+        (click)="runAllForensicOverviews()"
+        [disabled]="!canRunAllForensicOverviews"
+        [title]="
+          t(
+            'Pokreni Forenzički pregled (Graf/Taint/Putanje/DEX) za SVE klastere odjednom - orijentaciono, ne upisuje se u lanac dokaza',
+            'Run the Forensic overview (Graph/Taint/Pathfinding/DEX) for ALL clusters at once - orientation-only, not recorded in the chain of custody'
+          )
+        "
+      >
+        {{ isRunningAllOverviews ? t('Pokretanje pregleda…', 'Running overview…') : t('Forenzički pregled — svi klasteri', 'Forensic overview — all clusters') }}
       </button>
       <button
         type="button"
@@ -345,16 +362,9 @@
 
     <p class="sb-disclaimer">{{ disclaimerText }}</p>
 
-    <!-- Kratak, automatski generisan forenzički zaključak - sastavljen isključivo od
-         brojeva/polja iz rezultata iznad (stvarno pronađeni dokazi), na samom kraju
-         stranice, po zahtevu. -->
-    <section class="sb-conclusion" *ngIf="forensicConclusion as conclusion">
-      <h3>{{ t('Forenzički zaključak', 'Forensic conclusion') }}</h3>
-      <p>{{ conclusion }}</p>
-      <p class="sb-conclusion-link" *ngIf="result.custody_findings_recorded">
-        <a routerLink="/lanac-dokaza">{{ t('Otvori Lanac dokaza →', 'Open Chain of custody →') }}</a>
-      </p>
-    </section>
+    <!-- Forenzički zaključak (forensicConclusion) se ne prikazuje na ekranu (po zahtevu -
+         stranica je pretrpana) - i dalje je deo PDF izveštaja (§11), gde je obavezan
+         sadržaj (poslednja sekcija pre metodologije), vidi buildSybilPdf. -->
   </div>
 </div>
 

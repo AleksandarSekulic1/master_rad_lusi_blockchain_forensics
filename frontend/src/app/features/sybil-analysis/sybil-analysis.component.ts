@@ -101,6 +101,42 @@ export class SybilAnalysisComponent implements OnInit {
   protected contractFilter = '';
   protected timeWindowSeconds = 300;
   protected minAddresses = 3;
+
+  // Mirror the backend's own clamp range (sybil_analysis.py's MIN/MAX_TIME_WINDOW_SECONDS,
+  // MIN/MAX_MIN_ADDRESSES) - the HTML min/max attributes alone only affect the number
+  // input's spinner arrows and :invalid state, they do NOT stop someone from typing
+  // "300000" directly, which the backend would silently clamp back down anyway. Enforcing
+  // it here too means the number actually shown in the field never disagrees with what the
+  // next ANALIZIRAJ call will really use.
+  private static readonly MIN_TIME_WINDOW_SECONDS = 10;
+  private static readonly MAX_TIME_WINDOW_SECONDS = 3600;
+  private static readonly MIN_MIN_ADDRESSES = 2;
+  private static readonly MAX_MIN_ADDRESSES = 50;
+
+  private static clampNumber(value: number, min: number, max: number, fallback: number): number {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.round(value)));
+  }
+
+  protected clampTimeWindow(): void {
+    this.timeWindowSeconds = SybilAnalysisComponent.clampNumber(
+      this.timeWindowSeconds,
+      SybilAnalysisComponent.MIN_TIME_WINDOW_SECONDS,
+      SybilAnalysisComponent.MAX_TIME_WINDOW_SECONDS,
+      300,
+    );
+  }
+
+  protected clampMinAddresses(): void {
+    this.minAddresses = SybilAnalysisComponent.clampNumber(
+      this.minAddresses,
+      SybilAnalysisComponent.MIN_MIN_ADDRESSES,
+      SybilAnalysisComponent.MAX_MIN_ADDRESSES,
+      3,
+    );
+  }
   /** Adresa/Kontrakt su opcioni napredni filteri, ne obavezni za pokretanje analize -
    * sakriveni iza ovog toggle-a po podrazumevanom, da osnovni tok (samo ANALIZIRAJ) ne bude
    * pretrpan dvema retko korišćenim poljima. */
@@ -453,9 +489,14 @@ export class SybilAnalysisComponent implements OnInit {
     return this.overviews.get(clusterId)?.isLoading ?? false;
   }
 
-  protected runForensicOverview(cluster: SybilCluster): void {
+  /** `onDone` (used by runAllForensicOverviews below) fires once this ONE cluster's
+   * overview has settled (success or failure) - lets the "run for all clusters" button
+   * track when every one of them is finished, without this method itself needing to know
+   * whether it was called for one cluster or as part of a batch. */
+  protected runForensicOverview(cluster: SybilCluster, onDone?: () => void): void {
     const caseId = this.activeCase?.id;
     if (!caseId || this.isOverviewLoading(cluster.cluster_id)) {
+      onDone?.();
       return;
     }
 
@@ -503,7 +544,43 @@ export class SybilAnalysisComponent implements OnInit {
         pathfinding: directPath || nearestCex ? { directPath, nearestCex } : null,
         dex,
       });
+      onDone?.();
     });
+  }
+
+  protected isRunningAllOverviews = false;
+
+  protected get canRunAllForensicOverviews(): boolean {
+    return !!this.result && this.result.clusters.length > 0 && !this.isRunningAllOverviews;
+  }
+
+  /** Runs the Forenzički pregled cross-reference for EVERY cluster in the current result at
+   * once, instead of requiring one click per cluster - skips clusters that already have an
+   * overview loaded (or loading), so re-clicking this after a manual per-cluster run does
+   * not redundantly re-fetch it. Same PASSIVE treatment as the per-cluster button (no
+   * custody, see runForensicOverview's own comment) - running it in bulk does not change
+   * that: it is still an orientation-only cross-reference of EXISTING analyses, not a new
+   * deliberate access recorded in the chain of custody. */
+  protected runAllForensicOverviews(): void {
+    if (!this.result || this.isRunningAllOverviews) {
+      return;
+    }
+    const pending = this.result.clusters.filter((cluster) => !this.overviewFor(cluster.cluster_id));
+    if (pending.length === 0) {
+      return;
+    }
+
+    this.isRunningAllOverviews = true;
+    let remaining = pending.length;
+    const onOneDone = (): void => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        this.isRunningAllOverviews = false;
+      }
+    };
+    for (const cluster of pending) {
+      this.runForensicOverview(cluster, onOneDone);
+    }
   }
 
   private buildGraphTaintSummary(response: AnalyticsResponse, cluster: SybilCluster): ClusterGraphTaintSummary {
