@@ -4,7 +4,7 @@ import { Injectable } from '@angular/core';
 
 import { environment } from '../../../environments/environment';
 import { TransactionCustodyEntry } from '../../core/models/shared.models';
-import { FlowOfFundsRequestParams, FlowOfFundsResult } from './flow-of-funds.models';
+import { FlowOfFundsRequestParams, FlowOfFundsResult, SeedSuggestionResponse } from './flow-of-funds.models';
 
 @Injectable({
   providedIn: 'root',
@@ -75,5 +75,13 @@ export class FlowOfFundsApiService {
       custody,
     };
     return this.http.post<FlowOfFundsResult>(`${this.apiUrl}/api/v1/cases/${caseId}/flow-of-funds/run`, body, { params: httpParams });
+  }
+
+  /** Rule-based, explained seed-address suggestions - the SAME existing endpoint
+   * taint-analysis.component.ts already calls (`GET /cases/{id}/seed-suggestions`,
+   * case-wide, no address needed) - no backend change, just another caller. */
+  getSeedSuggestions(caseId: string, evidence?: string | null): Observable<SeedSuggestionResponse> {
+    const params = evidence ? new HttpParams().set('evidence', evidence) : undefined;
+    return this.http.get<SeedSuggestionResponse>(`${this.apiUrl}/api/v1/cases/${caseId}/seed-suggestions`, { params });
   }
 }

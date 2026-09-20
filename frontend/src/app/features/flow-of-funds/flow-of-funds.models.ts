@@ -130,3 +130,25 @@ export interface FlowOfFundsRequestParams {
   includeTaint?: boolean;
   includeSybil?: boolean;
 }
+
+/** Rule-based, explained seed-address suggestions - same shape/endpoint
+ * (`GET /cases/{id}/seed-suggestions`, `app/analytics/seed_suggestion.py`) taint-analysis
+ * .component.ts already uses. Declared again here rather than imported from
+ * taint-analysis.models.ts - each feature slice owns its own DTO shapes (see
+ * `12. VSA-REFAKTORING.md`), even when, as here, they happen to be identical. */
+export interface SeedSuggestionItem {
+  address: string;
+  /** Plain-language reasons; a suggestion never appears without at least one. */
+  reasons: string[];
+}
+
+export interface SeedSuggestionResponse {
+  /** Defensible starting points (blacklist, OFAC) - the only valid basis for a seed. */
+  origin_candidates: SeedSuggestionItem[];
+  /** Mixers, relays, pass-through wallets - real findings, but wrong to use as a seed. */
+  laundering_points: SeedSuggestionItem[];
+  total_addresses: number;
+  /** Set when an empty result is caused by the SHAPE of the evidence (a single-address
+   * history pull) rather than by the data being clean - the two must not be confused. */
+  coverage_note: string | null;
+}

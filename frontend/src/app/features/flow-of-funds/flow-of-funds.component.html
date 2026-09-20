@@ -50,6 +50,9 @@
               <option *ngFor="let address of caseAddresses" [value]="address"></option>
             </datalist>
             <button type="button" class="ghost-button" (click)="addManualSeed()">{{ t('Dodaj', 'Add') }}</button>
+            <button type="button" class="ghost-button" [disabled]="isSuggestingSeeds" (click)="suggestSeeds()">
+              {{ isSuggestingSeeds ? t('Tražim…', 'Suggesting…') : t('Predloži adresu', 'Suggest address') }}
+            </button>
           </div>
           <div class="ff-seed-chips" *ngIf="seedAddresses.length > 0">
             <span class="ff-seed-chip" *ngFor="let address of seedAddresses">
@@ -57,15 +60,63 @@
               <button type="button" (click)="removeSeed(address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
             </span>
           </div>
+          <p class="ff-error" *ngIf="suggestionsError">{{ suggestionsError }}</p>
+
+          <div class="ff-suggest-panel" *ngIf="seedSuggestions">
+            <div class="ff-suggest-head">
+              <span class="ff-field-label">{{ t('Predložene adrese', 'Suggested addresses') }}</span>
+              <button type="button" class="ff-suggest-close" (click)="dismissSuggestions()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
+            </div>
+            <p class="ff-hint" *ngIf="!hasAnySuggestion">
+              {{ t('Nema predloga na osnovu dostupnih podataka.', 'No suggestions based on the available data.') }}
+            </p>
+            <p class="ff-hint" *ngIf="seedSuggestions.coverage_note">{{ seedSuggestions.coverage_note }}</p>
+
+            <div class="ff-suggest-group" *ngIf="seedSuggestions.origin_candidates.length > 0">
+              <span class="ff-suggest-group-label">{{ t('Poznati izvori (crna lista/OFAC)', 'Known origins (blacklist/OFAC)') }}</span>
+              <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.origin_candidates">
+                <div>
+                  <span class="mono-address">{{ item.address }}</span>
+                  <span class="ff-suggest-reason">{{ item.reasons.join(' · ') }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button"
+                  [disabled]="isAlreadySeed(item.address)"
+                  (click)="addSuggestedSeed(item.address)"
+                >
+                  {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Dodaj', 'Add') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="ff-suggest-group" *ngIf="seedSuggestions.laundering_points.length > 0">
+              <span class="ff-suggest-group-label">{{ t('Tačke pranja novca (heuristika)', 'Laundering points (heuristic)') }}</span>
+              <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.laundering_points">
+                <div>
+                  <span class="mono-address">{{ item.address }}</span>
+                  <span class="ff-suggest-reason">{{ item.reasons.join(' · ') }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button"
+                  [disabled]="isAlreadySeed(item.address)"
+                  (click)="addSuggestedSeed(item.address)"
+                >
+                  {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Dodaj', 'Add') }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <label class="ff-field">
           <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
           <div class="ff-toggle-group">
-            <button type="button" [class.active]="direction === 'forward'" (click)="direction = 'forward'">
+            <button type="button" [class.active]="direction === 'forward'" (click)="setDirection('forward')">
               {{ t('Unapred', 'Forward') }}
             </button>
-            <button type="button" [class.active]="direction === 'backward'" (click)="direction = 'backward'">
+            <button type="button" [class.active]="direction === 'backward'" (click)="setDirection('backward')">
               {{ t('Unazad', 'Backward') }}
             </button>
           </div>
@@ -165,6 +216,18 @@
       </div>
 
       <div class="ff-view-controls">
+        <div class="ff-field">
+          <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
+          <div class="ff-toggle-group">
+            <button type="button" [class.active]="direction === 'forward'" [disabled]="isRunning" (click)="setDirection('forward')">
+              {{ t('Unapred', 'Forward') }}
+            </button>
+            <button type="button" [class.active]="direction === 'backward'" [disabled]="isRunning" (click)="setDirection('backward')">
+              {{ t('Unazad', 'Backward') }}
+            </button>
+          </div>
+        </div>
+
         <div class="ff-field">
           <span class="ff-field-label">{{ t('Nivo prikaza', 'Aggregation level') }}</span>
           <div class="ff-toggle-group">

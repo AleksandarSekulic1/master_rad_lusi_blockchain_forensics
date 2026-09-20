@@ -26,6 +26,7 @@ import {
   FlowOfFundsResult,
   NodeAnnotationBadge,
   NodeAnnotationBuckets,
+  SeedSuggestionResponse,
 } from './flow-of-funds.models';
 import { SankeyDiagramComponent, SankeyDiagramLink, SankeyDiagramNode } from './sankey-diagram/sankey-diagram.component';
 
@@ -71,6 +72,12 @@ export class FlowOfFundsComponent implements OnInit {
   // --- search parameters ---
   protected seedAddresses: string[] = [];
   protected manualSeedInput = '';
+  /** Rule-based suggestions (see app/analytics/seed_suggestion.py) - opt-in panel next to the
+   * manual seed input, same source data taint-analysis.component.ts already uses. Loaded on
+   * demand, never automatically, since it scans the whole case rather than one address. */
+  protected isSuggestingSeeds = false;
+  protected seedSuggestions: SeedSuggestionResponse | null = null;
+  protected suggestionsError: string | null = null;
   protected direction: FlowOfFundsDirection = 'forward';
   protected maxLevels = DEFAULT_LEVELS;
   protected minAmount: number | null = null;
@@ -152,6 +159,8 @@ export class FlowOfFundsComponent implements OnInit {
         this.caseAddresses = [];
         this.seedAddresses = [];
         this.manualSeedInput = '';
+        this.seedSuggestions = null;
+        this.suggestionsError = null;
         this.resetSearchState();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
@@ -214,6 +223,55 @@ export class FlowOfFundsComponent implements OnInit {
 
   removeSeed(address: string): void {
     this.seedAddresses = this.seedAddresses.filter((candidate) => candidate !== address);
+  }
+
+  // --- seed-address suggestions (same GET /cases/{id}/seed-suggestions endpoint
+  // taint-analysis.component.ts uses - rule-based, always explained with plain-language
+  // reasons, never a silent auto-pick) ---
+
+  get hasAnySuggestion(): boolean {
+    const s = this.seedSuggestions;
+    return !!s && (s.origin_candidates.length > 0 || s.laundering_points.length > 0);
+  }
+
+  isAlreadySeed(address: string): boolean {
+    return this.seedAddresses.includes(address);
+  }
+
+  suggestSeeds(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId) {
+      return;
+    }
+    if (this.seedSuggestions) {
+      // toggle the already-loaded panel instead of refetching
+      this.seedSuggestions = null;
+      return;
+    }
+    this.isSuggestingSeeds = true;
+    this.suggestionsError = null;
+    this.flowApi.getSeedSuggestions(caseId, this.selectedEvidence).subscribe({
+      next: (response) => {
+        this.isSuggestingSeeds = false;
+        this.seedSuggestions = response;
+      },
+      error: () => {
+        this.isSuggestingSeeds = false;
+        this.suggestionsError = this.t('Predlog adresa nije uspeo.', 'Suggesting addresses failed.');
+      },
+    });
+  }
+
+  addSuggestedSeed(address: string): void {
+    const resolved = this.resolveAddress(address);
+    if (!this.seedAddresses.includes(resolved)) {
+      this.seedAddresses = [...this.seedAddresses, resolved];
+    }
+  }
+
+  dismissSuggestions(): void {
+    this.seedSuggestions = null;
+    this.suggestionsError = null;
   }
 
   get selectedEvidenceFileName(): string | null {
@@ -309,6 +367,58 @@ export class FlowOfFundsComponent implements OnInit {
               : this.t('Praćenje toka sredstava nije uspelo.', 'Tracing the flow of funds failed.');
           this.custodyDialogError = message;
           this.runError = message;
+        },
+      });
+  }
+
+  /** Direction toggle - before a first run, just local state; once a trace already exists,
+   * switching it re-queries the SAME evidence "live" via a passive GET (no new custody
+   * dialog, no new audit entry) - same "signed once, refine live afterward" precedent as
+   * sybil-analysis.component.ts's own post-signature filter tweaks. Available both in the
+   * search form and again in the results filter row, so it also works as a post-run filter
+   * as requested, not just a pre-run setting. */
+  setDirection(value: FlowOfFundsDirection): void {
+    if (this.direction === value) {
+      return;
+    }
+    this.direction = value;
+    if (this.result) {
+      this.refreshLiveWithCurrentParams();
+    }
+  }
+
+  private refreshLiveWithCurrentParams(): void {
+    const caseId = this.activeCase?.id;
+    if (!caseId || this.seedAddresses.length === 0 || this.isRunning) {
+      return;
+    }
+    this.isRunning = true;
+    this.runError = null;
+    this.flowApi
+      .getFlowOfFunds(
+        caseId,
+        {
+          sourceAddresses: this.seedAddresses,
+          direction: this.direction,
+          maxLevels: this.maxLevels,
+          minAmount: this.minAmount ?? 0,
+          startTime: this.startTimeIso,
+          endTime: this.endTimeIso,
+          includeTaint: this.includeTaint,
+          includeSybil: this.includeSybil,
+        },
+        this.selectedEvidence,
+      )
+      .subscribe({
+        next: (result) => {
+          this.isRunning = false;
+          this.result = result;
+          this.selectedFlow = null;
+          this.assetFilter = null;
+        },
+        error: () => {
+          this.isRunning = false;
+          this.runError = this.t('Osvežavanje smera nije uspelo.', 'Refreshing the direction failed.');
         },
       });
   }

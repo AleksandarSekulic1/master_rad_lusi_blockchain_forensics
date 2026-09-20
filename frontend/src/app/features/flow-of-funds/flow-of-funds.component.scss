@@ -399,6 +399,72 @@ input[type='date'] {
   line-height: 1;
 }
 
+.ff-suggest-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--ff-border-soft);
+  border-radius: 0.6rem;
+  background: var(--ff-chip-bg);
+}
+
+.ff-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ff-suggest-close {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ff-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.ff-suggest-close:hover {
+  color: var(--ff-text);
+}
+
+.ff-suggest-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ff-suggest-group-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ff-muted);
+}
+
+.ff-suggest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  border-top: 1px dashed var(--ff-border-soft);
+}
+
+.ff-suggest-item:first-of-type {
+  border-top: none;
+}
+
+.ff-suggest-reason {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--ff-dim);
+}
+
 .ff-date-row {
   display: flex;
   align-items: center;
