@@ -852,5 +852,117 @@
       "custody_findings_recorded": 277
     },
     "registered_at": "2026-09-19T14:21:05.325126+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-TLZ4-FKVA",
+    "content_hash": "39029385e35402025afba413110308634cfd059540295165e1a5516a0e5d0ac3",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (agregacijom i, gde je naznačeno, heuristikom) nad navedenom evidencijom.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T13:57:30.235684+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-CSNN-PX7C",
+    "content_hash": "83460215de2c69d59315066216d32399d501e52086ad5333a8e0f49e91a15aff",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (by aggregation and, where noted, heuristically) over the stated evidence.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T16:36:00.753100+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-J3QX-SDGD",
+    "content_hash": "39029385e35402025afba413110308634cfd059540295165e1a5516a0e5d0ac3",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (agregacijom i, gde je naznačeno, heuristikom) nad navedenom evidencijom.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T16:42:49.657718+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-3RBT-FBWD",
+    "content_hash": "39029385e35402025afba413110308634cfd059540295165e1a5516a0e5d0ac3",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (agregacijom i, gde je naznačeno, heuristikom) nad navedenom evidencijom.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T16:52:20.389714+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-CTQQ-V6Q3",
+    "content_hash": "39029385e35402025afba413110308634cfd059540295165e1a5516a0e5d0ac3",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "admin",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (agregacijom i, gde je naznačeno, heuristikom) nad navedenom evidencijom.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T16:54:27.153783+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-ZPCC-9SBV",
+    "content_hash": "a793bcb08c096299523437519f3944898fd27b34b3cf6685853bd37202b4db52",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (agregacijom i, gde je naznačeno, heuristikom) nad navedenom evidencijom.",
+    "summary": {
+      "flow_count": 31,
+      "levels_reached": 2,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH"
+    },
+    "registered_at": "2026-09-20T17:06:08.986207+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-5ZS9-K98M",
+    "content_hash": "a793bcb08c096299523437519f3944898fd27b34b3cf6685853bd37202b4db52",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (by aggregation and, where noted, heuristically) over the stated evidence.",
+    "summary": {
+      "flow_count": 31,
+      "levels_reached": 2,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH"
+    },
+    "registered_at": "2026-09-20T17:06:41.110479+00:00"
   }
 ]

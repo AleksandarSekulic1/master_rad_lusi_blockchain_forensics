@@ -104,6 +104,12 @@ export class ReportVerificationComponent {
     addresses_flagged: ['Označenih adresa', 'Flagged addresses'],
     custody_findings_recorded: ['Nalaza u lancu dokaza', 'Chain-of-custody findings'],
     highest_risk_score: ['Najviši risk score', 'Highest risk score'],
+    // Flow of Funds / Layering analysis (flow-of-funds.component.ts)
+    flow_count: ['Agregiranih tokova', 'Aggregated flows'],
+    levels_reached: ['Dostignutih nivoa', 'Levels reached'],
+    direction: ['Smer praćenja', 'Trace direction'],
+    truncated: ['Skraćen rezultat', 'Result truncated'],
+    assets: ['Imovina (blockchain)', 'Assets (blockchain)'],
     // Graph analysis / case triage (report-export.component.ts)
     nodes: ['Čvorova', 'Nodes'],
     edges: ['Veza', 'Edges'],

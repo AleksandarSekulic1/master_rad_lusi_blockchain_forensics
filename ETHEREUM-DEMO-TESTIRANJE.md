@@ -7,6 +7,14 @@ od 10 ručno napravljenih evidencijskih fajlova (svaki za jednu konkretnu heuris
 jedna prava, uživo povučena on-chain evidencija (stvaran hakerski incident — vidi odeljak 9)
 — svih 11 se spaja u jedan graf.
 
+Flow of Funds / Layering analiza (odeljak 10) je jedina analiza koja **ne dobija svoj
+poseban CSV** — i namerno ne treba joj jedan. Ona ne uvodi novu heuristiku niti nov obrazac
+podataka, već **prati postojeće grane grafa** (kroz koliko god od tih 11 fajlova treba) i
+**unakrsno poziva** analize koje ostalih 10 fajlova već pokrivaju (crna lista, risk scoring,
+peel chains, chain hopping, wallet clustering, DEX swap, token approval, opciono Taint/
+Sybil). Postojeći peel-chain scenario (`demo_case.csv`, odeljci 1-3) je već tačno onakav
+podatak kakav ovoj analizi treba — nov fajl bi samo duplirao ono što već postoji.
+
 **Otvori:** slučaj **"Demo: Sumnjiva laundering šema (hakovan novčanik)"** (id `46ae7f91db9b`).
 
 Ovaj dokument prolazi kroz svaku stranicu aplikacije redom: šta otvoriti, koju adresu uneti,
@@ -201,6 +209,106 @@ poznatim ulazima (jedinični test, u suštini). Ova adresa dokazuje da alat radi
 **stvarnim, neuređenim** on-chain podacima pravog hakerskog incidenta — potpuno isti kod,
 bez ijedne izmene za ovu priliku.
 
+### 10. Flow of Funds / Layering analiza
+
+*(Implementacija/fajlovi, integracija sa ostalim analizama, PDF, Log/Audit:
+`FLOW-OF-FUNDS-IMPLEMENTATION.md`.)*
+
+**Otvori:** stranica **Tok sredstava** → „Prikaz transakcija" → ostavi **Sve transakcije
+(kombinovano)** → polazna adresa:
+```
+0xPeelSeed
+```
+→ Smer: **Unapred (kuda su otišla)** → Broj nivoa: **4** (podrazumevano, ne diraj) → **POKRENI
+PRAĆENJE** → razlog pristupa + potpis.
+
+**Zašto baš „kombinovano", a ne jedan fajl** (za razliku od Sybil analize u odeljku 7, koja
+MORA da ostane na jednom fajlu — vidi `14. SYBIL-ANALIZA.md` §2/§7): Flow of Funds prati
+STVARNE grane grafa kuda god vode, kroz koliko god fajlova. Ograničavanje na jedan fajl bi
+ovde VEŠTAČKI presekao lanac tačno na granici fajla — poslednji korak ovog istog primera
+(`0xbad...001 → 0xInvestorWallet`, tabela ispod) dolazi iz sasvim drugog fajla
+(`demo_taint_dilution.csv`), ne iz onog gde lanac počinje (`demo_case.csv`). Nema razloga da
+se bilo šta suzi — to je i jedina opcija koju ova stranica nudi za obim evidencije.
+
+**Zašto baš `0xPeelSeed`, a ne `0xVictimWallet`** (iako je `0xVictimWallet` "prava" polazna
+tačka pljačke): `0xVictimWallet` je namerno DELJENA adresa između dva nepovezana demo
+scenarija — peel-chain (ovaj primer) i token-approval (odeljak 6). Praćenje TOKA od
+`0xVictimWallet` bi na 1. nivou odmah pokazalo četiri odredišta iz dve različite priče
+odjednom (peel-chain ka `0xPeelSeed` sa iznosom 500, i tri odobrenja tokena ka
+`0xDrainerContract`/`0xDrainerWallet`/`0xSweepContract` sa iznosima reda veličine 500.000 —
+probaj sam, to je tačno onaj slučaj gde je pošteno da alat pokaže SVE što vidi, ne ono što
+analitičar već očekuje). `0xPeelSeed` je tačka gde peel-chain priča stvarno počinje — isti
+seed koji Graf i Taint odeljci (1, 2) već koriste, bez mešanja sa nesrodnim scenarijem.
+
+**Vidiš:** 9 agregiranih tokova kroz tačno 4 nivoa (nije skraćeno):
+
+| Nivo | Tok | Imovina | Iznos | Broj tx | Zašto |
+|---|---|---|---|---|---|
+| 1 | PeelSeed → MuleWallet1 | UNKNOWN | 150 | 1 | „peel" grana (manji deo) |
+| 1 | PeelSeed → PeelRelay1 | UNKNOWN | 350 | 1 | nastavak lanca (veći deo) |
+| 2 | PeelRelay1 → PeelRelay2 | UNKNOWN | 250 | 1 | nastavak |
+| 2 | PeelRelay1 → MuleWallet2 | UNKNOWN | 90 | 1 | još jedan „peel" |
+| 2 | MuleWallet1 → BridgeRouterHop | UNKNOWN | 140 | 1 | druga grana istog lanca (vidi Path finding, odeljak 3) |
+| 3 | PeelRelay2 → 0xbad...001 | **ETH** | 200 | **2** | dve odvojene transakcije (120+80) agregirane u JEDAN tok |
+| 3 | BridgeRouterHop → DeadDropWallet | UNKNOWN | 135 | 1 | |
+| 4 | 0xbad...001 → 0xInvestorWallet | ETH | 10 | 1 | tok NASTAVLJA i iz blacklistovane adrese, ne staje tu |
+| 4 | DeadDropWallet → 0xd8dA...045 | ETH | 5 | 1 | ista adresa koja se „budi" posle 91 dana (odeljak 2) |
+
+**Zašto su neki tokovi `UNKNOWN` a neki `ETH`:** nijedan red u ovoj evidenciji ne deklariše
+`currency` kolonu, pa se imovina nagađa iz OBLIKA adrese. `0xbad...001`, `0xInvestorWallet` i
+`0xd8dA...045` su ispravno oblikovane Ethereum adrese (`0x` + 40 hex znakova), pa dobijaju
+`ETH`; pseudo-labele kao `PeelSeed`/`MuleWallet1` nisu, pa ostaju `UNKNOWN` — pošteno
+označeno kao nepoznato, nikad izmišljeno.
+
+**Klikni na tok `PeelRelay2 → 0xbad...001`** (bočni panel, desno od dijagrama):
+
+- **Direktne blockchain činjenice**: Na crnoj listi (OFAC) — „Simulated OFAC sanctioned
+  address" (ista adresa/nalaz kao u odeljku 1).
+- **Agregovani rezultati**: Ukupno primljeno (ETH): 200, poslato: 10.
+- **Heuristički zaključci**: Risk scoring **100/100 (critical)** — razlog „blacklisted
+  address".
+- Dugme **„Prikaži u Lancu dokaza"** uz svaku od dve transakcije (120 i 80) — svaka se
+  nezavisno otvara na svom zapisu.
+
+**Probaj (opciono, sve ispod menja samo PRIKAZ već preuzetih podataka, bez novog potpisa,
+osim tačke A):**
+
+**A) Čekiraj „Taint analizom (isti seed-ovi)" PRE pokretanja.** `0xbad...001` dobija
+**Taint: 100%** (seed ovde je `0xPeelSeed`, NE `0xVictimWallet` kao u Taint odeljku (2) —
+namerno drugačiji seed, videćeš drugačiji, ali unutar sebe dosledan procenat ako probaš oba).
+`0xInvestorWallet` (4 skoka dalje, posle prolaska kroz nesrodne transakcije u
+`demo_taint_dilution.csv`) dobija **Taint: 0.03%** — razblaženo, ali ne nula. Ovo NIJE nov
+model — poziva se isti `taint_analysis.py` koji Taint stranica koristi, samo sa seed-ovima
+koje si već uneo ovde (`seed_from_blacklist` je namerno isključen, vidi
+`FLOW-OF-FUNDS-IMPLEMENTATION.md` §5 — procenat prati SAMO ovaj tok, ne i nepovezanu
+blacklist adresu negde drugde u slučaju).
+
+**B) Klikni na tok ka `0xInvestorWallet`** (nivo 4, sa uključenim Taint-om iz tačke A) —
+najbogatiji primer unakrsnih nalaza u celom demo slučaju:
+- **4 odvojena `flow_totals` bedža** (DAI/ETH/USDC/USDT), nikad sabrana preko valuta.
+- **`dex_swap_detected`** (agregovano — isti tx hash `0xswap0001` na oba kraka) i
+  **`dex_swap_potential`** (heuristika — 70s vremenska podudarnost) — isti događaji koje
+  DEX Swap analiza (odeljak 5) već prijavljuje kao „Detected"/„Potential".
+- **`wallet_cluster: cluster_5`** — ista `0xInvestorWallet ↔ 0xUniswapRouter` veza iz Graf
+  odeljka (1), red o klasteru koji "ume i da preširoko uhvati".
+- **Risk score 66/100 (high)**, razlog „one hop away from a blacklisted address" — Risk
+  Scoring plugin primećuje blizinu `0xbad...001` sam, bez ijednog dodatnog poziva.
+
+**C) Nivo prikaza → Kategorije.** Broj tokova ostaje 9 — nijedna od ovih pseudo-adresa nije u
+kuriranom registru poznatih entiteta (`known_entities.json`), pa nema šta da se spoji. Ovo
+je namerno POŠTENO ponašanje (nikad izmišljen entitet), ne propust — uporedi sa tačkom D.
+
+**D) Ponovi sa polaznom adresom `0x098b716b8aaf21512996dc57eb0615e2383e2f96`** (prava Ronin
+Bridge adresa, odeljak 9), 2 nivoa. Ovog puta se VIDI razlika: 31 agregiran tok na nivou
+adresa, ali samo **25** na nivou kategorija — ova adresa (i nekoliko odredišta) su u
+kuriranom registru poznatih entiteta pa se spajaju pod kategoriju **„sanctioned"**. Isti kod,
+druga adresa — razlika dolazi isključivo iz toga da li je adresa STVARNO u registru, nikad
+iz pogađanja.
+
+**E) Izvezi PDF izveštaj.** Sadrži sve gore, plus tabelu „Layering nivoi" (4 nivoa), tabelu
+„Ukupan analizirani volumen" (odvojeno po imovini), i eksplicitnu rečenicu koja kaže da li je
+Taint/Sybil bio uključen u TO pokretanje — bez obzira ima li heurističkih nalaza za prikaz.
+
 ---
 
 ## Poenta ovog demo slučaja
@@ -214,3 +322,11 @@ da Sybil heuristika hvata svaku sinhronizovanu konvergenciju na stvarnim podacim
 namerno-dizajnirane demo primere (odeljak 7). Isti princip kao Bitcoin demo
 (`BITCOIN-UVOZ.md`): svaka tvrdnja se može stvarno pokrenuti i proveriti, ne samo
 pročitati.
+
+Flow of Funds (odeljak 10) je dvanaesti dokaz istog principa, ali na drugom nivou — ne
+uvodi trinaesti fajl, već pokazuje da se već postojećih 11 mogu čitati ZAJEDNO, kroz više
+nivoa odjednom, sa svakim ranije uvedenim nalazom (crna lista, risk score, peel chain,
+DEX swap, wallet cluster, opciono Taint/Sybil) prikazanim na jednom mestu i jasno razdvojenim
+na činjenicu/agregat/heuristiku (§10 `FLOW-OF-FUNDS-IMPLEMENTATION.md`). Isti obrazac i tu:
+tačke B i D iznad se mogu stvarno kliknuti i proveriti, brojevi u tabeli nisu prepisani iz
+glave — povučeni su direktno iz pokrenute analize nad ovim istim slučajem.

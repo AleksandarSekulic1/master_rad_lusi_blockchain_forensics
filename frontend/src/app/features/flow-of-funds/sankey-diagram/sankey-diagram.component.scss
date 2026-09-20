@@ -1,0 +1,239 @@
+/* Same dark/light token approach as every other feature page (see pathfinding.component.scss)
+   - a local, prefixed token set on :host, overridden under :host-context([data-theme='light']).
+   Categorical link colors (ETH/BTC/other) reuse the validated colorblind-safe hues from the
+   project's data-viz palette (fixed hue order: blue/orange/violet), not invented ad hoc. */
+:host {
+  display: block;
+  --sk-border: rgba(148, 163, 184, 0.18);
+  --sk-surface: rgba(4, 9, 18, 0.55);
+  --sk-node-fill: #cbd5f5;
+  --sk-node-seed-fill: #facc15;
+  --sk-text: #eef4ff;
+  --sk-muted: #8ea6c7;
+  --sk-tooltip-bg: #0b1526;
+  --sk-tooltip-border: rgba(125, 211, 252, 0.35);
+  --sk-btn-bg: rgba(255, 255, 255, 0.04);
+  --sk-btn-border: rgba(148, 163, 184, 0.22);
+  --sk-btn-text: #d9e6ff;
+  --sk-asset-eth: #3987e5;
+  --sk-asset-btc: #d95926;
+  --sk-asset-other: #9085e9;
+  --sk-asset-unknown: #64748b;
+  --sk-selected: #7dd3fc;
+}
+
+:host-context([data-theme='light']) {
+  --sk-border: rgba(15, 23, 42, 0.12);
+  --sk-surface: #f8fafc;
+  --sk-node-fill: #475569;
+  --sk-node-seed-fill: #d97706;
+  --sk-text: #16233b;
+  --sk-muted: #55658c;
+  --sk-tooltip-bg: #ffffff;
+  --sk-tooltip-border: rgba(37, 99, 235, 0.3);
+  --sk-btn-bg: rgba(15, 23, 42, 0.04);
+  --sk-btn-border: rgba(15, 23, 42, 0.14);
+  --sk-btn-text: #1e293b;
+  --sk-asset-eth: #2a78d6;
+  --sk-asset-btc: #eb6834;
+  --sk-asset-other: #4a3aa7;
+  --sk-asset-unknown: #94a3b8;
+  --sk-selected: #2563eb;
+}
+
+.sankey-wrap {
+  position: relative;
+  border: 1px solid var(--sk-border);
+  border-radius: 0.85rem;
+  background: var(--sk-surface);
+  overflow: hidden;
+}
+
+.sankey-toolbar {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  border: 1px solid var(--sk-btn-border);
+  border-radius: 0.65rem;
+  background: var(--sk-tooltip-bg);
+  box-shadow: 0 8px 20px rgba(4, 10, 20, 0.25);
+}
+
+.sankey-tool {
+  min-width: 2.2rem;
+  padding: 0.35rem 0.55rem;
+  border: none;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--sk-btn-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sankey-tool:hover {
+  background: var(--sk-btn-bg);
+}
+
+.sankey-tool:active {
+  background: rgba(125, 211, 252, 0.22);
+}
+
+.sankey-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--sk-border);
+  font-size: 0.72rem;
+  color: var(--sk-muted);
+}
+
+.sankey-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sankey-legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  background: var(--sk-asset-unknown);
+}
+
+.sankey-legend-swatch.seed {
+  border-radius: 999px;
+  background: var(--sk-node-seed-fill);
+}
+
+.sankey-legend-swatch.asset-eth {
+  background: var(--sk-asset-eth);
+}
+
+.sankey-legend-swatch.asset-btc {
+  background: var(--sk-asset-btc);
+}
+
+.sankey-legend-swatch.asset-other {
+  background: var(--sk-asset-other);
+}
+
+.sankey-legend-swatch.asset-unknown {
+  background: var(--sk-asset-unknown);
+}
+
+.sankey-canvas {
+  position: relative;
+  width: 100%;
+  height: min(70vh, 640px);
+}
+
+svg {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+svg:active {
+  cursor: grabbing;
+}
+
+.sankey-link {
+  fill: none;
+  stroke: var(--sk-asset-unknown);
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity 0.15s ease, stroke-width 0.1s ease;
+}
+
+.sankey-link:hover {
+  opacity: 0.8;
+}
+
+.sankey-link.selected {
+  opacity: 0.95;
+  stroke: var(--sk-selected);
+}
+
+.sankey-link.dimmed {
+  opacity: 0.12;
+}
+
+.sankey-link.asset-eth {
+  stroke: var(--sk-asset-eth);
+}
+
+.sankey-link.asset-btc {
+  stroke: var(--sk-asset-btc);
+}
+
+.sankey-link.asset-other {
+  stroke: var(--sk-asset-other);
+}
+
+.sankey-link.asset-unknown {
+  stroke: var(--sk-asset-unknown);
+}
+
+.sankey-link.selected.asset-eth,
+.sankey-link.selected.asset-btc,
+.sankey-link.selected.asset-other,
+.sankey-link.selected.asset-unknown {
+  stroke: var(--sk-selected);
+}
+
+.sankey-node rect {
+  fill: var(--sk-node-fill);
+  stroke: rgba(0, 0, 0, 0.25);
+  stroke-width: 0.5;
+}
+
+.sankey-node.seed rect {
+  fill: var(--sk-node-seed-fill);
+  stroke: var(--sk-node-seed-fill);
+  stroke-width: 2px;
+}
+
+.sankey-node text {
+  font-size: 11px;
+  fill: var(--sk-text);
+  paint-order: stroke;
+  stroke: var(--sk-surface);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+.sankey-node.seed text {
+  font-weight: 700;
+  fill: var(--sk-node-seed-fill);
+}
+
+.sankey-tooltip {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--sk-tooltip-border);
+  border-radius: 0.5rem;
+  background: var(--sk-tooltip-bg);
+  color: var(--sk-text);
+  font-size: 0.75rem;
+  pointer-events: none;
+  box-shadow: 0 10px 28px rgba(4, 10, 20, 0.35);
+  white-space: nowrap;
+}
+
+.sankey-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--sk-muted);
+  font-size: 0.9rem;
+}
