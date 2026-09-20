@@ -141,23 +141,15 @@ select option {
 /* ---------- header ---------- */
 
 .ff-header {
-  display: grid;
-  gap: 0.35rem;
   padding: 0.2rem 0.1rem;
 }
 
 .ff-header h2 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--ff-heading);
-}
-
-.ff-header p {
-  margin: 0;
-  max-width: 62rem;
-  color: var(--ff-text-2);
-  font-size: 0.86rem;
-  line-height: 1.5;
 }
 
 .panel-kicker {
@@ -438,11 +430,41 @@ input[type='date'] {
   gap: 0.35rem;
 }
 
+.ff-suggest-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .ff-suggest-group-label {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ff-muted);
+}
+
+.ff-suggest-addall {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--ff-mono-border);
+  background: var(--ff-mono-bg);
+  color: var(--ff-text);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.14s ease;
+}
+
+.ff-suggest-addall:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.ff-suggest-addall:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .ff-suggest-item {

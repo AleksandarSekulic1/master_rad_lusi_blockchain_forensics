@@ -269,6 +269,38 @@ export class FlowOfFundsComponent implements OnInit {
     }
   }
 
+  get originCandidatesFullyAdded(): boolean {
+    const items = this.seedSuggestions?.origin_candidates ?? [];
+    return items.length > 0 && items.every((item) => this.isAlreadySeed(this.resolveAddress(item.address)));
+  }
+
+  get launderingPointsFullyAdded(): boolean {
+    const items = this.seedSuggestions?.laundering_points ?? [];
+    return items.length > 0 && items.every((item) => this.isAlreadySeed(this.resolveAddress(item.address)));
+  }
+
+  /** Bulk-add every blacklist/OFAC candidate in one click - the only bucket defensible as a
+   * seed on its own (see SeedSuggestionResponse.origin_candidates doc comment). */
+  addAllOriginCandidates(): void {
+    const additions = (this.seedSuggestions?.origin_candidates ?? [])
+      .map((item) => this.resolveAddress(item.address))
+      .filter((address) => !this.seedAddresses.includes(address));
+    if (additions.length > 0) {
+      this.seedAddresses = [...this.seedAddresses, ...Array.from(new Set(additions))];
+    }
+  }
+
+  /** Bulk-add every heuristic laundering point in one click - still real findings, just not
+   * a defensible origin on their own (see SeedSuggestionResponse.laundering_points). */
+  addAllLaunderingPoints(): void {
+    const additions = (this.seedSuggestions?.laundering_points ?? [])
+      .map((item) => this.resolveAddress(item.address))
+      .filter((address) => !this.seedAddresses.includes(address));
+    if (additions.length > 0) {
+      this.seedAddresses = [...this.seedAddresses, ...Array.from(new Set(additions))];
+    }
+  }
+
   dismissSuggestions(): void {
     this.seedSuggestions = null;
     this.suggestionsError = null;

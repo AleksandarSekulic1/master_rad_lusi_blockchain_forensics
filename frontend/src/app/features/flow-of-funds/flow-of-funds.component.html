@@ -25,26 +25,21 @@
   </div>
 
   <div class="ff-header">
-    <p class="panel-kicker">{{ t('Tok sredstava / Layering analiza', 'Flow of Funds / Layering Analysis') }}</p>
-    <h2>{{ t('Kako se sredstva raslojavaju od polazne adrese?', 'How do funds layer outward from a source address?') }}</h2>
-    <p>
-      {{ t('Prati sredstva kroz više nivoa i prikazuje agregirane tokove — nikad pojedinačne transakcije — kao Sankey dijagram.',
-            'Traces funds across several levels and shows aggregated flows — never individual transactions — as a Sankey diagram.') }}
-    </p>
+    <h2>{{ t('Tok sredstava / Layering analiza', 'Flow of Funds / Layering Analysis') }}</h2>
   </div>
 
   <ng-container *ngIf="activeCase">
     <section class="ff-search">
       <div class="ff-search-grid">
         <div class="ff-seed-block">
-          <span class="ff-field-label">{{ t('Polazna adresa', 'Source address') }}</span>
+          <span class="ff-field-label">{{ t('Polazne adrese', 'Source addresses') }}</span>
           <div class="ff-seed-input">
             <input
               type="text"
               list="ff-address-list"
               [(ngModel)]="manualSeedInput"
               (keydown.enter)="addManualSeed()"
-              [placeholder]="t('Unesi adresu (0x... ili bc1...)', 'Enter an address (0x... or bc1...)')"
+              [placeholder]="t('Unesi adresu i pritisni Enter — može više adresa', 'Enter an address and press Enter — multiple addresses allowed')"
             />
             <datalist id="ff-address-list">
               <option *ngFor="let address of caseAddresses" [value]="address"></option>
@@ -73,7 +68,12 @@
             <p class="ff-hint" *ngIf="seedSuggestions.coverage_note">{{ seedSuggestions.coverage_note }}</p>
 
             <div class="ff-suggest-group" *ngIf="seedSuggestions.origin_candidates.length > 0">
-              <span class="ff-suggest-group-label">{{ t('Poznati izvori (crna lista/OFAC)', 'Known origins (blacklist/OFAC)') }}</span>
+              <div class="ff-suggest-group-head">
+                <span class="ff-suggest-group-label">{{ t('Poznati izvori (crna lista/OFAC)', 'Known origins (blacklist/OFAC)') }}</span>
+                <button type="button" class="ff-suggest-addall" [disabled]="originCandidatesFullyAdded" (click)="addAllOriginCandidates()">
+                  {{ t('Dodaj sve', 'Add all') }}
+                </button>
+              </div>
               <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.origin_candidates">
                 <div>
                   <span class="mono-address">{{ item.address }}</span>
@@ -91,7 +91,12 @@
             </div>
 
             <div class="ff-suggest-group" *ngIf="seedSuggestions.laundering_points.length > 0">
-              <span class="ff-suggest-group-label">{{ t('Tačke pranja novca (heuristika)', 'Laundering points (heuristic)') }}</span>
+              <div class="ff-suggest-group-head">
+                <span class="ff-suggest-group-label">{{ t('Tačke pranja novca (heuristika)', 'Laundering points (heuristic)') }}</span>
+                <button type="button" class="ff-suggest-addall" [disabled]="launderingPointsFullyAdded" (click)="addAllLaunderingPoints()">
+                  {{ t('Dodaj sve', 'Add all') }}
+                </button>
+              </div>
               <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.laundering_points">
                 <div>
                   <span class="mono-address">{{ item.address }}</span>
@@ -109,8 +114,15 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <label class="ff-field">
+      <button type="button" class="ff-advanced-toggle" (click)="showAdvanced = !showAdvanced">
+        {{ showAdvanced ? '▾' : '▸' }}
+        {{ t('Filteri (smer, nivoi, period, Taint/Sybil)', 'Filters (direction, levels, period, Taint/Sybil)') }}
+      </button>
+
+      <div class="ff-search-grid ff-advanced-grid" *ngIf="showAdvanced">
+        <label class="ff-field ff-field-narrow">
           <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
           <div class="ff-toggle-group">
             <button type="button" [class.active]="direction === 'forward'" (click)="setDirection('forward')">
@@ -121,14 +133,7 @@
             </button>
           </div>
         </label>
-      </div>
 
-      <button type="button" class="ff-advanced-toggle" (click)="showAdvanced = !showAdvanced">
-        {{ showAdvanced ? '▾' : '▸' }}
-        {{ t('Napredna podešavanja (nivoi, period, Taint/Sybil)', 'Advanced settings (levels, period, Taint/Sybil)') }}
-      </button>
-
-      <div class="ff-search-grid ff-advanced-grid" *ngIf="showAdvanced">
         <label class="ff-field ff-field-narrow">
           <span class="ff-field-label">{{ t('Broj nivoa', 'Levels') }}</span>
           <input type="number" [min]="minLevels" [max]="maxLevelsCap" [(ngModel)]="maxLevels" />
@@ -173,7 +178,8 @@
       </div>
 
       <p class="ff-hint" *ngIf="seedAddresses.length === 0">
-        {{ t('Dodaj bar jednu adresu da bi se pretraga pokrenula.', 'Add at least one address to enable the trace.') }}
+        {{ t('Dodaj jednu ili više adresa da bi se pretraga pokrenula — algoritam ih prati sve odjednom.',
+              'Add one or more addresses to enable the trace — the algorithm follows all of them at once.') }}
       </p>
 
       <div class="ff-run-row">
