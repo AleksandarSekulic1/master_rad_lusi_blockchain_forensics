@@ -78,10 +78,16 @@ export class FlowOfFundsComponent implements OnInit {
   protected isSuggestingSeeds = false;
   protected seedSuggestions: SeedSuggestionResponse | null = null;
   protected suggestionsError: string | null = null;
-  /** Collapsed by default once suggestions load - same "closed until asked for" pattern as
-   * showAdvanced, so a case with many suggested addresses doesn't dump a long list into view
-   * right away. */
-  protected showSuggestionDetails = false;
+  /** Whether the whole suggestions panel is shown at all (toggled by the "Predloži
+   * adresu"/"Sakrij predloge" button once data is already loaded, without re-fetching). The
+   * X button clears seedSuggestions entirely instead; this only hides/reveals it. */
+  protected suggestionsPanelVisible = false;
+  /** Each group (origin candidates / laundering points) collapses independently - same
+   * "closed until asked for" pattern as showAdvanced, applied to EACH list rather than to
+   * the whole panel, so a case with many suggestions doesn't dump both long lists into view
+   * at once. */
+  protected showOriginCandidates = false;
+  protected showLaunderingPoints = false;
   protected direction: FlowOfFundsDirection = 'forward';
   protected maxLevels = DEFAULT_LEVELS;
   protected minAmount: number | null = null;
@@ -171,7 +177,9 @@ export class FlowOfFundsComponent implements OnInit {
         this.manualSeedInput = '';
         this.seedSuggestions = null;
         this.suggestionsError = null;
-        this.showSuggestionDetails = false;
+        this.suggestionsPanelVisible = false;
+        this.showOriginCandidates = false;
+        this.showLaunderingPoints = false;
         this.resetSearchState();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
@@ -255,8 +263,8 @@ export class FlowOfFundsComponent implements OnInit {
       return;
     }
     if (this.seedSuggestions) {
-      // already loaded - just toggle the collapsed summary open/closed, no refetch
-      this.showSuggestionDetails = !this.showSuggestionDetails;
+      // already loaded - just show/hide the panel, no refetch
+      this.suggestionsPanelVisible = !this.suggestionsPanelVisible;
       return;
     }
     this.isSuggestingSeeds = true;
@@ -265,7 +273,9 @@ export class FlowOfFundsComponent implements OnInit {
       next: (response) => {
         this.isSuggestingSeeds = false;
         this.seedSuggestions = response;
-        this.showSuggestionDetails = false;
+        this.suggestionsPanelVisible = true;
+        this.showOriginCandidates = false;
+        this.showLaunderingPoints = false;
       },
       error: () => {
         this.isSuggestingSeeds = false;
@@ -316,7 +326,9 @@ export class FlowOfFundsComponent implements OnInit {
   dismissSuggestions(): void {
     this.seedSuggestions = null;
     this.suggestionsError = null;
-    this.showSuggestionDetails = false;
+    this.suggestionsPanelVisible = false;
+    this.showOriginCandidates = false;
+    this.showLaunderingPoints = false;
   }
 
   get selectedEvidenceFileName(): string | null {
@@ -569,9 +581,10 @@ export class FlowOfFundsComponent implements OnInit {
     assetFilter: string | null;
     nodes: SankeyDiagramNode[];
     links: SankeyDiagramLink[];
+    seedsWithNoFlows: string[];
   } | null = null;
 
-  private get sankeyView(): { nodes: SankeyDiagramNode[]; links: SankeyDiagramLink[] } {
+  private get sankeyView(): { nodes: SankeyDiagramNode[]; links: SankeyDiagramLink[]; seedsWithNoFlows: string[] } {
     const cache = this.sankeyCache;
     if (cache && cache.result === this.result && cache.aggregationLevel === this.aggregationLevel && cache.assetFilter === this.assetFilter) {
       return cache;
@@ -587,6 +600,7 @@ export class FlowOfFundsComponent implements OnInit {
     }));
 
     let nodes: SankeyDiagramNode[] = [];
+    let seedsWithNoFlows: string[] = [];
     if (this.result) {
       const seedLabels = new Set(
         this.result.nodes.filter((node) => node.type === 'seed').map((node) => this.nodeLabelAtLevel(node)),
@@ -616,16 +630,32 @@ export class FlowOfFundsComponent implements OnInit {
         labels.set(flow.target, flow.target_label);
       }
 
-      nodes = Array.from(bestLevel.entries()).map(([id, level]) => ({
-        id,
-        label: labels.get(id) ?? id,
-        level: Math.max(0, level),
-        isSeed: seedLabels.has(id),
-        entityCategory: categoryByLabel.get(id) ?? null,
-      }));
+      // A Sankey diagram has no sensible place to put a node with zero links - d3-sankey
+      // still has to lay it out SOMEWHERE, which is what produced the small disconnected
+      // marks floating away from the actual diagram. A seed with no flows at all (e.g. an
+      // address not actually present in the evidence) is real information, just not
+      // information a flow diagram can show - it's listed as plain text instead (see
+      // seedsWithNoFlows below), never forced into the picture.
+      const linkedIds = new Set<string>();
+      for (const link of links) {
+        linkedIds.add(link.source);
+        linkedIds.add(link.target);
+      }
+
+      nodes = Array.from(bestLevel.entries())
+        .filter(([id]) => linkedIds.has(id))
+        .map(([id, level]) => ({
+          id,
+          label: labels.get(id) ?? id,
+          level: Math.max(0, level),
+          isSeed: seedLabels.has(id),
+          entityCategory: categoryByLabel.get(id) ?? null,
+        }));
+
+      seedsWithNoFlows = Array.from(seedLabels).filter((label) => !linkedIds.has(label));
     }
 
-    this.sankeyCache = { result: this.result, aggregationLevel: this.aggregationLevel, assetFilter: this.assetFilter, nodes, links };
+    this.sankeyCache = { result: this.result, aggregationLevel: this.aggregationLevel, assetFilter: this.assetFilter, nodes, links, seedsWithNoFlows };
     return this.sankeyCache;
   }
 
@@ -635,6 +665,13 @@ export class FlowOfFundsComponent implements OnInit {
 
   get sankeyLinks(): SankeyDiagramLink[] {
     return this.sankeyView.links;
+  }
+
+  /** Seed addresses that produced no flow at all under the current filters - shown as a
+   * short plain-text note next to the diagram instead of being forced into it (see
+   * sankeyView). */
+  get seedsWithNoFlows(): string[] {
+    return this.sankeyView.seedsWithNoFlows;
   }
 
   onFlowSelected(link: SankeyDiagramLink | null): void {

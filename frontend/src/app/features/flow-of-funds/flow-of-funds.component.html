@@ -48,8 +48,8 @@
             <button type="button" class="ghost-button" [disabled]="isSuggestingSeeds" (click)="suggestSeeds()">
               <ng-container [ngSwitch]="true">
                 <ng-container *ngSwitchCase="isSuggestingSeeds">{{ t('Tražim…', 'Suggesting…') }}</ng-container>
-                <ng-container *ngSwitchCase="!!seedSuggestions && showSuggestionDetails">{{ t('Sakrij predloge', 'Hide suggestions') }}</ng-container>
-                <ng-container *ngSwitchCase="!!seedSuggestions && !showSuggestionDetails">{{ t('Prikaži predloge', 'Show suggestions') }}</ng-container>
+                <ng-container *ngSwitchCase="!!seedSuggestions && suggestionsPanelVisible">{{ t('Sakrij predloge', 'Hide suggestions') }}</ng-container>
+                <ng-container *ngSwitchCase="!!seedSuggestions && !suggestionsPanelVisible">{{ t('Prikaži predloge', 'Show suggestions') }}</ng-container>
                 <ng-container *ngSwitchDefault>{{ t('Predloži adresu', 'Suggest address') }}</ng-container>
               </ng-container>
             </button>
@@ -62,7 +62,7 @@
           </div>
           <p class="ff-error" *ngIf="suggestionsError">{{ suggestionsError }}</p>
 
-          <div class="ff-suggest-panel" *ngIf="seedSuggestions">
+          <div class="ff-suggest-panel" *ngIf="seedSuggestions && suggestionsPanelVisible">
             <div class="ff-suggest-head">
               <span class="ff-field-label">{{ t('Predložene adrese', 'Suggested addresses') }}</span>
               <button type="button" class="ff-suggest-close" (click)="dismissSuggestions()" [attr.aria-label]="t('Zatvori', 'Close')">×</button>
@@ -72,57 +72,60 @@
             </p>
             <p class="ff-hint" *ngIf="seedSuggestions.coverage_note">{{ seedSuggestions.coverage_note }}</p>
 
-            <button type="button" class="ff-suggest-summary" *ngIf="hasAnySuggestion" (click)="showSuggestionDetails = !showSuggestionDetails">
-              {{ showSuggestionDetails ? '▾' : '▸' }}
-              {{ t('Pronađeno', 'Found') }}
-              <strong>{{ seedSuggestions.origin_candidates.length }}</strong> {{ t('poznatih izvora', 'known origins') }},
-              <strong>{{ seedSuggestions.laundering_points.length }}</strong> {{ t('tačaka pranja novca', 'laundering points') }}
-            </button>
-
-            <div class="ff-suggest-group" *ngIf="showSuggestionDetails && seedSuggestions.origin_candidates.length > 0">
+            <div class="ff-suggest-group" *ngIf="seedSuggestions.origin_candidates.length > 0">
               <div class="ff-suggest-group-head">
-                <span class="ff-suggest-group-label">{{ t('Poznati izvori (crna lista/OFAC)', 'Known origins (blacklist/OFAC)') }}</span>
+                <button type="button" class="ff-suggest-group-toggle" (click)="showOriginCandidates = !showOriginCandidates">
+                  {{ showOriginCandidates ? '▾' : '▸' }}
+                  {{ t('Poznati izvori (crna lista/OFAC)', 'Known origins (blacklist/OFAC)') }} ({{ seedSuggestions.origin_candidates.length }})
+                </button>
                 <button type="button" class="ff-suggest-addall" [disabled]="originCandidatesFullyAdded" (click)="addAllOriginCandidates()">
                   {{ t('Dodaj sve', 'Add all') }}
                 </button>
               </div>
-              <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.origin_candidates">
-                <div>
-                  <span class="mono-address">{{ item.address }}</span>
-                  <span class="ff-suggest-reason">{{ item.reasons.join(' · ') }}</span>
+              <ng-container *ngIf="showOriginCandidates">
+                <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.origin_candidates">
+                  <div>
+                    <span class="mono-address">{{ item.address }}</span>
+                    <span class="ff-suggest-reason">{{ item.reasons.join(' · ') }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="ghost-button"
+                    [disabled]="isAlreadySeed(item.address)"
+                    (click)="addSuggestedSeed(item.address)"
+                  >
+                    {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Dodaj', 'Add') }}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  class="ghost-button"
-                  [disabled]="isAlreadySeed(item.address)"
-                  (click)="addSuggestedSeed(item.address)"
-                >
-                  {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Dodaj', 'Add') }}
-                </button>
-              </div>
+              </ng-container>
             </div>
 
-            <div class="ff-suggest-group" *ngIf="showSuggestionDetails && seedSuggestions.laundering_points.length > 0">
+            <div class="ff-suggest-group" *ngIf="seedSuggestions.laundering_points.length > 0">
               <div class="ff-suggest-group-head">
-                <span class="ff-suggest-group-label">{{ t('Tačke pranja novca (heuristika)', 'Laundering points (heuristic)') }}</span>
+                <button type="button" class="ff-suggest-group-toggle" (click)="showLaunderingPoints = !showLaunderingPoints">
+                  {{ showLaunderingPoints ? '▾' : '▸' }}
+                  {{ t('Tačke pranja novca (heuristika)', 'Laundering points (heuristic)') }} ({{ seedSuggestions.laundering_points.length }})
+                </button>
                 <button type="button" class="ff-suggest-addall" [disabled]="launderingPointsFullyAdded" (click)="addAllLaunderingPoints()">
                   {{ t('Dodaj sve', 'Add all') }}
                 </button>
               </div>
-              <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.laundering_points">
-                <div>
-                  <span class="mono-address">{{ item.address }}</span>
-                  <span class="ff-suggest-reason">{{ item.reasons.join(' · ') }}</span>
+              <ng-container *ngIf="showLaunderingPoints">
+                <div class="ff-suggest-item" *ngFor="let item of seedSuggestions.laundering_points">
+                  <div>
+                    <span class="mono-address">{{ item.address }}</span>
+                    <span class="ff-suggest-reason">{{ item.reasons.join(' · ') }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="ghost-button"
+                    [disabled]="isAlreadySeed(item.address)"
+                    (click)="addSuggestedSeed(item.address)"
+                  >
+                    {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Dodaj', 'Add') }}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  class="ghost-button"
-                  [disabled]="isAlreadySeed(item.address)"
-                  (click)="addSuggestedSeed(item.address)"
-                >
-                  {{ isAlreadySeed(item.address) ? t('Dodato', 'Added') : t('Dodaj', 'Add') }}
-                </button>
-              </div>
+              </ng-container>
             </div>
           </div>
         </div>
@@ -130,22 +133,10 @@
 
       <button type="button" class="ff-advanced-toggle" (click)="showAdvanced = !showAdvanced">
         {{ showAdvanced ? '▾' : '▸' }}
-        {{ t('Filteri (smer, nivoi, period, Taint/Sybil)', 'Filters (direction, levels, period, Taint/Sybil)') }}
+        {{ t('Filteri (nivoi, period, Taint/Sybil)', 'Filters (levels, period, Taint/Sybil)') }}
       </button>
 
       <div class="ff-search-grid ff-advanced-grid" *ngIf="showAdvanced">
-        <label class="ff-field ff-field-narrow">
-          <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
-          <div class="ff-toggle-group">
-            <button type="button" [class.active]="direction === 'forward'" (click)="setDirection('forward')">
-              {{ t('Unapred', 'Forward') }}
-            </button>
-            <button type="button" [class.active]="direction === 'backward'" (click)="setDirection('backward')">
-              {{ t('Unazad', 'Backward') }}
-            </button>
-          </div>
-        </label>
-
         <label class="ff-field ff-field-narrow">
           <span class="ff-field-label">{{ t('Broj nivoa', 'Levels') }}</span>
           <input type="number" [min]="minLevels" [max]="maxLevelsCap" [(ngModel)]="maxLevels" />
@@ -313,6 +304,11 @@
           </div>
         </div>
       </div>
+
+      <p class="ff-hint" *ngIf="seedsWithNoFlows.length > 0">
+        {{ t('Bez pronađenih tokova pod trenutnim filterima:', 'No flows found under the current filters:') }}
+        <span class="mono-address" *ngFor="let address of seedsWithNoFlows">{{ address }}</span>
+      </p>
 
       <p class="ff-mixed-asset-warning" *ngIf="showsMixedAssetWidths">
         {{ t('Prikazane su različite valute — debljine tokova nisu uporedive. Izaberi jednu imovinu za tačno poređenje.',

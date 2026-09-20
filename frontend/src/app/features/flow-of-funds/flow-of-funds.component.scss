@@ -430,25 +430,6 @@ input[type='date'] {
   color: var(--ff-text);
 }
 
-.ff-suggest-summary {
-  justify-self: start;
-  border: none;
-  background: none;
-  padding: 0.1rem 0;
-  color: var(--ff-kicker);
-  font-size: 0.76rem;
-  cursor: pointer;
-  text-align: left;
-}
-
-.ff-suggest-summary:hover {
-  text-decoration: underline;
-}
-
-.ff-suggest-summary strong {
-  color: var(--ff-heading);
-}
-
 .ff-suggest-group {
   display: flex;
   flex-direction: column;
@@ -464,11 +445,21 @@ input[type='date'] {
   gap: 0.5rem;
 }
 
-.ff-suggest-group-label {
+.ff-suggest-group-toggle {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0.1rem 0;
+  color: var(--ff-muted);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--ff-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ff-suggest-group-toggle:hover {
+  color: var(--ff-heading);
 }
 
 .ff-suggest-addall {
