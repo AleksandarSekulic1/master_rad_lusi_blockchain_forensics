@@ -868,5 +868,21 @@
       "assets": "ETH, UNKNOWN"
     },
     "registered_at": "2026-09-20T13:57:30.235684+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-CSNN-PX7C",
+    "content_hash": "83460215de2c69d59315066216d32399d501e52086ad5333a8e0f49e91a15aff",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "I confirm that I produced this report within the stated case and that the results shown in it are those the application computed (by aggregation and, where noted, heuristically) over the stated evidence.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T16:36:00.753100+00:00"
   }
 ]
