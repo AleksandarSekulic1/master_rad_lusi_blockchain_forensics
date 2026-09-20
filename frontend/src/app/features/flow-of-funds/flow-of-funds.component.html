@@ -258,40 +258,6 @@
           </div>
         </div>
 
-        <div class="ff-field">
-          <span class="ff-field-label">{{ t('Nivo prikaza', 'Aggregation level') }}</span>
-          <div class="ff-toggle-group">
-            <button
-              type="button"
-              [class.active]="aggregationLevel === 'address'"
-              [title]="t('Svaka novčana adresa je poseban čvor.', 'Every wallet address is its own node.')"
-              (click)="setAggregationLevel('address')"
-            >
-              {{ t('Adrese', 'Addresses') }}
-            </button>
-            <button
-              type="button"
-              [class.active]="aggregationLevel === 'entity'"
-              [title]="t('Adrese iste poznate usluge (npr. berze) spojene u jedan čvor.', 'Addresses belonging to the same known service (e.g. an exchange) are merged into one node.')"
-              (click)="setAggregationLevel('entity')"
-            >
-              {{ t('Entiteti', 'Entities') }}
-            </button>
-            <button
-              type="button"
-              [class.active]="aggregationLevel === 'category'"
-              [title]="t('Spojeno po vrsti usluge (berza, mikser…) umesto po imenu.', 'Merged by service type (exchange, mixer…) instead of by name.')"
-              (click)="setAggregationLevel('category')"
-            >
-              {{ t('Kategorije', 'Categories') }}
-            </button>
-          </div>
-          <p class="ff-field-hint">
-            {{ t('Adrese = svaka posebno · Entiteti/Kategorije = spojeno po poznatoj usluzi, kad je poznata.',
-                  'Addresses = each one separately · Entities/Categories = merged by known service, when known.') }}
-          </p>
-        </div>
-
         <div class="ff-field" *ngIf="availableAssets.length > 1">
           <span class="ff-field-label">{{ t('Imovina', 'Asset') }}</span>
           <div class="ff-toggle-group">

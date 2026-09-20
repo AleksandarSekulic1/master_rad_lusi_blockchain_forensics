@@ -184,7 +184,18 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
       return;
     }
 
-    const maxLevel = this.nodes.reduce((max, node) => Math.max(max, node.level), 0);
+    // d3-sankey's own nodeAlign() column-building allocates a plain array sized to
+    // (max level + 1) and indexes straight into it by level - a GAP in the level numbers
+    // actually used (e.g. after the parent filters down to one asset and every remaining
+    // node happens to sit at level 2+) leaves empty slots it doesn't guard against, and it
+    // throws reading .length off one of them. Levels are caller-supplied hop distances, not
+    // guaranteed dense, so they're compacted to a gap-free 0..N run (order preserved) right
+    // before layout - this is purely a rendering-column concern, the caller's own `level`
+    // values are untouched everywhere else (tooltips, hover, etc. still use the original
+    // SankeyDiagramNode objects via `this.nodes`).
+    const distinctLevels = Array.from(new Set(this.nodes.map((node) => node.level))).sort((a, b) => a - b);
+    const compactLevel = new Map(distinctLevels.map((level, index) => [level, index]));
+    const maxLevel = distinctLevels.length > 0 ? distinctLevels.length - 1 : 0;
     // Fill whatever space the page actually gives this component (measured via
     // ResizeObserver); the level/row-count minimums only kick in for a diagram too big to
     // fit that space at all, where pan/zoom takes over instead of a squeezed layout.
@@ -195,26 +206,38 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
       .nodeId((node) => node.id)
       .nodeWidth(14)
       .nodePadding(20)
-      .nodeAlign((node) => node.level)
+      .nodeAlign((node) => compactLevel.get(node.level) ?? 0)
       .extent([
         [8, 8],
         [this.width - 8, this.height - 8],
       ]);
 
-    const graph = sankeyLayout({
-      nodes: this.nodes.map((node) => ({ ...node })),
-      links: this.links.map((link, index) => ({
-        source: link.source,
-        target: link.target,
-        value: Math.max(link.value, 1e-9),
-        asset: link.asset,
-        flow: link.flow,
-        linkId: `${link.source}__${link.target}__${link.asset}__${index}`,
-      })),
-    });
+    try {
+      const graph = sankeyLayout({
+        nodes: this.nodes.map((node) => ({ ...node })),
+        links: this.links.map((link, index) => ({
+          source: link.source,
+          target: link.target,
+          value: Math.max(link.value, 1e-9),
+          asset: link.asset,
+          flow: link.flow,
+          linkId: `${link.source}__${link.target}__${link.asset}__${index}`,
+        })),
+      });
 
-    this.layoutNodes = graph.nodes;
-    this.layoutLinks = graph.links;
+      this.layoutNodes = graph.nodes;
+      this.layoutLinks = graph.links;
+    } catch (error) {
+      // d3-sankey throws on a layout it can't place (e.g. a link whose two ends land in the
+      // same column) instead of degrading gracefully. Left uncaught, this happens INSIDE
+      // ngOnChanges, before layoutNodes/layoutLinks are reassigned - so the diagram would
+      // silently keep showing whatever it rendered last, looking like the new data never
+      // arrived at all rather than surfacing an actual problem. Failing to the empty state
+      // (with a console trace to actually debug it) beats a diagram that lies by omission.
+      console.error('Sankey layout failed for the current nodes/links - showing empty state instead of stale data.', error);
+      this.layoutNodes = [];
+      this.layoutLinks = [];
+    }
   }
 
   /** Which asset color classes actually appear in the current diagram - drives the legend,

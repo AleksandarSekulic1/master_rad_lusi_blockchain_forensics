@@ -613,15 +613,22 @@ export class FlowOfFundsComponent implements OnInit {
       // Same "smallest level a node was first reached at" reduction the backend computes for
       // its own address-level `nodes` list (see _node_records) - reimplemented here because
       // at entity/category granularity the node ids are collapsed labels the backend's
-      // `nodes` array doesn't directly index.
+      // `nodes` array doesn't directly index. flow.source/flow.target always describe the
+      // REAL transaction direction, never swapped - but which side is "one BFS hop closer to
+      // the seed" flips with trace direction (forward discovers via target, backward
+      // discovers via source - see _node_records's own docstring for the full reasoning).
+      // Getting this wrong ties a backward trace's first hop to the seed's own column, which
+      // d3-sankey cannot lay out (it throws, leaving the diagram stuck on stale data).
       const bestLevel = new Map<string, number>();
       for (const label of seedLabels) {
         bestLevel.set(label, 0);
       }
+      const isForward = this.result.direction === 'forward';
       for (const flow of flows) {
-        const sourceCandidate = flow.level - 1;
+        const sourceCandidate = isForward ? flow.level - 1 : flow.level;
+        const targetCandidate = isForward ? flow.level : flow.level - 1;
         bestLevel.set(flow.source, bestLevel.has(flow.source) ? Math.min(bestLevel.get(flow.source)!, sourceCandidate) : sourceCandidate);
-        bestLevel.set(flow.target, bestLevel.has(flow.target) ? Math.min(bestLevel.get(flow.target)!, flow.level) : flow.level);
+        bestLevel.set(flow.target, bestLevel.has(flow.target) ? Math.min(bestLevel.get(flow.target)!, targetCandidate) : targetCandidate);
       }
 
       const labels = new Map<string, string>();

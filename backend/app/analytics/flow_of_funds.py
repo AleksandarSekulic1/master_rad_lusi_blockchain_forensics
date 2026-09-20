@@ -311,10 +311,20 @@ def _build_flow_record(
     }
 
 
-def _node_records(flows: list[dict[str, Any]], seeds: set[str]) -> list[dict[str, Any]]:
+def _node_records(flows: list[dict[str, Any]], seeds: set[str], direction: str) -> list[dict[str, Any]]:
     """One summary record per unique address that appears in `flows`, with the smallest
     level at which it was reached (0 for a seed) - lets a Sankey renderer place nodes into
-    columns without re-deriving reachability itself."""
+    columns without re-deriving reachability itself.
+
+    `flow['source']`/`flow['target']` always describe the REAL transaction direction
+    (sender/recipient) regardless of trace direction - never swapped, so a flow record never
+    claims money moved a way it didn't. But which endpoint is "one BFS hop closer to the
+    seed" depends on which way the trace actually walked: forward follows successor edges
+    (the seed's own side is `source`, the newly-discovered, farther side is `target`);
+    backward follows predecessor edges (a backward hop discovers who PAID the already-known
+    node, so the newly-discovered, farther side is `source` this time). Without swapping the
+    two for 'backward', its very first hop ties with the seed's own column - a Sankey layout
+    has no valid place for a link whose two ends share one column."""
     best_level: dict[str, int] = {seed: 0 for seed in seeds}
     info: dict[str, dict[str, str | None]] = {}
 
@@ -323,8 +333,12 @@ def _node_records(flows: list[dict[str, Any]], seeds: set[str]) -> list[dict[str
             if address not in info:
                 info[address] = _describe_address(address)
 
-        source_level = best_level.get(flow['source'], flow['level'] - 1)
-        target_level = flow['level']
+        if direction == 'forward':
+            source_level = flow['level'] - 1
+            target_level = flow['level']
+        else:
+            source_level = flow['level']
+            target_level = flow['level'] - 1
         best_level[flow['source']] = min(best_level.get(flow['source'], source_level), source_level)
         best_level[flow['target']] = min(best_level.get(flow['target'], target_level), target_level)
 
@@ -524,7 +538,7 @@ def trace_flow_of_funds(
         frontier = next_frontier
 
     address_flows = sorted(flows, key=lambda item: (item['level'], item['source'], item['target'], item['asset']))
-    nodes = _node_records(address_flows, seed_set)
+    nodes = _node_records(address_flows, seed_set, direction)
     entity_flows = _collapse_flows(address_flows, _entity_key)
     category_flows = _collapse_flows(address_flows, _category_key)
 

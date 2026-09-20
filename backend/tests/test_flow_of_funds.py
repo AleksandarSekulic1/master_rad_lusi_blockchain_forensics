@@ -391,6 +391,22 @@ class TestNodeRecords:
         assert node_c['level'] == 2
         assert node_c['type'] == 'address'
 
+    def test_backward_trace_gives_each_hop_its_own_strictly_increasing_level(self):
+        """Regresija: kod direction='backward', novootkriveni kraj svakog toka je 'source'
+        (ko je platio već poznatom čvoru), ne 'target' - ako se to ne uzme u obzir, prvi hop
+        unazad dobija ISTI nivo kao sama polazna adresa (0), što Sankey prikaz ne može da
+        iscrta (izvor i odredište u istoj koloni) - video se kao "grafik se ne menja" u UI-ju
+        jer d3-sankey baci grešku pre nego što layoutNodes/layoutLinks uopšte budu ažurirani."""
+        frame = frame_from_rows([
+            {'sender_address': '0xOrigin', 'recipient_address': '0xMiddle', 'amount': 100, 'timestamp': '2026-01-01T00:00:00Z'},
+            {'sender_address': '0xMiddle', 'recipient_address': '0xSeed', 'amount': 90, 'timestamp': '2026-01-01T01:00:00Z'},
+        ])
+
+        result = trace_flow_of_funds(frame, source_addresses=['0xSeed'], direction='backward', max_levels=2)
+
+        levels = {node['id']: node['level'] for node in result['nodes']}
+        assert levels == {'0xSeed': 0, '0xMiddle': 1, '0xOrigin': 2}
+
 
 HEADER = 'sender_address,recipient_address,amount,timestamp,metadata'
 
