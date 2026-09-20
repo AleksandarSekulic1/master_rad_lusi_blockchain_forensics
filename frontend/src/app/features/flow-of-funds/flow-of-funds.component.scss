@@ -317,13 +317,34 @@ input[type='date'] {
 
 .ff-search-grid {
   display: grid;
-  grid-template-columns: minmax(18rem, 2fr) repeat(3, minmax(10rem, 1fr));
+  grid-template-columns: minmax(18rem, 2fr) minmax(14rem, 1fr);
   gap: 1rem 1.25rem;
   align-items: start;
 }
 
+.ff-advanced-toggle {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0.2rem 0;
+  color: var(--ff-kicker);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.ff-advanced-toggle:hover {
+  text-decoration: underline;
+}
+
+.ff-advanced-grid {
+  grid-template-columns: repeat(4, minmax(10rem, 1fr));
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--ff-border-soft);
+}
+
 @media (max-width: 1100px) {
-  .ff-search-grid {
+  .ff-search-grid,
+  .ff-advanced-grid {
     grid-template-columns: 1fr;
   }
 }

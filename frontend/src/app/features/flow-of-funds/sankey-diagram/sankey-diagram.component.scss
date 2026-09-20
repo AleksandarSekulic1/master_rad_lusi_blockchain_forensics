@@ -51,29 +51,37 @@
 
 .sankey-toolbar {
   position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
+  top: 0.7rem;
+  right: 0.7rem;
   z-index: 2;
   display: flex;
-  gap: 0.35rem;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  border: 1px solid var(--sk-btn-border);
+  border-radius: 0.65rem;
+  background: var(--sk-tooltip-bg);
+  box-shadow: 0 8px 20px rgba(4, 10, 20, 0.25);
 }
 
 .sankey-tool {
-  min-width: 2.1rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--sk-btn-border);
-  border-radius: 0.5rem;
-  background: var(--sk-btn-bg);
+  min-width: 2.2rem;
+  padding: 0.35rem 0.55rem;
+  border: none;
+  border-radius: 0.45rem;
+  background: transparent;
   color: var(--sk-btn-text);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .sankey-tool:hover {
-  background: rgba(125, 211, 252, 0.14);
-  border-color: rgba(125, 211, 252, 0.4);
+  background: var(--sk-btn-bg);
+}
+
+.sankey-tool:active {
+  background: rgba(125, 211, 252, 0.22);
 }
 
 .sankey-canvas {

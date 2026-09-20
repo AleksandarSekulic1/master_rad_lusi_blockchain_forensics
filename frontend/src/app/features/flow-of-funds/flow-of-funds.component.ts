@@ -74,6 +74,11 @@ export class FlowOfFundsComponent implements OnInit {
   protected direction: FlowOfFundsDirection = 'forward';
   protected maxLevels = DEFAULT_LEVELS;
   protected minAmount: number | null = null;
+  /** Levels/min. amount/period/Taint-Sybil live behind this toggle by default - same
+   * "Napredna podešavanja" disclosure pattern as sybil-analysis.component.ts's own
+   * showAdvancedFilters, so the primary form only ever shows what's needed to run a first,
+   * sensible trace (address + direction). */
+  protected showAdvanced = false;
 
   protected periodMode: 'all' | 'range' = 'all';
   protected startDate = '';
@@ -369,56 +374,87 @@ export class FlowOfFundsComponent implements OnInit {
     return node.id;
   }
 
-  get sankeyNodes(): SankeyDiagramNode[] {
-    if (!this.result) {
-      return [];
+  // --- Sankey view (nodes/links), MEMOIZED ------------------------------------------------
+  // Angular re-evaluates template getters on every change-detection cycle - including ones
+  // triggered by an event INSIDE the Sankey child itself (e.g. a zoom button click). A plain
+  // getter that builds a fresh array every call would hand the child a NEW [nodes]/[links]
+  // reference each time, which makes the child's own ngOnChanges fire and reset its pan/zoom
+  // back to 100% on the very next tick - the zoom controls would appear to do nothing. Caching
+  // the computed arrays, keyed by what they actually depend on, means the SAME reference is
+  // returned (and ngOnChanges stays quiet) unless the trace result, aggregation level or
+  // asset filter genuinely changed.
+  private sankeyCache: {
+    result: FlowOfFundsResult | null;
+    aggregationLevel: FlowAggregationLevel;
+    assetFilter: string | null;
+    nodes: SankeyDiagramNode[];
+    links: SankeyDiagramLink[];
+  } | null = null;
+
+  private get sankeyView(): { nodes: SankeyDiagramNode[]; links: SankeyDiagramLink[] } {
+    const cache = this.sankeyCache;
+    if (cache && cache.result === this.result && cache.aggregationLevel === this.aggregationLevel && cache.assetFilter === this.assetFilter) {
+      return cache;
     }
+
     const flows = this.activeFlows;
-    const seedLabels = new Set(
-      this.result.nodes.filter((node) => node.type === 'seed').map((node) => this.nodeLabelAtLevel(node)),
-    );
-    const categoryByLabel = new Map<string, string | null>();
-    for (const node of this.result.nodes) {
-      categoryByLabel.set(this.nodeLabelAtLevel(node), node.entity_category);
-    }
-
-    // Same "smallest level a node was first reached at" reduction the backend computes for
-    // its own address-level `nodes` list (see _node_records) - reimplemented here because
-    // at entity/category granularity the node ids are collapsed labels the backend's
-    // `nodes` array doesn't directly index.
-    const bestLevel = new Map<string, number>();
-    for (const label of seedLabels) {
-      bestLevel.set(label, 0);
-    }
-    for (const flow of flows) {
-      const sourceCandidate = flow.level - 1;
-      bestLevel.set(flow.source, bestLevel.has(flow.source) ? Math.min(bestLevel.get(flow.source)!, sourceCandidate) : sourceCandidate);
-      bestLevel.set(flow.target, bestLevel.has(flow.target) ? Math.min(bestLevel.get(flow.target)!, flow.level) : flow.level);
-    }
-
-    const labels = new Map<string, string>();
-    for (const flow of flows) {
-      labels.set(flow.source, flow.source_label);
-      labels.set(flow.target, flow.target_label);
-    }
-
-    return Array.from(bestLevel.entries()).map(([id, level]) => ({
-      id,
-      label: labels.get(id) ?? id,
-      level: Math.max(0, level),
-      isSeed: seedLabels.has(id),
-      entityCategory: categoryByLabel.get(id) ?? null,
-    }));
-  }
-
-  get sankeyLinks(): SankeyDiagramLink[] {
-    return this.activeFlows.map((flow) => ({
+    const links: SankeyDiagramLink[] = flows.map((flow) => ({
       source: flow.source,
       target: flow.target,
       value: flow.amount,
       asset: flow.asset,
       flow,
     }));
+
+    let nodes: SankeyDiagramNode[] = [];
+    if (this.result) {
+      const seedLabels = new Set(
+        this.result.nodes.filter((node) => node.type === 'seed').map((node) => this.nodeLabelAtLevel(node)),
+      );
+      const categoryByLabel = new Map<string, string | null>();
+      for (const node of this.result.nodes) {
+        categoryByLabel.set(this.nodeLabelAtLevel(node), node.entity_category);
+      }
+
+      // Same "smallest level a node was first reached at" reduction the backend computes for
+      // its own address-level `nodes` list (see _node_records) - reimplemented here because
+      // at entity/category granularity the node ids are collapsed labels the backend's
+      // `nodes` array doesn't directly index.
+      const bestLevel = new Map<string, number>();
+      for (const label of seedLabels) {
+        bestLevel.set(label, 0);
+      }
+      for (const flow of flows) {
+        const sourceCandidate = flow.level - 1;
+        bestLevel.set(flow.source, bestLevel.has(flow.source) ? Math.min(bestLevel.get(flow.source)!, sourceCandidate) : sourceCandidate);
+        bestLevel.set(flow.target, bestLevel.has(flow.target) ? Math.min(bestLevel.get(flow.target)!, flow.level) : flow.level);
+      }
+
+      const labels = new Map<string, string>();
+      for (const flow of flows) {
+        labels.set(flow.source, flow.source_label);
+        labels.set(flow.target, flow.target_label);
+      }
+
+      nodes = Array.from(bestLevel.entries()).map(([id, level]) => ({
+        id,
+        label: labels.get(id) ?? id,
+        level: Math.max(0, level),
+        isSeed: seedLabels.has(id),
+        entityCategory: categoryByLabel.get(id) ?? null,
+      }));
+    }
+
+    this.sankeyCache = { result: this.result, aggregationLevel: this.aggregationLevel, assetFilter: this.assetFilter, nodes, links };
+    return this.sankeyCache;
+  }
+
+  get sankeyNodes(): SankeyDiagramNode[] {
+    return this.sankeyView.nodes;
+  }
+
+  get sankeyLinks(): SankeyDiagramLink[] {
+    return this.sankeyView.links;
   }
 
   onFlowSelected(link: SankeyDiagramLink | null): void {

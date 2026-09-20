@@ -28,18 +28,16 @@
     <p class="panel-kicker">{{ t('Tok sredstava / Layering analiza', 'Flow of Funds / Layering Analysis') }}</p>
     <h2>{{ t('Kako se sredstva raslojavaju od polazne adrese?', 'How do funds layer outward from a source address?') }}</h2>
     <p>
-      {{ t('Prati novac kroz više nivoa transakcija i prikazuje AGREGIRANE tokove — između adresa, poznatih entiteta ili kategorija — kao Sankey dijagram. Nijedan prikazani tok nije izmišljen: svaki se može vratiti do konkretnih transakcija i njihovih hash-eva.',
-            'Traces money through several transaction levels and shows AGGREGATED flows — between addresses, known entities or categories — as a Sankey diagram. No flow shown here is invented: every one can be traced back to concrete transactions and their hashes.') }}
+      {{ t('Prati sredstva kroz više nivoa i prikazuje agregirane tokove — nikad pojedinačne transakcije — kao Sankey dijagram.',
+            'Traces funds across several levels and shows aggregated flows — never individual transactions — as a Sankey diagram.') }}
     </p>
   </div>
 
   <ng-container *ngIf="activeCase">
     <section class="ff-search">
-      <p class="panel-kicker">{{ t('Parametri praćenja', 'Trace parameters') }}</p>
-
       <div class="ff-search-grid">
         <div class="ff-seed-block">
-          <span class="ff-field-label">{{ t('Polazne adrese', 'Source addresses') }}</span>
+          <span class="ff-field-label">{{ t('Polazna adresa', 'Source address') }}</span>
           <div class="ff-seed-input">
             <input
               type="text"
@@ -59,25 +57,29 @@
               <button type="button" (click)="removeSeed(address)" [attr.aria-label]="t('Ukloni', 'Remove')">×</button>
             </span>
           </div>
-          <p class="ff-hint" *ngIf="seedAddresses.length === 0">
-            {{ t('Dodaj bar jednu adresu da bi se pretraga pokrenula.', 'Add at least one address to enable the trace.') }}
-          </p>
         </div>
 
         <label class="ff-field">
           <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
           <div class="ff-toggle-group">
             <button type="button" [class.active]="direction === 'forward'" (click)="direction = 'forward'">
-              {{ t('Unapred (kuda su otišla)', 'Forward (where it went)') }}
+              {{ t('Unapred', 'Forward') }}
             </button>
             <button type="button" [class.active]="direction === 'backward'" (click)="direction = 'backward'">
-              {{ t('Unazad (odakle su stigla)', 'Backward (where it came from)') }}
+              {{ t('Unazad', 'Backward') }}
             </button>
           </div>
         </label>
+      </div>
 
+      <button type="button" class="ff-advanced-toggle" (click)="showAdvanced = !showAdvanced">
+        {{ showAdvanced ? '▾' : '▸' }}
+        {{ t('Napredna podešavanja (nivoi, period, Taint/Sybil)', 'Advanced settings (levels, period, Taint/Sybil)') }}
+      </button>
+
+      <div class="ff-search-grid ff-advanced-grid" *ngIf="showAdvanced">
         <label class="ff-field ff-field-narrow">
-          <span class="ff-field-label">{{ t('Broj nivoa (skokova)', 'Levels (hops)') }}</span>
+          <span class="ff-field-label">{{ t('Broj nivoa', 'Levels') }}</span>
           <input type="number" [min]="minLevels" [max]="maxLevelsCap" [(ngModel)]="maxLevels" />
         </label>
 
@@ -107,21 +109,21 @@
         </div>
 
         <div class="ff-field ff-field-narrow">
-          <span class="ff-field-label">{{ t('Poveži sa drugim analizama', 'Cross-reference with') }}</span>
-          <label class="ff-checkbox-row">
+          <span class="ff-field-label">{{ t('Poveži sa', 'Cross-reference with') }}</span>
+          <label class="ff-checkbox-row" [title]="t('Ostali nalazi (crna lista, risk, DEX swap, Token Approval) prikazuju se automatski.', 'Other findings (blacklist, risk, DEX swap, Token Approval) always show up automatically.')">
             <input type="checkbox" [(ngModel)]="includeTaint" />
-            {{ t('Taint analizom (isti seed-ovi)', 'Taint Analysis (same seeds)') }}
+            {{ t('Taint analizom', 'Taint Analysis') }}
           </label>
           <label class="ff-checkbox-row">
             <input type="checkbox" [(ngModel)]="includeSybil" />
-            {{ t('Sybil analizom (ceo slučaj)', 'Sybil Analysis (whole case)') }}
+            {{ t('Sybil analizom', 'Sybil Analysis') }}
           </label>
-          <p class="ff-hint">
-            {{ t('Blacklist, procena rizika, peel chain/chain hopping, DEX swap i Token Approval nalazi se uvek prikazuju kad postoje.',
-                  'Blacklist, risk scoring, peel chain/chain hopping, DEX swap and Token Approval findings are always shown when they exist.') }}
-          </p>
         </div>
       </div>
+
+      <p class="ff-hint" *ngIf="seedAddresses.length === 0">
+        {{ t('Dodaj bar jednu adresu da bi se pretraga pokrenula.', 'Add at least one address to enable the trace.') }}
+      </p>
 
       <div class="ff-run-row">
         <button type="button" class="primary-button" [disabled]="!canRun" (click)="openCustodyDialog()">
@@ -179,7 +181,7 @@
         </div>
 
         <div class="ff-field" *ngIf="availableAssets.length > 1">
-          <span class="ff-field-label">{{ t('Blockchain / imovina', 'Blockchain / asset') }}</span>
+          <span class="ff-field-label">{{ t('Imovina', 'Asset') }}</span>
           <div class="ff-toggle-group">
             <button type="button" [class.active]="assetFilter === null" (click)="setAssetFilter(null)">
               {{ t('Sve', 'All') }}
@@ -191,10 +193,10 @@
         </div>
 
         <div class="ff-field">
-          <span class="ff-field-label">{{ t('Jedinica prikaza', 'Display unit') }}</span>
+          <span class="ff-field-label">{{ t('Jedinica', 'Unit') }}</span>
           <div class="ff-toggle-group">
             <button type="button" [class.active]="unitMode === 'native'" (click)="unitMode = 'native'">
-              {{ t('Izvorna valuta (ETH/BTC)', 'Native (ETH/BTC)') }}
+              {{ t('Izvorna (ETH/BTC)', 'Native (ETH/BTC)') }}
             </button>
             <button
               type="button"
@@ -210,8 +212,8 @@
       </div>
 
       <p class="ff-mixed-asset-warning" *ngIf="showsMixedAssetWidths">
-        {{ t('Upozorenje: prikazane su najmanje dve različite imovine istovremeno (npr. ETH i BTC) — debljine tokova NISU direktno uporedive preko različitih valuta. Izaberi jednu imovinu gore za tačno poređenje.',
-              'Warning: at least two different assets are shown at once (e.g. ETH and BTC) — flow widths are NOT directly comparable across different currencies. Select a single asset above for an accurate comparison.') }}
+        {{ t('Prikazane su različite valute — debljine tokova nisu uporedive. Izaberi jednu imovinu za tačno poređenje.',
+              'Different assets are shown together — flow widths are not comparable. Pick one asset above for an accurate comparison.') }}
       </p>
 
       <div class="ff-diagram-layout">
@@ -256,8 +258,8 @@
           </div>
 
           <p class="ff-multi-output-badge" *ngIf="flow.multi_output_same_tx">
-            {{ t('Sadrži transakciju sa više izlaza (UTXO) — jedan tx istovremeno plaća više primalaca.',
-                  'Contains a multi-output (UTXO) transaction — one tx pays several recipients at once.') }}
+            {{ t('Sadrži UTXO transakciju sa više izlaza (jedan tx, više primalaca).',
+                  'Contains a multi-output UTXO transaction (one tx, several recipients).') }}
           </p>
 
           <div class="ff-annotations" *ngIf="selectedFlowHasAnnotations">
