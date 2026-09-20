@@ -5,7 +5,16 @@
     <button type="button" class="sankey-tool" (click)="zoomIn()" [title]="t('Uvećaj', 'Zoom in')" [attr.aria-label]="t('Uvećaj', 'Zoom in')">+</button>
   </div>
 
-  <div class="sankey-canvas" *ngIf="layoutNodes.length > 0; else emptyState">
+  <div class="sankey-legend" *ngIf="layoutNodes.length > 0">
+    <span class="sankey-legend-item">
+      <span class="sankey-legend-swatch seed"></span>{{ t('Polazna adresa', 'Seed address') }}
+    </span>
+    <span class="sankey-legend-item" *ngFor="let cls of presentAssetClasses">
+      <span class="sankey-legend-swatch" [class]="'asset-' + cls"></span>{{ legendAssetLabel(cls) }}
+    </span>
+  </div>
+
+  <div class="sankey-canvas" #canvasWrap *ngIf="layoutNodes.length > 0; else emptyState">
     <svg
       #svgRoot
       [attr.viewBox]="'0 0 ' + width + ' ' + height"
@@ -42,6 +51,7 @@
             (mouseenter)="hoveredNodeId = node.id"
             (mouseleave)="hoveredNodeId = null"
           >
+            <title>{{ node.isSeed ? t('Polazna adresa: ', 'Seed address: ') : '' }}{{ node.label }}</title>
             <rect
               [attr.width]="(node.x1 ?? 0) - (node.x0 ?? 0)"
               [attr.height]="Math.max(2, (node.y1 ?? 0) - (node.y0 ?? 0))"
@@ -52,7 +62,7 @@
               [attr.y]="((node.y1 ?? 0) - (node.y0 ?? 0)) / 2 - 8"
               text-anchor="middle"
             >
-              {{ node.label.length > 18 ? node.label.slice(0, 8) + '…' + node.label.slice(-6) : node.label }}
+              {{ node.isSeed ? '★ ' : '' }}{{ node.label.length > 18 ? node.label.slice(0, 8) + '…' + node.label.slice(-6) : node.label }}
             </text>
           </g>
         </g>

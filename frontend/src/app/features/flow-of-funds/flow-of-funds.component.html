@@ -46,7 +46,12 @@
             </datalist>
             <button type="button" class="ghost-button" (click)="addManualSeed()">{{ t('Dodaj', 'Add') }}</button>
             <button type="button" class="ghost-button" [disabled]="isSuggestingSeeds" (click)="suggestSeeds()">
-              {{ isSuggestingSeeds ? t('Tražim…', 'Suggesting…') : t('Predloži adresu', 'Suggest address') }}
+              <ng-container [ngSwitch]="true">
+                <ng-container *ngSwitchCase="isSuggestingSeeds">{{ t('Tražim…', 'Suggesting…') }}</ng-container>
+                <ng-container *ngSwitchCase="!!seedSuggestions && showSuggestionDetails">{{ t('Sakrij predloge', 'Hide suggestions') }}</ng-container>
+                <ng-container *ngSwitchCase="!!seedSuggestions && !showSuggestionDetails">{{ t('Prikaži predloge', 'Show suggestions') }}</ng-container>
+                <ng-container *ngSwitchDefault>{{ t('Predloži adresu', 'Suggest address') }}</ng-container>
+              </ng-container>
             </button>
           </div>
           <div class="ff-seed-chips" *ngIf="seedAddresses.length > 0">
@@ -67,7 +72,14 @@
             </p>
             <p class="ff-hint" *ngIf="seedSuggestions.coverage_note">{{ seedSuggestions.coverage_note }}</p>
 
-            <div class="ff-suggest-group" *ngIf="seedSuggestions.origin_candidates.length > 0">
+            <button type="button" class="ff-suggest-summary" *ngIf="hasAnySuggestion" (click)="showSuggestionDetails = !showSuggestionDetails">
+              {{ showSuggestionDetails ? '▾' : '▸' }}
+              {{ t('Pronađeno', 'Found') }}
+              <strong>{{ seedSuggestions.origin_candidates.length }}</strong> {{ t('poznatih izvora', 'known origins') }},
+              <strong>{{ seedSuggestions.laundering_points.length }}</strong> {{ t('tačaka pranja novca', 'laundering points') }}
+            </button>
+
+            <div class="ff-suggest-group" *ngIf="showSuggestionDetails && seedSuggestions.origin_candidates.length > 0">
               <div class="ff-suggest-group-head">
                 <span class="ff-suggest-group-label">{{ t('Poznati izvori (crna lista/OFAC)', 'Known origins (blacklist/OFAC)') }}</span>
                 <button type="button" class="ff-suggest-addall" [disabled]="originCandidatesFullyAdded" (click)="addAllOriginCandidates()">
@@ -90,7 +102,7 @@
               </div>
             </div>
 
-            <div class="ff-suggest-group" *ngIf="seedSuggestions.laundering_points.length > 0">
+            <div class="ff-suggest-group" *ngIf="showSuggestionDetails && seedSuggestions.laundering_points.length > 0">
               <div class="ff-suggest-group-head">
                 <span class="ff-suggest-group-label">{{ t('Tačke pranja novca (heuristika)', 'Laundering points (heuristic)') }}</span>
                 <button type="button" class="ff-suggest-addall" [disabled]="launderingPointsFullyAdded" (click)="addAllLaunderingPoints()">
@@ -221,6 +233,27 @@
         </p>
       </div>
 
+      <div class="ff-cross-summary" *ngIf="resultIncludedTaint || resultIncludedSybil">
+        <p *ngIf="resultIncludedTaint">
+          <span class="ff-cross-summary-tag">Taint</span>
+          <ng-container *ngIf="taintFlaggedAddressCount > 0; else noTaintFlags">
+            {{ t('markirano', 'flagged') }} <strong>{{ taintFlaggedAddressCount }}</strong>
+            {{ t('od', 'of') }} {{ result.nodes.length }} {{ t('adresa (heuristika)', 'addresses (heuristic)') }}
+            — {{ t('klikni na tok da vidiš koju', 'click a flow to see which') }}.
+          </ng-container>
+          <ng-template #noTaintFlags>{{ t('nijedna adresa u ovom rezultatu nije markirana.', 'no address in this result was flagged.') }}</ng-template>
+        </p>
+        <p *ngIf="resultIncludedSybil">
+          <span class="ff-cross-summary-tag">Sybil</span>
+          <ng-container *ngIf="sybilFlaggedAddressCount > 0; else noSybilFlags">
+            {{ t('markirano', 'flagged') }} <strong>{{ sybilFlaggedAddressCount }}</strong>
+            {{ t('od', 'of') }} {{ result.nodes.length }} {{ t('adresa (heuristika)', 'addresses (heuristic)') }}
+            — {{ t('klikni na tok da vidiš koju', 'click a flow to see which') }}.
+          </ng-container>
+          <ng-template #noSybilFlags>{{ t('nijedan sybil klaster nije pronađen u ovom rezultatu.', 'no Sybil cluster was found in this result.') }}</ng-template>
+        </p>
+      </div>
+
       <div class="ff-view-controls">
         <div class="ff-field">
           <span class="ff-field-label">{{ t('Smer', 'Direction') }}</span>
@@ -237,16 +270,35 @@
         <div class="ff-field">
           <span class="ff-field-label">{{ t('Nivo prikaza', 'Aggregation level') }}</span>
           <div class="ff-toggle-group">
-            <button type="button" [class.active]="aggregationLevel === 'address'" (click)="setAggregationLevel('address')">
+            <button
+              type="button"
+              [class.active]="aggregationLevel === 'address'"
+              [title]="t('Svaka novčana adresa je poseban čvor.', 'Every wallet address is its own node.')"
+              (click)="setAggregationLevel('address')"
+            >
               {{ t('Adrese', 'Addresses') }}
             </button>
-            <button type="button" [class.active]="aggregationLevel === 'entity'" (click)="setAggregationLevel('entity')">
+            <button
+              type="button"
+              [class.active]="aggregationLevel === 'entity'"
+              [title]="t('Adrese iste poznate usluge (npr. berze) spojene u jedan čvor.', 'Addresses belonging to the same known service (e.g. an exchange) are merged into one node.')"
+              (click)="setAggregationLevel('entity')"
+            >
               {{ t('Entiteti', 'Entities') }}
             </button>
-            <button type="button" [class.active]="aggregationLevel === 'category'" (click)="setAggregationLevel('category')">
+            <button
+              type="button"
+              [class.active]="aggregationLevel === 'category'"
+              [title]="t('Spojeno po vrsti usluge (berza, mikser…) umesto po imenu.', 'Merged by service type (exchange, mixer…) instead of by name.')"
+              (click)="setAggregationLevel('category')"
+            >
               {{ t('Kategorije', 'Categories') }}
             </button>
           </div>
+          <p class="ff-field-hint">
+            {{ t('Adrese = svaka posebno · Entiteti/Kategorije = spojeno po poznatoj usluzi, kad je poznata.',
+                  'Addresses = each one separately · Entities/Categories = merged by known service, when known.') }}
+          </p>
         </div>
 
         <div class="ff-field" *ngIf="availableAssets.length > 1">
@@ -257,24 +309,6 @@
             </button>
             <button type="button" *ngFor="let asset of availableAssets" [class.active]="assetFilter === asset" (click)="setAssetFilter(asset)">
               {{ assetLabel(asset) }}
-            </button>
-          </div>
-        </div>
-
-        <div class="ff-field">
-          <span class="ff-field-label">{{ t('Jedinica', 'Unit') }}</span>
-          <div class="ff-toggle-group">
-            <button type="button" [class.active]="unitMode === 'native'" (click)="unitMode = 'native'">
-              {{ t('Izvorna (ETH/BTC)', 'Native (ETH/BTC)') }}
-            </button>
-            <button
-              type="button"
-              class="ff-toggle-disabled"
-              [class.active]="unitMode === 'usd'"
-              disabled
-              [title]="t('Istorijska cena nije dostupna u ovoj verziji aplikacije.', 'Historical price data is not available in this version of the app.')"
-            >
-              USD
             </button>
           </div>
         </div>
@@ -457,15 +491,17 @@
         </aside>
       </div>
 
-      <button
-        type="button"
-        class="primary-button ff-export-pdf-button"
-        (click)="openSignatureDialog()"
-        [disabled]="!canExportPdf || isExportingPdf"
-        [title]="t('Izvezi PDF izveštaj sa potpisom, pečatom i kontrolnim brojem za proveru verodostojnosti', 'Export a PDF report with a signature, seal and verification code for authenticity checking')"
-      >
-        {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
-      </button>
+      <div class="ff-export-row">
+        <button
+          type="button"
+          class="primary-button ff-export-pdf-button"
+          (click)="openSignatureDialog()"
+          [disabled]="!canExportPdf || isExportingPdf"
+          [title]="t('Izvezi PDF izveštaj sa potpisom, pečatom i kontrolnim brojem za proveru verodostojnosti', 'Export a PDF report with a signature, seal and verification code for authenticity checking')"
+        >
+          {{ isExportingPdf ? t('Generisanje...', 'Generating...') : t('Izvezi PDF izveštaj', 'Export PDF report') }}
+        </button>
+      </div>
     </section>
 
     <p class="ff-hint" *ngIf="!result && !isRunning">

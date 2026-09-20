@@ -852,5 +852,21 @@
       "custody_findings_recorded": 277
     },
     "registered_at": "2026-09-19T14:21:05.325126+00:00"
+  },
+  {
+    "verification_code": "LUSI-2026-TLZ4-FKVA",
+    "content_hash": "39029385e35402025afba413110308634cfd059540295165e1a5516a0e5d0ac3",
+    "case_id": "46ae7f91db9b",
+    "case_name": "Demo: Sumnjiva laundering sema (hakovan novcanik)",
+    "analyst": "aco",
+    "declaration": "Potvrđujem da sam izradio ovaj izveštaj u okviru navedenog predmeta i da su u njemu prikazani rezultati onakvi kakve je aplikacija izračunala (agregacijom i, gde je naznačeno, heuristikom) nad navedenom evidencijom.",
+    "summary": {
+      "flow_count": 9,
+      "levels_reached": 4,
+      "direction": "forward",
+      "truncated": false,
+      "assets": "ETH, UNKNOWN"
+    },
+    "registered_at": "2026-09-20T13:57:30.235684+00:00"
   }
 ]

@@ -78,6 +78,10 @@ export class FlowOfFundsComponent implements OnInit {
   protected isSuggestingSeeds = false;
   protected seedSuggestions: SeedSuggestionResponse | null = null;
   protected suggestionsError: string | null = null;
+  /** Collapsed by default once suggestions load - same "closed until asked for" pattern as
+   * showAdvanced, so a case with many suggested addresses doesn't dump a long list into view
+   * right away. */
+  protected showSuggestionDetails = false;
   protected direction: FlowOfFundsDirection = 'forward';
   protected maxLevels = DEFAULT_LEVELS;
   protected minAmount: number | null = null;
@@ -100,13 +104,19 @@ export class FlowOfFundsComponent implements OnInit {
   protected isRunning = false;
   protected runError: string | null = null;
   protected result: FlowOfFundsResult | null = null;
+  /** Whether Taint/Sybil were actually part of the CURRENT `result` - captured at request
+   * time, since the two checkboxes live in the passive advanced/filter panel and can drift
+   * from what's actually in `result` if toggled without re-running. Drives the visible
+   * summary banner below, so turning a checkbox on always produces some on-screen change
+   * instead of a silent difference buried inside per-flow annotations. */
+  protected resultIncludedTaint = false;
+  protected resultIncludedSybil = false;
   protected isCustodyDialogOpen = false;
   protected custodyDialogError: string | null = null;
 
   // --- display-only controls: reshape the already-fetched result, no new request ---
   protected aggregationLevel: FlowAggregationLevel = 'address';
   protected assetFilter: string | null = null;
-  protected unitMode: 'native' | 'usd' = 'native';
 
   protected selectedFlow: AggregatedFlow | null = null;
 
@@ -161,6 +171,7 @@ export class FlowOfFundsComponent implements OnInit {
         this.manualSeedInput = '';
         this.seedSuggestions = null;
         this.suggestionsError = null;
+        this.showSuggestionDetails = false;
         this.resetSearchState();
         if (this.activeCase) {
           this.loadEvidenceOptions(this.activeCase.id);
@@ -244,8 +255,8 @@ export class FlowOfFundsComponent implements OnInit {
       return;
     }
     if (this.seedSuggestions) {
-      // toggle the already-loaded panel instead of refetching
-      this.seedSuggestions = null;
+      // already loaded - just toggle the collapsed summary open/closed, no refetch
+      this.showSuggestionDetails = !this.showSuggestionDetails;
       return;
     }
     this.isSuggestingSeeds = true;
@@ -254,6 +265,7 @@ export class FlowOfFundsComponent implements OnInit {
       next: (response) => {
         this.isSuggestingSeeds = false;
         this.seedSuggestions = response;
+        this.showSuggestionDetails = false;
       },
       error: () => {
         this.isSuggestingSeeds = false;
@@ -304,6 +316,7 @@ export class FlowOfFundsComponent implements OnInit {
   dismissSuggestions(): void {
     this.seedSuggestions = null;
     this.suggestionsError = null;
+    this.showSuggestionDetails = false;
   }
 
   get selectedEvidenceFileName(): string | null {
@@ -384,6 +397,8 @@ export class FlowOfFundsComponent implements OnInit {
         next: (result) => {
           this.isRunning = false;
           this.result = result;
+          this.resultIncludedTaint = this.includeTaint;
+          this.resultIncludedSybil = this.includeSybil;
           this.isCustodyDialogOpen = false;
           this.selectedFlow = null;
           this.assetFilter = null;
@@ -445,6 +460,8 @@ export class FlowOfFundsComponent implements OnInit {
         next: (result) => {
           this.isRunning = false;
           this.result = result;
+          this.resultIncludedTaint = this.includeTaint;
+          this.resultIncludedSybil = this.includeSybil;
           this.selectedFlow = null;
           this.assetFilter = null;
         },
@@ -472,6 +489,27 @@ export class FlowOfFundsComponent implements OnInit {
    * chips above the diagram) is always the way to get comparable widths. */
   get showsMixedAssetWidths(): boolean {
     return this.assetFilter === null && this.availableAssets.length > 1;
+  }
+
+  /** How many addresses in the current result carry a `taint`/`sybil_cluster` heuristic
+   * badge - a quick, always-visible readout for the "Taint analizom"/"Sybil analizom"
+   * checkboxes, so ticking one produces an immediate on-screen change instead of something
+   * only visible after clicking into a specific flow's detail panel. */
+  private countNodesWithHeuristic(badgeType: string): number {
+    if (!this.result) {
+      return 0;
+    }
+    return Object.values(this.result.node_annotations).filter((buckets) =>
+      buckets.heuristics.some((badge) => badge.type === badgeType),
+    ).length;
+  }
+
+  get taintFlaggedAddressCount(): number {
+    return this.countNodesWithHeuristic('taint');
+  }
+
+  get sybilFlaggedAddressCount(): number {
+    return this.countNodesWithHeuristic('sybil_cluster');
   }
 
   setAggregationLevel(level: FlowAggregationLevel): void {

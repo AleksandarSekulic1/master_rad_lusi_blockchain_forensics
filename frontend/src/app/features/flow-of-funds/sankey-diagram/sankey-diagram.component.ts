@@ -1,5 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild } from '@angular/core';
+import {
+  AfterViewChecked,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  OnChanges,
+  OnDestroy,
+  Output,
+  SimpleChanges,
+  ViewChild,
+} from '@angular/core';
 
 import { sankey, sankeyLinkHorizontal, SankeyLink, SankeyNode } from 'd3-sankey';
 
@@ -70,7 +81,7 @@ const ROW_HEIGHT = 30;
   templateUrl: './sankey-diagram.component.html',
   styleUrl: './sankey-diagram.component.scss',
 })
-export class SankeyDiagramComponent implements OnChanges {
+export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDestroy {
   /** Exposed so the template can clamp stroke-width/rect-height without a wrapper method
    * for every call site. */
   protected readonly Math = Math;
@@ -82,6 +93,17 @@ export class SankeyDiagramComponent implements OnChanges {
   @Output() readonly linkSelected = new EventEmitter<SankeyDiagramLink | null>();
 
   @ViewChild('svgRoot', { static: true }) private svgRootRef!: ElementRef<SVGSVGElement>;
+  /** .sankey-canvas only exists once there's data (behind *ngIf), so this ref comes and goes
+   * - measured (via ngAfterViewChecked, below) to size the SVG viewBox to whatever space the
+   * page actually gives this component, instead of a fixed guess. Without this,
+   * `preserveAspectRatio="xMidYMid meet"` was fitting a ~960x480 viewBox into a much wider
+   * real container and letterboxing it down to a small, hard-to-read picture surrounded by a
+   * lot of empty space. */
+  @ViewChild('canvasWrap') private canvasWrapRef?: ElementRef<HTMLDivElement>;
+  private observedElement: HTMLDivElement | null = null;
+  private resizeObserver?: ResizeObserver;
+  private containerWidth = 0;
+  private containerHeight = 0;
 
   protected layoutNodes: LayoutNode[] = [];
   protected layoutLinks: LayoutLink[] = [];
@@ -115,10 +137,46 @@ export class SankeyDiagramComponent implements OnChanges {
     }
   }
 
-  private rebuildLayout(): void {
-    this.selectedLinkId = null;
-    this.tooltip = null;
-    this.linkSelected.emit(null);
+  /** Re-checks after every view update whether .sankey-canvas exists (it's behind *ngIf, so
+   * it appears/disappears as `nodes`/`links` go from empty to populated and back) and
+   * (re)attaches the ResizeObserver to whichever element is actually there right now. */
+  ngAfterViewChecked(): void {
+    const el = this.canvasWrapRef?.nativeElement ?? null;
+    if (el === this.observedElement) {
+      return;
+    }
+    this.resizeObserver?.disconnect();
+    this.observedElement = el;
+    if (!el || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    this.resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+      const { width, height } = entry.contentRect;
+      const changedEnough = Math.abs(width - this.containerWidth) > 4 || Math.abs(height - this.containerHeight) > 4;
+      this.containerWidth = width;
+      this.containerHeight = height;
+      if (changedEnough && this.nodes.length > 0 && this.links.length > 0) {
+        this.rebuildLayout(/* preserveView */ true);
+      }
+    });
+    this.resizeObserver.observe(el);
+  }
+
+  ngOnDestroy(): void {
+    this.resizeObserver?.disconnect();
+  }
+
+  private rebuildLayout(preserveView = false): void {
+    if (!preserveView) {
+      this.selectedLinkId = null;
+      this.tooltip = null;
+      this.linkSelected.emit(null);
+      this.transform = { x: 0, y: 0, k: 1 };
+    }
 
     if (this.nodes.length === 0 || this.links.length === 0) {
       this.layoutNodes = [];
@@ -127,9 +185,11 @@ export class SankeyDiagramComponent implements OnChanges {
     }
 
     const maxLevel = this.nodes.reduce((max, node) => Math.max(max, node.level), 0);
-    this.width = Math.max(960, (maxLevel + 1) * COLUMN_WIDTH);
-    this.height = Math.max(480, this.nodes.length * ROW_HEIGHT);
-    this.transform = { x: 0, y: 0, k: 1 };
+    // Fill whatever space the page actually gives this component (measured via
+    // ResizeObserver); the level/row-count minimums only kick in for a diagram too big to
+    // fit that space at all, where pan/zoom takes over instead of a squeezed layout.
+    this.width = Math.max(this.containerWidth || 0, (maxLevel + 1) * COLUMN_WIDTH, 640);
+    this.height = Math.max(this.containerHeight || 0, this.nodes.length * ROW_HEIGHT, 320);
 
     const sankeyLayout = sankey<NodeExtra, LinkExtra>()
       .nodeId((node) => node.id)
@@ -155,6 +215,29 @@ export class SankeyDiagramComponent implements OnChanges {
 
     this.layoutNodes = graph.nodes;
     this.layoutLinks = graph.links;
+  }
+
+  /** Which asset color classes actually appear in the current diagram - drives the legend,
+   * so it never lists a color that isn't on screen. */
+  protected get presentAssetClasses(): string[] {
+    const seen = new Set<string>();
+    for (const link of this.layoutLinks) {
+      seen.add(this.assetClass(link.asset));
+    }
+    return Array.from(seen);
+  }
+
+  protected legendAssetLabel(assetClass: string): string {
+    if (assetClass === 'eth') {
+      return 'ETH';
+    }
+    if (assetClass === 'btc') {
+      return 'BTC';
+    }
+    if (assetClass === 'unknown') {
+      return this.t('Nepoznato', 'Unknown');
+    }
+    return this.t('Ostalo', 'Other');
   }
 
   protected sourceNode(link: LayoutLink): LayoutNode {

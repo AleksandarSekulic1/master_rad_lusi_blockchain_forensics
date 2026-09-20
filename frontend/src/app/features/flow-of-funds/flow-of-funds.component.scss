@@ -284,6 +284,12 @@ input[type='date'] {
   color: var(--ff-dim);
 }
 
+.ff-field-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  color: var(--ff-dim);
+}
+
 .ff-warning {
   margin: 0;
   font-size: 0.76rem;
@@ -424,10 +430,31 @@ input[type='date'] {
   color: var(--ff-text);
 }
 
+.ff-suggest-summary {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0.1rem 0;
+  color: var(--ff-kicker);
+  font-size: 0.76rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ff-suggest-summary:hover {
+  text-decoration: underline;
+}
+
+.ff-suggest-summary strong {
+  color: var(--ff-heading);
+}
+
 .ff-suggest-group {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--ff-border-soft);
 }
 
 .ff-suggest-group-head {
@@ -549,6 +576,34 @@ input[type='date'] {
   background: var(--ff-warning-bg);
   color: var(--ff-warning-text);
   font-size: 0.78rem;
+}
+
+.ff-cross-summary {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.7rem 1.1rem;
+  border: 1px solid var(--ff-fact-border);
+  border-radius: 1rem;
+  background: var(--ff-fact-bg);
+}
+
+.ff-cross-summary p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ff-text-2);
+  line-height: 1.5;
+}
+
+.ff-cross-summary-tag {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--ff-fact-border);
+  color: var(--ff-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .ff-mixed-asset-warning {
@@ -877,10 +932,13 @@ app-sankey-diagram {
    pathfinding.component.scss/sybil-analysis.component.scss (copy of the relevant rules,
    not a shared import - Angular scopes styles per component). ---------- */
 
+.ff-export-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
+}
+
 .ff-export-pdf-button {
-  width: 100%;
-  margin-top: 1rem;
-  text-align: center;
   letter-spacing: 0.02em;
 }
 

@@ -84,6 +84,50 @@
   background: rgba(125, 211, 252, 0.22);
 }
 
+.sankey-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--sk-border);
+  font-size: 0.72rem;
+  color: var(--sk-muted);
+}
+
+.sankey-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sankey-legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  background: var(--sk-asset-unknown);
+}
+
+.sankey-legend-swatch.seed {
+  border-radius: 999px;
+  background: var(--sk-node-seed-fill);
+}
+
+.sankey-legend-swatch.asset-eth {
+  background: var(--sk-asset-eth);
+}
+
+.sankey-legend-swatch.asset-btc {
+  background: var(--sk-asset-btc);
+}
+
+.sankey-legend-swatch.asset-other {
+  background: var(--sk-asset-other);
+}
+
+.sankey-legend-swatch.asset-unknown {
+  background: var(--sk-asset-unknown);
+}
+
 .sankey-canvas {
   position: relative;
   width: 100%;
@@ -153,15 +197,22 @@ svg:active {
 
 .sankey-node.seed rect {
   fill: var(--sk-node-seed-fill);
+  stroke: var(--sk-node-seed-fill);
+  stroke-width: 2px;
 }
 
 .sankey-node text {
-  font-size: 10px;
+  font-size: 11px;
   fill: var(--sk-text);
   paint-order: stroke;
   stroke: var(--sk-surface);
   stroke-width: 3px;
   pointer-events: none;
+}
+
+.sankey-node.seed text {
+  font-weight: 700;
+  fill: var(--sk-node-seed-fill);
 }
 
 .sankey-tooltip {
