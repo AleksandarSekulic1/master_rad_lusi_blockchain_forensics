@@ -110,6 +110,11 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
   protected width = 960;
   protected height = 480;
   protected selectedLinkId: string | null = null;
+  /** Kept in sync with selectedLinkId, but by (source, target, asset) rather than the
+   * linkId's own numeric suffix (which can shift when the flow list is re-ordered or
+   * re-filtered) - lets rebuildLayout() re-find "the same flow" after a data refresh
+   * instead of only ever comparing the old id to the new one. */
+  private selectedIdentity: { source: string; target: string; asset: string } | null = null;
   protected hoveredLinkId: string | null = null;
   protected hoveredNodeId: string | null = null;
   protected readonly linkPath = sankeyLinkHorizontal<NodeExtra, LinkExtra>();
@@ -172,15 +177,16 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
 
   private rebuildLayout(preserveView = false): void {
     if (!preserveView) {
-      this.selectedLinkId = null;
       this.tooltip = null;
-      this.linkSelected.emit(null);
       this.transform = { x: 0, y: 0, k: 1 };
     }
 
     if (this.nodes.length === 0 || this.links.length === 0) {
       this.layoutNodes = [];
       this.layoutLinks = [];
+      if (!preserveView) {
+        this.clearSelection();
+      }
       return;
     }
 
@@ -227,6 +233,10 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
 
       this.layoutNodes = graph.nodes;
       this.layoutLinks = graph.links;
+
+      if (!preserveView) {
+        this.restoreOrClearSelection();
+      }
     } catch (error) {
       // d3-sankey throws on a layout it can't place (e.g. a link whose two ends land in the
       // same column) instead of degrading gracefully. Left uncaught, this happens INSIDE
@@ -237,7 +247,46 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
       console.error('Sankey layout failed for the current nodes/links - showing empty state instead of stale data.', error);
       this.layoutNodes = [];
       this.layoutLinks = [];
+      if (!preserveView) {
+        this.clearSelection();
+      }
     }
+  }
+
+  private clearSelection(): void {
+    this.selectedLinkId = null;
+    this.selectedIdentity = null;
+    this.linkSelected.emit(null);
+  }
+
+  /** Re-finds "the same flow" (by source/target/asset, not the old linkId - see
+   * selectedIdentity's own comment) in the freshly-rebuilt layout and re-emits it so the
+   * parent's detail panel stays open with UPDATED content (e.g. newly-added Taint/Sybil
+   * badges) instead of silently closing. Without this, a debounced live-filter refresh
+   * landing shortly after a click (see flow-of-funds.component.ts's filterChange$) would
+   * wipe out a panel the analyst had just opened, looking like the click itself did
+   * nothing. Clears the selection only when the flow genuinely isn't in the new data
+   * anymore (e.g. it fell below a new min-amount threshold). */
+  private restoreOrClearSelection(): void {
+    if (!this.selectedIdentity) {
+      return;
+    }
+    const { source, target, asset } = this.selectedIdentity;
+    const stillThere = this.layoutLinks.find(
+      (link) => this.sourceNode(link).id === source && this.targetNode(link).id === target && link.asset === asset,
+    );
+    if (!stillThere) {
+      this.clearSelection();
+      return;
+    }
+    this.selectedLinkId = stillThere.linkId;
+    this.linkSelected.emit({
+      source: this.sourceNode(stillThere).id,
+      target: this.targetNode(stillThere).id,
+      value: stillThere.value,
+      asset: stillThere.asset,
+      flow: stillThere.flow,
+    });
   }
 
   /** Which asset color classes actually appear in the current diagram - drives the legend,
@@ -325,11 +374,11 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
       return;
     }
     if (this.selectedLinkId === link.linkId) {
-      this.selectedLinkId = null;
-      this.linkSelected.emit(null);
+      this.clearSelection();
       return;
     }
     this.selectedLinkId = link.linkId;
+    this.selectedIdentity = { source: this.sourceNode(link).id, target: this.targetNode(link).id, asset: link.asset };
     this.linkSelected.emit({
       source: this.sourceNode(link).id,
       target: this.targetNode(link).id,
@@ -371,6 +420,11 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
     this.transform = { x: 0, y: 0, k: 1 };
   }
 
+  /** Set once an actual drag starts (see onPointerMove) - kept separate from isPanning so
+   * setPointerCapture is only ever called for a REAL drag, never on every plain click. */
+  private pointerCaptureTarget: Element | null = null;
+  private activePointerId: number | null = null;
+
   protected onPointerDown(event: PointerEvent): void {
     if (event.button !== 0) {
       return;
@@ -379,7 +433,16 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
     this.didPan = false;
     this.panStart = { x: event.clientX, y: event.clientY };
     this.transformStart = { ...this.transform };
-    (event.currentTarget as Element).setPointerCapture(event.pointerId);
+    this.pointerCaptureTarget = event.currentTarget as Element;
+    this.activePointerId = event.pointerId;
+    // Deliberately NOT calling setPointerCapture here (only once a real drag is confirmed,
+    // in onPointerMove below). Capturing immediately on every pointerdown - including a
+    // plain click - hijacks the matching pointerup/mouseup so the browser delivers it (and
+    // the click event it synthesizes from it) to the CAPTURING element (this SVG) instead
+    // of whichever <path> the pointer is actually over, so the path's own (click) handler
+    // never fires. That silently broke every "click a flow to see its detail panel"
+    // interaction the moment pan/zoom was added - hover kept working since mouseenter fires
+    // before any pointerdown/capture even happens.
   }
 
   protected onPointerMove(event: PointerEvent): void {
@@ -388,18 +451,30 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
     }
     const dx = event.clientX - this.panStart.x;
     const dy = event.clientY - this.panStart.y;
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+    if (!this.didPan && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
       this.didPan = true;
+      // Now that this is confirmed to be a real drag (not a click), capture the pointer so
+      // the pan keeps tracking smoothly even if the cursor leaves the SVG mid-drag.
+      try {
+        this.pointerCaptureTarget?.setPointerCapture(this.activePointerId!);
+      } catch {
+        /* element no longer in the DOM (rare mid-drag re-render) - pan still works, just
+           without capture past the SVG's own bounds */
+      }
     }
-    this.transform = { ...this.transform, x: this.transformStart.x + dx, y: this.transformStart.y + dy };
+    if (this.didPan) {
+      this.transform = { ...this.transform, x: this.transformStart.x + dx, y: this.transformStart.y + dy };
+    }
   }
 
   protected onPointerUp(event: PointerEvent): void {
     this.isPanning = false;
-    try {
-      (event.currentTarget as Element).releasePointerCapture(event.pointerId);
-    } catch {
-      /* pointer capture already released */
+    if (this.didPan) {
+      try {
+        (event.currentTarget as Element).releasePointerCapture(event.pointerId);
+      } catch {
+        /* pointer capture already released */
+      }
     }
   }
 
