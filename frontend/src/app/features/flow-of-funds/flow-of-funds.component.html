@@ -139,12 +139,12 @@
       <div class="ff-search-grid ff-advanced-grid" *ngIf="showAdvanced">
         <label class="ff-field ff-field-narrow">
           <span class="ff-field-label">{{ t('Broj nivoa', 'Levels') }}</span>
-          <input type="number" [min]="minLevels" [max]="maxLevelsCap" [(ngModel)]="maxLevels" />
+          <input type="number" [min]="minLevels" [max]="maxLevelsCap" [(ngModel)]="maxLevels" (ngModelChange)="onFilterFieldChanged()" />
         </label>
 
         <label class="ff-field ff-field-narrow">
           <span class="ff-field-label">{{ t('Min. iznos po toku', 'Min. amount per flow') }}</span>
-          <input type="number" min="0" step="any" [(ngModel)]="minAmount" placeholder="0" />
+          <input type="number" min="0" step="any" [(ngModel)]="minAmount" (ngModelChange)="onFilterFieldChanged()" placeholder="0" />
         </label>
 
         <div class="ff-field">
@@ -158,9 +158,9 @@
             </button>
           </div>
           <div class="ff-date-row" *ngIf="periodMode === 'range'">
-            <input type="date" [(ngModel)]="startDate" />
+            <input type="date" [(ngModel)]="startDate" (ngModelChange)="onFilterFieldChanged()" />
             <span class="ff-dash">—</span>
-            <input type="date" [(ngModel)]="endDate" />
+            <input type="date" [(ngModel)]="endDate" (ngModelChange)="onFilterFieldChanged()" />
           </div>
           <p class="ff-warning" *ngIf="isRangeInverted">
             {{ t('Datum „od" je posle datuma „do".', 'The "from" date is after the "to" date.') }}
@@ -170,11 +170,11 @@
         <div class="ff-field ff-field-narrow">
           <span class="ff-field-label">{{ t('Poveži sa', 'Cross-reference with') }}</span>
           <label class="ff-checkbox-row" [title]="t('Ostali nalazi (crna lista, risk, DEX swap, Token Approval) prikazuju se automatski.', 'Other findings (blacklist, risk, DEX swap, Token Approval) always show up automatically.')">
-            <input type="checkbox" [(ngModel)]="includeTaint" />
+            <input type="checkbox" [(ngModel)]="includeTaint" (ngModelChange)="onFilterFieldChanged()" />
             {{ t('Taint analizom', 'Taint Analysis') }}
           </label>
           <label class="ff-checkbox-row">
-            <input type="checkbox" [(ngModel)]="includeSybil" />
+            <input type="checkbox" [(ngModel)]="includeSybil" (ngModelChange)="onFilterFieldChanged()" />
             {{ t('Sybil analizom', 'Sybil Analysis') }}
           </label>
         </div>
@@ -274,6 +274,12 @@
       <p class="ff-hint" *ngIf="seedsWithNoFlows.length > 0">
         {{ t('Bez pronađenih tokova pod trenutnim filterima:', 'No flows found under the current filters:') }}
         <span class="mono-address" *ngFor="let address of seedsWithNoFlows">{{ address }}</span>
+      </p>
+
+      <p class="ff-hint" *ngIf="cyclicFlowsExcluded > 0">
+        {{ t('Nije prikazano na grafiku (vraćaju se na već prikazanu adresu):', 'Not shown in the diagram (loop back to an address already shown):') }}
+        <strong>{{ cyclicFlowsExcluded }}</strong>
+        {{ t('tok(ova) — vidljivi kroz klik na povezane tokove i u PDF izveštaju.', 'flow(s) — visible by clicking related flows and in the PDF report.') }}
       </p>
 
       <p class="ff-mixed-asset-warning" *ngIf="showsMixedAssetWidths">

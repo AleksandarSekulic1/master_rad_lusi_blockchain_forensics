@@ -4,8 +4,8 @@ import { Component, DestroyRef, OnInit, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-import { distinctUntilChanged, map } from 'rxjs/operators';
+import { firstValueFrom, Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -119,6 +119,17 @@ export class FlowOfFundsComponent implements OnInit {
   protected resultIncludedSybil = false;
   protected isCustodyDialogOpen = false;
   protected custodyDialogError: string | null = null;
+  /** Debounced trigger for every filter field that can be refined LIVE once a signed result
+   * already exists (levels, min. amount, period, Taint/Sybil - same "signed once, refine
+   * live afterward" precedent as sybil-analysis.component.ts's own filterChange$/
+   * onFilterFieldChanged/refineWithoutCustody, mirrored here as
+   * refreshLiveWithCurrentParams). Debounced so typing a number doesn't fire a request per
+   * keystroke; a discrete click (period mode, a checkbox) still only adds a harmless ~400ms
+   * delay. Safe with no new custody dialog because record_custody_access always covers the
+   * WHOLE evidence scope the original signed run already declared (same case + same
+   * selectedEvidence), never just the specific rows one parameter combination happens to
+   * touch - see backend/app/shared/custody_recording.py's own docstring. */
+  private readonly filterChange$ = new Subject<void>();
 
   // --- display-only controls: reshape the already-fetched result, no new request ---
   protected aggregationLevel: FlowAggregationLevel = 'address';
@@ -162,6 +173,8 @@ export class FlowOfFundsComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.filterChange$.pipe(debounceTime(400), takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refreshLiveWithCurrentParams());
+
     this.state.selectedCase$
       .pipe(
         map((caseSummary) => caseSummary?.id ?? null),
@@ -347,6 +360,7 @@ export class FlowOfFundsComponent implements OnInit {
       this.startDate = '';
       this.endDate = '';
     }
+    this.onFilterFieldChanged();
   }
 
   get isRangeInverted(): boolean {
@@ -446,11 +460,30 @@ export class FlowOfFundsComponent implements OnInit {
     }
   }
 
+  /** Bound to (ngModelChange)/toggle handlers on every OTHER live-refinable filter (levels,
+   * min. amount, period, Taint/Sybil) - only actually triggers a re-read once a signed run
+   * already exists (before that, there is nothing to refine, and "POKRENI PRAĆENJE" itself
+   * will pick up whatever is currently set). */
+  protected onFilterFieldChanged(): void {
+    if (this.result) {
+      this.filterChange$.next();
+    }
+  }
+
   private refreshLiveWithCurrentParams(): void {
     const caseId = this.activeCase?.id;
-    if (!caseId || this.seedAddresses.length === 0 || this.isRunning) {
+    if (!caseId || this.seedAddresses.length === 0 || this.isRunning || this.isRangeInverted) {
       return;
     }
+    // Clamps out-of-range values the SAME way a fresh run would (rather than sending
+    // whatever a still-being-typed field happens to hold right now) and reflects the
+    // clamped value back into the field, same as sybil-analysis.component.ts's own
+    // clampTimeWindow/clampMinAddresses.
+    this.maxLevels = Number.isFinite(this.maxLevels)
+      ? Math.min(this.maxLevelsCap, Math.max(this.minLevels, Math.round(this.maxLevels)))
+      : DEFAULT_LEVELS;
+    this.minAmount = Number.isFinite(this.minAmount) ? Math.max(0, this.minAmount ?? 0) : 0;
+
     this.isRunning = true;
     this.runError = null;
     this.flowApi
@@ -582,16 +615,22 @@ export class FlowOfFundsComponent implements OnInit {
     nodes: SankeyDiagramNode[];
     links: SankeyDiagramLink[];
     seedsWithNoFlows: string[];
+    cyclicFlowsExcluded: number;
   } | null = null;
 
-  private get sankeyView(): { nodes: SankeyDiagramNode[]; links: SankeyDiagramLink[]; seedsWithNoFlows: string[] } {
+  private get sankeyView(): {
+    nodes: SankeyDiagramNode[];
+    links: SankeyDiagramLink[];
+    seedsWithNoFlows: string[];
+    cyclicFlowsExcluded: number;
+  } {
     const cache = this.sankeyCache;
     if (cache && cache.result === this.result && cache.aggregationLevel === this.aggregationLevel && cache.assetFilter === this.assetFilter) {
       return cache;
     }
 
     const flows = this.activeFlows;
-    const links: SankeyDiagramLink[] = flows.map((flow) => ({
+    const allLinks: SankeyDiagramLink[] = flows.map((flow) => ({
       source: flow.source,
       target: flow.target,
       value: flow.amount,
@@ -600,7 +639,9 @@ export class FlowOfFundsComponent implements OnInit {
     }));
 
     let nodes: SankeyDiagramNode[] = [];
+    let links: SankeyDiagramLink[] = allLinks;
     let seedsWithNoFlows: string[] = [];
+    let cyclicFlowsExcluded = 0;
     if (this.result) {
       const seedLabels = new Set(
         this.result.nodes.filter((node) => node.type === 'seed').map((node) => this.nodeLabelAtLevel(node)),
@@ -637,6 +678,25 @@ export class FlowOfFundsComponent implements OnInit {
         labels.set(flow.target, flow.target_label);
       }
 
+      // A Sankey diagram is a DAG by definition - d3-sankey actively rejects any input that
+      // loops back on itself ("circular link"). But the trace itself is deliberately NOT
+      // acyclic: money converging back onto an address already seen (e.g. two hops later,
+      // right back to an exchange wallet already shown closer to the seed) is real,
+      // forensically relevant layering (see backend/app/analytics/flow_of_funds.py's own
+      // BFS docstring) - it just can't be PICTURED as a Sankey ribbon. Once every node has
+      // its final, resolved level (the loop above), a link only stays in the picture when it
+      // still points strictly forward (source's level < target's level); every other one is
+      // still a real flow - visible via the transaction/annotation panels and the PDF - just
+      // not drawable here, and dropping it silently would misrepresent the diagram as the
+      // complete picture. Counted, never hidden without a trace.
+      const acyclicLinks = links.filter((link) => {
+        const sourceLevel = bestLevel.get(link.source);
+        const targetLevel = bestLevel.get(link.target);
+        return sourceLevel !== undefined && targetLevel !== undefined && sourceLevel < targetLevel;
+      });
+      cyclicFlowsExcluded = links.length - acyclicLinks.length;
+      links = acyclicLinks;
+
       // A Sankey diagram has no sensible place to put a node with zero links - d3-sankey
       // still has to lay it out SOMEWHERE, which is what produced the small disconnected
       // marks floating away from the actual diagram. A seed with no flows at all (e.g. an
@@ -662,7 +722,15 @@ export class FlowOfFundsComponent implements OnInit {
       seedsWithNoFlows = Array.from(seedLabels).filter((label) => !linkedIds.has(label));
     }
 
-    this.sankeyCache = { result: this.result, aggregationLevel: this.aggregationLevel, assetFilter: this.assetFilter, nodes, links, seedsWithNoFlows };
+    this.sankeyCache = {
+      result: this.result,
+      aggregationLevel: this.aggregationLevel,
+      assetFilter: this.assetFilter,
+      nodes,
+      links,
+      seedsWithNoFlows,
+      cyclicFlowsExcluded,
+    };
     return this.sankeyCache;
   }
 
@@ -679,6 +747,14 @@ export class FlowOfFundsComponent implements OnInit {
    * sankeyView). */
   get seedsWithNoFlows(): string[] {
     return this.sankeyView.seedsWithNoFlows;
+  }
+
+  /** How many flows are real but left OUT of the picture because they loop back onto a
+   * node already shown closer to the seed - a Sankey diagram literally cannot draw a cycle
+   * (see sankeyView's own comment). Still real data, still in the underlying result/PDF -
+   * just not drawable as a ribbon, so it's disclosed as a count rather than silently gone. */
+  get cyclicFlowsExcluded(): number {
+    return this.sankeyView.cyclicFlowsExcluded;
   }
 
   onFlowSelected(link: SankeyDiagramLink | null): void {
