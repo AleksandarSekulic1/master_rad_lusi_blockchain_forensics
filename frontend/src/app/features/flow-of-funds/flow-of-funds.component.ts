@@ -142,6 +142,7 @@ export class FlowOfFundsComponent implements OnInit {
   // aplikacije (mali PDF helperi se ne dele između stranica, vidi sybil-analysis.component
   // .ts), da se nijedna postojeća analiza ne bi ni posredno dirala. ---
   @ViewChild(SignaturePadComponent) private signaturePad?: SignaturePadComponent;
+  @ViewChild(SankeyDiagramComponent) private sankeyDiagram?: SankeyDiagramComponent;
   protected isSignatureDialogOpen = false;
   protected signatureDeclarationAccepted = false;
   protected isExportingPdf = false;
@@ -989,7 +990,16 @@ export class FlowOfFundsComponent implements OnInit {
 
       const catEmblem = await this.loadPdfImage('assets/cat_pdf.png').catch(() => null);
       const sealImage = await this.loadPdfImage('assets/seal.png').catch(() => null);
-      this.buildFlowOfFundsPdf({ signatureImage, declaration, registration }, { catEmblem, sealImage });
+      // Snapshot of the diagram exactly as currently filtered (aggregation level, asset,
+      // direction) - null when the child isn't mounted or has nothing to draw, in which
+      // case the PDF section is simply skipped rather than showing a broken image.
+      const sankeySnapshot = this.sankeyDiagram ? await this.sankeyDiagram.captureSnapshotPng().catch(() => null) : null;
+      const sankeySnapshotSize = sankeySnapshot ? await FlowOfFundsComponent.loadImageSize(sankeySnapshot).catch(() => null) : null;
+      this.buildFlowOfFundsPdf(
+        { signatureImage, declaration, registration },
+        { catEmblem, sealImage },
+        sankeySnapshot && sankeySnapshotSize ? { dataUrl: sankeySnapshot, ...sankeySnapshotSize } : null,
+      );
       this.isSignatureDialogOpen = false;
     } catch {
       this.signatureError = this.t('Neuspešno generisanje PDF izveštaja.', 'Failed to generate the PDF report.');
@@ -1108,6 +1118,7 @@ export class FlowOfFundsComponent implements OnInit {
       catEmblem: { dataUrl: string; width: number; height: number } | null;
       sealImage: { dataUrl: string; width: number; height: number } | null;
     },
+    sankeySnapshot: { dataUrl: string; width: number; height: number } | null,
   ): void {
     const L = (sr: string, en: string): string => this.lx(sr, en);
     const result = this.result!;
@@ -1253,6 +1264,41 @@ export class FlowOfFundsComponent implements OnInit {
       [L('Relevantnih adresa', 'Relevant addresses'), result.nodes.length, ACCENT],
       [L('Skraceno', 'Truncated'), result.truncated ? L('DA', 'YES') : L('ne', 'no'), result.truncated ? FlowOfFundsComponent.PDF_AMBER : FlowOfFundsComponent.PDF_GREEN],
     ]);
+
+    // --- Graficki prikaz (Sankey) - snapshot of the diagram exactly as it was filtered
+    // (aggregation level/asset/direction) at export time, same technique as Pathfinding's
+    // own graph snapshot (this.cy.png()) - here via SankeyDiagramComponent.
+    // captureSnapshotPng() instead, since this page draws its own SVG rather than owning a
+    // cytoscape instance. Skipped (not a broken image placeholder) when there was nothing
+    // to capture. ---
+    if (sankeySnapshot) {
+      sectionTitle(L('Graficki prikaz (Sankey)', 'Graphical view (Sankey)'));
+      const maxImgHeight = 95;
+      let renderWidth = usableWidth;
+      let renderHeight = (sankeySnapshot.height / sankeySnapshot.width) * renderWidth;
+      if (renderHeight > maxImgHeight) {
+        renderHeight = maxImgHeight;
+        renderWidth = (sankeySnapshot.width / sankeySnapshot.height) * renderHeight;
+      }
+      ensureSpace(renderHeight + 12);
+      const imgX = marginX + (usableWidth - renderWidth) / 2;
+      doc.addImage(sankeySnapshot.dataUrl, 'JPEG', imgX, y, renderWidth, renderHeight);
+      y += renderHeight + 5;
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...TEXT_GRAY);
+      const snapshotCaptionLines = doc.splitTextToSize(
+        L(
+          'Isecak prikazuje tacno onaj nivo agregacije, imovinu i smer koji su bili aktivni u trenutku izvoza - videti tabelu ispod za pun spisak tokova i dokaze iza svakog.',
+          'The snapshot shows exactly the aggregation level, asset and direction active at export time - see the table below for the full list of flows and the evidence behind each one.',
+        ),
+        usableWidth,
+      );
+      doc.text(snapshotCaptionLines, marginX, y);
+      y += snapshotCaptionLines.length * 3.6 + 4;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...TEXT_DARK);
+    }
 
     // --- Ukupan analizirani volumen, po imovini (nikad sabran preko razlicitih valuta) ----
     const volumeByAsset = new Map<string, { amount: number; count: number }>();

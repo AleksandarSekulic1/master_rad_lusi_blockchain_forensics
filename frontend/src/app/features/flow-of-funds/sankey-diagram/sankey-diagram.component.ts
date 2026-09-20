@@ -92,7 +92,14 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
 
   @Output() readonly linkSelected = new EventEmitter<SankeyDiagramLink | null>();
 
-  @ViewChild('svgRoot', { static: true }) private svgRootRef!: ElementRef<SVGSVGElement>;
+  /** The `<svg>` itself is behind the SAME *ngIf as .sankey-canvas (both only exist once
+   * there's data) - `static: true` here was WRONG (it silently froze this at whatever it
+   * resolved to on Angular's very first static-query pass, before the *ngIf ever had a
+   * chance to insert the element, leaving it permanently undefined) and is exactly why
+   * captureSnapshotPng() below always failed: `this.svgRootRef?.nativeElement` was
+   * undefined even with a fully rendered, visible diagram on screen. Non-static (like
+   * canvasWrapRef right below) re-resolves on every check instead. */
+  @ViewChild('svgRoot') private svgRootRef?: ElementRef<SVGSVGElement>;
   /** .sankey-canvas only exists once there's data (behind *ngIf), so this ref comes and goes
    * - measured (via ngAfterViewChecked, below) to size the SVG viewBox to whatever space the
    * page actually gives this component, instead of a fixed guess. Without this,
@@ -259,6 +266,85 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
     this.linkSelected.emit(null);
   }
 
+  /** Rasterizes the CURRENTLY rendered diagram (whatever aggregation/asset/direction filter
+   * is active right now, at 100% zoom regardless of the on-screen pan/zoom) to a PNG data
+   * URL, for embedding in the PDF report - jsPDF's addImage() takes a raster image, not an
+   * SVG. The live SVG can't be serialized as-is: its fill/stroke colors come from this
+   * component's scoped CSS classes, which don't travel with a standalone, out-of-document
+   * SVG string - every element's actually-computed fill/stroke/opacity is read and baked in
+   * as inline style first. Returns null when there's nothing to capture (empty diagram) or
+   * the browser can't rasterize it. */
+  async captureSnapshotPng(): Promise<string | null> {
+    const svg = this.svgRootRef?.nativeElement;
+    if (!svg || this.layoutNodes.length === 0) {
+      return null;
+    }
+
+    const background = getComputedStyle(svg).getPropertyValue('--sk-tooltip-bg').trim() || '#ffffff';
+
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    const originals = Array.from(svg.querySelectorAll<SVGElement>('*'));
+    const clones = Array.from(clone.querySelectorAll<SVGElement>('*'));
+    originals.forEach((original, index) => {
+      const target = clones[index];
+      if (!target) {
+        return;
+      }
+      const computed = getComputedStyle(original);
+      target.setAttribute(
+        'style',
+        `fill:${computed.fill};stroke:${computed.stroke};stroke-width:${computed.strokeWidth};`
+          + `opacity:${computed.opacity};font-size:${computed.fontSize};font-family:${computed.fontFamily};`,
+      );
+    });
+
+    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('x', '0');
+    bgRect.setAttribute('y', '0');
+    bgRect.setAttribute('width', String(this.width));
+    bgRect.setAttribute('height', String(this.height));
+    bgRect.setAttribute('fill', background);
+    clone.insertBefore(bgRect, clone.firstChild);
+    clone.setAttribute('width', String(this.width));
+    clone.setAttribute('height', String(this.height));
+    // The live SVG is panned/zoomed for on-screen viewing - the snapshot always shows the
+    // whole diagram at its natural 1:1 layout, not whatever the analyst happened to be
+    // looking at.
+    const panZoomGroup = clone.querySelector('g');
+    panZoomGroup?.removeAttribute('transform');
+
+    const serialized = new XMLSerializer().serializeToString(clone);
+    const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = this.width * scale;
+        canvas.height = this.height * scale;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.scale(scale, scale);
+        try {
+          ctx.drawImage(image, 0, 0, this.width, this.height);
+          // JPEG, not PNG: this diagram has an opaque background rect baked in above (no
+          // transparency to lose), and its soft, anti-aliased ribbon edges compress far
+          // better as JPEG than as lossless PNG - several MB smaller per report for a
+          // difference nobody would notice in a printed/PDF-viewed report.
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } catch {
+          resolve(null);
+        }
+      };
+      image.onerror = () => resolve(null);
+      image.src = svgDataUrl;
+    });
+  }
+
   /** Re-finds "the same flow" (by source/target/asset, not the old linkId - see
    * selectedIdentity's own comment) in the freshly-rebuilt layout and re-emits it so the
    * parent's detail panel stays open with UPDATED content (e.g. newly-added Taint/Sybil
@@ -392,7 +478,10 @@ export class SankeyDiagramComponent implements OnChanges, AfterViewChecked, OnDe
 
   protected onWheel(event: WheelEvent): void {
     event.preventDefault();
-    const rect = this.svgRootRef.nativeElement.getBoundingClientRect();
+    const rect = this.svgRootRef?.nativeElement.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
     const cursorX = event.clientX - rect.left;
     const cursorY = event.clientY - rect.top;
     this.zoomAt(cursorX, cursorY, event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
